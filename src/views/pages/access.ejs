@@ -5,12 +5,13 @@
   currentUserHref: "/access",
   pageTitle: "Welcome",
   pageMeta: "Sign in to the RideMatrix platform.",
+  showContextBar: false,
   activeRoleLabel: "",
   hintsLabel: "",
   showRoleSwitch: false,
   showExitLink: false,
   body: `
-    <section class="panel" style="margin-bottom: 1.25rem;">
+    <section class="panel panel--compact panel--access-intro">
       <h1>Welcome to ${appTitle}</h1>
       <p>
         Sign in using the email address linked to your RideMatrix account.
@@ -22,7 +23,7 @@
       </p>
     </section>
 
-    <section class="panel">
+    <section class="panel panel--compact">
       <h2>Sign in</h2>
       <form method="post" action="/access">
         <label for="email">Email address</label>
