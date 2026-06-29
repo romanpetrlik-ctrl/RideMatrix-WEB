@@ -1,0 +1,29 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: null,
+  currentUserHref: "/access",
+  pageTitle: "Access",
+  pageMeta: "Sign in with your email address.",
+  activeRoleLabel: "",
+  hintsLabel: "",
+  showRoleSwitch: false,
+  showExitLink: false,
+  body: `
+    <section class="panel">
+      <h1>Continue</h1>
+      <p>Use the email address linked to your RideMatrix account.</p>
+      <form method="post" action="/access">
+        <label for="email">Email address</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          required
+        />
+        <button type="submit">Continue</button>
+      </form>
+    </section>
+  `
+}) %>

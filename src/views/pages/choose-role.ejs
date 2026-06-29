@@ -1,0 +1,34 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Select a module",
+  pageMeta: "Choose the module you would like to access.",
+  activeRoleLabel: activeRole ? getRoleLabel(activeRole) : "",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: false,
+  showExitLink: true,
+  body: `
+    <section class="panel">
+      <h1>Select a module</h1>
+      <p><strong>Signed in as:</strong> ${email}</p>
+      <p>Please choose the module you would like to access.</p>
+
+      <div class="stack">
+        ${roles
+          .map(
+            (role) => `
+              <form method="post" action="/choose-role">
+                <input type="hidden" name="role" value="${role}" />
+                <button type="submit">
+                  Continue to ${getRoleLabel(role)}${activeRole === role ? " (current)" : ""}
+                </button>
+              </form>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `
+}) %>

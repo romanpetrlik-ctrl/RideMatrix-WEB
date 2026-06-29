@@ -1,0 +1,27 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: null,
+  currentUserHref: "/access",
+  pageTitle: "Check your email",
+  pageMeta: "We have processed your sign-in request.",
+  activeRoleLabel: "",
+  hintsLabel: "",
+  showRoleSwitch: false,
+  showExitLink: false,
+  body: `
+    <section class="panel">
+      <h1>Check your email</h1>
+      <p>
+        If an account exists for this email address, we have sent a sign-in link.
+        Please check your inbox and spam folder.
+      </p>
+      <p>
+        If you entered the wrong address, go back and try again.
+      </p>
+      <p>
+        <a class="button" href="/access">Try a different email address</a>
+      </p>
+    </section>
+  `
+}) %>

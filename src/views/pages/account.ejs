@@ -1,0 +1,40 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Account",
+  pageMeta: "Review your signed-in account and available modules.",
+  activeRoleLabel: activeRole ? getRoleLabel(activeRole) : "",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: roles && roles.length > 1,
+  showExitLink: true,
+  body: `
+    <section class="panel">
+      <h1>Account</h1>
+      <p><strong>Signed in as:</strong> ${email}</p>
+      ${
+        activeRole
+          ? `<p><strong>Current module:</strong> ${getRoleLabel(activeRole)}</p>`
+          : `<p>No active module has been selected yet.</p>`
+      }
+      ${
+        roles && roles.length
+          ? `
+            <div>
+              <p><strong>Available modules:</strong></p>
+              <ul class="role-list">
+                ${roles.map((role) => `<li>${getRoleLabel(role)}</li>`).join("")}
+              </ul>
+            </div>
+          `
+          : ""
+      }
+      ${
+        roles && roles.length > 1
+          ? `<p><a href="/choose-role">Select or switch module</a></p>`
+          : ""
+      }
+    </section>
+  `
+}) %>

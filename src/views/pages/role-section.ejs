@@ -1,0 +1,21 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: roleLabel,
+  pageMeta: "Module workspace",
+  activeRoleLabel: roleLabel,
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: true,
+  showExitLink: true,
+  body: `
+    <section class="panel">
+      <h1>${roleLabel}</h1>
+      <p><strong>Signed in as:</strong> ${email}</p>
+      <p>This is the active workspace for the <strong>${roleLabel}</strong> module.</p>
+
+      <p><a href="/choose-role">Switch module</a></p>
+    </section>
+  `
+}) %>

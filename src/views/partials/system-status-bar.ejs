@@ -1,0 +1,70 @@
+<%
+  const systemStatusText = typeof systemStatus === "string" && systemStatus.trim()
+    ? systemStatus.trim()
+    : "Operational";
+
+  const currentUserLabel = typeof currentUserEmail === "string" && currentUserEmail.trim()
+    ? currentUserEmail.trim()
+    : "Guest";
+
+  const userHref = typeof currentUserHref === "string" && currentUserHref.trim()
+    ? currentUserHref.trim()
+    : "/account";
+%>
+
+<div class="system-status-bar">
+  <div class="system-status-bar__inner">
+    <div class="system-status-bar__left">
+      <div class="system-status-bar__brand" aria-label="RideMatrix">
+        <span class="system-status-bar__brand-mark" aria-hidden="true"></span>
+        <span><%= appTitle %></span>
+      </div>
+
+      <div class="system-status-bar__status" aria-label="System status">
+        <span class="system-status-bar__status-dot" aria-hidden="true"></span>
+        <span><%= systemStatusText %></span>
+      </div>
+    </div>
+
+    <div class="system-status-bar__center">
+      <span
+        class="system-status-bar__clock"
+        data-system-clock
+        aria-label="Current local date and time"
+      >
+        Loading local time...
+      </span>
+    </div>
+
+    <div class="system-status-bar__right">
+      <a class="system-status-bar__user-link" href="<%= userHref %>">
+        <%= currentUserLabel %>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const clockElement = document.querySelector("[data-system-clock]");
+    if (!clockElement) return;
+
+    function updateClock() {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+
+      clockElement.textContent = formatter.format(now).replace(",", " ·");
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+  })();
+</script>

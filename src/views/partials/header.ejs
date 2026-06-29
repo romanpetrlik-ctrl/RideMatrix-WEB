@@ -1,0 +1,43 @@
+<%
+  const headerTitle = typeof pageTitle === "string" && pageTitle.trim()
+    ? pageTitle.trim()
+    : appTitle;
+
+  const headerMeta = typeof pageMeta === "string" && pageMeta.trim()
+    ? pageMeta.trim()
+    : "Operational workspace";
+
+  const headerRole = typeof activeRoleLabel === "string" && activeRoleLabel.trim()
+    ? activeRoleLabel.trim()
+    : "";
+
+  const showHintsToggle = typeof hintsLabel === "string" && hintsLabel.trim();
+%>
+
+<header class="site-header">
+  <div class="container site-header__inner">
+    <div class="site-header__left">
+      <div class="site-header__title"><%= headerTitle %></div>
+      <div class="site-header__meta"><%= headerMeta %></div>
+      <% if (headerRole) { %>
+        <div class="site-header__role">Module: <strong><%= headerRole %></strong></div>
+      <% } %>
+    </div>
+
+    <div class="site-header__right">
+      <% if (showHintsToggle) { %>
+        <div class="site-header__hint"><%= hintsLabel %></div>
+      <% } %>
+
+      <% if (showRoleSwitch) { %>
+        <a class="site-header__link" href="/choose-role">Switch module</a>
+      <% } %>
+
+      <% if (showExitLink) { %>
+        <form class="inline-form" method="post" action="/exit">
+          <button type="submit">Exit</button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+</header>
