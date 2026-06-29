@@ -208,6 +208,23 @@ main.container {
   padding: 1.25rem;
 }
 
+.panel--compact {
+  padding: 1rem 1.1rem;
+}
+
+.panel--compact h1,
+.panel--compact h2 {
+  margin-bottom: 0.65rem;
+}
+
+.panel--compact p:last-child {
+  margin-bottom: 0;
+}
+
+.panel--access-intro {
+  margin-bottom: 0.85rem;
+}
+
 .panel--warning {
   border-left-color: var(--rm-burnt-caramel);
 }

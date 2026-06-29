@@ -4,20 +4,22 @@
   <body>
     <%- include("../partials/system-status-bar", {
       appTitle,
-      systemStatus: typeof systemStatus !== "undefined" ? systemStatus : "Operational",
+      systemStatus: typeof systemStatus !== "undefined" ? systemStatus : "System status: Healthy",
       currentUserEmail: typeof currentUserEmail !== "undefined" ? currentUserEmail : null,
       currentUserHref: typeof currentUserHref !== "undefined" ? currentUserHref : "/account"
     }) %>
 
-    <%- include("../partials/header", {
-      appTitle,
-      pageTitle: typeof pageTitle !== "undefined" ? pageTitle : title,
-      pageMeta: typeof pageMeta !== "undefined" ? pageMeta : "Module workspace",
-      activeRoleLabel: typeof activeRoleLabel !== "undefined" ? activeRoleLabel : "",
-      hintsLabel: typeof hintsLabel !== "undefined" ? hintsLabel : "",
-      showRoleSwitch: typeof showRoleSwitch !== "undefined" ? showRoleSwitch : false,
-      showExitLink: typeof showExitLink !== "undefined" ? showExitLink : false
-    }) %>
+    <% if (typeof showContextBar === "undefined" || showContextBar) { %>
+      <%- include("../partials/header", {
+        appTitle,
+        pageTitle: typeof pageTitle !== "undefined" ? pageTitle : title,
+        pageMeta: typeof pageMeta !== "undefined" ? pageMeta : "Module workspace",
+        activeRoleLabel: typeof activeRoleLabel !== "undefined" ? activeRoleLabel : "",
+        hintsLabel: typeof hintsLabel !== "undefined" ? hintsLabel : "",
+        showRoleSwitch: typeof showRoleSwitch !== "undefined" ? showRoleSwitch : false,
+        showExitLink: typeof showExitLink !== "undefined" ? showExitLink : false
+      }) %>
+    <% } %>
 
     <main class="container">
       <%- body %>
