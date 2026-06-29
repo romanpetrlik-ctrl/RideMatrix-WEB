@@ -1,0 +1,45 @@
+<%- include("../../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Perform full external backup",
+  pageMeta: "Step 1 of 3 — Critical recovery",
+  activeRoleLabel: "",
+  hintsLabel: "",
+  showRoleSwitch: false,
+  showExitLink: true,
+  body: `
+    <section class="panel panel--critical">
+      <h1>Perform full external backup</h1>
+
+      <div class="notice notice--warning">
+        <strong>Before restarting the VPS</strong>, you must ensure that a complete external
+        backup of all platform data has been taken. This protects against data loss in the
+        event the restart does not complete cleanly.
+      </div>
+
+      <p>Confirm that you have completed the following before continuing:</p>
+
+      <ul class="recovery-step-list recovery-step-list--warning">
+        <li>A full database backup has been created and saved to an external location.</li>
+        <li>Any uploaded files or media have been backed up externally.</li>
+        <li>The backup has been verified (you can open and read the backup file).</li>
+      </ul>
+
+      <form method="post" action="/recovery/backup">
+        <div style="margin: 1.25rem 0;">
+          <label style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" name="confirmed" value="yes" required />
+            I confirm that a full external backup has been completed.
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button type="submit">Continue to safety warning &rarr;</button>
+          <a class="button button--secondary" href="/recovery">Back to Help / Recovery</a>
+        </div>
+      </form>
+    </section>
+  `
+}) %>

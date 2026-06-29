@@ -1,0 +1,63 @@
+<%- include("../../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Help / Recovery",
+  pageMeta: "Guided steps to resolve platform issues.",
+  activeRoleLabel: "",
+  hintsLabel: "",
+  showRoleSwitch: false,
+  showExitLink: true,
+  body: `
+    <section class="panel">
+      <h1>Help / Recovery</h1>
+      <p>
+        Use this guide to work through platform issues in a safe, step-by-step order.
+        Start with the quick checks before attempting any service or critical recovery actions.
+      </p>
+    </section>
+
+    <div class="recovery-section">
+      <h2>Quick checks</h2>
+      <div class="panel">
+        <ul class="recovery-step-list">
+          <li>Refresh the page and check whether the issue has cleared.</li>
+          <li>Sign out and sign back in, then reopen the required module.</li>
+          <li>Check whether the issue affects one user or all users.</li>
+          <li>If only one user is affected, ask them to clear their browser cache and sign in again.</li>
+          <li>Contact <strong>Technical Support</strong> if the issue persists after these steps.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="recovery-section">
+      <h2>Service recovery</h2>
+      <div class="panel panel--warning">
+        <ul class="recovery-step-list recovery-step-list--warning">
+          <li>Restart the application services via your hosting control panel or deployment tooling.</li>
+          <li>After restarting, wait 60&ndash;90 seconds, then recheck platform status.</li>
+          <li>Verify that all users can sign in and access their modules before declaring the issue resolved.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="recovery-section">
+      <h2>Critical recovery</h2>
+      <div class="panel panel--critical">
+        <p>
+          <strong>These steps are high-impact and will interrupt the platform for all users.</strong>
+          Only proceed if service recovery steps have not resolved the issue.
+        </p>
+        <ul class="recovery-step-list recovery-step-list--critical">
+          <li>Perform a full external backup before restarting the VPS.</li>
+          <li>Notify any active users that the platform will be temporarily unavailable.</li>
+          <li>Restart the VPS only as a last resort.</li>
+        </ul>
+        <div class="action-row">
+          <a class="button" href="/recovery/backup">Begin critical recovery &rarr;</a>
+        </div>
+      </div>
+    </div>
+  `
+}) %>

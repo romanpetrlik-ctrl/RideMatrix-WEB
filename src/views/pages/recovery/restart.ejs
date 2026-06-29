@@ -1,0 +1,55 @@
+<%- include("../../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Restart VPS",
+  pageMeta: "Step 3 of 3 — Critical recovery",
+  activeRoleLabel: "",
+  hintsLabel: "",
+  showRoleSwitch: false,
+  showExitLink: true,
+  body: `
+    <section class="panel panel--critical">
+      <h1>Restart VPS</h1>
+
+      <div class="notice notice--critical">
+        <strong>This is a high-impact action.</strong>
+        Triggering a VPS restart will immediately terminate the platform for all users.
+        The platform will be unavailable until the VPS has fully restarted and all services
+        have come back online. This process typically takes several minutes.
+      </div>
+
+      ${typeof stubMessage === "string" && stubMessage ? `
+        <div class="notice notice--warning" style="margin-top: 1rem;">
+          <strong>Action completed (placeholder):</strong> ${stubMessage}
+        </div>
+      ` : `
+        <p>
+          If you have completed both the external backup step and reviewed the safety warning,
+          you may initiate the restart below.
+        </p>
+
+        <div class="notice notice--warning" style="margin-top: 1rem;">
+          <strong>Note:</strong> The restart action on this page is a placeholder only.
+          No actual restart will be triggered from this interface.
+          To restart the VPS, use your hosting control panel or connect via SSH and
+          run the appropriate system command.
+        </div>
+
+        <form method="post" action="/recovery/restart">
+          <div class="action-row">
+            <button class="button button--danger" type="submit">Restart VPS (placeholder)</button>
+            <a class="button button--secondary" href="/recovery">Back to Help / Recovery</a>
+          </div>
+        </form>
+      `}
+
+      ${typeof stubMessage === "string" && stubMessage ? `
+        <div class="action-row">
+          <a class="button button--secondary" href="/recovery">Back to Help / Recovery</a>
+        </div>
+      ` : ""}
+    </section>
+  `
+}) %>

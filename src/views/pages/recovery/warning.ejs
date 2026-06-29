@@ -1,0 +1,47 @@
+<%- include("../../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Be careful with this action",
+  pageMeta: "Step 2 of 3 — Critical recovery",
+  activeRoleLabel: "",
+  hintsLabel: "",
+  showRoleSwitch: false,
+  showExitLink: true,
+  body: `
+    <section class="panel panel--critical">
+      <h1>Be careful with this action</h1>
+
+      <div class="notice notice--critical">
+        <strong>Restarting the VPS will interrupt the platform for all users.</strong>
+        Any active operations — including ongoing dispatches, driver sessions, and
+        administrative tasks — will be terminated immediately. Users will not be
+        able to sign in until the platform has restarted and all services are running again.
+      </div>
+
+      <p>Before continuing, ensure that:</p>
+
+      <ul class="recovery-step-list recovery-step-list--critical">
+        <li>All active users have been notified that the platform will be unavailable.</li>
+        <li>There are no time-critical operations in progress that cannot be safely interrupted.</li>
+        <li>Your external backup has been completed (see the previous step).</li>
+        <li>You have confirmed that a VPS restart is necessary and no other recovery option is available.</li>
+      </ul>
+
+      <form method="post" action="/recovery/warning">
+        <div style="margin: 1.25rem 0;">
+          <label style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" name="confirmed" value="yes" required />
+            I understand this will interrupt the platform for all users and I wish to continue.
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button type="submit">Continue to restart &rarr;</button>
+          <a class="button button--secondary" href="/recovery">Back to Help / Recovery</a>
+        </div>
+      </form>
+    </section>
+  `
+}) %>

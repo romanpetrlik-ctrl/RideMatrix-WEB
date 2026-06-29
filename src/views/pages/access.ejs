@@ -3,16 +3,27 @@
   appTitle,
   currentUserEmail: null,
   currentUserHref: "/access",
-  pageTitle: "Access",
-  pageMeta: "Sign in with your email address.",
+  pageTitle: "Welcome",
+  pageMeta: "Sign in to the RideMatrix platform.",
   activeRoleLabel: "",
   hintsLabel: "",
   showRoleSwitch: false,
   showExitLink: false,
   body: `
+    <section class="panel" style="margin-bottom: 1.25rem;">
+      <h1>Welcome to ${appTitle}</h1>
+      <p>
+        Sign in using the email address linked to your RideMatrix account.
+        A sign-in link will be sent to your inbox — no password required.
+      </p>
+      <p>
+        If you need access or require help, please contact your administrator
+        or Technical Support.
+      </p>
+    </section>
+
     <section class="panel">
-      <h1>Continue</h1>
-      <p>Use the email address linked to your RideMatrix account.</p>
+      <h2>Sign in</h2>
       <form method="post" action="/access">
         <label for="email">Email address</label>
         <input
