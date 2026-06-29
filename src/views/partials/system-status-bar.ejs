@@ -1,7 +1,7 @@
 <%
   const systemStatusText = typeof systemStatus === "string" && systemStatus.trim()
     ? systemStatus.trim()
-    : "Operational";
+    : "System status: Healthy";
 
   const currentUserLabel = typeof currentUserEmail === "string" && currentUserEmail.trim()
     ? currentUserEmail.trim()
@@ -10,6 +10,8 @@
   const userHref = typeof currentUserHref === "string" && currentUserHref.trim()
     ? currentUserHref.trim()
     : "/account";
+
+  const isAuthenticated = typeof currentUserEmail === "string" && currentUserEmail.trim();
 %>
 
 <div class="system-status-bar">
@@ -37,6 +39,9 @@
     </div>
 
     <div class="system-status-bar__right">
+      <% if (isAuthenticated) { %>
+        <a class="system-status-bar__user-link" href="/recovery">Help / Recovery</a>
+      <% } %>
       <a class="system-status-bar__user-link" href="<%= userHref %>">
         <%= currentUserLabel %>
       </a>
