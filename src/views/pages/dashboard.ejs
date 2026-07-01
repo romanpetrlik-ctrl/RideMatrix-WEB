@@ -1,0 +1,106 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Admin Dashboard",
+  pageMeta: "Administration overview",
+  activeRoleLabel: "Administration",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: false,
+  showExitLink: true,
+  body: `
+    <div class="dashboard">
+
+      <section class="dashboard__group">
+        <h2 class="dashboard__group-title">Operations</h2>
+        <div class="dashboard__tiles">
+          <button class="dashboard__tile" type="button" data-panel="bookings">
+            <span class="dashboard__tile-name">Bookings</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="active-drivers">
+            <span class="dashboard__tile-name">Active Drivers</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="financial-reports">
+            <span class="dashboard__tile-name">Financial Reports</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="dashboard__group">
+        <h2 class="dashboard__group-title">Management</h2>
+        <div class="dashboard__tiles">
+          <button class="dashboard__tile" type="button" data-panel="customers">
+            <span class="dashboard__tile-name">Customers</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="staff">
+            <span class="dashboard__tile-name">Staff</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="drivers">
+            <span class="dashboard__tile-name">Drivers</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="vehicles">
+            <span class="dashboard__tile-name">Vehicles</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="dashboard__group">
+        <h2 class="dashboard__group-title">Platform</h2>
+        <div class="dashboard__tiles">
+          <button class="dashboard__tile" type="button" data-panel="core-settings">
+            <span class="dashboard__tile-name">Core Settings</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="quick-system-check">
+            <span class="dashboard__tile-name">Quick System Check</span>
+          </button>
+          <button class="dashboard__tile" type="button" data-panel="backup-recovery">
+            <span class="dashboard__tile-name">Backup &amp; Recovery</span>
+          </button>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="dashboard-modal" id="dashboard-modal" hidden>
+      <div class="dashboard-modal__backdrop"></div>
+      <div class="dashboard-modal__panel" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title">
+        <div class="dashboard-modal__header">
+          <h3 class="dashboard-modal__title" id="dashboard-modal-title"></h3>
+          <button class="dashboard-modal__close" type="button" aria-label="Close panel">&#x2715;</button>
+        </div>
+        <div class="dashboard-modal__body">
+          <p>This area is not yet implemented.</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var modal = document.getElementById("dashboard-modal");
+        var modalTitle = document.getElementById("dashboard-modal-title");
+
+        document.querySelectorAll(".dashboard__tile").forEach(function (tile) {
+          tile.addEventListener("click", function () {
+            var label = tile.querySelector(".dashboard__tile-name");
+            modalTitle.textContent = label ? label.textContent : "";
+            modal.hidden = false;
+          });
+        });
+
+        function closeModal() {
+          modal.hidden = true;
+        }
+
+        modal.querySelector(".dashboard-modal__close").addEventListener("click", closeModal);
+        modal.querySelector(".dashboard-modal__backdrop").addEventListener("click", closeModal);
+
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && !modal.hidden) {
+            closeModal();
+          }
+        });
+      })();
+    </script>
+  `
+}) %>
