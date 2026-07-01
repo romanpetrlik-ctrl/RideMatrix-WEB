@@ -1,0 +1,155 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Administration",
+  pageMeta: "Admin dashboard",
+  activeRoleLabel: "Administration",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: true,
+  showExitLink: true,
+  body: `
+    <section class="panel panel--compact panel--access-intro">
+      <h1>Administration Dashboard</h1>
+      <p><strong>Signed in as:</strong> ${email}</p>
+      <p>Use the tiles below to navigate admin areas. Sections marked <strong>Planned</strong> are in development — click any tile for details.</p>
+    </section>
+
+    <div class="tile-grid" role="list">
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Bookings"
+        data-tile-desc="Manage ride bookings, scheduling, and history across the platform."
+        data-tile-status="Planned">
+        <span class="tile__label">Bookings</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Active Drivers"
+        data-tile-desc="Monitor drivers currently on duty and track their live locations."
+        data-tile-status="Planned">
+        <span class="tile__label">Active Drivers</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Financial Reports"
+        data-tile-desc="View revenue summaries, driver payouts, and platform-wide financial analytics."
+        data-tile-status="Planned">
+        <span class="tile__label">Financial Reports</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Customers"
+        data-tile-desc="Browse and manage customer accounts, contact details, and activity history."
+        data-tile-status="Planned">
+        <span class="tile__label">Customers</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Staff"
+        data-tile-desc="Administer internal staff accounts, roles, and access permissions."
+        data-tile-status="Planned">
+        <span class="tile__label">Staff</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Drivers"
+        data-tile-desc="Manage driver profiles, onboarding documents, and operational status."
+        data-tile-status="Planned">
+        <span class="tile__label">Drivers</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Vehicles"
+        data-tile-desc="Track and administer the vehicle fleet, inspections, and assignments."
+        data-tile-status="Planned">
+        <span class="tile__label">Vehicles</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Core Settings"
+        data-tile-desc="Configure platform-wide settings, integrations, and operational preferences."
+        data-tile-status="Planned">
+        <span class="tile__label">Core Settings</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Quick System Check"
+        data-tile-desc="Run a live health check across platform services to verify operational status."
+        data-tile-status="Planned">
+        <span class="tile__label">Quick System Check</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+      <button class="tile tile--placeholder" role="listitem" type="button"
+        data-tile-name="Backup &amp; Recovery"
+        data-tile-desc="Manage scheduled data backups and initiate recovery procedures when needed."
+        data-tile-status="Planned">
+        <span class="tile__label">Backup &amp; Recovery</span>
+        <span class="tile__badge">Planned</span>
+      </button>
+
+    </div>
+
+    <dialog id="tile-modal" class="tile-modal" aria-labelledby="tile-modal-title" aria-describedby="tile-modal-desc">
+      <div class="tile-modal__inner">
+        <header class="tile-modal__header">
+          <h2 id="tile-modal-title" class="tile-modal__title"></h2>
+          <span id="tile-modal-status" class="tile-modal__status"></span>
+        </header>
+        <p id="tile-modal-desc" class="tile-modal__desc"></p>
+        <div class="action-row">
+          <button id="tile-modal-close" class="button button--secondary" type="button">Close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script>
+      (function () {
+        var grid = document.querySelector('.tile-grid');
+        var modal = document.getElementById('tile-modal');
+        var modalTitle = document.getElementById('tile-modal-title');
+        var modalDesc = document.getElementById('tile-modal-desc');
+        var modalStatus = document.getElementById('tile-modal-status');
+        var closeBtn = document.getElementById('tile-modal-close');
+        var lastTrigger = null;
+
+        grid.addEventListener('click', function (e) {
+          var btn = e.target.closest('.tile--placeholder');
+          if (!btn) return;
+          modalTitle.textContent = btn.getAttribute('data-tile-name');
+          modalDesc.textContent = btn.getAttribute('data-tile-desc');
+          modalStatus.textContent = btn.getAttribute('data-tile-status');
+          lastTrigger = btn;
+          modal.showModal();
+        });
+
+        closeBtn.addEventListener('click', function () {
+          modal.close();
+        });
+
+        modal.addEventListener('close', function () {
+          if (lastTrigger) {
+            lastTrigger.focus();
+            lastTrigger = null;
+          }
+        });
+
+        modal.addEventListener('click', function (e) {
+          if (e.target === modal) {
+            modal.close();
+          }
+        });
+      }());
+    </script>
+  `
+}) %>

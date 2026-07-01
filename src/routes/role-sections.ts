@@ -67,7 +67,8 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           return res.redirect("/account");
         }
 
-        return res.render("pages/role-section", {
+        const template = requiredRole === "admin" ? "pages/admin" : "pages/role-section";
+        return res.render(template, {
           title: getRoleLabel(requiredRole),
           appTitle: options.appTitle,
           email: session.user.email,
