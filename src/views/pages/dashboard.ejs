@@ -1,0 +1,194 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Dashboard",
+  pageMeta: "Administration overview",
+  activeRoleLabel: "Administration",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: true,
+  showExitLink: true,
+  body: `
+    <div class="dashboard">
+
+      <section class="dashboard-group">
+        <h2 class="dashboard-group__heading">Operations</h2>
+        <div class="dashboard-grid">
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Live Fleet Map</div>
+              <div class="dashboard-tile__desc">Real-time vehicle positions and active trip status.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Live Fleet Map"
+              data-tile-detail="This area is not yet available. The live fleet map will show real-time vehicle positions, active trips, and route progress."
+            >Open</button>
+          </div>
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Dispatch Console</div>
+              <div class="dashboard-tile__desc">Assign drivers, manage active ride requests.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Dispatch Console"
+              data-tile-detail="This area is not yet available. The dispatch console will allow assigning drivers to rides, managing queued requests, and monitoring dispatch status."
+            >Open</button>
+          </div>
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Trip Monitor</div>
+              <div class="dashboard-tile__desc">Track all ongoing trips and their current state.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Trip Monitor"
+              data-tile-detail="This area is not yet available. The trip monitor will provide a live view of all active trips, including driver, vehicle, and passenger details."
+            >Open</button>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="dashboard-group">
+        <h2 class="dashboard-group__heading">Management</h2>
+        <div class="dashboard-grid">
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Users &amp; Accounts</div>
+              <div class="dashboard-tile__desc">Manage user accounts, roles, and access permissions.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Users &amp; Accounts"
+              data-tile-detail="This area is not yet available. User and account management will support creating, editing, and deactivating accounts and role assignments."
+            >Open</button>
+          </div>
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Driver Records</div>
+              <div class="dashboard-tile__desc">Driver profiles, documents, and compliance status.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Driver Records"
+              data-tile-detail="This area is not yet available. Driver records will cover profile management, document uploads, licence validity, and compliance checks."
+            >Open</button>
+          </div>
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Vehicle Registry</div>
+              <div class="dashboard-tile__desc">Fleet inventory, vehicle data, and service records.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Vehicle Registry"
+              data-tile-detail="This area is not yet available. The vehicle registry will track fleet inventory, registration, insurance, and maintenance records."
+            >Open</button>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="dashboard-group">
+        <h2 class="dashboard-group__heading">Platform</h2>
+        <div class="dashboard-grid">
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">System Settings</div>
+              <div class="dashboard-tile__desc">Configuration, environment controls, and feature flags.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="System Settings"
+              data-tile-detail="This area is not yet available. System settings will expose configuration options, environment variables, and feature flag controls."
+            >Open</button>
+          </div>
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Audit Log</div>
+              <div class="dashboard-tile__desc">Activity history, change records, and access events.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Audit Log"
+              data-tile-detail="This area is not yet available. The audit log will record all significant actions across the platform, including who made changes and when."
+            >Open</button>
+          </div>
+
+          <div class="dashboard-tile">
+            <div class="dashboard-tile__body">
+              <div class="dashboard-tile__name">Integrations</div>
+              <div class="dashboard-tile__desc">Third-party service connections and API status.</div>
+            </div>
+            <button
+              class="dashboard-tile__btn"
+              type="button"
+              data-tile-title="Integrations"
+              data-tile-detail="This area is not yet available. Integrations will manage connections to third-party services, API keys, and webhook configurations."
+            >Open</button>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+    <dialog class="tile-dialog" id="tile-dialog" aria-modal="true">
+      <div class="tile-dialog__inner">
+        <div class="tile-dialog__header">
+          <h2 class="tile-dialog__title" id="tile-dialog-title"></h2>
+          <button class="tile-dialog__close" type="button" aria-label="Close">&#x2715;</button>
+        </div>
+        <div class="tile-dialog__content">
+          <p class="tile-dialog__notice">Not yet available</p>
+          <p class="tile-dialog__detail" id="tile-dialog-detail"></p>
+        </div>
+      </div>
+    </dialog>
+
+    <script>
+      (function () {
+        var dialog = document.getElementById("tile-dialog");
+        var dialogTitle = document.getElementById("tile-dialog-title");
+        var dialogDetail = document.getElementById("tile-dialog-detail");
+
+        document.querySelectorAll(".dashboard-tile__btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            dialogTitle.textContent = btn.getAttribute("data-tile-title");
+            dialogDetail.textContent = btn.getAttribute("data-tile-detail");
+            dialog.showModal();
+          });
+        });
+
+        dialog.querySelector(".tile-dialog__close").addEventListener("click", function () {
+          dialog.close();
+        });
+
+        dialog.addEventListener("click", function (e) {
+          if (e.target === dialog) {
+            dialog.close();
+          }
+        });
+      })();
+    </script>
+  `
+}) %>

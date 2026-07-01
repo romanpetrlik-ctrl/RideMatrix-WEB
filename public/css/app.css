@@ -417,3 +417,120 @@ button:visited,
     align-items: flex-start;
   }
 }
+
+/* Dashboard */
+.dashboard {
+  display: grid;
+  gap: 2.5rem;
+  padding: 2rem 0;
+}
+
+.dashboard-group__heading {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--rm-walnut);
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--rm-light-bronze);
+  padding-bottom: 0.4rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-tile {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--rm-light-bronze);
+  border-left: 4px solid var(--rm-camel);
+  box-shadow: var(--rm-shadow-soft);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+  gap: 1rem;
+}
+
+.dashboard-tile__name {
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.dashboard-tile__desc {
+  font-size: 0.95rem;
+  color: var(--rm-text-soft);
+}
+
+.dashboard-tile__btn {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+/* Tile placeholder dialog */
+.tile-dialog {
+  border: 1px solid var(--rm-light-bronze);
+  background: var(--rm-page-bg);
+  color: var(--rm-text);
+  box-shadow: var(--rm-shadow-soft);
+  padding: 0;
+  max-width: 32rem;
+  width: calc(100% - 2rem);
+}
+
+.tile-dialog::backdrop {
+  background: rgba(88, 49, 1, 0.35);
+}
+
+.tile-dialog__inner {
+  padding: 1.5rem;
+}
+
+.tile-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.tile-dialog__title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.tile-dialog__close {
+  background: transparent;
+  border: none;
+  color: var(--rm-walnut);
+  font-size: 1.1rem;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tile-dialog__close:hover,
+.tile-dialog__close:focus {
+  background: var(--rm-soft-apricot);
+  color: var(--rm-walnut-3);
+  outline: 2px solid var(--rm-dark-cyan);
+  outline-offset: 2px;
+}
+
+.tile-dialog__notice {
+  display: inline-block;
+  background: rgba(238, 155, 0, 0.1);
+  border: 1px solid var(--rm-golden-orange);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 0.85rem;
+  color: var(--rm-burnt-caramel);
+}
+
+.tile-dialog__detail {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--rm-text-soft);
+}
