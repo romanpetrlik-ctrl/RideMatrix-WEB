@@ -1,0 +1,91 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Administration",
+  pageMeta: "Admin dashboard",
+  activeRoleLabel: "Administration",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: true,
+  showExitLink: true,
+  body: `
+    <section class="panel panel--compact" style="margin-bottom:1.5rem;">
+      <p><strong>Signed in as:</strong> ${email}</p>
+    </section>
+
+    <div class="dashboard-grid">
+      <button class="dashboard-tile" data-modal-title="User Management" data-modal-body="User management is not yet available in this build.">
+        <span class="dashboard-tile__icon" aria-hidden="true">&#128100;</span>
+        <span class="dashboard-tile__label">User Management</span>
+      </button>
+      <button class="dashboard-tile" data-modal-title="Role Assignment" data-modal-body="Role assignment is not yet available in this build.">
+        <span class="dashboard-tile__icon" aria-hidden="true">&#127959;</span>
+        <span class="dashboard-tile__label">Role Assignment</span>
+      </button>
+      <button class="dashboard-tile" data-modal-title="System Configuration" data-modal-body="System configuration is not yet available in this build.">
+        <span class="dashboard-tile__icon" aria-hidden="true">&#9881;</span>
+        <span class="dashboard-tile__label">System Configuration</span>
+      </button>
+      <button class="dashboard-tile" data-modal-title="Access Logs" data-modal-body="Access log review is not yet available in this build.">
+        <span class="dashboard-tile__icon" aria-hidden="true">&#128196;</span>
+        <span class="dashboard-tile__label">Access Logs</span>
+      </button>
+      <button class="dashboard-tile" data-modal-title="Reports" data-modal-body="Reporting is not yet available in this build.">
+        <span class="dashboard-tile__icon" aria-hidden="true">&#128202;</span>
+        <span class="dashboard-tile__label">Reports</span>
+      </button>
+      <button class="dashboard-tile" data-modal-title="Notifications" data-modal-body="Notification management is not yet available in this build.">
+        <span class="dashboard-tile__icon" aria-hidden="true">&#128276;</span>
+        <span class="dashboard-tile__label">Notifications</span>
+      </button>
+    </div>
+
+    <div class="dashboard-modal" id="dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title" hidden>
+      <div class="dashboard-modal__backdrop"></div>
+      <div class="dashboard-modal__panel">
+        <h2 class="dashboard-modal__title" id="dashboard-modal-title"></h2>
+        <p class="dashboard-modal__body"></p>
+        <div class="action-row">
+          <button type="button" class="button button--secondary dashboard-modal__close">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var modal = document.getElementById("dashboard-modal");
+        var modalTitle = modal.querySelector(".dashboard-modal__title");
+        var modalBody = modal.querySelector(".dashboard-modal__body");
+        var closeBtn = modal.querySelector(".dashboard-modal__close");
+        var backdrop = modal.querySelector(".dashboard-modal__backdrop");
+
+        function openModal(title, body) {
+          modalTitle.textContent = title;
+          modalBody.textContent = body;
+          modal.hidden = false;
+          closeBtn.focus();
+        }
+
+        function closeModal() {
+          modal.hidden = true;
+        }
+
+        document.querySelectorAll(".dashboard-tile[data-modal-title]").forEach(function (tile) {
+          tile.addEventListener("click", function () {
+            openModal(tile.dataset.modalTitle, tile.dataset.modalBody);
+          });
+        });
+
+        closeBtn.addEventListener("click", closeModal);
+        backdrop.addEventListener("click", closeModal);
+
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && !modal.hidden) {
+            closeModal();
+          }
+        });
+      })();
+    </script>
+  `
+}) %>
