@@ -18,17 +18,17 @@ const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
       {
         key: "bookings",
         title: "Bookings",
-        description: "View and manage active and scheduled bookings."
+        description: "Booking management and trip oversight."
       },
       {
         key: "active-drivers",
         title: "Active Drivers",
-        description: "Entry point for active drivers and map monitoring."
+        description: "Active driver status and monitoring."
       },
       {
         key: "financial-reports",
         title: "Financial Reports",
-        description: "Revenue and finance reporting access."
+        description: "Revenue and finance reporting."
       }
     ]
   },
@@ -38,22 +38,22 @@ const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
       {
         key: "customers",
         title: "Customers",
-        description: "Add, edit, suspend, or remove customer records."
+        description: "Customer accounts and profile records."
       },
       {
         key: "staff",
         title: "Staff",
-        description: "Add, edit, suspend, or remove staff records."
+        description: "Staff accounts and access control."
       },
       {
         key: "drivers",
         title: "Drivers",
-        description: "Add, edit, suspend, or remove driver records."
+        description: "Driver records and compliance status."
       },
       {
         key: "vehicles",
         title: "Vehicles",
-        description: "Manage fleet vehicles and availability."
+        description: "Fleet vehicles and availability."
       }
     ]
   },
@@ -61,19 +61,19 @@ const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
     title: "Platform",
     tiles: [
       {
-        key: "core-settings",
-        title: "Core Settings",
-        description: "Umbrella entry point for deeper platform configuration."
+        key: "general-settings",
+        title: "General Settings",
+        description: "Platform-wide configuration."
       },
       {
         key: "quick-system-check",
         title: "Quick System Check",
-        description: "Lightweight system health and status checks."
+        description: "Service health and system diagnostics."
       },
       {
         key: "backup-recovery",
         title: "Backup & Recovery",
-        description: "Manual backup and controlled recovery workflow entry point."
+        description: "Backup management and recovery workflows."
       }
     ]
   }
