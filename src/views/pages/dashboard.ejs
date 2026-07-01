@@ -1,0 +1,56 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Admin Dashboard",
+  pageMeta: "Operations workspace",
+  activeRoleLabel: "Administration",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: true,
+  showExitLink: true,
+  body: `
+    <section class="panel panel--compact dashboard-hero">
+      <h1>Admin Dashboard</h1>
+      <p>
+        The admin workspace centralizes daily operations, management, and platform oversight.
+        Use the tiles below to open each area.
+      </p>
+    </section>
+
+    ${
+      selectedTile
+        ? `
+          <section class="notice dashboard-selection-notice">
+            <strong>${selectedTile.title}</strong> is prepared as a dashboard entry point.
+            The full workflow for this area will be expanded in a later phase.
+          </section>
+        `
+        : ""
+    }
+
+    <div class="dashboard-layout">
+      ${sections
+        .map(
+          (section) => `
+            <section class="dashboard-section">
+              <h2 class="dashboard-section__title">${section.title}</h2>
+              <div class="dashboard-tile-grid">
+                ${section.tiles
+                  .map(
+                    (tile) => `
+                      <a class="dashboard-tile" href="/dashboard?tile=${tile.key}">
+                        <span class="dashboard-tile__title">${tile.title}</span>
+                        <span class="dashboard-tile__description">${tile.description}</span>
+                      </a>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </section>
+          `
+        )
+        .join("")}
+    </div>
+  `
+}) %>
