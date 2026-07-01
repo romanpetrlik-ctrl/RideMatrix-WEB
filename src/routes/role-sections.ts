@@ -6,7 +6,6 @@ type RoleSectionsRouterOptions = {
 };
 
 const routeRoleMap: Record<string, string> = {
-  "/admin": "admin",
   "/superuser": "superuser",
   "/staff": "staff",
   "/tech-support": "tech_support",
@@ -16,8 +15,6 @@ const routeRoleMap: Record<string, string> = {
 
 function getRoleLabel(role: string): string {
   switch (role) {
-    case "admin":
-      return "Administration";
     case "superuser":
       return "System Control";
     case "staff":

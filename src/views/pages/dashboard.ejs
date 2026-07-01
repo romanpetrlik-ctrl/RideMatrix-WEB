@@ -1,0 +1,81 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: "Admin Dashboard",
+  pageMeta: "Administration workspace",
+  activeRoleLabel: "Administration",
+  hintsLabel: "Hints: Off",
+  showRoleSwitch: canSwitchRole,
+  showExitLink: true,
+  body: `
+    <section class="panel">
+      <h1>Admin Dashboard</h1>
+      <p><strong>Signed in as:</strong> ${email}</p>
+      <p>Select an area below. Unfinished items open a placeholder panel with current status.</p>
+
+      <div class="dashboard-sections">
+        <section class="dashboard-section">
+          <h2>Operations</h2>
+          <div class="dashboard-tiles">
+            <button type="button" class="dashboard-tile__button" data-feature="Bookings">Bookings</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Active Drivers">Active Drivers</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Financial Reports">Financial Reports</button>
+          </div>
+        </section>
+
+        <section class="dashboard-section">
+          <h2>Management</h2>
+          <div class="dashboard-tiles">
+            <button type="button" class="dashboard-tile__button" data-feature="Customers">Customers</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Staff">Staff</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Drivers">Drivers</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Vehicles">Vehicles</button>
+          </div>
+        </section>
+
+        <section class="dashboard-section">
+          <h2>Platform</h2>
+          <div class="dashboard-tiles">
+            <button type="button" class="dashboard-tile__button" data-feature="Core Settings">Core Settings</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Quick System Check">Quick System Check</button>
+            <button type="button" class="dashboard-tile__button" data-feature="Backup & Recovery">Backup & Recovery</button>
+          </div>
+        </section>
+      </div>
+
+      <section id="dashboard-placeholder" class="panel panel--compact dashboard-placeholder" hidden>
+        <h2 id="dashboard-placeholder-title">Module placeholder</h2>
+        <p>This section is not implemented yet. Use this placeholder panel while the module is under development.</p>
+        <button type="button" class="button--secondary" id="dashboard-placeholder-close">Close panel</button>
+      </section>
+    </section>
+
+    <script>
+      (function () {
+        var panel = document.getElementById("dashboard-placeholder");
+        var titleElement = document.getElementById("dashboard-placeholder-title");
+        var closeButton = document.getElementById("dashboard-placeholder-close");
+        var tileButtons = document.querySelectorAll(".dashboard-tile__button");
+
+        if (!panel || !titleElement || !closeButton || !tileButtons.length) {
+          return;
+        }
+
+        tileButtons.forEach(function (button) {
+          button.addEventListener("click", function () {
+            var feature = button.getAttribute("data-feature") || "Module";
+            titleElement.textContent = feature + " placeholder";
+            panel.hidden = false;
+            panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          });
+        });
+
+        closeButton.addEventListener("click", function () {
+          panel.hidden = true;
+        });
+      })();
+    </script>
+  `
+}) %>

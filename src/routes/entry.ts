@@ -6,7 +6,7 @@ type EntryRouterOptions = {
 };
 
 const roleRedirectMap: Record<string, string> = {
-  admin: "/admin",
+  admin: "/dashboard",
   superuser: "/superuser",
   staff: "/staff",
   tech_support: "/tech-support",
