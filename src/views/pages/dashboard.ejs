@@ -39,7 +39,7 @@
                 ${section.tiles
                   .map(
                     (tile) => `
-                      <a class="dashboard-tile" href="/dashboard?tile=${tile.key}">
+                      <a class="dashboard-tile" href="${tile.url || `/dashboard?tile=${tile.key}`}"${tile.newTab ? ` target="_blank" rel="noopener noreferrer"` : ""}>
                         <span class="dashboard-tile__title">${tile.title}</span>
                         <span class="dashboard-tile__description">${tile.description}</span>
                       </a>

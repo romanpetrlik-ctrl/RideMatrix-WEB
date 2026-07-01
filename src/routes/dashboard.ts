@@ -9,6 +9,8 @@ type DashboardTile = {
   key: string;
   title: string;
   description: string;
+  url?: string;
+  newTab?: boolean;
 };
 
 const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
@@ -18,17 +20,19 @@ const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
       {
         key: "bookings",
         title: "Bookings",
-        description: "View and manage active and scheduled bookings."
+        description: "Booking management and trip oversight."
       },
       {
-        key: "active-drivers",
-        title: "Active Drivers",
-        description: "Entry point for active drivers and map monitoring."
+        key: "active-vehicles-map",
+        title: "Active Vehicles Map",
+        description: "Live map of active vehicles and trips.",
+        url: "/active-vehicles-map",
+        newTab: true
       },
       {
         key: "financial-reports",
         title: "Financial Reports",
-        description: "Revenue and finance reporting access."
+        description: "Revenue and finance reporting."
       }
     ]
   },
