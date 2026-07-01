@@ -6,7 +6,6 @@ type RoleSectionsRouterOptions = {
 };
 
 const routeRoleMap: Record<string, string> = {
-  "/admin": "admin",
   "/superuser": "superuser",
   "/staff": "staff",
   "/tech-support": "tech_support",

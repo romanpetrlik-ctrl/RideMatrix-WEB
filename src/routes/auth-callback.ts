@@ -2,7 +2,7 @@ import { Router } from "express";
 import { getSessionAccount, selectActiveRole } from "../services/api";
 
 const roleRedirectMap: Record<string, string> = {
-  admin: "/admin",
+  admin: "/dashboard",
   superuser: "/superuser",
   staff: "/staff",
   tech_support: "/tech-support",
