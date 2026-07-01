@@ -6,7 +6,7 @@ type AccountRouterOptions = {
 };
 
 const roleRedirectMap: Record<string, string> = {
-  admin: "/admin",
+  admin: "/dashboard",
   superuser: "/superuser",
   staff: "/staff",
   tech_support: "/tech-support",
@@ -21,7 +21,7 @@ function getRoleRedirect(role: string): string {
 function getRoleLabel(role: string): string {
   switch (role) {
     case "admin":
-      return "Administration";
+      return "Admin Dashboard";
     case "superuser":
       return "System Control";
     case "staff":

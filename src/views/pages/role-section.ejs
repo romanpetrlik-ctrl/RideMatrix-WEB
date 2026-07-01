@@ -3,19 +3,95 @@
   appTitle,
   currentUserEmail: email,
   currentUserHref: "/account",
-  pageTitle: roleLabel,
-  pageMeta: "Module workspace",
+  pageTitle: role === "admin" ? "Dashboard" : roleLabel,
+  pageMeta: role === "admin" ? "Admin overview and platform placeholders." : "Module workspace",
   activeRoleLabel: roleLabel,
   hintsLabel: "Hints: Off",
   showRoleSwitch: true,
   showExitLink: true,
   body: `
     <section class="panel">
-      <h1>${roleLabel}</h1>
+      <h1>${role === "admin" ? "Dashboard" : roleLabel}</h1>
       <p><strong>Signed in as:</strong> ${email}</p>
-      <p>This is the active workspace for the <strong>${roleLabel}</strong> module.</p>
+      ${
+        role === "admin"
+          ? `<p>This is the admin dashboard. Select an area below to open its honest placeholder panel.</p>`
+          : `<p>This is the active workspace for the <strong>${roleLabel}</strong> module.</p>`
+      }
 
       <p><a href="/choose-role">Switch module</a></p>
     </section>
+
+    ${
+      role === "admin" && Array.isArray(adminDashboardSections)
+        ? `
+          <div class="dashboard-groups">
+            ${adminDashboardSections
+              .map(
+                (section) => `
+                  <section class="dashboard-group">
+                    <h2>${section.title}</h2>
+                    <div class="dashboard-tiles">
+                      ${section.tiles
+                        .map(
+                          (tile) => `
+                            <button
+                              class="dashboard-tile"
+                              type="button"
+                              data-dashboard-tile
+                              data-dashboard-group="${section.title}"
+                              data-dashboard-title="${tile.placeholderTitle}"
+                              data-dashboard-body="${tile.placeholderBody}"
+                            >
+                              <span class="dashboard-tile__eyebrow">${section.title}</span>
+                              <span class="dashboard-tile__label">${tile.label}</span>
+                              <span class="dashboard-tile__meta">Open placeholder panel</span>
+                            </button>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                  </section>
+                `
+              )
+              .join("")}
+          </div>
+
+          <section class="panel panel--compact dashboard-placeholder" data-dashboard-placeholder hidden>
+            <p class="dashboard-placeholder__eyebrow" data-dashboard-placeholder-group>Admin area</p>
+            <h2 class="dashboard-placeholder__title" data-dashboard-placeholder-title>Select an admin area</h2>
+            <p class="dashboard-placeholder__body" data-dashboard-placeholder-body>
+              Use a dashboard tile to view the current placeholder scope. No live admin navigation is wired from these tiles yet.
+            </p>
+          </section>
+
+          <script>
+            (() => {
+              const placeholder = document.querySelector("[data-dashboard-placeholder]");
+              const groupNode = document.querySelector("[data-dashboard-placeholder-group]");
+              const titleNode = document.querySelector("[data-dashboard-placeholder-title]");
+              const bodyNode = document.querySelector("[data-dashboard-placeholder-body]");
+              const tiles = document.querySelectorAll("[data-dashboard-tile]");
+
+              if (!placeholder || !groupNode || !titleNode || !bodyNode || !tiles.length) {
+                return;
+              }
+
+              for (const tile of tiles) {
+                tile.addEventListener("click", () => {
+                  groupNode.textContent = tile.getAttribute("data-dashboard-group") || "Admin area";
+                  titleNode.textContent = tile.getAttribute("data-dashboard-title") || "Placeholder";
+                  bodyNode.textContent =
+                    tile.getAttribute("data-dashboard-body") ||
+                    "This dashboard tile currently opens a placeholder panel only.";
+                  placeholder.hidden = false;
+                  placeholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                });
+              }
+            })();
+          </script>
+        `
+        : ""
+    }
   `
 }) %>

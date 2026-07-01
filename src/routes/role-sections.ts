@@ -5,8 +5,19 @@ type RoleSectionsRouterOptions = {
   appTitle: string;
 };
 
+type AdminDashboardTile = {
+  label: string;
+  placeholderTitle: string;
+  placeholderBody: string;
+};
+
+type AdminDashboardSection = {
+  title: string;
+  tiles: AdminDashboardTile[];
+};
+
 const routeRoleMap: Record<string, string> = {
-  "/admin": "admin",
+  "/dashboard": "admin",
   "/superuser": "superuser",
   "/staff": "staff",
   "/tech-support": "tech_support",
@@ -14,10 +25,88 @@ const routeRoleMap: Record<string, string> = {
   "/driver": "driver"
 };
 
+const adminDashboardSections: AdminDashboardSection[] = [
+  {
+    title: "Operations",
+    tiles: [
+      {
+        label: "Bookings",
+        placeholderTitle: "Bookings placeholder",
+        placeholderBody:
+          "Bookings is part of Operations. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Active Drivers",
+        placeholderTitle: "Active Drivers placeholder",
+        placeholderBody:
+          "Active Drivers is part of Operations. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Financial Reports",
+        placeholderTitle: "Financial Reports placeholder",
+        placeholderBody:
+          "Financial Reports is part of Operations. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      }
+    ]
+  },
+  {
+    title: "Management",
+    tiles: [
+      {
+        label: "Customers",
+        placeholderTitle: "Customers placeholder",
+        placeholderBody:
+          "Customers is part of Management. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Staff",
+        placeholderTitle: "Staff placeholder",
+        placeholderBody:
+          "Staff is part of Management. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Drivers",
+        placeholderTitle: "Drivers placeholder",
+        placeholderBody:
+          "Drivers is part of Management. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Vehicles",
+        placeholderTitle: "Vehicles placeholder",
+        placeholderBody:
+          "Vehicles is part of Management. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      }
+    ]
+  },
+  {
+    title: "Platform",
+    tiles: [
+      {
+        label: "Core Settings",
+        placeholderTitle: "Core Settings placeholder",
+        placeholderBody:
+          "Core Settings is part of Platform. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Quick System Check",
+        placeholderTitle: "Quick System Check placeholder",
+        placeholderBody:
+          "Quick System Check is part of Platform. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      },
+      {
+        label: "Backup & Recovery",
+        placeholderTitle: "Backup & Recovery placeholder",
+        placeholderBody:
+          "Backup & Recovery is part of Platform. This tile currently opens a placeholder panel only, and no live admin workflow is connected yet."
+      }
+    ]
+  }
+];
+
 function getRoleLabel(role: string): string {
   switch (role) {
     case "admin":
-      return "Administration";
+      return "Admin Dashboard";
     case "superuser":
       return "System Control";
     case "staff":
@@ -35,6 +124,10 @@ function getRoleLabel(role: string): string {
 
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
+
+  router.get("/admin", (_req, res) => {
+    return res.redirect("/dashboard");
+  });
 
   for (const [routePath, requiredRole] of Object.entries(routeRoleMap)) {
     router.get(routePath, async (req, res, next) => {
@@ -72,7 +165,8 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           appTitle: options.appTitle,
           email: session.user.email,
           role: requiredRole,
-          roleLabel: getRoleLabel(requiredRole)
+          roleLabel: getRoleLabel(requiredRole),
+          adminDashboardSections: requiredRole === "admin" ? adminDashboardSections : undefined
         });
       } catch (error) {
         next(error);
