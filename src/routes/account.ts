@@ -14,8 +14,8 @@ const roleRedirectMap: Record<string, string> = {
   driver: "/driver"
 };
 
-function getRoleRedirect(role: string): string {
-  return roleRedirectMap[role] ?? "/account";
+function getRoleRedirect(role: string): string | null {
+  return roleRedirectMap[role] ?? null;
 }
 
 function getRoleLabel(role: string): string {
@@ -62,11 +62,35 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
           res.append("Set-Cookie", cookieValue);
         }
 
-        return res.redirect(getRoleRedirect(roles[0]));
+        const redirectTarget = getRoleRedirect(roles[0]);
+        if (redirectTarget) {
+          return res.redirect(redirectTarget);
+        }
+
+        return res.render("pages/account", {
+          title: "Account",
+          appTitle: options.appTitle,
+          email: session.user.email,
+          roles,
+          activeRole: roles[0],
+          getRoleLabel
+        });
       }
 
       if (activeRole) {
-        return res.redirect(getRoleRedirect(activeRole));
+        const redirectTarget = getRoleRedirect(activeRole);
+        if (redirectTarget) {
+          return res.redirect(redirectTarget);
+        }
+
+        return res.render("pages/account", {
+          title: "Account",
+          appTitle: options.appTitle,
+          email: session.user.email,
+          roles,
+          activeRole,
+          getRoleLabel
+        });
       }
 
       return res.render("pages/account", {
@@ -103,7 +127,12 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
           res.append("Set-Cookie", cookieValue);
         }
 
-        return res.redirect(getRoleRedirect(roles[0]));
+        const redirectTarget = getRoleRedirect(roles[0]);
+        if (redirectTarget) {
+          return res.redirect(redirectTarget);
+        }
+
+        return res.redirect("/account");
       }
 
       return res.render("pages/choose-role", {
@@ -133,7 +162,8 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         res.append("Set-Cookie", cookieValue);
       }
 
-      return res.redirect(getRoleRedirect(selected.activeRole));
+      const redirectTarget = getRoleRedirect(selected.activeRole);
+      return res.redirect(redirectTarget ?? "/account");
     } catch (error) {
       next(error);
     }
