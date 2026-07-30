@@ -5,17 +5,12 @@ type EntryRouterOptions = {
   appTitle: string;
 };
 
-const roleRedirectMap: Record<string, string> = {
-  admin: "/dashboard",
-  superuser: "/superuser",
-  staff: "/staff",
-  tech_support: "/tech-support",
-  dispatcher: "/dispatch",
-  driver: "/driver"
-};
+function getLandingRoute(roles: string[]): string {
+  if (roles.includes("admin")) {
+    return "/dashboard";
+  }
 
-function getRoleRedirect(role: string): string {
-  return roleRedirectMap[role] ?? "/account";
+  return "/account";
 }
 
 export function createEntryRouter(options: EntryRouterOptions): Router {
@@ -33,18 +28,20 @@ export function createEntryRouter(options: EntryRouterOptions): Router {
       }
 
       const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-      const activeRole = session.user.active_role;
-
       if (roles.length === 0) {
         return res.redirect("/access");
       }
 
-      if (activeRole) {
-        return res.redirect(getRoleRedirect(activeRole));
+      if (session.user.active_role) {
+        return res.redirect(getLandingRoute(roles));
       }
 
       if (roles.length === 1) {
         return res.redirect("/auth/callback");
+      }
+
+      if (roles.includes("admin")) {
+        return res.redirect("/dashboard");
       }
 
       return res.redirect("/choose-role");

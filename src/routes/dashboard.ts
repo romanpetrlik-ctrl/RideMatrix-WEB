@@ -105,25 +105,8 @@ export function createDashboardRouter(options: DashboardRouterOptions): Router {
       }
 
       const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-      const activeRole = session.user.active_role;
 
       if (!roles.includes("admin")) {
-        return res.status(403).render("pages/unavailable", {
-          title: "Unavailable",
-          appTitle: options.appTitle
-        });
-      }
-
-      if (!activeRole) {
-        if (roles.length > 1) {
-          return res.redirect("/choose-role");
-        }
-
-        return res.redirect("/auth/callback");
-      }
-
-      // TODO: Expand to a shared role-to-dashboard resolver when other dashboards are implemented.
-      if (activeRole !== "admin") {
         return res.redirect("/account");
       }
 

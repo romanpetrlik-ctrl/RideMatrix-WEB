@@ -4,7 +4,7 @@
   currentUserEmail: email,
   currentUserHref: "/account",
   pageTitle: "Account",
-  pageMeta: "Review your signed-in account and available modules.",
+  pageMeta: "Review your signed-in account and available workspaces.",
   activeRoleLabel: activeRole ? getRoleLabel(activeRole) : "",
   hintsLabel: "Hints: Off",
   showRoleSwitch: roles && roles.length > 1,
@@ -15,14 +15,14 @@
       <p><strong>Signed in as:</strong> ${email}</p>
       ${
         activeRole
-          ? `<p><strong>Current module:</strong> ${getRoleLabel(activeRole)}</p>`
-          : `<p>No active module has been selected yet.</p>`
+          ? `<p><strong>Current workspace:</strong> ${getRoleLabel(activeRole)}</p>`
+          : `<p>No active workspace has been selected yet.</p>`
       }
       ${
         roles && roles.length
           ? `
             <div>
-              <p><strong>Available modules:</strong></p>
+              <p><strong>Available workspaces:</strong></p>
               <ul class="role-list">
                 ${roles.map((role) => `<li>${getRoleLabel(role)}</li>`).join("")}
               </ul>
@@ -32,7 +32,7 @@
       }
       ${
         roles && roles.length > 1
-          ? `<p><a href="/choose-role">Select or switch module</a></p>`
+          ? `<p><a href="/choose-role">Select or switch workspace</a></p>`
           : ""
       }
     </section>
