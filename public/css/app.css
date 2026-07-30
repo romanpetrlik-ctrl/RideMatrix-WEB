@@ -469,8 +469,81 @@ button:visited,
   line-height: 1.4;
 }
 
+.workspace-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.workspace-tile-form {
+  margin: 0;
+}
+
+.workspace-tile {
+  display: grid;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 118px;
+  padding: 1rem;
+  text-align: left;
+  border: 1px solid var(--rm-light-bronze);
+  border-left: 0.3rem solid var(--rm-dark-teal);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: var(--rm-shadow-soft);
+  color: var(--rm-text);
+  cursor: pointer;
+  font: inherit;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.workspace-tile:hover {
+  transform: translateY(-1px);
+  border-color: var(--rm-camel);
+  border-left-color: var(--rm-dark-cyan);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--rm-text);
+}
+
+.workspace-tile:focus {
+  outline: 3px solid var(--rm-dark-cyan);
+  outline-offset: 2px;
+  border-left-color: var(--rm-dark-cyan);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.workspace-tile--active {
+  border-left-color: var(--rm-dark-cyan);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.workspace-tile__title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.workspace-tile__description {
+  color: var(--rm-text-soft);
+  font-size: 0.93rem;
+  line-height: 1.4;
+}
+
+.workspace-tile__badge {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--rm-dark-teal);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workspace-tile__action {
+  font-size: 0.88rem;
+  color: var(--rm-walnut);
+  opacity: 0.75;
+}
+
 @media (max-width: 820px) {
-  .system-status-bar__inner {
     grid-template-columns: 1fr;
     text-align: center;
   }

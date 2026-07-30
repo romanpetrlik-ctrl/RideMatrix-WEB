@@ -19,8 +19,35 @@ function getRoleLabel(role: string): string {
       return "Dispatch";
     case "driver":
       return "Driver";
+    case "customer":
+      return "Customer";
+    case "partner":
+      return "Partner";
     default:
       return role;
+  }
+}
+
+function getRoleDescription(role: string): string {
+  switch (role) {
+    case "admin":
+      return "Manage operations, staff, drivers, and platform settings.";
+    case "superuser":
+      return "Full system access and platform administration controls.";
+    case "staff":
+      return "Access your staff workspace and daily operational tasks.";
+    case "tech_support":
+      return "Technical support tools and system monitoring.";
+    case "dispatcher":
+      return "Manage and coordinate active dispatching.";
+    case "driver":
+      return "Access your driver workspace and current assignments.";
+    case "customer":
+      return "Access your customer account and booking history.";
+    case "partner":
+      return "Access your partner portal and agreements.";
+    default:
+      return "Access this workspace.";
   }
 }
 
@@ -112,7 +139,8 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         email: session.user.email,
         roles,
         activeRole: session.user.active_role,
-        getRoleLabel
+        getRoleLabel,
+        getRoleDescription
       });
     } catch (error) {
       next(error);
