@@ -5,14 +5,6 @@ type EntryRouterOptions = {
   appTitle: string;
 };
 
-function getLandingRoute(roles: string[]): string {
-  if (roles.includes("admin")) {
-    return "/dashboard";
-  }
-
-  return "/account";
-}
-
 export function createEntryRouter(options: EntryRouterOptions): Router {
   const router = Router();
 
@@ -33,15 +25,11 @@ export function createEntryRouter(options: EntryRouterOptions): Router {
       }
 
       if (session.user.active_role) {
-        return res.redirect(getLandingRoute(roles));
+        return res.redirect(session.user.active_role === "admin" ? "/dashboard" : "/account");
       }
 
       if (roles.length === 1) {
         return res.redirect("/auth/callback");
-      }
-
-      if (roles.includes("admin")) {
-        return res.redirect("/dashboard");
       }
 
       return res.redirect("/choose-role");

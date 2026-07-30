@@ -14,12 +14,13 @@ export function createAccessRouter(options: AccessRouterOptions): Router {
 
       if (session.authenticated && session.user) {
         const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-        if (roles.includes("admin")) {
-          return res.redirect("/dashboard");
+
+        if (roles.length === 1) {
+          return res.redirect(roles[0] === "admin" ? "/dashboard" : "/account");
         }
 
-        if (roles.length > 0) {
-          return res.redirect("/account");
+        if (roles.length > 1) {
+          return res.redirect("/choose-role");
         }
       }
 
