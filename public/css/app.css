@@ -471,9 +471,12 @@ button:visited,
 
 .workspace-tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 320px));
+  justify-content: start;
+  align-items: stretch;
   gap: 0.85rem;
   margin-top: 0.5rem;
+  width: 100%;
 }
 
 .workspace-tile-form {
