@@ -63,10 +63,6 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         });
       }
 
-      if (roles.includes("admin")) {
-        return res.redirect("/dashboard");
-      }
-
       const resolvedActiveRole = activeRole && roles.includes(activeRole) ? activeRole : undefined;
 
       return res.render("pages/account", {
@@ -108,10 +104,6 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         }
 
         return res.redirect("/account");
-      }
-
-      if (roles.includes("admin")) {
-        return res.redirect("/dashboard");
       }
 
       return res.render("pages/choose-role", {

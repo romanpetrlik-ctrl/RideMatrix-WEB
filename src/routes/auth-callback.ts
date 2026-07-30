@@ -36,10 +36,6 @@ export function createAuthCallbackRouter(): Router {
         return res.redirect(getLandingRoute(roles));
       }
 
-      if (roles.includes("admin")) {
-        return res.redirect("/dashboard");
-      }
-
       return res.redirect("/choose-role");
     } catch (error) {
       next(error);
