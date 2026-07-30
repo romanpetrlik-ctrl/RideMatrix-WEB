@@ -1,17 +1,12 @@
 import { Router } from "express";
 import { getSessionAccount, selectActiveRole } from "../services/api";
 
-const roleRedirectMap: Record<string, string> = {
-  admin: "/dashboard",
-  superuser: "/superuser",
-  staff: "/staff",
-  tech_support: "/tech-support",
-  dispatcher: "/dispatch",
-  driver: "/driver"
-};
+function getLandingRoute(roles: string[]): string {
+  if (roles.includes("admin")) {
+    return "/dashboard";
+  }
 
-function getRoleRedirect(role: string): string {
-  return roleRedirectMap[role] ?? "/account";
+  return "/account";
 }
 
 export function createAuthCallbackRouter(): Router {
@@ -38,7 +33,11 @@ export function createAuthCallbackRouter(): Router {
           res.append("Set-Cookie", cookieValue);
         }
 
-        return res.redirect(getRoleRedirect(roles[0]));
+        return res.redirect(getLandingRoute(roles));
+      }
+
+      if (roles.includes("admin")) {
+        return res.redirect("/dashboard");
       }
 
       return res.redirect("/choose-role");

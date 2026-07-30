@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { submitAccessRequest } from "../services/api";
+import { getSessionAccount, submitAccessRequest } from "../services/api";
 
 type AccessRouterOptions = {
   appTitle: string;
@@ -8,11 +8,28 @@ type AccessRouterOptions = {
 export function createAccessRouter(options: AccessRouterOptions): Router {
   const router = Router();
 
-  router.get("/access", (_req, res) => {
-    res.render("pages/access", {
-      title: "Access",
-      appTitle: options.appTitle
-    });
+  router.get("/access", async (req, res, next) => {
+    try {
+      const session = await getSessionAccount(req.headers.cookie);
+
+      if (session.authenticated && session.user) {
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (roles.includes("admin")) {
+          return res.redirect("/dashboard");
+        }
+
+        if (roles.length > 0) {
+          return res.redirect("/account");
+        }
+      }
+
+      return res.render("pages/access", {
+        title: "Access",
+        appTitle: options.appTitle
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/access", async (req, res, next) => {

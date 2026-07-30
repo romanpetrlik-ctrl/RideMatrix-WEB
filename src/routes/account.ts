@@ -5,19 +5,6 @@ type AccountRouterOptions = {
   appTitle: string;
 };
 
-const roleRedirectMap: Record<string, string> = {
-  admin: "/dashboard",
-  superuser: "/superuser",
-  staff: "/staff",
-  tech_support: "/tech-support",
-  dispatcher: "/dispatch",
-  driver: "/driver"
-};
-
-function getRoleRedirect(role: string): string | null {
-  return roleRedirectMap[role] ?? null;
-}
-
 function getRoleLabel(role: string): string {
   switch (role) {
     case "admin":
@@ -62,9 +49,8 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
           res.append("Set-Cookie", cookieValue);
         }
 
-        const redirectTarget = getRoleRedirect(roles[0]);
-        if (redirectTarget) {
-          return res.redirect(redirectTarget);
+        if (roles[0] === "admin") {
+          return res.redirect("/dashboard");
         }
 
         return res.render("pages/account", {
@@ -77,28 +63,18 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         });
       }
 
-      if (activeRole) {
-        const redirectTarget = getRoleRedirect(activeRole);
-        if (redirectTarget) {
-          return res.redirect(redirectTarget);
-        }
-
-        return res.render("pages/account", {
-          title: "Account",
-          appTitle: options.appTitle,
-          email: session.user.email,
-          roles,
-          activeRole,
-          getRoleLabel
-        });
+      if (roles.includes("admin")) {
+        return res.redirect("/dashboard");
       }
+
+      const resolvedActiveRole = activeRole && roles.includes(activeRole) ? activeRole : undefined;
 
       return res.render("pages/account", {
         title: "Account",
         appTitle: options.appTitle,
         email: session.user.email,
         roles,
-        activeRole,
+        activeRole: resolvedActiveRole,
         getRoleLabel
       });
     } catch (error) {
@@ -127,16 +103,19 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
           res.append("Set-Cookie", cookieValue);
         }
 
-        const redirectTarget = getRoleRedirect(roles[0]);
-        if (redirectTarget) {
-          return res.redirect(redirectTarget);
+        if (roles[0] === "admin") {
+          return res.redirect("/dashboard");
         }
 
         return res.redirect("/account");
       }
 
+      if (roles.includes("admin")) {
+        return res.redirect("/dashboard");
+      }
+
       return res.render("pages/choose-role", {
-        title: "Select a module",
+        title: "Choose workspace",
         appTitle: options.appTitle,
         email: session.user.email,
         roles,
@@ -162,8 +141,11 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         res.append("Set-Cookie", cookieValue);
       }
 
-      const redirectTarget = getRoleRedirect(selected.activeRole);
-      return res.redirect(redirectTarget ?? "/account");
+      if (selected.activeRole === "admin") {
+        return res.redirect("/dashboard");
+      }
+
+      return res.redirect("/account");
     } catch (error) {
       next(error);
     }

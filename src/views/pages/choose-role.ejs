@@ -3,17 +3,17 @@
   appTitle,
   currentUserEmail: email,
   currentUserHref: "/account",
-  pageTitle: "Select a module",
-  pageMeta: "Choose the module you would like to access.",
+  pageTitle: "Choose workspace",
+  pageMeta: "Choose the workspace you would like to access.",
   activeRoleLabel: activeRole ? getRoleLabel(activeRole) : "",
   hintsLabel: "Hints: Off",
   showRoleSwitch: false,
   showExitLink: true,
   body: `
     <section class="panel">
-      <h1>Select a module</h1>
+      <h1>Choose workspace</h1>
       <p><strong>Signed in as:</strong> ${email}</p>
-      <p>Please choose the module you would like to access.</p>
+      <p>Please choose the workspace you would like to access.</p>
 
       <div class="stack">
         ${roles
