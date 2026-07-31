@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: `${customer.surname}, ${customer.givenName}`,
+      pageMeta: `Created ${customer.formattedCreatedAt} · Last login ${customer.formattedLastLoginAt}`,
+      activeRoleLabel,
+      hintsLabel: customer.status,
+      showRoleSwitch: true,
+      showExitLink: true,
+      contextBarPartial: "header-context/customer-detail",
+      contextBarData: { customer, backToCustomersHref }
+    }) %>
+
+    <main class="container">
+      <% if (notice) { %>
+        <section class="notice notice--<%= notice.tone %>">
+          <%= notice.message %>
+        </section>
+      <% } %>
+
+      <div class="customer-detail-grid">
+        <section class="panel customer-detail-panel">
+          <div class="customer-detail-panel__header">
+            <div>
+              <h1><%= customer.surname %>, <%= customer.givenName %></h1>
+              <p>Customer ID: <strong><%= customer.id %></strong></p>
+            </div>
+            <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
+          </div>
+
+          <dl class="customer-detail-list">
+            <div>
+              <dt>Email</dt>
+              <dd><%= customer.email || "No email on file" %></dd>
+            </div>
+            <div>
+              <dt>Phone</dt>
+              <dd><%= customer.phone || "No phone on file" %></dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd><%= customer.formattedCreatedAt %></dd>
+            </div>
+            <div>
+              <dt>Last Login</dt>
+              <dd><%= customer.formattedLastLoginAt %></dd>
+            </div>
+            <div>
+              <dt>Preferred Contact</dt>
+              <dd><%= customer.preferredContact %></dd>
+            </div>
+            <div>
+              <dt>Company</dt>
+              <dd><%= customer.company || "—" %></dd>
+            </div>
+            <div class="customer-detail-list__full">
+              <dt>Address</dt>
+              <dd><%= customer.address || "No address on file" %></dd>
+            </div>
+            <div class="customer-detail-list__full">
+              <dt>Notes</dt>
+              <dd><%= customer.notes || "No internal notes recorded." %></dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="panel customer-bookings-panel">
+          <div class="customer-bookings-panel__header">
+            <div>
+              <h2>Bookings</h2>
+              <p><%= customer.bookings.length %> booking<%= customer.bookings.length === 1 ? "" : "s" %> linked to this customer.</p>
+            </div>
+            <a class="button button--secondary" href="<%= customer.bookingsHref %>" target="_blank" rel="noopener noreferrer">View all bookings</a>
+          </div>
+
+          <% if (customer.bookings.length > 0) { %>
+            <div class="customers-table-wrapper">
+              <table class="customers-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Service Date</th>
+                    <th scope="col">Pickup</th>
+                    <th scope="col">Dropoff</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% customer.bookings.forEach((booking) => { %>
+                    <tr>
+                      <td><strong><%= booking.reference %></strong></td>
+                      <td><%= booking.serviceDate %></td>
+                      <td><%= booking.pickup %></td>
+                      <td><%= booking.dropoff %></td>
+                      <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="empty-state empty-state--compact">
+              <h3>No bookings yet</h3>
+              <p>Use the New Booking action in the dynamic bar to start a new booking for this customer.</p>
+            </div>
+          <% } %>
+        </section>
+      </div>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

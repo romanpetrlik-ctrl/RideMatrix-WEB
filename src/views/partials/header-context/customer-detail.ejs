@@ -1,0 +1,26 @@
+<div class="context-toolbar context-toolbar--actions-only">
+  <div class="context-toolbar__actions">
+    <a class="button" href="<%= customer.newBookingHref %>">New Booking</a>
+
+    <% if (customer.whatsappHref) { %>
+      <a class="button button--secondary" href="<%= customer.whatsappHref %>" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+    <% } else { %>
+      <span class="button button--secondary button--disabled" aria-disabled="true">WhatsApp unavailable</span>
+    <% } %>
+
+    <% if (customer.emailHref) { %>
+      <a class="button button--secondary" href="<%= customer.emailHref %>">Send Email</a>
+    <% } else { %>
+      <span class="button button--secondary button--disabled" aria-disabled="true">Email unavailable</span>
+    <% } %>
+
+    <a class="button button--secondary" href="<%= customer.editHref %>">Edit Customer</a>
+
+    <form class="inline-form" method="post" action="/customers/<%= customer.id %>/suspend?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+      <button type="submit" class="button button--secondary">Suspend Customer</button>
+    </form>
+
+    <a class="button button--danger" href="<%= customer.deleteHref %>">Delete Record</a>
+    <a class="button button--secondary" href="<%= backToCustomersHref %>">Back to Customers</a>
+  </div>
+</div>

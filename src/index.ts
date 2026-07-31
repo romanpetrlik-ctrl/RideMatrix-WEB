@@ -9,6 +9,7 @@ import { createAuthCallbackRouter } from "./routes/auth-callback";
 import { createRoleSectionsRouter } from "./routes/role-sections";
 import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
+import { createCustomersRouter } from "./routes/customers";
 import { errorHandler } from "./middleware/error-handler";
 
 dotenv.config();
@@ -34,6 +35,7 @@ app.use(createExitRouter());
 app.use(createAuthCallbackRouter());
 app.use(createRecoveryRouter({ appTitle }));
 app.use(createDashboardRouter({ appTitle }));
+app.use(createCustomersRouter({ appTitle }));
 app.use(createRoleSectionsRouter({ appTitle }));
 
 app.use((_req, res) => {

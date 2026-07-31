@@ -1,0 +1,32 @@
+<nav class="pagination-bar" aria-label="Customers pagination">
+  <div class="pagination-bar__summary">
+    <% if (pagination.totalRecords === 0) { %>
+      No customers to display
+    <% } else { %>
+      Showing <strong><%= pagination.startRecord %></strong>-<strong><%= pagination.endRecord %></strong> of
+      <strong><%= pagination.totalRecords %></strong>
+    <% } %>
+  </div>
+
+  <div class="pagination-bar__controls">
+    <% if (pagination.previousHref) { %>
+      <a class="pagination-bar__link" href="<%= pagination.previousHref %>">Previous</a>
+    <% } else { %>
+      <span class="pagination-bar__link pagination-bar__link--disabled" aria-disabled="true">Previous</span>
+    <% } %>
+
+    <% pagination.pageLinks.forEach((pageLink) => { %>
+      <a
+        class="pagination-bar__link<%= pageLink.isActive ? " pagination-bar__link--active" : "" %>"
+        href="<%= pageLink.href %>"
+        aria-current="<%= pageLink.isActive ? "page" : "false" %>"
+      ><%= pageLink.label %></a>
+    <% }) %>
+
+    <% if (pagination.nextHref) { %>
+      <a class="pagination-bar__link" href="<%= pagination.nextHref %>">Next</a>
+    <% } else { %>
+      <span class="pagination-bar__link pagination-bar__link--disabled" aria-disabled="true">Next</span>
+    <% } %>
+  </div>
+</nav>

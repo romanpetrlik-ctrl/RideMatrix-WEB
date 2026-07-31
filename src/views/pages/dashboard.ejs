@@ -39,7 +39,7 @@
                 ${section.tiles
                   .map(
                     (tile) => `
-                      <a class="dashboard-tile" href="/dashboard?tile=${tile.key}">
+                      <a class="dashboard-tile" href="${tile.key === "customers" ? "/customers" : `/dashboard?tile=${tile.key}`}">
                         <span class="dashboard-tile__title">${tile.title}</span>
                         <span class="dashboard-tile__description">${tile.description}</span>
                       </a>

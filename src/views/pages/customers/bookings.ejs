@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: `${customer.surname}, ${customer.givenName} Bookings`,
+      pageMeta: `Customer since ${customer.formattedCreatedAt}`,
+      activeRoleLabel,
+      hintsLabel: `${customer.bookings.length} bookings`,
+      showRoleSwitch: true,
+      showExitLink: true
+    }) %>
+
+    <main class="container">
+      <% if (notice) { %>
+        <section class="notice notice--<%= notice.tone %>">
+          <%= notice.message %>
+        </section>
+      <% } %>
+
+      <section class="panel">
+        <div class="customer-bookings-panel__header">
+          <div>
+            <h1><%= customer.surname %>, <%= customer.givenName %></h1>
+            <p>All bookings linked to this customer record.</p>
+          </div>
+          <a class="button button--secondary" href="<%= backToCustomersHref %>">Back to Customers</a>
+        </div>
+
+        <% if (customer.bookings.length > 0) { %>
+          <div class="customers-table-wrapper">
+            <table class="customers-table">
+              <thead>
+                <tr>
+                  <th scope="col">Reference</th>
+                  <th scope="col">Service Date</th>
+                  <th scope="col">Pickup</th>
+                  <th scope="col">Dropoff</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% customer.bookings.forEach((booking) => { %>
+                  <tr>
+                    <td><strong><%= booking.reference %></strong></td>
+                    <td><%= booking.serviceDate %></td>
+                    <td><%= booking.pickup %></td>
+                    <td><%= booking.dropoff %></td>
+                    <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } else { %>
+          <div class="empty-state">
+            <h2>No bookings linked</h2>
+            <p>This customer does not have any bookings yet.</p>
+          </div>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

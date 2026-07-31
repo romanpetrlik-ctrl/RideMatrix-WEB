@@ -12,6 +12,12 @@
     : "";
 
   const showHintsToggle = typeof hintsLabel === "string" && hintsLabel.trim();
+  const headerContextBarPartial = typeof contextBarPartial === "string" && contextBarPartial.trim()
+    ? contextBarPartial.trim()
+    : "";
+  const headerContextBarData = typeof contextBarData === "object" && contextBarData
+    ? contextBarData
+    : {};
 %>
 
 <header class="site-header">
@@ -40,4 +46,10 @@
       <% } %>
     </div>
   </div>
+
+  <% if (headerContextBarPartial) { %>
+    <div class="container site-header__context">
+      <%- include(headerContextBarPartial, headerContextBarData) %>
+    </div>
+  <% } %>
 </header>
