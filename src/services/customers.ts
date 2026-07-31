@@ -1,3 +1,5 @@
+import { listDerivedCustomers, listImportedBookingsForCustomer } from "./cabcher-import";
+
 export const CUSTOMER_STATUS_OPTIONS = [
   "all",
   "Active",
@@ -51,7 +53,7 @@ export type CustomerListResult = {
   perPage: number;
 };
 
-const customerRecords: CustomerRecord[] = [
+const seedCustomerRecords: CustomerRecord[] = [
   {
     id: "cust-001",
     givenName: "Lina",
@@ -466,6 +468,39 @@ function compareCustomers(left: CustomerRecord, right: CustomerRecord): number {
   return left.givenName.localeCompare(right.givenName, undefined, { sensitivity: "base" });
 }
 
+function getImportedCustomerRecords(): CustomerRecord[] {
+  return listDerivedCustomers().map((customer) => {
+    const importedBookings: BookingRecord[] = listImportedBookingsForCustomer(customer.id).map((booking) => ({
+      id: booking.id,
+      reference: `RM-HIST-${booking.id.replace("imp-book-", "")}`,
+      serviceDate: booking.serviceDateTime,
+      pickup: booking.pickupText,
+      dropoff: booking.dropoffText,
+      status: booking.inferredTemporalStatus === "upcoming" ? "Scheduled" : "Completed"
+    }));
+
+    return {
+      id: customer.id,
+      givenName: customer.givenName || customer.fullName || "Imported",
+      surname: customer.surname || "Customer",
+      email: customer.email,
+      phone: customer.phone,
+      createdAt: customer.firstSeenAt || customer.createdAt,
+      lastLoginAt: null,
+      status: "Active",
+      notes: `Imported from Cabcher cleaned bookings. Total bookings: ${customer.bookingCountTotal}.`,
+      address: null,
+      company: null,
+      preferredContact: customer.phone ? "Phone" : "Email",
+      bookings: importedBookings
+    };
+  });
+}
+
+function getAllCustomerRecords(): CustomerRecord[] {
+  return [...seedCustomerRecords, ...getImportedCustomerRecords()];
+}
+
 function normalizeText(value: string | null | undefined): string {
   return String(value || "").trim().toLowerCase();
 }
@@ -493,7 +528,7 @@ function matchesSearch(customer: CustomerRecord, search: string): boolean {
 }
 
 export function listCustomers(params: CustomerListParams): CustomerListResult {
-  const filteredCustomers = customerRecords
+  const filteredCustomers = getAllCustomerRecords()
     .filter((customer) => params.status === "all" || customer.status === params.status)
     .filter((customer) => matchesSearch(customer, params.search))
     .sort(compareCustomers);
@@ -516,9 +551,9 @@ export function listCustomers(params: CustomerListParams): CustomerListResult {
 }
 
 export function getCustomerById(id: string): CustomerRecord | undefined {
-  return customerRecords.find((customer) => customer.id === id);
+  return getAllCustomerRecords().find((customer) => customer.id === id);
 }
 
 export function getCustomerCount(): number {
-  return customerRecords.length;
+  return getAllCustomerRecords().length;
 }

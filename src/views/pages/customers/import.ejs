@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: "Customers Import",
+      pageMeta: "Upload cleaned Cabcher bookings CSV and derive customer records by normalized email.",
+      activeRoleLabel,
+      hintsLabel: "Phase 1 import",
+      showRoleSwitch: true,
+      showExitLink: true
+    }) %>
+
+    <main class="container stack">
+      <section class="panel panel--compact">
+        <h1>Import cleaned Cabcher bookings</h1>
+        <p>Required columns: Name, Email, Date &amp; Time, Pick Up, Drop Off.</p>
+
+        <% if (errors && errors.length > 0) { %>
+          <div class="notice notice--critical">
+            <ul class="action-list">
+              <% errors.forEach((errorMessage) => { %>
+                <li><%= errorMessage %></li>
+              <% }) %>
+            </ul>
+          </div>
+        <% } %>
+
+        <form method="post" action="/customers/import" enctype="multipart/form-data" class="stack">
+          <div>
+            <label for="bookings-csv">CSV file</label>
+            <input id="bookings-csv" type="file" name="bookingsCsv" accept=".csv,text/csv" required />
+          </div>
+          <div class="action-row">
+            <button type="submit">Upload and import</button>
+            <a class="button button--secondary" href="/customers">Back to Customers</a>
+          </div>
+        </form>
+      </section>
+
+      <% if (summary) { %>
+        <section class="panel">
+          <h2>Import summary</h2>
+          <dl class="customer-detail-list">
+            <div>
+              <dt>Total rows parsed</dt>
+              <dd><%= summary.totalRowsParsed %></dd>
+            </div>
+            <div>
+              <dt>Bookings imported</dt>
+              <dd><%= summary.bookingsImported %></dd>
+            </div>
+            <div>
+              <dt>Rejected rows</dt>
+              <dd><%= summary.rejectedRows %></dd>
+            </div>
+            <div>
+              <dt>Customers created</dt>
+              <dd><%= summary.customersCreated %></dd>
+            </div>
+            <div>
+              <dt>Customers updated</dt>
+              <dd><%= summary.customersUpdated %></dd>
+            </div>
+          </dl>
+
+          <% if (summary.distinctVehicleRawValues.length > 0) { %>
+            <p><strong>Distinct vehicle labels:</strong> <%= summary.distinctVehicleRawValues.join(", ") %></p>
+          <% } %>
+
+          <% if (summary.distinctPaymentRawValues.length > 0) { %>
+            <p><strong>Distinct payment labels:</strong> <%= summary.distinctPaymentRawValues.join(", ") %></p>
+          <% } %>
+
+          <% if (summary.rejectedRowSamples.length > 0) { %>
+            <h3>Rejected rows (first <%= summary.rejectedRowSamples.length %>)</h3>
+            <div class="customers-table-wrapper">
+              <table class="customers-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Row</th>
+                    <th scope="col">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% summary.rejectedRowSamples.forEach((item) => { %>
+                    <tr>
+                      <td><%= item.rowNumber %></td>
+                      <td><%= item.reason %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } %>
+        </section>
+      <% } %>
+
+      <section class="panel panel--compact">
+        <h2>Recent import batches</h2>
+        <% if (latestBatches.length === 0) { %>
+          <p>No import batches have been uploaded yet.</p>
+        <% } else { %>
+          <div class="customers-table-wrapper">
+            <table class="customers-table">
+              <thead>
+                <tr>
+                  <th scope="col">Batch ID</th>
+                  <th scope="col">Filename</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Rows</th>
+                  <th scope="col">Imported</th>
+                  <th scope="col">Rejected</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% latestBatches.forEach((batch) => { %>
+                  <tr>
+                    <td><strong><%= batch.id %></strong></td>
+                    <td><%= batch.originalFilename %></td>
+                    <td><%= batch.status %></td>
+                    <td><%= batch.totalRows %></td>
+                    <td><%= batch.importedRows %></td>
+                    <td><%= batch.rejectedRows %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>
