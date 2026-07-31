@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: "Delete Record",
+      pageMeta: "Explicit destructive confirmation",
+      activeRoleLabel,
+      hintsLabel: customer.status,
+      showRoleSwitch: true,
+      showExitLink: true
+    }) %>
+
+    <main class="container">
+      <section class="panel panel--critical">
+        <h1>Delete <%= customer.surname %>, <%= customer.givenName %></h1>
+        <p>Are you sure? This action cannot be undone.</p>
+        <p>
+          The delete flow is intentionally explicit. If you continue now, the UI will return you to the
+          previous customer view with a notice explaining that backend deletion is not available yet.
+        </p>
+
+        <div class="action-row">
+          <form class="inline-form" method="post" action="/customers/<%= customer.id %>/delete?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+            <button type="submit" class="button button--danger">Delete Record</button>
+          </form>
+          <a class="button button--secondary" href="<%= backToCustomersHref %>">Cancel</a>
+        </div>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

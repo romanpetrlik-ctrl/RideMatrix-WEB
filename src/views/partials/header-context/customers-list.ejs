@@ -1,0 +1,36 @@
+<div class="context-toolbar">
+  <nav class="context-tabs" aria-label="Customer status filters">
+    <% statusTabs.forEach((tab) => { %>
+      <a class="context-tab<%= tab.isActive ? " context-tab--active" : "" %>" href="<%= tab.href %>"><%= tab.label %></a>
+    <% }) %>
+  </nav>
+
+  <form class="context-toolbar__form" method="get" action="/customers">
+    <% if (status !== "all") { %>
+      <input type="hidden" name="status" value="<%= status %>" />
+    <% } %>
+
+    <div class="context-toolbar__field">
+      <label for="customers-search">Search</label>
+      <input
+        id="customers-search"
+        type="search"
+        name="q"
+        value="<%= search %>"
+        placeholder="Surname, first name, email or phone"
+      />
+    </div>
+
+    <div class="context-toolbar__field context-toolbar__field--compact">
+      <label for="customers-per-page">Records per page</label>
+      <select id="customers-per-page" name="perPage">
+        <% perPageOptions.forEach((option) => { %>
+          <option value="<%= option %>" <%= option === perPage ? "selected" : "" %>><%= option %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <button type="submit" class="button button--secondary">Apply</button>
+    <a class="button" href="/customers?notice=new-customer">New Customer</a>
+  </form>
+</div>

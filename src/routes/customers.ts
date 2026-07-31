@@ -1,0 +1,569 @@
+import { Router } from "express";
+import { getSessionAccount } from "../services/api";
+import {
+  CUSTOMER_DEFAULT_PER_PAGE,
+  CUSTOMER_PER_PAGE_OPTIONS,
+  CUSTOMER_STATUS_OPTIONS,
+  CustomerRecord,
+  CustomerStatus,
+  getCustomerById,
+  getCustomerCount,
+  listCustomers
+} from "../services/customers";
+
+type CustomersRouterOptions = {
+  appTitle: string;
+};
+
+type NoticeTone = "warning" | "critical";
+
+type PageNotice = {
+  message: string;
+  tone: NoticeTone;
+};
+
+type CustomerStatusTab = {
+  label: string;
+  href: string;
+  isActive: boolean;
+};
+
+type PaginationLink = {
+  href: string;
+  label: string;
+  isActive: boolean;
+};
+
+type PaginationModel = {
+  currentPage: number;
+  totalPages: number;
+  totalRecords: number;
+  startRecord: number;
+  endRecord: number;
+  previousHref: string | null;
+  nextHref: string | null;
+  pageLinks: PaginationLink[];
+};
+
+function getRoleLabel(role: string): string {
+  return role === "admin" ? "Administration" : role;
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  }).format(new Date(value));
+}
+
+function formatBookingDate(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "Never";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatPhoneHref(phone: string | null): string | null {
+  if (!phone) {
+    return null;
+  }
+
+  const digits = phone.replace(/[^\d]/g, "");
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
+function resolveReturnTo(returnTo: unknown, fallback: string): string {
+  const value = String(returnTo || "").trim();
+  if (!value.startsWith("/")) {
+    return fallback;
+  }
+
+  if (value.startsWith("//") || value.startsWith("/\\")) {
+    return fallback;
+  }
+
+  try {
+    const resolvedUrl = new URL(value, "http://localhost");
+    const safePath = `${resolvedUrl.pathname}${resolvedUrl.search}`;
+
+    if (!safePath.startsWith("/customers")) {
+      return fallback;
+    }
+
+    return safePath;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildCustomersListHref(params: {
+  search?: string;
+  status?: CustomerStatus;
+  page?: number;
+  perPage?: number;
+  notice?: string;
+}): string {
+  const searchParams = new URLSearchParams();
+
+  if (params.search) {
+    searchParams.set("q", params.search);
+  }
+
+  if (params.status && params.status !== "all") {
+    searchParams.set("status", params.status);
+  }
+
+  if (params.page && params.page > 1) {
+    searchParams.set("page", String(params.page));
+  }
+
+  if (params.perPage && params.perPage !== CUSTOMER_DEFAULT_PER_PAGE) {
+    searchParams.set("perPage", String(params.perPage));
+  }
+
+  if (params.notice) {
+    searchParams.set("notice", params.notice);
+  }
+
+  const query = searchParams.toString();
+  return query ? `/customers?${query}` : "/customers";
+}
+
+function buildCustomerHref(customerId: string, params: { returnTo?: string; notice?: string }): string {
+  const searchParams = new URLSearchParams();
+
+  if (params.returnTo) {
+    searchParams.set("returnTo", params.returnTo);
+  }
+
+  if (params.notice) {
+    searchParams.set("notice", params.notice);
+  }
+
+  const query = searchParams.toString();
+  return query ? `/customers/${customerId}?${query}` : `/customers/${customerId}`;
+}
+
+function buildCustomerBookingsHref(customerId: string, returnTo?: string, notice?: string): string {
+  const searchParams = new URLSearchParams();
+
+  if (returnTo) {
+    searchParams.set("returnTo", returnTo);
+  }
+
+  if (notice) {
+    searchParams.set("notice", notice);
+  }
+
+  const query = searchParams.toString();
+  return query ? `/customers/${customerId}/bookings?${query}` : `/customers/${customerId}/bookings`;
+}
+
+function getStatusTabs(search: string, page: number, perPage: number, activeStatus: CustomerStatus): CustomerStatusTab[] {
+  return CUSTOMER_STATUS_OPTIONS.map((status) => ({
+    label: status === "all" ? "All" : status,
+    href: buildCustomersListHref({
+      search,
+      status,
+      page: status === activeStatus ? page : 1,
+      perPage
+    }),
+    isActive: status === activeStatus
+  }));
+}
+
+function getPagination(search: string, status: CustomerStatus, currentPage: number, totalPages: number, perPage: number, totalRecords: number): PaginationModel {
+  const startRecord = totalRecords === 0 ? 0 : (currentPage - 1) * perPage + 1;
+  const endRecord = totalRecords === 0 ? 0 : Math.min(totalRecords, currentPage * perPage);
+  const pageLinks: PaginationLink[] = [];
+
+  for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+    pageLinks.push({
+      href: buildCustomersListHref({ search, status, page: pageNumber, perPage }),
+      label: String(pageNumber),
+      isActive: pageNumber === currentPage
+    });
+  }
+
+  return {
+    currentPage,
+    totalPages,
+    totalRecords,
+    startRecord,
+    endRecord,
+    previousHref:
+      currentPage > 1
+        ? buildCustomersListHref({ search, status, page: currentPage - 1, perPage })
+        : null,
+    nextHref:
+      currentPage < totalPages
+        ? buildCustomersListHref({ search, status, page: currentPage + 1, perPage })
+        : null,
+    pageLinks
+  };
+}
+
+function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undefined {
+  const name = customer ? `${customer.surname}, ${customer.givenName}` : "This customer";
+
+  switch (String(code || "")) {
+    case "new-customer":
+      return {
+        tone: "warning",
+        message: "New Customer is visible in the workflow, but the creation form is not connected to backend persistence yet."
+      };
+    case "edit-customer":
+      return {
+        tone: "warning",
+        message: `${name} can be reviewed here, but the edit workflow is still a placeholder until the backend editor is available.`
+      };
+    case "new-booking":
+      return {
+        tone: "warning",
+        message: `New Booking is reserved as the primary CTA for ${name}, but booking creation is not connected in this web layer yet.`
+      };
+    case "suspend-customer":
+      return {
+        tone: "warning",
+        message: `Suspend Customer is wired as an administrative action for ${name}, but the reversible status change is not persisted by the backend yet.`
+      };
+    case "delete-customer":
+      return {
+        tone: "critical",
+        message: `${name} was not deleted because destructive deletion is not connected to the backend yet.`
+      };
+    default:
+      return undefined;
+  }
+}
+
+async function requireAdminSession(
+  cookieHeader: string | undefined
+): Promise<{ email: string; activeRoleLabel: string }> {
+  const session = await getSessionAccount(cookieHeader);
+
+  if (!session.authenticated || !session.user) {
+    throw new Error("unauthenticated");
+  }
+
+  const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+
+  if (!roles.includes("admin")) {
+    throw new Error("forbidden");
+  }
+
+  return {
+    email: session.user.email,
+    activeRoleLabel: getRoleLabel(session.user.active_role || "admin")
+  };
+}
+
+export function createCustomersRouter(options: CustomersRouterOptions): Router {
+  const router = Router();
+
+  router.get("/customers", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+      const search = String(req.query.q || "").trim();
+      const requestedStatus = String(req.query.status || "all");
+      const status = CUSTOMER_STATUS_OPTIONS.includes(requestedStatus as CustomerStatus)
+        ? (requestedStatus as CustomerStatus)
+        : "all";
+      const requestedPage = Number.parseInt(String(req.query.page || "1"), 10);
+      const requestedPerPage = Number.parseInt(String(req.query.perPage || CUSTOMER_DEFAULT_PER_PAGE), 10);
+      const result = listCustomers({
+        search,
+        status,
+        page: Number.isFinite(requestedPage) ? requestedPage : 1,
+        perPage: Number.isFinite(requestedPerPage) ? requestedPerPage : CUSTOMER_DEFAULT_PER_PAGE
+      });
+      const pagination = getPagination(search, status, result.page, result.totalPages, result.perPage, result.totalRecords);
+
+      return res.render("pages/customers/index", {
+        title: "Customers",
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        customers: result.customers.map((customer) => ({
+          ...customer,
+          formattedCreatedAt: formatDate(customer.createdAt),
+          formattedLastLoginAt: formatDateTime(customer.lastLoginAt),
+          detailHref: buildCustomerHref(customer.id, {
+            returnTo: buildCustomersListHref({
+              search,
+              status,
+              page: result.page,
+              perPage: result.perPage
+            })
+          }),
+          editHref: buildCustomerHref(customer.id, {
+            returnTo: buildCustomersListHref({
+              search,
+              status,
+              page: result.page,
+              perPage: result.perPage
+            }),
+            notice: "edit-customer"
+          }),
+          deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(
+            buildCustomersListHref({
+              search,
+              status,
+              page: result.page,
+              perPage: result.perPage
+            })
+          )}`
+        })),
+        customerCount: getCustomerCount(),
+        hasSearchFilters: Boolean(search || status !== "all"),
+        notice: getNotice(req.query.notice),
+        pagination,
+        search,
+        status,
+        perPage: result.perPage,
+        perPageOptions: CUSTOMER_PER_PAGE_OPTIONS,
+        statusTabs: getStatusTabs(search, result.page, result.perPage, status)
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.get("/customers/:customerId", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+      const customer = getCustomerById(req.params.customerId);
+
+      if (!customer) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+
+      return res.render("pages/customers/detail", {
+        title: `${customer.surname}, ${customer.givenName}`,
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        customer: {
+          ...customer,
+          formattedCreatedAt: formatDate(customer.createdAt),
+          formattedLastLoginAt: formatDateTime(customer.lastLoginAt),
+          bookings: customer.bookings.map((booking) => ({
+            ...booking,
+            formattedServiceDate: formatBookingDate(booking.serviceDate)
+          })),
+          whatsappHref: formatPhoneHref(customer.phone),
+          emailHref: customer.email ? `mailto:${customer.email}` : null,
+          deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(backToCustomersHref)}`,
+          bookingsHref: buildCustomerBookingsHref(customer.id, backToCustomersHref),
+          newBookingHref: buildCustomerHref(customer.id, {
+            returnTo: backToCustomersHref,
+            notice: "new-booking"
+          }),
+          editHref: buildCustomerHref(customer.id, {
+            returnTo: backToCustomersHref,
+            notice: "edit-customer"
+          })
+        },
+        backToCustomersHref,
+        notice: getNotice(req.query.notice, customer)
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.post("/customers/:customerId/suspend", async (req, res, next) => {
+    try {
+      await requireAdminSession(req.headers.cookie);
+      const customer = getCustomerById(req.params.customerId);
+
+      if (!customer) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const returnTo = resolveReturnTo(req.query.returnTo, "/customers");
+      return res.redirect(buildCustomerHref(customer.id, { returnTo, notice: "suspend-customer" }));
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.get("/customers/:customerId/bookings", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+      const customer = getCustomerById(req.params.customerId);
+
+      if (!customer) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+
+      return res.render("pages/customers/bookings", {
+        title: `${customer.surname}, ${customer.givenName} Bookings`,
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        customer: {
+          ...customer,
+          formattedCreatedAt: formatDate(customer.createdAt),
+          bookings: customer.bookings.map((booking) => ({
+            ...booking,
+            formattedServiceDate: formatBookingDate(booking.serviceDate)
+          }))
+        },
+        backToCustomersHref,
+        notice: getNotice(req.query.notice, customer)
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.get("/customers/:customerId/delete", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+      const customer = getCustomerById(req.params.customerId);
+
+      if (!customer) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+
+      return res.render("pages/customers/delete", {
+        title: `Delete ${customer.surname}, ${customer.givenName}`,
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        customer,
+        backToCustomersHref
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.post("/customers/:customerId/delete", async (req, res, next) => {
+    try {
+      await requireAdminSession(req.headers.cookie);
+      const customer = getCustomerById(req.params.customerId);
+
+      if (!customer) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const returnTo = resolveReturnTo(req.query.returnTo, "/customers");
+      return res.redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=delete-customer`);
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  return router;
+}

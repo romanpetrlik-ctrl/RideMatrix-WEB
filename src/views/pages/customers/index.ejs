@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: "Customers",
+      pageMeta: "Manage customer records, contact data, and status.",
+      activeRoleLabel,
+      hintsLabel: `${customerCount} customers`,
+      showRoleSwitch: true,
+      showExitLink: true,
+      contextBarPartial: "header-context/customers-list",
+      contextBarData: { statusTabs, status, search, perPage, perPageOptions }
+    }) %>
+
+    <main class="container">
+      <% if (notice) { %>
+        <section class="notice notice--<%= notice.tone %>">
+          <%= notice.message %>
+        </section>
+      <% } %>
+
+      <section class="panel">
+        <div class="customers-panel__header">
+          <div>
+            <h1>Customers</h1>
+            <p>Customer records are sorted alphabetically by surname, then given name.</p>
+          </div>
+        </div>
+
+        <% if (customers.length > 0) { %>
+          <%- include("../../partials/customers-pagination", { pagination }) %>
+
+          <div class="customers-table-wrapper">
+            <table class="customers-table">
+              <thead>
+                <tr>
+                  <th scope="col">Surname</th>
+                  <th scope="col">First name</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Last Login</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="customers-table__actions-heading">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% customers.forEach((customer) => { %>
+                  <tr>
+                    <td><strong><%= customer.surname %></strong></td>
+                    <td><%= customer.givenName %></td>
+                    <td><%= customer.email || "—" %></td>
+                    <td><%= customer.phone || "—" %></td>
+                    <td><%= customer.formattedCreatedAt %></td>
+                    <td><%= customer.formattedLastLoginAt %></td>
+                    <td>
+                      <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
+                    </td>
+                    <td class="customers-table__actions">
+                      <a class="button button--secondary button--small" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">View</a>
+                      <a class="button button--secondary button--small" href="<%= customer.editHref %>">Edit</a>
+                      <a class="button button--danger button--small" href="<%= customer.deleteHref %>">Delete</a>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <%- include("../../partials/customers-pagination", { pagination }) %>
+        <% } else if (hasSearchFilters) { %>
+          <div class="empty-state">
+            <h2>No matching customers</h2>
+            <p>Try broadening the search or clearing the current status filter.</p>
+            <p><a href="/customers">Clear all filters</a></p>
+          </div>
+        <% } else { %>
+          <div class="empty-state">
+            <h2>No customers yet</h2>
+            <p>The customer list is empty. Use the New Customer action in the dynamic bar to start the workflow.</p>
+          </div>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>
