@@ -61,6 +61,16 @@ function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatBookingDate(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) {
     return "Never";
@@ -364,6 +374,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
           formattedLastLoginAt: formatDateTime(customer.lastLoginAt),
+          bookings: customer.bookings.map((booking) => ({
+            ...booking,
+            formattedServiceDate: formatBookingDate(booking.serviceDate)
+          })),
           whatsappHref: formatPhoneHref(customer.phone),
           emailHref: customer.email ? `mailto:${customer.email}` : null,
           deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(backToCustomersHref)}`,
@@ -447,7 +461,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: session.activeRoleLabel,
         customer: {
           ...customer,
-          formattedCreatedAt: formatDate(customer.createdAt)
+          formattedCreatedAt: formatDate(customer.createdAt),
+          bookings: customer.bookings.map((booking) => ({
+            ...booking,
+            formattedServiceDate: formatBookingDate(booking.serviceDate)
+          }))
         },
         backToCustomersHref,
         notice: getNotice(req.query.notice, customer)

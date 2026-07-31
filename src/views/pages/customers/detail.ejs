@@ -99,7 +99,7 @@
                   <% customer.bookings.forEach((booking) => { %>
                     <tr>
                       <td><strong><%= booking.reference %></strong></td>
-                      <td><%= booking.serviceDate %></td>
+                      <td><%= booking.formattedServiceDate %></td>
                       <td><%= booking.pickup %></td>
                       <td><%= booking.dropoff %></td>
                       <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
