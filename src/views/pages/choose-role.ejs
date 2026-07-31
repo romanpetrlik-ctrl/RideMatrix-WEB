@@ -15,23 +15,25 @@
       <p>You are signed in as <strong>${email}</strong>. Choose a workspace below to continue.</p>
     </section>
 
-    <div class="workspace-tile-grid">
-      ${roles
-        .map(
-          (role) => `
-            <form method="post" action="/choose-role" class="workspace-tile-form">
-              <input type="hidden" name="role" value="${role}" />
-              <button type="submit" class="workspace-tile${activeRole === role ? " workspace-tile--active" : ""}">
-                <span class="workspace-tile__title">${getRoleLabel(role)}</span>
-                <span class="workspace-tile__description">${getRoleDescription(role)}</span>
-                ${activeRole === role
-                  ? '<span class="workspace-tile__badge">Current workspace</span>'
-                  : '<span class="workspace-tile__action">Open workspace →</span>'}
-              </button>
-            </form>
-          `
-        )
-        .join("")}
+    <div class="dashboard-layout">
+      <div class="workspace-tile-grid">
+        ${roles
+          .map(
+            (role) => `
+              <form method="post" action="/choose-role" class="workspace-tile-form">
+                <input type="hidden" name="role" value="${role}" />
+                <button type="submit" class="workspace-tile${activeRole === role ? " workspace-tile--active" : ""}">
+                  <span class="workspace-tile__title">${getRoleLabel(role)}</span>
+                  <span class="workspace-tile__description">${getRoleDescription(role)}</span>
+                  ${activeRole === role
+                    ? '<span class="workspace-tile__badge">Current workspace</span>'
+                    : '<span class="workspace-tile__action">Open workspace →</span>'}
+                </button>
+              </form>
+            `
+          )
+          .join("")}
+      </div>
     </div>
   `
 }) %>
