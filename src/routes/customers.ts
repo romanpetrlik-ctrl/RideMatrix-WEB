@@ -104,7 +104,18 @@ function resolveReturnTo(returnTo: unknown, fallback: string): string {
     return fallback;
   }
 
-  return value;
+  try {
+    const resolvedUrl = new URL(value, "http://localhost");
+    const safePath = `${resolvedUrl.pathname}${resolvedUrl.search}`;
+
+    if (!safePath.startsWith("/customers")) {
+      return fallback;
+    }
+
+    return safePath;
+  } catch {
+    return fallback;
+  }
 }
 
 function buildCustomersListHref(params: {
