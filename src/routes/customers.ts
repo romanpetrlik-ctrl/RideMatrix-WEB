@@ -12,9 +12,11 @@ import {
   CUSTOMER_STATUS_OPTIONS,
   CustomerRecord,
   CustomerStatus,
+  createCustomer,
   getCustomerById,
   getCustomerCount,
-  listCustomers
+  listCustomers,
+  updateCustomer
 } from "../services/customers";
 
 type CustomersRouterOptions = {
@@ -235,6 +237,16 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
   const name = customer ? `${customer.surname}, ${customer.givenName}` : "This customer";
 
   switch (String(code || "")) {
+    case "customer-created":
+      return {
+        tone: "warning",
+        message: `${name} has been created successfully.`
+      };
+    case "customer-updated":
+      return {
+        tone: "warning",
+        message: `${name} has been updated successfully.`
+      };
     case "new-customer":
       return {
         tone: "warning",
@@ -284,6 +296,14 @@ async function requireAdminSession(
     email: session.user.email,
     activeRoleLabel: getRoleLabel(session.user.active_role || "admin")
   };
+}
+
+function isValidEmail(email: string): boolean {
+  const at = email.indexOf("@");
+  if (at < 1) return false;
+  const domain = email.slice(at + 1);
+  const dot = domain.indexOf(".");
+  return dot > 0 && dot < domain.length - 1;
 }
 
 export function createCustomersRouter(options: CustomersRouterOptions): Router {
@@ -461,6 +481,108 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
   });
 
+  router.get("/customers/register", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+
+      return res.render("pages/customers/register", {
+        title: "New Customer",
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        formData: {},
+        errors: []
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.post("/customers/register", async (req, res, next) => {
+    let sessionContext: { email: string; activeRoleLabel: string } | null = null;
+
+    try {
+      sessionContext = await requireAdminSession(req.headers.cookie);
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+
+    const registerFormData = {
+      givenName: String(req.body.givenName || "").trim(),
+      surname: String(req.body.surname || "").trim(),
+      email: String(req.body.email || "").trim(),
+      phone: String(req.body.phone || "").trim(),
+      company: String(req.body.company || "").trim(),
+      address: String(req.body.address || "").trim(),
+      notes: String(req.body.notes || "").trim(),
+      preferredContact: String(req.body.preferredContact || "Unknown")
+    };
+
+    const registerErrors: string[] = [];
+
+    if (!registerFormData.givenName) registerErrors.push("First name is required.");
+    if (!registerFormData.surname) registerErrors.push("Surname is required.");
+    if (!registerFormData.email) {
+      registerErrors.push("Email address is required.");
+    } else if (!isValidEmail(registerFormData.email)) {
+      registerErrors.push("Email address is not valid.");
+    }
+
+    if (registerErrors.length > 0) {
+      return res.status(400).render("pages/customers/register", {
+        title: "New Customer",
+        appTitle: options.appTitle,
+        email: sessionContext.email,
+        activeRoleLabel: sessionContext.activeRoleLabel,
+        formData: registerFormData,
+        errors: registerErrors
+      });
+    }
+
+    try {
+      const newCustomer = createCustomer({
+        givenName: registerFormData.givenName,
+        surname: registerFormData.surname,
+        email: registerFormData.email || null,
+        phone: registerFormData.phone || null,
+        company: registerFormData.company || null,
+        address: registerFormData.address || null,
+        notes: registerFormData.notes || null,
+        preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(registerFormData.preferredContact)
+          ? (registerFormData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
+          : "Unknown"
+      });
+
+      return res.redirect(
+        buildCustomerHref(newCustomer.id, { notice: "customer-created", returnTo: "/customers" })
+      );
+    } catch (err) {
+      return next(err);
+    }
+  });
+
   router.get("/customers/:customerId", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
@@ -496,10 +618,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
             returnTo: backToCustomersHref,
             notice: "new-booking"
           }),
-          editHref: buildCustomerHref(customer.id, {
-            returnTo: backToCustomersHref,
-            notice: "edit-customer"
-          })
+          editHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}`
         },
         backToCustomersHref,
         notice: getNotice(req.query.notice, customer)
@@ -660,6 +779,147 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         });
       }
 
+      return next(error);
+    }
+  });
+
+  router.get("/customers/:customerId/edit", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+      const customer = getCustomerById(req.params.customerId);
+
+      if (!customer) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+
+      return res.render("pages/customers/edit", {
+        title: `Edit ${customer.surname}, ${customer.givenName}`,
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        customer,
+        backToCustomersHref,
+        formData: {
+          givenName: customer.givenName,
+          surname: customer.surname,
+          email: customer.email || "",
+          phone: customer.phone || "",
+          company: customer.company || "",
+          address: customer.address || "",
+          notes: customer.notes || "",
+          preferredContact: customer.preferredContact
+        },
+        errors: []
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.post("/customers/:customerId/edit", async (req, res, next) => {
+    let sessionContext: { email: string; activeRoleLabel: string } | null = null;
+
+    try {
+      sessionContext = await requireAdminSession(req.headers.cookie);
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+
+    const customer = getCustomerById(req.params.customerId);
+
+    if (!customer) {
+      return res.status(404).render("pages/unavailable", {
+        title: "Unavailable",
+        appTitle: options.appTitle
+      });
+    }
+
+    const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+
+    const formData = {
+      givenName: String(req.body.givenName || "").trim(),
+      surname: String(req.body.surname || "").trim(),
+      email: String(req.body.email || "").trim(),
+      phone: String(req.body.phone || "").trim(),
+      company: String(req.body.company || "").trim(),
+      address: String(req.body.address || "").trim(),
+      notes: String(req.body.notes || "").trim(),
+      preferredContact: String(req.body.preferredContact || "Unknown")
+    };
+
+    const errors: string[] = [];
+
+    if (!formData.givenName) errors.push("First name is required.");
+    if (!formData.surname) errors.push("Surname is required.");
+    if (formData.email && !isValidEmail(formData.email)) {
+      errors.push("Email address is not valid.");
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).render("pages/customers/edit", {
+        title: `Edit ${customer.surname}, ${customer.givenName}`,
+        appTitle: options.appTitle,
+        email: sessionContext.email,
+        activeRoleLabel: sessionContext.activeRoleLabel,
+        customer,
+        backToCustomersHref,
+        formData,
+        errors
+      });
+    }
+
+    try {
+      const updated = updateCustomer(customer.id, {
+        givenName: formData.givenName,
+        surname: formData.surname,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        company: formData.company || null,
+        address: formData.address || null,
+        notes: formData.notes || null,
+        preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(formData.preferredContact)
+          ? (formData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
+          : "Unknown"
+      });
+
+      if (!updated) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return res.redirect(
+        buildCustomerHref(updated.id, { notice: "customer-updated", returnTo: backToCustomersHref })
+      );
+    } catch (error) {
       return next(error);
     }
   });
