@@ -114,6 +114,15 @@
           </div>
 
           <div class="form-field">
+            <label for="status">Status</label>
+            <select id="status" name="status">
+              <% ["Active", "Pending", "Suspended", "Delete Pending"].forEach((option) => { %>
+                <option value="<%= option %>" <%= formData.status === option ? 'selected' : '' %>><%= option %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="form-field">
             <label for="notes">Internal notes</label>
             <textarea
               id="notes"

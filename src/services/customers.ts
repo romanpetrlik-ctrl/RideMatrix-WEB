@@ -30,6 +30,7 @@ export type CustomerRecord = {
   phone: string | null;
   createdAt: string;
   lastLoginAt: string | null;
+  lastBookingAt: string | null;
   status: Exclude<CustomerStatus, "all">;
   notes: string | null;
   address: string | null;
@@ -61,6 +62,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "lina.adams@example.com",
     phone: "+44 7700 900101",
     createdAt: "2024-01-12T09:30:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-29T11:45:00Z",
     status: "Active",
     notes: "Prefers airport pickup confirmations on WhatsApp.",
@@ -93,6 +95,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "george.baker@example.com",
     phone: "+44 7700 900102",
     createdAt: "2023-11-05T13:10:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-25T07:20:00Z",
     status: "Active",
     notes: null,
@@ -117,6 +120,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: null,
     phone: "+44 7700 900103",
     createdAt: "2025-02-18T15:55:00Z",
+    lastBookingAt: null,
     lastLoginAt: null,
     status: "Pending",
     notes: "Awaiting email confirmation.",
@@ -132,6 +136,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "emma.clark@example.com",
     phone: null,
     createdAt: "2024-03-09T10:05:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-06-14T16:10:00Z",
     status: "Suspended",
     notes: "Temporarily suspended while chargeback review is open.",
@@ -156,6 +161,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "isla.dawson@example.com",
     phone: "+44 7700 900105",
     createdAt: "2025-07-11T12:00:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-30T20:15:00Z",
     status: "Active",
     notes: null,
@@ -180,6 +186,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "mason.evans@example.com",
     phone: "+44 7700 900106",
     createdAt: "2024-08-20T08:40:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-17T12:05:00Z",
     status: "Delete Pending",
     notes: "Customer requested record removal after final invoice.",
@@ -204,6 +211,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "amelia.fisher@example.com",
     phone: "+44 7700 900107",
     createdAt: "2024-05-15T17:22:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-01T19:10:00Z",
     status: "Active",
     notes: "VIP account with monthly invoicing.",
@@ -236,6 +244,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "oliver.green@example.com",
     phone: "+44 7700 900108",
     createdAt: "2023-09-03T11:14:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-04-22T09:45:00Z",
     status: "Suspended",
     notes: null,
@@ -251,6 +260,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "sophia.hall@example.com",
     phone: "+44 7700 900109",
     createdAt: "2024-10-01T14:12:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-30T05:40:00Z",
     status: "Active",
     notes: null,
@@ -275,6 +285,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: null,
     phone: null,
     createdAt: "2026-01-21T07:55:00Z",
+    lastBookingAt: null,
     lastLoginAt: null,
     status: "Pending",
     notes: "Lead imported from concierge partner.",
@@ -290,6 +301,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "harper.johnson@example.com",
     phone: "+44 7700 900111",
     createdAt: "2024-02-27T16:45:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-05-10T13:20:00Z",
     status: "Active",
     notes: "Requires child seat requests to be flagged manually.",
@@ -314,6 +326,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "jack.king@example.com",
     phone: "+44 7700 900112",
     createdAt: "2023-12-11T10:22:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-11T08:22:00Z",
     status: "Delete Pending",
     notes: null,
@@ -338,6 +351,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "ella.lewis@example.com",
     phone: "+44 7700 900113",
     createdAt: "2024-07-02T09:05:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-28T09:55:00Z",
     status: "Active",
     notes: "Frequent early-morning rail station transfers.",
@@ -362,6 +376,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "leo.mitchell@example.com",
     phone: "+44 7700 900114",
     createdAt: "2025-04-19T18:40:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-24T21:00:00Z",
     status: "Active",
     notes: null,
@@ -377,6 +392,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "mia.nolan@example.com",
     phone: "+44 7700 900115",
     createdAt: "2025-09-14T11:50:00Z",
+    lastBookingAt: null,
     lastLoginAt: null,
     status: "Pending",
     notes: "Signup incomplete after quote request.",
@@ -392,6 +408,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "james.owens@example.com",
     phone: "+44 7700 900116",
     createdAt: "2024-06-23T13:33:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-20T10:18:00Z",
     status: "Suspended",
     notes: "Manual review required before reactivation.",
@@ -416,6 +433,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "ava.parker@example.com",
     phone: "+44 7700 900117",
     createdAt: "2024-04-08T08:08:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-31T06:50:00Z",
     status: "Active",
     notes: "Often books return journeys in the same session.",
@@ -440,6 +458,7 @@ const seedCustomerRecords: CustomerRecord[] = [
     email: "lucas.quinn@example.com",
     phone: "+44 7700 900118",
     createdAt: "2025-06-28T15:05:00Z",
+    lastBookingAt: null,
     lastLoginAt: "2026-07-18T14:15:00Z",
     status: "Active",
     notes: null,
@@ -486,6 +505,7 @@ function getImportedCustomerRecords(): CustomerRecord[] {
       email: customer.email,
       phone: customer.phone,
       createdAt: customer.firstSeenAt || customer.createdAt,
+      lastBookingAt: customer.lastSeenAt || null,
       lastLoginAt: null,
       status: "Active",
       notes: `Imported from Cabcher cleaned bookings. Total bookings: ${customer.bookingCountTotal}.`,
@@ -529,6 +549,7 @@ function matchesSearch(customer: CustomerRecord, search: string): boolean {
 
 const createdCustomerRecords: CustomerRecord[] = [];
 const customerOverrides: Map<string, Partial<CustomerRecord>> = new Map();
+const deletedCustomerIds = new Set<string>();
 
 function generateCustomerId(): string {
   return `cust-new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -540,7 +561,10 @@ function applyOverride(customer: CustomerRecord): CustomerRecord {
 }
 
 function getAllCustomerRecordsWithOverrides(): CustomerRecord[] {
-  return getAllCustomerRecords().map(applyOverride).concat(createdCustomerRecords.map(applyOverride));
+  return getAllCustomerRecords()
+    .map(applyOverride)
+    .concat(createdCustomerRecords.map(applyOverride))
+    .filter((customer) => !deletedCustomerIds.has(customer.id));
 }
 
 export type CustomerCreateInput = {
@@ -552,6 +576,7 @@ export type CustomerCreateInput = {
   address?: string | null;
   company?: string | null;
   preferredContact?: "WhatsApp" | "Email" | "Phone" | "Unknown";
+  status?: Exclude<CustomerStatus, "all">;
 };
 
 export type CustomerUpdateInput = Partial<CustomerCreateInput>;
@@ -565,8 +590,9 @@ export function createCustomer(input: CustomerCreateInput): CustomerRecord {
     email: input.email ? input.email.trim() : null,
     phone: input.phone ? input.phone.trim() : null,
     createdAt: now,
+    lastBookingAt: null,
     lastLoginAt: null,
-    status: "Pending",
+    status: input.status || "Pending",
     notes: input.notes ? input.notes.trim() : null,
     address: input.address ? input.address.trim() : null,
     company: input.company ? input.company.trim() : null,
@@ -597,9 +623,42 @@ export function updateCustomer(id: string, input: CustomerUpdateInput): Customer
   if (input.address !== undefined) updated.address = input.address ? input.address.trim() : null;
   if (input.company !== undefined) updated.company = input.company ? input.company.trim() : null;
   if (input.preferredContact !== undefined) updated.preferredContact = input.preferredContact;
+  if (input.status !== undefined) updated.status = input.status;
 
   customerOverrides.set(id, updated);
   return applyOverride(existing);
+}
+
+export function getCustomerByEmail(email: string): CustomerRecord | undefined {
+  const normalized = email.trim().toLowerCase();
+  return getAllCustomerRecordsWithOverrides().find(
+    (customer) => customer.email && customer.email.toLowerCase() === normalized
+  );
+}
+
+export function updateCustomerLastBookingAt(id: string, bookingAt: string): CustomerRecord | undefined {
+  const all = getAllCustomerRecords().concat(createdCustomerRecords);
+  const existing = all.find((c) => c.id === id);
+
+  if (!existing) {
+    return undefined;
+  }
+
+  const currentOverride = customerOverrides.get(id) || {};
+  customerOverrides.set(id, { ...currentOverride, lastBookingAt: bookingAt });
+  return applyOverride(existing);
+}
+
+export function deleteCustomer(id: string): boolean {
+  const all = getAllCustomerRecords().concat(createdCustomerRecords);
+  const existing = all.find((c) => c.id === id);
+
+  if (!existing) {
+    return false;
+  }
+
+  deletedCustomerIds.add(id);
+  return true;
 }
 
 export function listCustomers(params: CustomerListParams): CustomerListResult {

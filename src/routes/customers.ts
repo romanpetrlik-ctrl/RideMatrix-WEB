@@ -812,7 +812,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           company: customer.company || "",
           address: customer.address || "",
           notes: customer.notes || "",
-          preferredContact: customer.preferredContact
+          preferredContact: customer.preferredContact,
+          status: customer.status
         },
         errors: []
       });
@@ -871,7 +872,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       company: String(req.body.company || "").trim(),
       address: String(req.body.address || "").trim(),
       notes: String(req.body.notes || "").trim(),
-      preferredContact: String(req.body.preferredContact || "Unknown")
+      preferredContact: String(req.body.preferredContact || "Unknown"),
+      status: String(req.body.status || "Active")
     };
 
     const errors: string[] = [];
@@ -906,7 +908,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         notes: formData.notes || null,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(formData.preferredContact)
           ? (formData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
-          : "Unknown"
+          : "Unknown",
+        status: (["Active", "Suspended", "Pending", "Delete Pending"] as const).includes(
+          formData.status as "Active" | "Suspended" | "Pending" | "Delete Pending"
+        )
+          ? (formData.status as "Active" | "Suspended" | "Pending" | "Delete Pending")
+          : undefined
       });
 
       if (!updated) {
