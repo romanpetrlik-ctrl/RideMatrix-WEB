@@ -315,6 +315,36 @@ button:visited,
   margin: 0;
 }
 
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.form-field label {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: var(--rm-walnut);
+}
+
+.form-field textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--rm-light-bronze);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--rm-text);
+  resize: vertical;
+}
+
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--rm-camel);
+  background: #fff;
+}
+
 .button--secondary {
   background: transparent;
   color: var(--rm-walnut-3);

@@ -527,8 +527,83 @@ function matchesSearch(customer: CustomerRecord, search: string): boolean {
     && normalizePhone(customer.phone).includes(normalizedPhoneSearch);
 }
 
+const createdCustomerRecords: CustomerRecord[] = [];
+const customerOverrides: Map<string, Partial<CustomerRecord>> = new Map();
+
+function generateCustomerId(): string {
+  return `cust-new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function applyOverride(customer: CustomerRecord): CustomerRecord {
+  const override = customerOverrides.get(customer.id);
+  return override ? { ...customer, ...override } : customer;
+}
+
+function getAllCustomerRecordsWithOverrides(): CustomerRecord[] {
+  return getAllCustomerRecords().map(applyOverride).concat(createdCustomerRecords.map(applyOverride));
+}
+
+export type CustomerCreateInput = {
+  givenName: string;
+  surname: string;
+  email: string | null;
+  phone: string | null;
+  notes?: string | null;
+  address?: string | null;
+  company?: string | null;
+  preferredContact?: "WhatsApp" | "Email" | "Phone" | "Unknown";
+};
+
+export type CustomerUpdateInput = Partial<CustomerCreateInput>;
+
+export function createCustomer(input: CustomerCreateInput): CustomerRecord {
+  const now = new Date().toISOString();
+  const customer: CustomerRecord = {
+    id: generateCustomerId(),
+    givenName: input.givenName.trim(),
+    surname: input.surname.trim(),
+    email: input.email ? input.email.trim() : null,
+    phone: input.phone ? input.phone.trim() : null,
+    createdAt: now,
+    lastLoginAt: null,
+    status: "Pending",
+    notes: input.notes ? input.notes.trim() : null,
+    address: input.address ? input.address.trim() : null,
+    company: input.company ? input.company.trim() : null,
+    preferredContact: input.preferredContact || "Unknown",
+    bookings: []
+  };
+
+  createdCustomerRecords.push(customer);
+  return customer;
+}
+
+export function updateCustomer(id: string, input: CustomerUpdateInput): CustomerRecord | undefined {
+  const all = getAllCustomerRecords().concat(createdCustomerRecords);
+  const existing = all.find((c) => c.id === id);
+
+  if (!existing) {
+    return undefined;
+  }
+
+  const currentOverride = customerOverrides.get(id) || {};
+  const updated: Partial<CustomerRecord> = { ...currentOverride };
+
+  if (input.givenName !== undefined) updated.givenName = input.givenName.trim();
+  if (input.surname !== undefined) updated.surname = input.surname.trim();
+  if (input.email !== undefined) updated.email = input.email ? input.email.trim() : null;
+  if (input.phone !== undefined) updated.phone = input.phone ? input.phone.trim() : null;
+  if (input.notes !== undefined) updated.notes = input.notes ? input.notes.trim() : null;
+  if (input.address !== undefined) updated.address = input.address ? input.address.trim() : null;
+  if (input.company !== undefined) updated.company = input.company ? input.company.trim() : null;
+  if (input.preferredContact !== undefined) updated.preferredContact = input.preferredContact;
+
+  customerOverrides.set(id, updated);
+  return applyOverride(existing);
+}
+
 export function listCustomers(params: CustomerListParams): CustomerListResult {
-  const filteredCustomers = getAllCustomerRecords()
+  const filteredCustomers = getAllCustomerRecordsWithOverrides()
     .filter((customer) => params.status === "all" || customer.status === params.status)
     .filter((customer) => matchesSearch(customer, params.search))
     .sort(compareCustomers);
@@ -551,9 +626,9 @@ export function listCustomers(params: CustomerListParams): CustomerListResult {
 }
 
 export function getCustomerById(id: string): CustomerRecord | undefined {
-  return getAllCustomerRecords().find((customer) => customer.id === id);
+  return getAllCustomerRecordsWithOverrides().find((customer) => customer.id === id);
 }
 
 export function getCustomerCount(): number {
-  return getAllCustomerRecords().length;
+  return getAllCustomerRecordsWithOverrides().length;
 }

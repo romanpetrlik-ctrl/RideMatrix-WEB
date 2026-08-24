@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: `Edit ${customer.surname}, ${customer.givenName}`,
+      pageMeta: `Customer ID: ${customer.id}`,
+      activeRoleLabel,
+      hintsLabel: customer.status,
+      showRoleSwitch: true,
+      showExitLink: true
+    }) %>
+
+    <main class="container">
+      <% if (errors.length > 0) { %>
+        <section class="notice notice--critical">
+          <strong>Please correct the following errors:</strong>
+          <ul>
+            <% errors.forEach((err) => { %>
+              <li><%= err %></li>
+            <% }) %>
+          </ul>
+        </section>
+      <% } %>
+
+      <section class="panel panel--compact">
+        <h1>Edit <%= customer.surname %>, <%= customer.givenName %></h1>
+        <p>Update the customer's details below. Fields marked with * are required.</p>
+
+        <form class="inline-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+          <div class="form-field">
+            <label for="givenName">First name *</label>
+            <input
+              type="text"
+              id="givenName"
+              name="givenName"
+              value="<%= formData.givenName %>"
+              required
+              autocomplete="given-name"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="surname">Surname *</label>
+            <input
+              type="text"
+              id="surname"
+              name="surname"
+              value="<%= formData.surname %>"
+              required
+              autocomplete="family-name"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="email">Email address</label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value="<%= formData.email %>"
+              autocomplete="email"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="phone">Phone</label>
+            <input
+              type="text"
+              id="phone"
+              name="phone"
+              value="<%= formData.phone %>"
+              autocomplete="tel"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="company">Company</label>
+            <input
+              type="text"
+              id="company"
+              name="company"
+              value="<%= formData.company %>"
+              autocomplete="organization"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="address">Address</label>
+            <input
+              type="text"
+              id="address"
+              name="address"
+              value="<%= formData.address %>"
+              autocomplete="street-address"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="preferredContact">Preferred contact method</label>
+            <select id="preferredContact" name="preferredContact">
+              <% ["Unknown", "Email", "Phone", "WhatsApp"].forEach((option) => { %>
+                <option value="<%= option %>" <%= formData.preferredContact === option ? 'selected' : '' %>><%= option %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label for="notes">Internal notes</label>
+            <textarea
+              id="notes"
+              name="notes"
+              rows="3"
+            ><%= formData.notes %></textarea>
+          </div>
+
+          <div class="action-row">
+            <button type="submit" class="button">Save Changes</button>
+            <a class="button button--secondary" href="/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>
