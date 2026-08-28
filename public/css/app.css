@@ -502,7 +502,7 @@ button:visited,
 
 .operations-menu-prototype__row {
   display: grid;
-  grid-template-columns: minmax(7rem, 10rem) auto minmax(0, 1fr);
+  grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
   gap: 0.55rem;
   align-items: center;
 }
@@ -514,11 +514,6 @@ button:visited,
   font-weight: 700;
 }
 
-.operations-menu-prototype__separator {
-  color: var(--rm-text-soft);
-  font-weight: 700;
-}
-
 .operations-menu-prototype__actions {
   display: flex;
   flex-wrap: nowrap;
@@ -526,6 +521,8 @@ button:visited,
   min-width: 0;
   overflow-x: auto;
   padding-bottom: 0.2rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid rgba(11, 113, 128, 0.35);
 }
 
 .operations-menu-prototype__action {
@@ -1163,8 +1160,9 @@ button:visited,
     gap: 0.4rem;
   }
 
-  .operations-menu-prototype__separator {
-    display: none;
+  .operations-menu-prototype__actions {
+    border-left: none;
+    padding-left: 0;
   }
 
   .system-status-bar__inner {
