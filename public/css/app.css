@@ -69,7 +69,10 @@ a {
 }
 
 .container {
-  width: min(1480px, calc(100% - (2 * var(--rm-main-content-edge-space))));
+  /* Main operational workspace: use the compact edge spacing without capping
+     the width, so wide desktop screens do not show large unused margins. */
+  width: calc(100% - (2 * var(--rm-main-content-edge-space)));
+  max-width: none;
   margin: 0 auto;
 }
 
