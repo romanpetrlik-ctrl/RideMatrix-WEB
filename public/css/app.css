@@ -509,9 +509,11 @@ button:visited,
 
 .operations-menu-prototype__category {
   margin: 0;
-  color: #172b38;
+  color: #173b57;
   font-size: 0.98rem;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .operations-menu-prototype__actions {
@@ -539,7 +541,7 @@ button:visited,
   border: 1px solid var(--rm-border);
   border-bottom-width: 3px;
   background: #f8fafc;
-  color: #172b38;
+  color: #214b68;
   font-size: 0.9rem;
   font-weight: 700;
   line-height: 1.2;
@@ -557,13 +559,19 @@ button:visited,
 .operations-menu-prototype__action:hover {
   background: #fff;
   border-color: var(--rm-camel);
+  color: #214b68;
   text-decoration: none;
 }
 
 .operations-menu-prototype__action:focus {
+  color: #214b68;
   outline: 2px solid var(--rm-dark-cyan);
   outline-offset: 2px;
   text-decoration: none;
+}
+
+.operations-menu-prototype__action:visited {
+  color: #214b68;
 }
 
 .operations-menu-prototype__action--amber {
