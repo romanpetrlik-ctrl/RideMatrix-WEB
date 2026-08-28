@@ -83,14 +83,22 @@
                           aria-label="${action.label}.${externalText}${statusText}"
                           ${targetAttrs}
                         >
-                          <span>${action.label}</span>
+                          <span class="operations-menu-prototype__label">${action.label}</span>
+                          <span class="operations-menu-prototype__status-slot" aria-hidden="true">
+                            ${
+                              action.status
+                                ? `
+                                  <svg class="operations-menu-prototype__status-icon" viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                                    <path d="M8 1.75 15 14.25H1L8 1.75Z"></path>
+                                    <path d="M8 5.6v4.2M8 12.1h.01"></path>
+                                  </svg>
+                                `
+                                : ""
+                            }
+                          </span>
                           ${
                             action.status
                               ? `
-                                <svg class="operations-menu-prototype__status-icon" viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                                  <path d="M8 1.75 15 14.25H1L8 1.75Z"></path>
-                                  <path d="M8 5.6v4.2M8 12.1h.01"></path>
-                                </svg>
                                 <span class="visually-hidden">${action.status.message}</span>
                                 <span class="operations-menu-prototype__tooltip" role="tooltip">${action.status.message}</span>
                               `

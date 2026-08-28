@@ -521,17 +521,23 @@ button:visited,
 
 .operations-menu-prototype__actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.45rem;
   min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
 }
 
 .operations-menu-prototype__action {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.35rem;
-  min-height: 2rem;
+  box-sizing: border-box;
+  flex: 0 0 190px;
+  width: 190px;
+  height: 2.5rem;
   padding: 0.35rem 0.65rem;
   border: 1px solid var(--rm-border);
   border-bottom-width: 3px;
@@ -542,6 +548,13 @@ button:visited,
   line-height: 1.2;
   text-decoration: none;
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.operations-menu-prototype__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .operations-menu-prototype__action:hover {
@@ -564,6 +577,15 @@ button:visited,
 .operations-menu-prototype__action--red {
   border-bottom-color: var(--rm-oxidized-iron);
   background: rgba(174, 32, 18, 0.06);
+}
+
+.operations-menu-prototype__status-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 0.78rem;
+  width: 0.78rem;
+  height: 0.78rem;
 }
 
 .operations-menu-prototype__status-icon {
