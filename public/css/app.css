@@ -41,6 +41,8 @@
   --rm-shadow-soft: 0 8px 24px rgba(88, 49, 1, 0.12);
   --rm-shadow-bar: 0 2px 8px rgba(88, 49, 1, 0.18);
   --rm-top-bar-edge-space: 50px;
+  --rm-main-content-edge-space: clamp(1rem, 2vw, 1.5rem);
+  --rm-panel-inline-space: 1.25rem;
 }
 
 *,
@@ -67,7 +69,7 @@ a {
 }
 
 .container {
-  width: min(1480px, calc(100% - 4rem));
+  width: min(1480px, calc(100% - (2 * var(--rm-main-content-edge-space))));
   margin: 0 auto;
 }
 
@@ -751,7 +753,7 @@ button:visited,
 .customer-list-card__header {
   display: flex;
   justify-content: space-between;
-  padding: 1.25rem 1.25rem 0;
+  padding: 1.25rem var(--rm-panel-inline-space) 0;
 }
 
 .customer-list-card__header h2 {
@@ -786,6 +788,7 @@ button:visited,
 .customers-table-wrapper {
   width: 100%;
   overflow-x: auto;
+  padding-inline: var(--rm-panel-inline-space);
 }
 
 .customers-table {
@@ -825,7 +828,7 @@ button:visited,
   gap: 1rem;
   align-items: center;
   flex-wrap: wrap;
-  padding: 0.9rem 0;
+  padding: 0.9rem var(--rm-panel-inline-space);
 }
 
 .pagination-bar__summary {
@@ -837,6 +840,8 @@ button:visited,
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .pagination-bar__link {
@@ -1020,5 +1025,11 @@ button:visited,
   .customer-bookings-panel__header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .pagination-bar__controls {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
   }
 }
