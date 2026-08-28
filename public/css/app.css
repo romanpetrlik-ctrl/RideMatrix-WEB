@@ -612,7 +612,7 @@ button:visited,
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .context-toolbar__form {
