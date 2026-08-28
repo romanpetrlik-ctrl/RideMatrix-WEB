@@ -21,18 +21,42 @@
       contextBarData: { statusTabs, status, search, perPage, perPageOptions }
     }) %>
 
-    <main class="container">
+    <main class="container customer-list-page">
       <% if (notice) { %>
         <section class="notice notice--<%= notice.tone %>">
           <%= notice.message %>
         </section>
       <% } %>
 
-      <section class="panel">
-        <div class="customers-panel__header">
+      <section class="customer-list-page__header">
+        <div>
+          <p class="eyebrow">Administration / Customer management</p>
+          <h1>Customer list</h1>
+          <p class="customer-list-page__description">Review customer accounts, recent activity, and contact preferences from one operational workspace.</p>
+        </div>
+        <a class="button" href="/customers/register">New customer</a>
+      </section>
+
+      <section class="customer-list-summary" aria-label="Customer list summary">
+        <div>
+          <span class="customer-list-summary__label">Total customers</span>
+          <strong><%= customerCount %></strong>
+        </div>
+        <div>
+          <span class="customer-list-summary__label">In this view</span>
+          <strong><%= pagination.totalRecords %></strong>
+        </div>
+        <div>
+          <span class="customer-list-summary__label">Page</span>
+          <strong><%= pagination.currentPage %> / <%= pagination.totalPages %></strong>
+        </div>
+      </section>
+
+      <section class="customer-list-card">
+        <div class="customer-list-card__header">
           <div>
-            <h1>Customers</h1>
-            <p>Customer records are sorted alphabetically by surname, then given name.</p>
+            <h2>All customers</h2>
+            <p>Sorted alphabetically by surname, then given name.</p>
           </div>
         </div>
 
@@ -43,12 +67,11 @@
             <table class="customers-table">
               <thead>
                 <tr>
-                  <th scope="col">Surname</th>
-                  <th scope="col">First name</th>
+                  <th scope="col">Customer</th>
                   <th scope="col">Email</th>
-                  <th scope="col">Phone</th>
-                  <th scope="col">Created</th>
-                  <th scope="col">Last Login</th>
+                  <th scope="col">Preferred contact</th>
+                  <th scope="col">Last activity</th>
+                  <th scope="col">Bookings</th>
                   <th scope="col">Status</th>
                   <th scope="col" class="customers-table__actions-heading">Actions</th>
                 </tr>
@@ -56,17 +79,26 @@
               <tbody>
                 <% customers.forEach((customer) => { %>
                   <tr>
-                    <td><strong><%= customer.surname %></strong></td>
-                    <td><%= customer.givenName %></td>
+                    <td>
+                      <a class="customer-table__identity" href="<%= customer.detailHref %>">
+                        <strong><%= customer.givenName %> <%= customer.surname %></strong>
+                        <span><%= customer.company || customer.email || "No company or email" %></span>
+                      </a>
+                    </td>
                     <td><%= customer.email || "—" %></td>
-                    <td><%= customer.phone || "—" %></td>
-                    <td><%= customer.formattedCreatedAt %></td>
-                    <td><%= customer.formattedLastLoginAt %></td>
+                    <td><%= customer.preferredContact %></td>
+                    <td>
+                      <span><%= customer.formattedLastLoginAt %></span>
+                      <small>Login</small>
+                      <span><%= customer.formattedLastBookingAt %></span>
+                      <small>Booking</small>
+                    </td>
+                    <td><%= customer.bookings.length %></td>
                     <td>
                       <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
                     </td>
                     <td class="customers-table__actions">
-                      <a class="button button--secondary button--small" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">View</a>
+                      <a class="button button--secondary button--small" href="<%= customer.detailHref %>">View</a>
                       <a class="button button--secondary button--small" href="<%= customer.editHref %>">Edit</a>
                       <a class="button button--danger button--small" href="<%= customer.deleteHref %>">Delete</a>
                     </td>
