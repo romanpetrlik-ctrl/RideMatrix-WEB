@@ -14,7 +14,7 @@
       <h1>Admin Dashboard</h1>
       <p>
         The admin workspace centralizes daily operations, management, and platform oversight.
-        Use the tiles below to open each area.
+        Use the operational menu below to open each area.
       </p>
     </section>
 
@@ -26,31 +26,86 @@
             The full workflow for this area will be expanded in a later phase.
           </section>
         `
+        : selectedOperationalAction
+          ? `
+            <section class="notice dashboard-selection-notice">
+              <strong>${selectedOperationalAction.category} / ${selectedOperationalAction.label}</strong>
+              is a prototype navigation target.
+              ${
+                selectedOperationalAction.externalMode === "window"
+                  ? "The final Live Map is intended to open as a separate map workspace."
+                  : selectedOperationalAction.externalMode === "tab"
+                    ? "The final Live board is intended to open as a list/workboard destination."
+                    : "The full workflow for this area will be expanded in a later phase."
+              }
+            </section>
+          `
         : ""
     }
 
-    <div class="dashboard-layout">
-      ${sections
-        .map(
-          (section) => `
-            <section class="dashboard-section">
-              <h2 class="dashboard-section__title">${section.title}</h2>
-              <div class="dashboard-tile-grid">
-                ${section.tiles
-                  .map(
-                    (tile) => `
-                      <a class="dashboard-tile" href="${tile.key === "customers" ? "/customers" : `/dashboard?tile=${tile.key}`}">
-                        <span class="dashboard-tile__title">${tile.title}</span>
-                        <span class="dashboard-tile__description">${tile.description}</span>
-                      </a>
-                    `
-                  )
-                  .join("")}
+    <section class="operations-menu-prototype" aria-labelledby="operations-menu-title">
+      <div class="operations-menu-prototype__header">
+        <div>
+          <p class="eyebrow">Prototype / Operations menu</p>
+          <h2 id="operations-menu-title">Operational shortcuts</h2>
+        </div>
+        <p>Static visual mock data only. Status indicators are not connected to live checks yet.</p>
+      </div>
+
+      <div class="operations-menu-prototype__rows">
+        ${operationalMenuRows
+          .map(
+            (row) => `
+              <div class="operations-menu-prototype__row">
+                <h3 class="operations-menu-prototype__category">${row.category}</h3>
+                <span class="operations-menu-prototype__separator" aria-hidden="true">·</span>
+                <div class="operations-menu-prototype__actions" aria-label="${row.category} actions">
+                  ${row.actions
+                    .map((action) => {
+                      const statusClass = action.status
+                        ? ` operations-menu-prototype__action--${action.status.tone}`
+                        : "";
+                      const targetAttrs = action.externalMode
+                        ? ` target="_blank" rel="noopener noreferrer"`
+                        : "";
+                      const externalText =
+                        action.externalMode === "window"
+                          ? " Opens the map placeholder in a separate window."
+                          : action.externalMode === "tab"
+                            ? " Opens the workboard placeholder in a new tab."
+                            : "";
+                      const statusText = action.status ? ` ${action.status.message}` : "";
+
+                      return `
+                        <a
+                          class="operations-menu-prototype__action${statusClass}"
+                          href="${action.href}"
+                          aria-label="${action.label}.${externalText}${statusText}"
+                          ${targetAttrs}
+                        >
+                          <span>${action.label}</span>
+                          ${
+                            action.status
+                              ? `
+                                <svg class="operations-menu-prototype__status-icon" viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                                  <path d="M8 1.75 15 14.25H1L8 1.75Z"></path>
+                                  <path d="M8 5.6v4.2M8 12.1h.01"></path>
+                                </svg>
+                                <span class="visually-hidden">${action.status.message}</span>
+                                <span class="operations-menu-prototype__tooltip" role="tooltip">${action.status.message}</span>
+                              `
+                              : ""
+                          }
+                        </a>
+                      `;
+                    })
+                    .join("")}
+                </div>
               </div>
-            </section>
-          `
-        )
-        .join("")}
-    </div>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
   `
 }) %>
