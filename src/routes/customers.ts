@@ -93,6 +93,13 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
+function getLastBookingAt(customer: CustomerRecord): string | null {
+  return customer.lastBookingAt || customer.bookings.reduce<string | null>(
+    (latest, booking) => (!latest || booking.serviceDate > latest ? booking.serviceDate : latest),
+    null
+  );
+}
+
 function formatPhoneHref(phone: string | null): string | null {
   if (!phone) {
     return null;
@@ -429,6 +436,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
           formattedLastLoginAt: formatDateTime(customer.lastLoginAt),
+          formattedLastBookingAt: formatDateTime(getLastBookingAt(customer)),
           detailHref: buildCustomerHref(customer.id, {
             returnTo: buildCustomersListHref({
               search,
