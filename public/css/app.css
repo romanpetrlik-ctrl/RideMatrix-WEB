@@ -529,15 +529,19 @@ button:visited,
 .workspace-tile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: stretch;
   gap: 0.85rem;
 }
 
 .workspace-tile-form {
+  display: flex;
   margin: 0;
+  height: 100%;
 }
 
 .workspace-tile {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.4rem;
   width: 100%;
   min-height: 118px;
@@ -591,12 +595,14 @@ button:visited,
   color: var(--rm-dark-teal);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  margin-top: auto;
 }
 
 .workspace-tile__action {
   font-size: 0.88rem;
   color: var(--rm-walnut);
   opacity: 0.75;
+  margin-top: auto;
 }
 
 .context-toolbar {
