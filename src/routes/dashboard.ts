@@ -11,6 +11,92 @@ type DashboardTile = {
   description: string;
 };
 
+type OperationalMenuAction = {
+  label: string;
+  href: string;
+  externalMode?: "tab" | "window";
+  status?: {
+    tone: "amber" | "red";
+    message: string;
+  };
+};
+
+type OperationalMenuRow = {
+  category: string;
+  actions: OperationalMenuAction[];
+};
+
+type SelectedOperationalAction = {
+  category: string;
+  label: string;
+  externalMode?: "tab" | "window";
+};
+
+const operationalMenuRows: OperationalMenuRow[] = [
+  {
+    category: "Bookings",
+    actions: [
+      { label: "New", href: "/dashboard?tile=bookings-new" },
+      { label: "Today", href: "/dashboard?tile=bookings-today" },
+      {
+        label: "Upcoming",
+        href: "/dashboard?tile=bookings-upcoming",
+        status: {
+          tone: "red",
+          message: "Demo status: booking conflicts need immediate review."
+        }
+      },
+      { label: "Past", href: "/dashboard?tile=bookings-past" },
+      { label: "Recurring", href: "/dashboard?tile=bookings-recurring" }
+    ]
+  },
+  {
+    category: "Dispatch",
+    actions: [
+      { label: "Live board", href: "/dashboard?tile=dispatch-live-board", externalMode: "tab" },
+      { label: "Live Map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" }
+    ]
+  },
+  {
+    category: "Customers",
+    actions: [
+      { label: "All customers", href: "/customers" },
+      { label: "New customer", href: "/customers/register" }
+    ]
+  },
+  {
+    category: "Pricing",
+    actions: [
+      { label: "Distance slabs", href: "/dashboard?tile=pricing-distance-slabs" },
+      {
+        label: "Fixed fares",
+        href: "/dashboard?tile=pricing-fixed-fares",
+        status: {
+          tone: "amber",
+          message: "Demo status: fixed fare review recommended before publishing."
+        }
+      },
+      { label: "Extras", href: "/dashboard?tile=pricing-extras" },
+      { label: "All pricing settings", href: "/dashboard?tile=pricing-settings" }
+    ]
+  },
+  {
+    category: "Settings",
+    actions: [
+      { label: "Email", href: "/dashboard?tile=settings-email" },
+      {
+        label: "WhatsApp",
+        href: "/dashboard?tile=settings-whatsapp",
+        status: {
+          tone: "amber",
+          message: "Demo status: WhatsApp integration is ready for connection testing."
+        }
+      },
+      { label: "Notifications", href: "/dashboard?tile=settings-notifications" }
+    ]
+  }
+];
+
 const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
   {
     title: "Operations",
@@ -112,12 +198,25 @@ export function createDashboardRouter(options: DashboardRouterOptions): Router {
 
       const requestedTileKey = String(req.query.tile || "");
       const selectedTile = allTiles.find((tile) => tile.key === requestedTileKey);
+      const selectedOperationalAction = operationalMenuRows
+        .flatMap((row) =>
+          row.actions.map((action) => ({
+            category: row.category,
+            label: action.label,
+            externalMode: action.externalMode,
+            href: action.href
+          }))
+        )
+        .find((action) => action.href === `/dashboard?tile=${requestedTileKey}`) satisfies
+        SelectedOperationalAction | undefined;
 
       return res.render("pages/dashboard", {
         title: "Admin Dashboard",
         appTitle: options.appTitle,
         email: session.user.email,
+        operationalMenuRows,
         sections: dashboardSections,
+        selectedOperationalAction,
         selectedTile
       });
     } catch (error) {
