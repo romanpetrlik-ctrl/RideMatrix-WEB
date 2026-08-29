@@ -14,6 +14,10 @@
       pageTitle: "Customers",
       pageMeta: "Manage customer records, contact data, and status.",
       activeRoleLabel,
+      breadcrumbs: [
+        { label: "Administration", href: "/dashboard" },
+        { label: "Customer management" }
+      ],
       hintsLabel: `${customerCount} customers`,
       showRoleSwitch: true,
       showExitLink: true,
@@ -28,28 +32,17 @@
         </section>
       <% } %>
 
-      <section class="customer-list-page__header">
-        <div>
-          <p class="eyebrow">Administration / Customer management</p>
-          <h1>Customer list</h1>
-          <p class="customer-list-page__description">Review customer accounts, recent activity, and contact preferences from one operational workspace.</p>
-        </div>
-        <a class="button" href="/customers/register">New customer</a>
-      </section>
-
       <section class="customer-list-summary" aria-label="Customer list summary">
         <div>
           <span class="customer-list-summary__label">Total customers</span>
           <strong><%= customerCount %></strong>
         </div>
-        <div>
-          <span class="customer-list-summary__label">In this view</span>
-          <strong><%= pagination.totalRecords %></strong>
-        </div>
-        <div>
-          <span class="customer-list-summary__label">Page</span>
-          <strong><%= pagination.currentPage %> / <%= pagination.totalPages %></strong>
-        </div>
+        <% if (hasSearchFilters || pagination.totalRecords !== customerCount) { %>
+          <div>
+            <span class="customer-list-summary__label">In this view</span>
+            <strong><%= pagination.totalRecords %></strong>
+          </div>
+        <% } %>
       </section>
 
       <section class="customer-list-card">

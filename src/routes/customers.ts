@@ -334,97 +334,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         perPage: Number.isFinite(requestedPerPage) ? requestedPerPage : CUSTOMER_DEFAULT_PER_PAGE
       });
 
-      router.get("/customers/import", async (req, res, next) => {
-        try {
-          const session = await requireAdminSession(req.headers.cookie);
-
-          return res.render("pages/customers/import", {
-            title: "Customers Import",
-            appTitle: options.appTitle,
-            email: session.email,
-            activeRoleLabel: session.activeRoleLabel,
-            latestBatches: listImportBatches().slice(0, 5),
-            summary: null,
-            errors: []
-          });
-        } catch (error) {
-          if (error instanceof Error && error.message === "unauthenticated") {
-            return res.redirect("/access");
-          }
-
-          if (error instanceof Error && error.message === "forbidden") {
-            return res.status(403).render("pages/unavailable", {
-              title: "Unavailable",
-              appTitle: options.appTitle
-            });
-          }
-
-          return next(error);
-        }
-      });
-
-      router.post("/customers/import", upload.single("bookingsCsv"), async (req, res, next) => {
-        let sessionContext: { email: string; activeRoleLabel: string } | null = null;
-
-        try {
-          const session = await requireAdminSession(req.headers.cookie);
-          sessionContext = session;
-          const uploadedFile = req.file;
-
-          if (!uploadedFile || !uploadedFile.buffer || uploadedFile.size === 0) {
-            return res.status(400).render("pages/customers/import", {
-              title: "Customers Import",
-              appTitle: options.appTitle,
-              email: session.email,
-              activeRoleLabel: session.activeRoleLabel,
-              latestBatches: listImportBatches().slice(0, 5),
-              summary: null,
-              errors: ["Please upload a non-empty CSV file."]
-            });
-          }
-
-          const result = importCabcherBookings({
-            csvContent: uploadedFile.buffer.toString("utf-8"),
-            originalFilename: uploadedFile.originalname,
-            uploadedBy: session.email
-          });
-
-          return res.render("pages/customers/import", {
-            title: "Customers Import",
-            appTitle: options.appTitle,
-            email: session.email,
-            activeRoleLabel: session.activeRoleLabel,
-            latestBatches: listImportBatches().slice(0, 5),
-            summary: result.summary,
-            errors: []
-          });
-        } catch (error) {
-          if (error instanceof Error && error.message === "unauthenticated") {
-            return res.redirect("/access");
-          }
-
-          if (error instanceof Error && error.message === "forbidden") {
-            return res.status(403).render("pages/unavailable", {
-              title: "Unavailable",
-              appTitle: options.appTitle
-            });
-          }
-
-          if (error instanceof MissingRequiredColumnsError) {
-            return res.status(400).render("pages/customers/import", {
-              title: "Customers Import",
-              appTitle: options.appTitle,
-              email: sessionContext?.email || "",
-              activeRoleLabel: sessionContext?.activeRoleLabel || "Administration",
-              latestBatches: listImportBatches().slice(0, 5),
-              summary: null,
-              errors: [`Missing required columns: ${error.missingColumns.join(", ")}`]
-            });
-          }
-
-          return next(error);
-        }
-      });
       const pagination = getPagination(search, status, result.page, result.totalPages, result.perPage, result.totalRecords);
 
       return res.render("pages/customers/index", {
@@ -482,6 +391,98 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         return res.status(403).render("pages/unavailable", {
           title: "Unavailable",
           appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.get("/customers/import", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+
+      return res.render("pages/customers/import", {
+        title: "Customers Import",
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        latestBatches: listImportBatches().slice(0, 5),
+        summary: null,
+        errors: []
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      return next(error);
+    }
+  });
+
+  router.post("/customers/import", upload.single("bookingsCsv"), async (req, res, next) => {
+    let sessionContext: { email: string; activeRoleLabel: string } | null = null;
+
+    try {
+      const session = await requireAdminSession(req.headers.cookie);
+      sessionContext = session;
+      const uploadedFile = req.file;
+
+      if (!uploadedFile || !uploadedFile.buffer || uploadedFile.size === 0) {
+        return res.status(400).render("pages/customers/import", {
+          title: "Customers Import",
+          appTitle: options.appTitle,
+          email: session.email,
+          activeRoleLabel: session.activeRoleLabel,
+          latestBatches: listImportBatches().slice(0, 5),
+          summary: null,
+          errors: ["Please upload a non-empty CSV file."]
+        });
+      }
+
+      const result = importCabcherBookings({
+        csvContent: uploadedFile.buffer.toString("utf-8"),
+        originalFilename: uploadedFile.originalname,
+        uploadedBy: session.email
+      });
+
+      return res.render("pages/customers/import", {
+        title: "Customers Import",
+        appTitle: options.appTitle,
+        email: session.email,
+        activeRoleLabel: session.activeRoleLabel,
+        latestBatches: listImportBatches().slice(0, 5),
+        summary: result.summary,
+        errors: []
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.redirect("/access");
+      }
+
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      if (error instanceof MissingRequiredColumnsError) {
+        return res.status(400).render("pages/customers/import", {
+          title: "Customers Import",
+          appTitle: options.appTitle,
+          email: sessionContext?.email || "",
+          activeRoleLabel: sessionContext?.activeRoleLabel || "Administration",
+          latestBatches: listImportBatches().slice(0, 5),
+          summary: null,
+          errors: [`Missing required columns: ${error.missingColumns.join(", ")}`]
         });
       }
 
