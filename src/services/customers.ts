@@ -24,6 +24,7 @@ export type BookingRecord = {
 
 export type CustomerRecord = {
   id: string;
+  title?: string | null;
   givenName: string;
   surname: string;
   email: string | null;
@@ -568,6 +569,7 @@ function getAllCustomerRecordsWithOverrides(): CustomerRecord[] {
 }
 
 export type CustomerCreateInput = {
+  title?: string | null;
   givenName: string;
   surname: string;
   email: string | null;
@@ -585,6 +587,7 @@ export function createCustomer(input: CustomerCreateInput): CustomerRecord {
   const now = new Date().toISOString();
   const customer: CustomerRecord = {
     id: generateCustomerId(),
+    title: input.title ? input.title.trim() : null,
     givenName: input.givenName.trim(),
     surname: input.surname.trim(),
     email: input.email ? input.email.trim() : null,
@@ -616,6 +619,7 @@ export function updateCustomer(id: string, input: CustomerUpdateInput): Customer
   const updated: Partial<CustomerRecord> = { ...currentOverride };
 
   if (input.givenName !== undefined) updated.givenName = input.givenName.trim();
+  if (input.title !== undefined) updated.title = input.title ? input.title.trim() : null;
   if (input.surname !== undefined) updated.surname = input.surname.trim();
   if (input.email !== undefined) updated.email = input.email ? input.email.trim() : null;
   if (input.phone !== undefined) updated.phone = input.phone ? input.phone.trim() : null;

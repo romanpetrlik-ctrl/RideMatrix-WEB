@@ -40,6 +40,10 @@
 
           <dl class="customer-detail-list">
             <div>
+              <dt>Title</dt>
+              <dd><%= customer.title || "—" %></dd>
+            </div>
+            <div>
               <dt>Email</dt>
               <dd><%= customer.email || "No email on file" %></dd>
             </div>

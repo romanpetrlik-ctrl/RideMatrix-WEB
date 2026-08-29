@@ -409,6 +409,146 @@ button:visited,
   background: #fff;
 }
 
+.customer-register-panel {
+  overflow-x: auto;
+}
+
+.customer-type-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+  min-width: 640px;
+}
+
+.customer-type-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1.2rem;
+  border: 1px solid var(--rm-light-bronze);
+  background: #fff9f2;
+  color: var(--rm-text);
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(88, 49, 1, 0.08);
+}
+
+.customer-type-card:hover,
+.customer-type-card:focus {
+  border-color: var(--rm-faded-copper);
+  background: var(--rm-antique-white);
+  outline: 2px solid var(--rm-dark-cyan);
+  outline-offset: 2px;
+  text-decoration: none;
+}
+
+.customer-type-card__title {
+  color: var(--rm-walnut);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.customer-type-card__copy {
+  color: var(--rm-text-soft);
+}
+
+.private-customer-form {
+  min-width: 1080px;
+}
+
+.private-customer-form__grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(440px, 1.35fr) minmax(280px, 0.9fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.private-customer-form__column {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  background: rgba(255, 249, 242, 0.6);
+}
+
+.private-customer-form__column h2 {
+  margin: 0;
+  color: var(--rm-walnut);
+  font-size: 1rem;
+}
+
+.private-customer-form .form-field {
+  margin-bottom: 0;
+}
+
+.private-customer-form input[type="email"],
+.private-customer-form input[type="text"],
+.private-customer-form select,
+.private-customer-form textarea {
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.private-customer-form .form-row {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.private-customer-form .form-row--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.private-customer-form .form-row--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.private-customer-form .form-row--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.private-customer-form .form-field--checkbox {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.8rem;
+  border: 1px solid var(--rm-light-bronze);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.private-customer-form .form-field--checkbox input {
+  margin-top: 0.25rem;
+}
+
+.private-customer-form .form-field--checkbox p {
+  margin: 0;
+  color: var(--rm-text-soft);
+  font-size: 0.88rem;
+}
+
+.address-map-placeholder {
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  min-height: 23rem;
+  padding: 1rem;
+  border: 1px dashed var(--rm-faded-copper);
+  background:
+    linear-gradient(135deg, rgba(212, 162, 118, 0.18) 25%, transparent 25%) 0 0 / 2rem 2rem,
+    linear-gradient(135deg, transparent 75%, rgba(212, 162, 118, 0.18) 75%) 0 0 / 2rem 2rem,
+    #fff9f2;
+  color: var(--rm-text-soft);
+  text-align: center;
+}
+
+.address-map-placeholder strong {
+  color: var(--rm-walnut);
+}
+
+.private-customer-form__notes {
+  margin-top: 1rem;
+}
+
 .button--secondary {
   background: transparent;
   color: var(--rm-walnut-3);

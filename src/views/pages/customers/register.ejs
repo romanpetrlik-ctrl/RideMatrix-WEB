@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
+  <%
+    const selectedCustomerType = typeof customerType === "string" ? customerType : "";
+  %>
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", {
@@ -31,103 +34,255 @@
         </section>
       <% } %>
 
-      <section class="panel panel--compact">
-        <h1>New Customer</h1>
-        <p>Fill in the customer's details below. Fields marked with * are required.</p>
+      <section class="panel panel--compact customer-register-panel">
+        <% if (!selectedCustomerType) { %>
+          <h1>New customer</h1>
+          <p>Choose the customer type first so the registration flow matches the account you want to create.</p>
 
-        <form class="inline-form" method="post" action="/customers/register">
-          <div class="form-field">
-            <label for="givenName">First name *</label>
-            <input
-              type="text"
-              id="givenName"
-              name="givenName"
-              value="<%= formData.givenName || '' %>"
-              required
-              autocomplete="given-name"
-            />
-          </div>
+          <div class="customer-type-selector" aria-label="Customer type">
+            <a class="customer-type-card" href="/customers/register?type=private">
+              <span class="customer-type-card__title">Private customer</span>
+              <span class="customer-type-card__copy">For an individual person. Continue to the private-customer details form.</span>
+            </a>
 
-          <div class="form-field">
-            <label for="surname">Surname *</label>
-            <input
-              type="text"
-              id="surname"
-              name="surname"
-              value="<%= formData.surname || '' %>"
-              required
-              autocomplete="family-name"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="email">Email address *</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value="<%= formData.email || '' %>"
-              required
-              autocomplete="email"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="phone">Phone</label>
-            <input
-              type="text"
-              id="phone"
-              name="phone"
-              value="<%= formData.phone || '' %>"
-              autocomplete="tel"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="company">Company</label>
-            <input
-              type="text"
-              id="company"
-              name="company"
-              value="<%= formData.company || '' %>"
-              autocomplete="organization"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="address">Address</label>
-            <input
-              type="text"
-              id="address"
-              name="address"
-              value="<%= formData.address || '' %>"
-              autocomplete="street-address"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="preferredContact">Preferred contact method</label>
-            <select id="preferredContact" name="preferredContact">
-              <% ["Unknown", "Email", "Phone", "WhatsApp"].forEach((option) => { %>
-                <option value="<%= option %>" <%= (formData.preferredContact || 'Unknown') === option ? 'selected' : '' %>><%= option %></option>
-              <% }) %>
-            </select>
-          </div>
-
-          <div class="form-field">
-            <label for="notes">Internal notes</label>
-            <textarea
-              id="notes"
-              name="notes"
-              rows="3"
-            ><%= formData.notes || '' %></textarea>
+            <a class="customer-type-card" href="/customers/register?type=business">
+              <span class="customer-type-card__title">Business customer</span>
+              <span class="customer-type-card__copy">For a company, council, department, or other organisation. This registration flow is coming later.</span>
+            </a>
           </div>
 
           <div class="action-row">
-            <button type="submit" class="button">Create Customer</button>
             <a class="button button--secondary" href="/customers">Cancel</a>
           </div>
-        </form>
+        <% } else if (selectedCustomerType === "business") { %>
+          <h1>Business customer</h1>
+          <p>Business customer registration will be delivered as a separate flow with the right company and organisation checks.</p>
+
+          <section class="notice notice--warning" aria-labelledby="business-customer-placeholder-title">
+            <strong id="business-customer-placeholder-title">Coming later</strong>
+            <p>
+              This area intentionally does not expose an unfinished business form or Companies House integration.
+              Use private customer only when registering an individual person.
+            </p>
+          </section>
+
+          <div class="action-row">
+            <a class="button" href="/customers/register?type=private">Create a private customer</a>
+            <a class="button button--secondary" href="/customers/register">Back to customer type</a>
+            <a class="button button--secondary" href="/customers">Cancel</a>
+          </div>
+        <% } else { %>
+          <h1>Private customer</h1>
+          <p>Fill in the individual's details below. Fields marked with * are required.</p>
+
+          <form class="inline-form private-customer-form" method="post" action="/customers/register">
+            <div class="private-customer-form__grid">
+              <section class="private-customer-form__column" aria-labelledby="private-contact-heading">
+                <h2 id="private-contact-heading">Personal and contact data</h2>
+
+                <div class="form-field">
+                  <label for="title">Title</label>
+                  <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    value="<%= formData.title || '' %>"
+                    autocomplete="honorific-prefix"
+                  />
+                </div>
+
+                <div class="form-row form-row--two">
+                  <div class="form-field">
+                    <label for="givenName">First name *</label>
+                    <input
+                      type="text"
+                      id="givenName"
+                      name="givenName"
+                      value="<%= formData.givenName || '' %>"
+                      required
+                      autocomplete="given-name"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="surname">Surname *</label>
+                    <input
+                      type="text"
+                      id="surname"
+                      name="surname"
+                      value="<%= formData.surname || '' %>"
+                      required
+                      autocomplete="family-name"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-row form-row--two">
+                  <div class="form-field">
+                    <label for="email">Email *</label>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      value="<%= formData.email || '' %>"
+                      required
+                      autocomplete="email"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="phone">Phone / WhatsApp</label>
+                    <input
+                      type="text"
+                      id="phone"
+                      name="phone"
+                      value="<%= formData.phone || '' %>"
+                      autocomplete="tel"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="preferredContact">Preferred contact method</label>
+                  <select id="preferredContact" name="preferredContact">
+                    <% ["Unknown", "Email", "Phone", "WhatsApp"].forEach((option) => { %>
+                      <option value="<%= option %>" <%= (formData.preferredContact || 'Unknown') === option ? 'selected' : '' %>><%= option %></option>
+                    <% }) %>
+                  </select>
+                </div>
+              </section>
+
+              <section class="private-customer-form__column" aria-labelledby="private-address-heading">
+                <h2 id="private-address-heading">Address data</h2>
+
+                <div class="form-field">
+                  <label for="houseNameNumber">House name / number</label>
+                  <input
+                    type="text"
+                    id="houseNameNumber"
+                    name="houseNameNumber"
+                    value="<%= formData.houseNameNumber || '' %>"
+                  />
+                </div>
+
+                <div class="form-row form-row--three">
+                  <div class="form-field">
+                    <label for="addressLine1">Address line 1</label>
+                    <input
+                      type="text"
+                      id="addressLine1"
+                      name="addressLine1"
+                      value="<%= formData.addressLine1 || '' %>"
+                      autocomplete="address-line1"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="addressLine2">Address line 2</label>
+                    <input
+                      type="text"
+                      id="addressLine2"
+                      name="addressLine2"
+                      value="<%= formData.addressLine2 || '' %>"
+                      autocomplete="address-line2"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="addressLine3">Address line 3</label>
+                    <input
+                      type="text"
+                      id="addressLine3"
+                      name="addressLine3"
+                      value="<%= formData.addressLine3 || '' %>"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-row form-row--four">
+                  <div class="form-field">
+                    <label for="cityTown">City / Town</label>
+                    <input
+                      type="text"
+                      id="cityTown"
+                      name="cityTown"
+                      value="<%= formData.cityTown || '' %>"
+                      autocomplete="address-level2"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="county">County</label>
+                    <input
+                      type="text"
+                      id="county"
+                      name="county"
+                      value="<%= formData.county || '' %>"
+                      autocomplete="address-level1"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="state">State</label>
+                    <input
+                      type="text"
+                      id="state"
+                      name="state"
+                      value="<%= formData.state || '' %>"
+                    />
+                  </div>
+
+                  <div class="form-field">
+                    <label for="postcode">Postcode</label>
+                    <input
+                      type="text"
+                      id="postcode"
+                      name="postcode"
+                      value="<%= formData.postcode || '' %>"
+                      autocomplete="postal-code"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-field form-field--checkbox">
+                  <input
+                    type="checkbox"
+                    id="defaultJourneyAddress"
+                    aria-describedby="defaultJourneyAddress-help"
+                    disabled
+                  />
+                  <div>
+                    <label for="defaultJourneyAddress">Offer this address as the default pick-up/drop-off address</label>
+                    <p id="defaultJourneyAddress-help">Default journey-address saving is not currently supported by the customer record.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="private-customer-form__column private-customer-form__column--map" aria-labelledby="private-map-heading">
+                <h2 id="private-map-heading">Address map view</h2>
+                <div class="address-map-placeholder" role="img" aria-label="Map integration placeholder">
+                  <strong>Map preview placeholder</strong>
+                  <p>No customer address map or geocoding integration is available in this repository yet.</p>
+                </div>
+              </section>
+            </div>
+
+            <div class="form-field private-customer-form__notes">
+              <label for="notes">Internal notes</label>
+              <textarea
+                id="notes"
+                name="notes"
+                rows="3"
+              ><%= formData.notes || '' %></textarea>
+            </div>
+
+            <div class="action-row">
+              <button type="submit" class="button">Create Customer</button>
+              <a class="button button--secondary" href="/customers/register">Back to customer type</a>
+              <a class="button button--secondary" href="/customers">Cancel</a>
+            </div>
+          </form>
+        <% } %>
       </section>
     </main>
 
