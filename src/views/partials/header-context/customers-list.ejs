@@ -23,15 +23,13 @@
 
     <div class="context-toolbar__field context-toolbar__field--compact">
       <label for="customers-per-page">Records per page</label>
-      <select id="customers-per-page" name="perPage">
+      <select id="customers-per-page" name="perPage" onchange="this.form.submit()">
         <% perPageOptions.forEach((option) => { %>
           <option value="<%= option %>" <%= option === perPage ? "selected" : "" %>><%= option %></option>
         <% }) %>
       </select>
     </div>
 
-    <button type="submit" class="button button--secondary">Apply</button>
-    <a class="button button--secondary" href="/customers/import">Import bookings</a>
     <a class="button" href="/customers/register">New customer</a>
   </form>
 </div>
