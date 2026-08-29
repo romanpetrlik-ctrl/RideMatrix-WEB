@@ -313,6 +313,28 @@ function isValidEmail(email: string): boolean {
   return dot > 0 && dot < domain.length - 1;
 }
 
+function buildAddressFromParts(parts: {
+  houseNameNumber: string;
+  addressLine1: string;
+  addressLine2: string;
+  addressLine3: string;
+  cityTown: string;
+  county: string;
+  state: string;
+  postcode: string;
+}): string {
+  return [
+    parts.houseNameNumber,
+    parts.addressLine1,
+    parts.addressLine2,
+    parts.addressLine3,
+    parts.cityTown,
+    parts.county,
+    parts.state,
+    parts.postcode
+  ].filter(Boolean).join(", ");
+}
+
 export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const router = Router();
   const upload = multer({ storage: multer.memoryStorage() });
@@ -492,12 +514,15 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/register", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
+      const requestedType = String(req.query.type || "").trim().toLowerCase();
+      const customerType = requestedType === "private" || requestedType === "business" ? requestedType : "";
 
       return res.render("pages/customers/register", {
         title: "New Customer",
         appTitle: options.appTitle,
         email: session.email,
         activeRoleLabel: session.activeRoleLabel,
+        customerType,
         formData: {},
         errors: []
       });
@@ -538,15 +563,25 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     const registerFormData = {
+      title: String(req.body.title || "").trim(),
       givenName: String(req.body.givenName || "").trim(),
       surname: String(req.body.surname || "").trim(),
       email: String(req.body.email || "").trim(),
       phone: String(req.body.phone || "").trim(),
       company: String(req.body.company || "").trim(),
+      houseNameNumber: String(req.body.houseNameNumber || "").trim(),
+      addressLine1: String(req.body.addressLine1 || "").trim(),
+      addressLine2: String(req.body.addressLine2 || "").trim(),
+      addressLine3: String(req.body.addressLine3 || "").trim(),
+      cityTown: String(req.body.cityTown || "").trim(),
+      county: String(req.body.county || "").trim(),
+      state: String(req.body.state || "").trim(),
+      postcode: String(req.body.postcode || "").trim(),
       address: String(req.body.address || "").trim(),
       notes: String(req.body.notes || "").trim(),
       preferredContact: String(req.body.preferredContact || "Unknown")
     };
+    const address = buildAddressFromParts(registerFormData) || registerFormData.address;
 
     const registerErrors: string[] = [];
 
@@ -564,6 +599,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         appTitle: options.appTitle,
         email: sessionContext.email,
         activeRoleLabel: sessionContext.activeRoleLabel,
+        customerType: "private",
         formData: registerFormData,
         errors: registerErrors
       });
@@ -571,12 +607,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     try {
       const newCustomer = createCustomer({
+        title: registerFormData.title || null,
         givenName: registerFormData.givenName,
         surname: registerFormData.surname,
         email: registerFormData.email || null,
         phone: registerFormData.phone || null,
         company: registerFormData.company || null,
-        address: registerFormData.address || null,
+        address: address || null,
         notes: registerFormData.notes || null,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(registerFormData.preferredContact)
           ? (registerFormData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
