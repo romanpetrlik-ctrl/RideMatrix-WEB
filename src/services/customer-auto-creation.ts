@@ -44,7 +44,11 @@ export function getOrCreateCustomer(
     surname,
     email: normalizedEmail,
     phone: phone ?? null,
-    status: "Active"
+    status: "Active",
+    // Distinct origin marker so booking-driven records can be told apart from
+    // manually registered customers, Cabcher imports ("import") and demo seed
+    // data ("seed") — see docs/customer-persistence.md.
+    source: "booking"
   });
 
   console.log(`[customer-auto-creation] Created customer ${newCustomer.id} for email ${normalizedEmail}`);

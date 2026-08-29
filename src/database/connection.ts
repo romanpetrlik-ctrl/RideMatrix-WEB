@@ -8,6 +8,29 @@ export const DEFAULT_DATABASE_FILE = "data/ridematrix.sqlite";
 
 let connection: Database.Database | null = null;
 
+/**
+ * Demo/seed customer data must never be created automatically in production.
+ * `SEED_DEMO_DATA` defaults to enabled everywhere except when `NODE_ENV` is
+ * `production`, so existing development/test/staging behaviour is unchanged
+ * while production deployments are safe by default. Set `SEED_DEMO_DATA=true`
+ * explicitly to override the production default (for example on a staging
+ * environment that also has `NODE_ENV=production`), or `SEED_DEMO_DATA=false`
+ * to disable it anywhere else.
+ */
+function shouldSeedDemoData(): boolean {
+  const configured = String(process.env.SEED_DEMO_DATA ?? "").trim().toLowerCase();
+
+  if (configured === "true") {
+    return true;
+  }
+
+  if (configured === "false") {
+    return false;
+  }
+
+  return process.env.NODE_ENV !== "production";
+}
+
 function resolveDatabaseFile(): string {
   const configured = String(process.env.DATABASE_FILE || "").trim() || DEFAULT_DATABASE_FILE;
 
@@ -75,7 +98,12 @@ export function getDatabase(): Database.Database {
 
   try {
     runMigrations(database);
-    seedCustomers(database);
+
+    if (shouldSeedDemoData()) {
+      seedCustomers(database);
+    } else {
+      console.log("[database] SEED_DEMO_DATA is disabled; skipping demo customer seed.");
+    }
   } catch (error) {
     database.close();
     throw error;
