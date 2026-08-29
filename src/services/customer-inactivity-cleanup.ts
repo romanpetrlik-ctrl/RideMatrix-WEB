@@ -1,4 +1,9 @@
-import { CustomerRecord, deleteCustomer, listCustomers } from "./customers";
+import {
+  CUSTOMER_PER_PAGE_OPTIONS,
+  CustomerRecord,
+  deleteCustomer,
+  listCustomers
+} from "./customers";
 
 export type CleanupResult = {
   processed: number;
@@ -11,25 +16,44 @@ export type CleanupResult = {
  * - last_booking_at IS NULL and account created > thresholdMonths ago, OR
  * - last_booking_at is > thresholdMonths ago
  */
+function getLatestBookingAt(customer: CustomerRecord): string | null {
+  return customer.bookings.reduce<string | null>(
+    (latest, booking) => (!latest || booking.serviceDate > latest ? booking.serviceDate : latest),
+    customer.lastBookingAt
+  );
+}
+
 function isInactive(customer: CustomerRecord, thresholdMonths: number): boolean {
   const now = new Date();
   const cutoff = new Date(now);
   cutoff.setMonth(cutoff.getMonth() - thresholdMonths);
 
-  if (customer.lastBookingAt) {
-    return new Date(customer.lastBookingAt) < cutoff;
+  const latestBookingAt = getLatestBookingAt(customer);
+
+  if (latestBookingAt) {
+    return new Date(latestBookingAt) < cutoff;
   }
 
   return new Date(customer.createdAt) < cutoff;
 }
 
 export function findInactiveCustomers(monthsThreshold: number = 12): CustomerRecord[] {
-  const allCustomers = listCustomers({
-    search: "",
-    status: "all",
-    page: 1,
-    perPage: Number.MAX_SAFE_INTEGER
-  }).customers;
+  const allCustomers: CustomerRecord[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const result = listCustomers({
+      search: "",
+      status: "all",
+      page,
+      perPage: CUSTOMER_PER_PAGE_OPTIONS[CUSTOMER_PER_PAGE_OPTIONS.length - 1]
+    });
+
+    allCustomers.push(...result.customers);
+    totalPages = result.totalPages;
+    page += 1;
+  } while (page <= totalPages);
 
   return allCustomers.filter((customer) => isInactive(customer, monthsThreshold));
 }

@@ -1,4 +1,5 @@
-import { listDerivedCustomers, listImportedBookingsForCustomer } from "./cabcher-import";
+import type { Database } from "better-sqlite3";
+import { getDatabase } from "../database/connection";
 
 export const CUSTOMER_STATUS_OPTIONS = [
   "all",
@@ -13,6 +14,8 @@ export const CUSTOMER_DEFAULT_PER_PAGE = 10;
 
 export type CustomerStatus = (typeof CUSTOMER_STATUS_OPTIONS)[number];
 
+export type PreferredContact = "WhatsApp" | "Email" | "Phone" | "Unknown";
+
 export type BookingRecord = {
   id: string;
   reference: string;
@@ -24,19 +27,29 @@ export type BookingRecord = {
 
 export type CustomerRecord = {
   id: string;
-  title?: string | null;
+  title: string | null;
   givenName: string;
   surname: string;
   email: string | null;
   phone: string | null;
   createdAt: string;
+  updatedAt: string;
   lastLoginAt: string | null;
   lastBookingAt: string | null;
   status: Exclude<CustomerStatus, "all">;
   notes: string | null;
   address: string | null;
+  houseNameNumber: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  cityTown: string | null;
+  county: string | null;
+  state: string | null;
+  postcode: string | null;
   company: string | null;
-  preferredContact: "WhatsApp" | "Email" | "Phone" | "Unknown";
+  preferredContact: PreferredContact;
+  source: string;
   bookings: BookingRecord[];
 };
 
@@ -55,520 +68,8 @@ export type CustomerListResult = {
   perPage: number;
 };
 
-const seedCustomerRecords: CustomerRecord[] = [
-  {
-    id: "cust-001",
-    givenName: "Lina",
-    surname: "Adams",
-    email: "lina.adams@example.com",
-    phone: "+44 7700 900101",
-    createdAt: "2024-01-12T09:30:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-29T11:45:00Z",
-    status: "Active",
-    notes: "Prefers airport pickup confirmations on WhatsApp.",
-    address: "12 Station Road, Manchester",
-    company: "Aster Logistics",
-    preferredContact: "WhatsApp",
-    bookings: [
-      {
-        id: "book-1001",
-        reference: "RM-1001",
-        serviceDate: "2026-08-01T08:15:00Z",
-        pickup: "Manchester Piccadilly",
-        dropoff: "MAN Terminal 2",
-        status: "Scheduled"
-      },
-      {
-        id: "book-1002",
-        reference: "RM-0951",
-        serviceDate: "2026-07-16T18:20:00Z",
-        pickup: "Salford Quays",
-        dropoff: "Manchester Victoria",
-        status: "Completed"
-      }
-    ]
-  },
-  {
-    id: "cust-002",
-    givenName: "George",
-    surname: "Baker",
-    email: "george.baker@example.com",
-    phone: "+44 7700 900102",
-    createdAt: "2023-11-05T13:10:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-25T07:20:00Z",
-    status: "Active",
-    notes: null,
-    address: "4 King Street, Leeds",
-    company: null,
-    preferredContact: "Email",
-    bookings: [
-      {
-        id: "book-1003",
-        reference: "RM-1003",
-        serviceDate: "2026-08-03T14:00:00Z",
-        pickup: "Leeds Station",
-        dropoff: "Leeds Bradford Airport",
-        status: "Scheduled"
-      }
-    ]
-  },
-  {
-    id: "cust-003",
-    givenName: "Noah",
-    surname: "Bennett",
-    email: null,
-    phone: "+44 7700 900103",
-    createdAt: "2025-02-18T15:55:00Z",
-    lastBookingAt: null,
-    lastLoginAt: null,
-    status: "Pending",
-    notes: "Awaiting email confirmation.",
-    address: null,
-    company: null,
-    preferredContact: "Phone",
-    bookings: []
-  },
-  {
-    id: "cust-004",
-    givenName: "Emma",
-    surname: "Clark",
-    email: "emma.clark@example.com",
-    phone: null,
-    createdAt: "2024-03-09T10:05:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-06-14T16:10:00Z",
-    status: "Suspended",
-    notes: "Temporarily suspended while chargeback review is open.",
-    address: "88 Riverside Drive, York",
-    company: "Clark & Co",
-    preferredContact: "Email",
-    bookings: [
-      {
-        id: "book-1004",
-        reference: "RM-1004",
-        serviceDate: "2026-06-01T09:00:00Z",
-        pickup: "York Station",
-        dropoff: "The Grand York",
-        status: "Cancelled"
-      }
-    ]
-  },
-  {
-    id: "cust-005",
-    givenName: "Isla",
-    surname: "Dawson",
-    email: "isla.dawson@example.com",
-    phone: "+44 7700 900105",
-    createdAt: "2025-07-11T12:00:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-30T20:15:00Z",
-    status: "Active",
-    notes: null,
-    address: "25 Prince Street, Liverpool",
-    company: null,
-    preferredContact: "WhatsApp",
-    bookings: [
-      {
-        id: "book-1005",
-        reference: "RM-1005",
-        serviceDate: "2026-08-05T06:45:00Z",
-        pickup: "Liverpool Lime Street",
-        dropoff: "LPL Departures",
-        status: "Scheduled"
-      }
-    ]
-  },
-  {
-    id: "cust-006",
-    givenName: "Mason",
-    surname: "Evans",
-    email: "mason.evans@example.com",
-    phone: "+44 7700 900106",
-    createdAt: "2024-08-20T08:40:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-17T12:05:00Z",
-    status: "Delete Pending",
-    notes: "Customer requested record removal after final invoice.",
-    address: "102 High Street, Bristol",
-    company: null,
-    preferredContact: "Email",
-    bookings: [
-      {
-        id: "book-1006",
-        reference: "RM-1006",
-        serviceDate: "2026-07-02T11:30:00Z",
-        pickup: "Temple Meads",
-        dropoff: "Bristol Harbourside",
-        status: "Completed"
-      }
-    ]
-  },
-  {
-    id: "cust-007",
-    givenName: "Amelia",
-    surname: "Fisher",
-    email: "amelia.fisher@example.com",
-    phone: "+44 7700 900107",
-    createdAt: "2024-05-15T17:22:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-01T19:10:00Z",
-    status: "Active",
-    notes: "VIP account with monthly invoicing.",
-    address: "5 Queen Square, Bath",
-    company: "Fisher Events",
-    preferredContact: "WhatsApp",
-    bookings: [
-      {
-        id: "book-1007",
-        reference: "RM-1007",
-        serviceDate: "2026-08-08T09:30:00Z",
-        pickup: "Bath Spa",
-        dropoff: "Bristol Airport",
-        status: "Scheduled"
-      },
-      {
-        id: "book-1008",
-        reference: "RM-0988",
-        serviceDate: "2026-07-08T09:30:00Z",
-        pickup: "Bath Spa",
-        dropoff: "Bristol Airport",
-        status: "Completed"
-      }
-    ]
-  },
-  {
-    id: "cust-008",
-    givenName: "Oliver",
-    surname: "Green",
-    email: "oliver.green@example.com",
-    phone: "+44 7700 900108",
-    createdAt: "2023-09-03T11:14:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-04-22T09:45:00Z",
-    status: "Suspended",
-    notes: null,
-    address: "17 Elm Court, Sheffield",
-    company: null,
-    preferredContact: "Phone",
-    bookings: []
-  },
-  {
-    id: "cust-009",
-    givenName: "Sophia",
-    surname: "Hall",
-    email: "sophia.hall@example.com",
-    phone: "+44 7700 900109",
-    createdAt: "2024-10-01T14:12:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-30T05:40:00Z",
-    status: "Active",
-    notes: null,
-    address: "2 Wellington Terrace, Newcastle",
-    company: "Hall Design",
-    preferredContact: "Email",
-    bookings: [
-      {
-        id: "book-1009",
-        reference: "RM-1009",
-        serviceDate: "2026-08-09T16:40:00Z",
-        pickup: "Newcastle Central",
-        dropoff: "NE1 Business Quarter",
-        status: "Scheduled"
-      }
-    ]
-  },
-  {
-    id: "cust-010",
-    givenName: "Ethan",
-    surname: "Irwin",
-    email: null,
-    phone: null,
-    createdAt: "2026-01-21T07:55:00Z",
-    lastBookingAt: null,
-    lastLoginAt: null,
-    status: "Pending",
-    notes: "Lead imported from concierge partner.",
-    address: null,
-    company: "North Concierge",
-    preferredContact: "Unknown",
-    bookings: []
-  },
-  {
-    id: "cust-011",
-    givenName: "Harper",
-    surname: "Johnson",
-    email: "harper.johnson@example.com",
-    phone: "+44 7700 900111",
-    createdAt: "2024-02-27T16:45:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-05-10T13:20:00Z",
-    status: "Active",
-    notes: "Requires child seat requests to be flagged manually.",
-    address: "61 Castle Street, Edinburgh",
-    company: null,
-    preferredContact: "Email",
-    bookings: [
-      {
-        id: "book-1010",
-        reference: "RM-1010",
-        serviceDate: "2026-08-10T08:00:00Z",
-        pickup: "Edinburgh Waverley",
-        dropoff: "EDI Airport",
-        status: "Scheduled"
-      }
-    ]
-  },
-  {
-    id: "cust-012",
-    givenName: "Jack",
-    surname: "King",
-    email: "jack.king@example.com",
-    phone: "+44 7700 900112",
-    createdAt: "2023-12-11T10:22:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-11T08:22:00Z",
-    status: "Delete Pending",
-    notes: null,
-    address: "9 Market Lane, Nottingham",
-    company: null,
-    preferredContact: "WhatsApp",
-    bookings: [
-      {
-        id: "book-1011",
-        reference: "RM-1011",
-        serviceDate: "2026-06-20T15:15:00Z",
-        pickup: "Nottingham Station",
-        dropoff: "East Midlands Airport",
-        status: "Completed"
-      }
-    ]
-  },
-  {
-    id: "cust-013",
-    givenName: "Ella",
-    surname: "Lewis",
-    email: "ella.lewis@example.com",
-    phone: "+44 7700 900113",
-    createdAt: "2024-07-02T09:05:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-28T09:55:00Z",
-    status: "Active",
-    notes: "Frequent early-morning rail station transfers.",
-    address: "44 Broad Street, Birmingham",
-    company: "Lewis Retail",
-    preferredContact: "WhatsApp",
-    bookings: [
-      {
-        id: "book-1012",
-        reference: "RM-1012",
-        serviceDate: "2026-08-12T05:55:00Z",
-        pickup: "Birmingham New Street",
-        dropoff: "BHX Airport",
-        status: "Scheduled"
-      }
-    ]
-  },
-  {
-    id: "cust-014",
-    givenName: "Leo",
-    surname: "Mitchell",
-    email: "leo.mitchell@example.com",
-    phone: "+44 7700 900114",
-    createdAt: "2025-04-19T18:40:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-24T21:00:00Z",
-    status: "Active",
-    notes: null,
-    address: "3 Pier View, Brighton",
-    company: null,
-    preferredContact: "Phone",
-    bookings: []
-  },
-  {
-    id: "cust-015",
-    givenName: "Mia",
-    surname: "Nolan",
-    email: "mia.nolan@example.com",
-    phone: "+44 7700 900115",
-    createdAt: "2025-09-14T11:50:00Z",
-    lastBookingAt: null,
-    lastLoginAt: null,
-    status: "Pending",
-    notes: "Signup incomplete after quote request.",
-    address: "72 Seaside Road, Portsmouth",
-    company: null,
-    preferredContact: "Email",
-    bookings: []
-  },
-  {
-    id: "cust-016",
-    givenName: "James",
-    surname: "Owens",
-    email: "james.owens@example.com",
-    phone: "+44 7700 900116",
-    createdAt: "2024-06-23T13:33:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-20T10:18:00Z",
-    status: "Suspended",
-    notes: "Manual review required before reactivation.",
-    address: "18 Old Town Road, Cardiff",
-    company: "Owens Advisory",
-    preferredContact: "Phone",
-    bookings: [
-      {
-        id: "book-1013",
-        reference: "RM-1013",
-        serviceDate: "2026-05-18T09:10:00Z",
-        pickup: "Cardiff Central",
-        dropoff: "CF10 Bay",
-        status: "Cancelled"
-      }
-    ]
-  },
-  {
-    id: "cust-017",
-    givenName: "Ava",
-    surname: "Parker",
-    email: "ava.parker@example.com",
-    phone: "+44 7700 900117",
-    createdAt: "2024-04-08T08:08:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-31T06:50:00Z",
-    status: "Active",
-    notes: "Often books return journeys in the same session.",
-    address: "11 Regent Place, Oxford",
-    company: null,
-    preferredContact: "WhatsApp",
-    bookings: [
-      {
-        id: "book-1014",
-        reference: "RM-1014",
-        serviceDate: "2026-08-14T12:20:00Z",
-        pickup: "Oxford Parkway",
-        dropoff: "Heathrow Terminal 5",
-        status: "Scheduled"
-      }
-    ]
-  },
-  {
-    id: "cust-018",
-    givenName: "Lucas",
-    surname: "Quinn",
-    email: "lucas.quinn@example.com",
-    phone: "+44 7700 900118",
-    createdAt: "2025-06-28T15:05:00Z",
-    lastBookingAt: null,
-    lastLoginAt: "2026-07-18T14:15:00Z",
-    status: "Active",
-    notes: null,
-    address: "1 Park Avenue, Cambridge",
-    company: "Quinn Labs",
-    preferredContact: "Email",
-    bookings: [
-      {
-        id: "book-1015",
-        reference: "RM-1015",
-        serviceDate: "2026-08-18T17:10:00Z",
-        pickup: "Cambridge North",
-        dropoff: "Stansted Airport",
-        status: "Scheduled"
-      }
-    ]
-  }
-];
-
-function compareCustomers(left: CustomerRecord, right: CustomerRecord): number {
-  const surnameOrder = left.surname.localeCompare(right.surname, undefined, { sensitivity: "base" });
-  if (surnameOrder !== 0) {
-    return surnameOrder;
-  }
-
-  return left.givenName.localeCompare(right.givenName, undefined, { sensitivity: "base" });
-}
-
-function getImportedCustomerRecords(): CustomerRecord[] {
-  return listDerivedCustomers().map((customer) => {
-    const importedBookings: BookingRecord[] = listImportedBookingsForCustomer(customer.id).map((booking) => ({
-      id: booking.id,
-      reference: `RM-HIST-${booking.id.replace("imp-book-", "")}`,
-      serviceDate: booking.serviceDateTime,
-      pickup: booking.pickupText,
-      dropoff: booking.dropoffText,
-      status: booking.inferredTemporalStatus === "upcoming" ? "Scheduled" : "Completed"
-    }));
-
-    return {
-      id: customer.id,
-      givenName: customer.givenName || customer.fullName || "Imported",
-      surname: customer.surname || "Customer",
-      email: customer.email,
-      phone: customer.phone,
-      createdAt: customer.firstSeenAt || customer.createdAt,
-      lastBookingAt: customer.lastSeenAt || null,
-      lastLoginAt: null,
-      status: "Active",
-      notes: `Imported from Cabcher cleaned bookings. Total bookings: ${customer.bookingCountTotal}.`,
-      address: null,
-      company: null,
-      preferredContact: customer.phone ? "Phone" : "Email",
-      bookings: importedBookings
-    };
-  });
-}
-
-function getAllCustomerRecords(): CustomerRecord[] {
-  return [...seedCustomerRecords, ...getImportedCustomerRecords()];
-}
-
-function normalizeText(value: string | null | undefined): string {
-  return String(value || "").trim().toLowerCase();
-}
-
-function normalizePhone(value: string | null | undefined): string {
-  return String(value || "").replace(/[^\d+]/g, "").toLowerCase();
-}
-
-function matchesSearch(customer: CustomerRecord, search: string): boolean {
-  if (!search) {
-    return true;
-  }
-
-  const normalizedSearch = normalizeText(search);
-  const normalizedPhoneSearch = normalizePhone(search);
-
-  return [
-    normalizeText(customer.surname),
-    normalizeText(customer.givenName),
-    normalizeText(customer.email),
-    normalizeText(customer.phone)
-  ].some((value) => value.includes(normalizedSearch))
-    || Boolean(normalizedPhoneSearch)
-    && normalizePhone(customer.phone).includes(normalizedPhoneSearch);
-}
-
-const createdCustomerRecords: CustomerRecord[] = [];
-const customerOverrides: Map<string, Partial<CustomerRecord>> = new Map();
-const deletedCustomerIds = new Set<string>();
-
-function generateCustomerId(): string {
-  return `cust-new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function applyOverride(customer: CustomerRecord): CustomerRecord {
-  const override = customerOverrides.get(customer.id);
-  return override ? { ...customer, ...override } : customer;
-}
-
-function getAllCustomerRecordsWithOverrides(): CustomerRecord[] {
-  return getAllCustomerRecords()
-    .map(applyOverride)
-    .concat(createdCustomerRecords.map(applyOverride))
-    .filter((customer) => !deletedCustomerIds.has(customer.id));
-}
-
 export type CustomerCreateInput = {
+  id?: string;
   title?: string | null;
   givenName: string;
   surname: string;
@@ -576,111 +77,449 @@ export type CustomerCreateInput = {
   phone: string | null;
   notes?: string | null;
   address?: string | null;
+  houseNameNumber?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressLine3?: string | null;
+  cityTown?: string | null;
+  county?: string | null;
+  state?: string | null;
+  postcode?: string | null;
   company?: string | null;
-  preferredContact?: "WhatsApp" | "Email" | "Phone" | "Unknown";
+  preferredContact?: PreferredContact;
   status?: Exclude<CustomerStatus, "all">;
+  source?: string;
 };
 
-export type CustomerUpdateInput = Partial<CustomerCreateInput>;
+export type CustomerUpdateInput = Partial<Omit<CustomerCreateInput, "id">>;
 
-export function createCustomer(input: CustomerCreateInput): CustomerRecord {
-  const now = new Date().toISOString();
-  const customer: CustomerRecord = {
-    id: generateCustomerId(),
-    title: input.title ? input.title.trim() : null,
-    givenName: input.givenName.trim(),
-    surname: input.surname.trim(),
-    email: input.email ? input.email.trim() : null,
-    phone: input.phone ? input.phone.trim() : null,
-    createdAt: now,
-    lastBookingAt: null,
-    lastLoginAt: null,
-    status: input.status || "Pending",
-    notes: input.notes ? input.notes.trim() : null,
-    address: input.address ? input.address.trim() : null,
-    company: input.company ? input.company.trim() : null,
-    preferredContact: input.preferredContact || "Unknown",
-    bookings: []
-  };
+type CustomerRow = {
+  id: string;
+  title: string | null;
+  given_name: string;
+  surname: string;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  address: string | null;
+  house_name_number: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  address_line3: string | null;
+  city_town: string | null;
+  county: string | null;
+  state: string | null;
+  postcode: string | null;
+  preferred_contact: string;
+  notes: string | null;
+  status: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+  last_booking_at: string | null;
+};
 
-  createdCustomerRecords.push(customer);
-  return customer;
+const PREFERRED_CONTACT_VALUES: PreferredContact[] = ["WhatsApp", "Email", "Phone", "Unknown"];
+
+function normalizePreferredContact(value: string | null | undefined): PreferredContact {
+  return PREFERRED_CONTACT_VALUES.includes(value as PreferredContact)
+    ? (value as PreferredContact)
+    : "Unknown";
 }
 
+function normalizeStatus(value: string | null | undefined): Exclude<CustomerStatus, "all"> {
+  const allowed = CUSTOMER_STATUS_OPTIONS.filter((status) => status !== "all");
+  return allowed.includes(value as Exclude<CustomerStatus, "all">)
+    ? (value as Exclude<CustomerStatus, "all">)
+    : "Pending";
+}
+
+function trimOrNull(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+export function normalizeCustomerEmail(email: string | null | undefined): string | null {
+  const trimmed = trimOrNull(email);
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+function normalizePhoneDigits(value: string | null | undefined): string {
+  return String(value || "").replace(/[^\d+]/g, "").toLowerCase();
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function mapRow(row: CustomerRow, bookings: BookingRecord[]): CustomerRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    givenName: row.given_name,
+    surname: row.surname,
+    email: row.email,
+    phone: row.phone,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastLoginAt: row.last_login_at,
+    lastBookingAt: row.last_booking_at,
+    status: normalizeStatus(row.status),
+    notes: row.notes,
+    address: row.address,
+    houseNameNumber: row.house_name_number,
+    addressLine1: row.address_line1,
+    addressLine2: row.address_line2,
+    addressLine3: row.address_line3,
+    cityTown: row.city_town,
+    county: row.county,
+    state: row.state,
+    postcode: row.postcode,
+    company: row.company,
+    preferredContact: normalizePreferredContact(row.preferred_contact),
+    source: row.source,
+    bookings
+  };
+}
+
+function loadBookings(database: Database, customerIds: string[]): Map<string, BookingRecord[]> {
+  const grouped = new Map<string, BookingRecord[]>();
+
+  if (customerIds.length === 0) {
+    return grouped;
+  }
+
+  const placeholders = customerIds.map(() => "?").join(", ");
+
+  const ownBookings = database
+    .prepare(
+      `SELECT id, customer_id, reference, service_date, pickup, dropoff, status
+       FROM customer_bookings
+       WHERE customer_id IN (${placeholders})
+       ORDER BY service_date DESC`
+    )
+    .all(...customerIds) as Array<{
+      id: string;
+      customer_id: string;
+      reference: string;
+      service_date: string;
+      pickup: string;
+      dropoff: string;
+      status: BookingRecord["status"];
+    }>;
+
+  for (const booking of ownBookings) {
+    const list = grouped.get(booking.customer_id) || [];
+    list.push({
+      id: booking.id,
+      reference: booking.reference,
+      serviceDate: booking.service_date,
+      pickup: booking.pickup,
+      dropoff: booking.dropoff,
+      status: booking.status
+    });
+    grouped.set(booking.customer_id, list);
+  }
+
+  const importedBookings = database
+    .prepare(
+      `SELECT id, customer_id, service_date_time, pickup_text, dropoff_text, inferred_temporal_status
+       FROM imported_bookings
+       WHERE customer_id IN (${placeholders})
+       ORDER BY service_date_time DESC`
+    )
+    .all(...customerIds) as Array<{
+      id: string;
+      customer_id: string;
+      service_date_time: string;
+      pickup_text: string;
+      dropoff_text: string;
+      inferred_temporal_status: string;
+    }>;
+
+  const nowIso = new Date().toISOString();
+
+  for (const booking of importedBookings) {
+    const list = grouped.get(booking.customer_id) || [];
+    list.push({
+      id: booking.id,
+      reference: `RM-HIST-${booking.id.replace("imp-book-", "")}`,
+      serviceDate: booking.service_date_time,
+      pickup: booking.pickup_text,
+      dropoff: booking.dropoff_text,
+      // The temporal status is derived on read so that imported bookings do not
+      // stay "Scheduled" forever once their service date has passed.
+      status: booking.service_date_time > nowIso ? "Scheduled" : "Completed"
+    });
+    grouped.set(booking.customer_id, list);
+  }
+
+  for (const [customerId, list] of grouped) {
+    grouped.set(
+      customerId,
+      list.sort((left, right) => right.serviceDate.localeCompare(left.serviceDate))
+    );
+  }
+
+  return grouped;
+}
+
+function hydrate(database: Database, rows: CustomerRow[]): CustomerRecord[] {
+  const bookings = loadBookings(database, rows.map((row) => row.id));
+  return rows.map((row) => mapRow(row, bookings.get(row.id) || []));
+}
+
+function generateCustomerId(): string {
+  return `cust-new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+type FilterClause = {
+  sql: string;
+  params: Record<string, string>;
+};
+
+function buildFilterClause(params: CustomerListParams): FilterClause {
+  const conditions = ["deleted_at IS NULL"];
+  const values: Record<string, string> = {};
+
+  if (params.status !== "all") {
+    conditions.push("status = @status");
+    values.status = params.status;
+  }
+
+  const search = String(params.search || "").trim();
+
+  if (search) {
+    const like = `%${escapeLike(search.toLowerCase())}%`;
+    values.like = like;
+
+    const phoneSearch = normalizePhoneDigits(search);
+    const searchConditions = [
+      "lower(COALESCE(surname, '')) LIKE @like ESCAPE '\\'",
+      "lower(COALESCE(given_name, '')) LIKE @like ESCAPE '\\'",
+      "lower(COALESCE(email, '')) LIKE @like ESCAPE '\\'",
+      "lower(COALESCE(phone, '')) LIKE @like ESCAPE '\\'"
+    ];
+
+    if (phoneSearch) {
+      values.phoneLike = `%${escapeLike(phoneSearch)}%`;
+      searchConditions.push("rm_normalize_phone(phone) LIKE @phoneLike ESCAPE '\\'");
+    }
+
+    conditions.push(`(${searchConditions.join(" OR ")})`);
+  }
+
+  return {
+    sql: conditions.join(" AND "),
+    params: values
+  };
+}
+
+export function createCustomer(input: CustomerCreateInput): CustomerRecord {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  const id = input.id || generateCustomerId();
+  const email = trimOrNull(input.email);
+
+  database
+    .prepare(
+      `INSERT INTO customers (
+        id, title, given_name, surname, email, email_normalized, phone, company, address,
+        house_name_number, address_line1, address_line2, address_line3,
+        city_town, county, state, postcode,
+        preferred_contact, notes, status, source, created_at, updated_at,
+        last_login_at, last_booking_at, deleted_at
+      ) VALUES (
+        @id, @title, @givenName, @surname, @email, @emailNormalized, @phone, @company, @address,
+        @houseNameNumber, @addressLine1, @addressLine2, @addressLine3,
+        @cityTown, @county, @state, @postcode,
+        @preferredContact, @notes, @status, @source, @createdAt, @updatedAt,
+        NULL, NULL, NULL
+      )`
+    )
+    .run({
+      id,
+      title: trimOrNull(input.title),
+      givenName: String(input.givenName || "").trim(),
+      surname: String(input.surname || "").trim(),
+      email,
+      emailNormalized: normalizeCustomerEmail(email),
+      phone: trimOrNull(input.phone),
+      company: trimOrNull(input.company),
+      address: trimOrNull(input.address),
+      houseNameNumber: trimOrNull(input.houseNameNumber),
+      addressLine1: trimOrNull(input.addressLine1),
+      addressLine2: trimOrNull(input.addressLine2),
+      addressLine3: trimOrNull(input.addressLine3),
+      cityTown: trimOrNull(input.cityTown),
+      county: trimOrNull(input.county),
+      state: trimOrNull(input.state),
+      postcode: trimOrNull(input.postcode),
+      preferredContact: normalizePreferredContact(input.preferredContact),
+      notes: trimOrNull(input.notes),
+      status: input.status || "Pending",
+      source: input.source || "manual",
+      createdAt: now,
+      updatedAt: now
+    });
+
+  const created = getCustomerById(id);
+
+  if (!created) {
+    throw new Error(`Customer ${id} could not be persisted.`);
+  }
+
+  return created;
+}
+
+const UPDATABLE_COLUMNS: Array<[keyof CustomerUpdateInput, string]> = [
+  ["title", "title"],
+  ["givenName", "given_name"],
+  ["surname", "surname"],
+  ["phone", "phone"],
+  ["company", "company"],
+  ["address", "address"],
+  ["houseNameNumber", "house_name_number"],
+  ["addressLine1", "address_line1"],
+  ["addressLine2", "address_line2"],
+  ["addressLine3", "address_line3"],
+  ["cityTown", "city_town"],
+  ["county", "county"],
+  ["state", "state"],
+  ["postcode", "postcode"],
+  ["notes", "notes"]
+];
+
 export function updateCustomer(id: string, input: CustomerUpdateInput): CustomerRecord | undefined {
-  const all = getAllCustomerRecords().concat(createdCustomerRecords);
-  const existing = all.find((c) => c.id === id);
+  const database = getDatabase();
+  const existing = getCustomerById(id);
 
   if (!existing) {
     return undefined;
   }
 
-  const currentOverride = customerOverrides.get(id) || {};
-  const updated: Partial<CustomerRecord> = { ...currentOverride };
+  const assignments: string[] = [];
+  const values: Record<string, string | null> = { id };
 
-  if (input.givenName !== undefined) updated.givenName = input.givenName.trim();
-  if (input.title !== undefined) updated.title = input.title ? input.title.trim() : null;
-  if (input.surname !== undefined) updated.surname = input.surname.trim();
-  if (input.email !== undefined) updated.email = input.email ? input.email.trim() : null;
-  if (input.phone !== undefined) updated.phone = input.phone ? input.phone.trim() : null;
-  if (input.notes !== undefined) updated.notes = input.notes ? input.notes.trim() : null;
-  if (input.address !== undefined) updated.address = input.address ? input.address.trim() : null;
-  if (input.company !== undefined) updated.company = input.company ? input.company.trim() : null;
-  if (input.preferredContact !== undefined) updated.preferredContact = input.preferredContact;
-  if (input.status !== undefined) updated.status = input.status;
+  for (const [inputKey, column] of UPDATABLE_COLUMNS) {
+    const value = input[inputKey];
 
-  customerOverrides.set(id, updated);
-  return applyOverride(existing);
+    if (value === undefined) {
+      continue;
+    }
+
+    assignments.push(`${column} = @${column}`);
+    values[column] = trimOrNull(value as string | null);
+  }
+
+  if (input.email !== undefined) {
+    const email = trimOrNull(input.email);
+    assignments.push("email = @email", "email_normalized = @email_normalized");
+    values.email = email;
+    values.email_normalized = normalizeCustomerEmail(email);
+  }
+
+  if (input.preferredContact !== undefined) {
+    assignments.push("preferred_contact = @preferred_contact");
+    values.preferred_contact = normalizePreferredContact(input.preferredContact);
+  }
+
+  if (input.status !== undefined) {
+    assignments.push("status = @status");
+    values.status = normalizeStatus(input.status);
+  }
+
+  assignments.push("updated_at = @updated_at");
+  values.updated_at = new Date().toISOString();
+
+  database
+    .prepare(`UPDATE customers SET ${assignments.join(", ")} WHERE id = @id AND deleted_at IS NULL`)
+    .run(values);
+
+  return getCustomerById(id);
 }
 
 export function getCustomerByEmail(email: string): CustomerRecord | undefined {
-  const normalized = email.trim().toLowerCase();
-  return getAllCustomerRecordsWithOverrides().find(
-    (customer) => customer.email && customer.email.toLowerCase() === normalized
-  );
-}
+  const normalized = normalizeCustomerEmail(email);
 
-export function updateCustomerLastBookingAt(id: string, bookingAt: string): CustomerRecord | undefined {
-  const all = getAllCustomerRecords().concat(createdCustomerRecords);
-  const existing = all.find((c) => c.id === id);
-
-  if (!existing) {
+  if (!normalized) {
     return undefined;
   }
 
-  const currentOverride = customerOverrides.get(id) || {};
-  customerOverrides.set(id, { ...currentOverride, lastBookingAt: bookingAt });
-  return applyOverride(existing);
+  const database = getDatabase();
+  const row = database
+    .prepare("SELECT * FROM customers WHERE email_normalized = ? AND deleted_at IS NULL LIMIT 1")
+    .get(normalized) as CustomerRow | undefined;
+
+  return row ? hydrate(database, [row])[0] : undefined;
 }
 
-export function deleteCustomer(id: string): boolean {
-  const all = getAllCustomerRecords().concat(createdCustomerRecords);
-  const existing = all.find((c) => c.id === id);
+export function updateCustomerLastBookingAt(id: string, bookingAt: string): CustomerRecord | undefined {
+  const database = getDatabase();
+  const result = database
+    .prepare(
+      "UPDATE customers SET last_booking_at = @bookingAt, updated_at = @updatedAt WHERE id = @id AND deleted_at IS NULL"
+    )
+    .run({ id, bookingAt, updatedAt: new Date().toISOString() });
 
-  if (!existing) {
-    return false;
+  if (result.changes === 0) {
+    return undefined;
   }
 
-  deletedCustomerIds.add(id);
-  return true;
+  return getCustomerById(id);
+}
+
+/**
+ * Soft-deletes a customer profile. Booking history is intentionally retained
+ * for legal and compliance purposes, so only the customer profile is hidden
+ * from the application.
+ */
+export function deleteCustomer(id: string): boolean {
+  const database = getDatabase();
+  const result = database
+    .prepare(
+      "UPDATE customers SET deleted_at = @deletedAt, updated_at = @deletedAt WHERE id = @id AND deleted_at IS NULL"
+    )
+    .run({ id, deletedAt: new Date().toISOString() });
+
+  return result.changes > 0;
 }
 
 export function listCustomers(params: CustomerListParams): CustomerListResult {
-  const filteredCustomers = getAllCustomerRecordsWithOverrides()
-    .filter((customer) => params.status === "all" || customer.status === params.status)
-    .filter((customer) => matchesSearch(customer, params.search))
-    .sort(compareCustomers);
+  const database = getDatabase();
+  const filter = buildFilterClause(params);
 
-  const totalRecords = filteredCustomers.length;
+  const totalRecords = Number(
+    (
+      database
+        .prepare(`SELECT COUNT(*) AS total FROM customers WHERE ${filter.sql}`)
+        .get(filter.params) as { total: number }
+    ).total
+  );
+
   const perPage = CUSTOMER_PER_PAGE_OPTIONS.includes(params.perPage as (typeof CUSTOMER_PER_PAGE_OPTIONS)[number])
     ? params.perPage
     : CUSTOMER_DEFAULT_PER_PAGE;
   const totalPages = Math.max(1, Math.ceil(totalRecords / perPage));
   const page = Math.min(Math.max(1, params.page), totalPages);
-  const startIndex = (page - 1) * perPage;
+  const offset = (page - 1) * perPage;
+
+  const rows = database
+    .prepare(
+      `SELECT * FROM customers
+       WHERE ${filter.sql}
+       ORDER BY surname COLLATE NOCASE ASC, given_name COLLATE NOCASE ASC, id ASC
+       LIMIT @limit OFFSET @offset`
+    )
+    .all({ ...filter.params, limit: perPage, offset }) as CustomerRow[];
 
   return {
-    customers: filteredCustomers.slice(startIndex, startIndex + perPage),
+    customers: hydrate(database, rows),
     totalRecords,
     totalPages,
     page,
@@ -689,9 +528,19 @@ export function listCustomers(params: CustomerListParams): CustomerListResult {
 }
 
 export function getCustomerById(id: string): CustomerRecord | undefined {
-  return getAllCustomerRecordsWithOverrides().find((customer) => customer.id === id);
+  const database = getDatabase();
+  const row = database
+    .prepare("SELECT * FROM customers WHERE id = ? AND deleted_at IS NULL")
+    .get(id) as CustomerRow | undefined;
+
+  return row ? hydrate(database, [row])[0] : undefined;
 }
 
 export function getCustomerCount(): number {
-  return getAllCustomerRecordsWithOverrides().length;
+  const database = getDatabase();
+  const row = database
+    .prepare("SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL")
+    .get() as { total: number };
+
+  return Number(row.total);
 }

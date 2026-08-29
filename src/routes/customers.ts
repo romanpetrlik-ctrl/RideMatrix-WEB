@@ -13,6 +13,7 @@ import {
   CustomerRecord,
   CustomerStatus,
   createCustomer,
+  deleteCustomer,
   getCustomerById,
   getCustomerCount,
   listCustomers,
@@ -272,12 +273,22 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
     case "suspend-customer":
       return {
         tone: "warning",
-        message: `Suspend Customer is wired as an administrative action for ${name}, but the reversible status change is not persisted by the backend yet.`
+        message: `${name} has been suspended. The status change is reversible.`
+      };
+    case "reactivate-customer":
+      return {
+        tone: "warning",
+        message: `${name} has been reactivated.`
+      };
+    case "customer-deleted":
+      return {
+        tone: "warning",
+        message: "The customer profile has been deleted. Booking history is retained for compliance."
       };
     case "delete-customer":
       return {
         tone: "critical",
-        message: `${name} was not deleted because destructive deletion is not connected to the backend yet.`
+        message: `${name} could not be deleted.`
       };
     default:
       return undefined;
@@ -615,6 +626,14 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         phone: registerFormData.phone || null,
         company: registerFormData.company || null,
         address: address || null,
+        houseNameNumber: registerFormData.houseNameNumber || null,
+        addressLine1: registerFormData.addressLine1 || null,
+        addressLine2: registerFormData.addressLine2 || null,
+        addressLine3: registerFormData.addressLine3 || null,
+        cityTown: registerFormData.cityTown || null,
+        county: registerFormData.county || null,
+        state: registerFormData.state || null,
+        postcode: registerFormData.postcode || null,
         notes: registerFormData.notes || null,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(registerFormData.preferredContact)
           ? (registerFormData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
@@ -698,7 +717,15 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const returnTo = resolveReturnTo(req.query.returnTo, "/customers");
-      return res.redirect(buildCustomerHref(customer.id, { returnTo, notice: "suspend-customer" }));
+      const nextStatus = customer.status === "Suspended" ? "Active" : "Suspended";
+      updateCustomer(customer.id, { status: nextStatus });
+
+      return res.redirect(
+        buildCustomerHref(customer.id, {
+          returnTo,
+          notice: nextStatus === "Suspended" ? "suspend-customer" : "reactivate-customer"
+        })
+      );
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
@@ -812,7 +839,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const returnTo = resolveReturnTo(req.query.returnTo, "/customers");
-      return res.redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=delete-customer`);
+      const deleted = deleteCustomer(customer.id);
+
+      return res.redirect(
+        `${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=${deleted ? "customer-deleted" : "delete-customer"}`
+      );
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
