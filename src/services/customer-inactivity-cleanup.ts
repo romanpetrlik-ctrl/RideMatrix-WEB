@@ -16,13 +16,22 @@ export type CleanupResult = {
  * - last_booking_at IS NULL and account created > thresholdMonths ago, OR
  * - last_booking_at is > thresholdMonths ago
  */
+function getLatestBookingAt(customer: CustomerRecord): string | null {
+  return customer.bookings.reduce<string | null>(
+    (latest, booking) => (!latest || booking.serviceDate > latest ? booking.serviceDate : latest),
+    customer.lastBookingAt
+  );
+}
+
 function isInactive(customer: CustomerRecord, thresholdMonths: number): boolean {
   const now = new Date();
   const cutoff = new Date(now);
   cutoff.setMonth(cutoff.getMonth() - thresholdMonths);
 
-  if (customer.lastBookingAt) {
-    return new Date(customer.lastBookingAt) < cutoff;
+  const latestBookingAt = getLatestBookingAt(customer);
+
+  if (latestBookingAt) {
+    return new Date(latestBookingAt) < cutoff;
   }
 
   return new Date(customer.createdAt) < cutoff;

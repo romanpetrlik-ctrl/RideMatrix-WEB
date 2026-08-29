@@ -575,8 +575,10 @@ function deriveCustomerFromBookings(
   const mostRecentWithPhone = sortedDesc.find((booking) => booking.customerPhone)?.customerPhone || null;
   const { givenName, surname } = splitName(mostRecentWithName);
 
-  const pastBookings = sortedAsc.filter((booking) => booking.inferredTemporalStatus === "past");
-  const upcomingBookings = sortedAsc.filter((booking) => booking.inferredTemporalStatus === "upcoming");
+  // Recomputed against the current run instead of the status stored at import
+  // time, so aggregates stay correct once a service date has passed.
+  const pastBookings = sortedAsc.filter((booking) => booking.serviceDateTime <= nowIso);
+  const upcomingBookings = sortedAsc.filter((booking) => booking.serviceDateTime > nowIso);
   const lastPast = pastBookings.length > 0 ? pastBookings[pastBookings.length - 1] : null;
 
   const preferredVehicle = mostCommonNonEmpty(sortedAsc.map((booking) => booking.vehicleClassRaw));
@@ -853,111 +855,120 @@ export function importCabcherBookings(input: ImportInput): CabcherImportResult {
   const distinctPayments = new Set<string>();
   const duplicateGuard = new Set<string>();
 
-  for (const row of dataRows) {
-    if (isRowEmpty(row.values)) {
-      continue;
-    }
+  // The whole ingestion runs in one transaction so that a failure mid-file never
+  // leaves a partially imported batch behind (which would also block a clean retry,
+  // because persisted rows keep their dedupe key).
+  const ingestRows = database.transaction(() => {
+    for (const row of dataRows) {
+      if (isRowEmpty(row.values)) {
+        continue;
+      }
 
-    const nameRaw = getCell(row.values, headerResolution.indexByKey.name);
-    const emailRaw = getCell(row.values, headerResolution.indexByKey.email);
-    const dateTimeRaw = getCell(row.values, headerResolution.indexByKey.dateTime);
-    const pickupRaw = getCell(row.values, headerResolution.indexByKey.pickup);
-    const dropoffRaw = getCell(row.values, headerResolution.indexByKey.dropoff);
+      const nameRaw = getCell(row.values, headerResolution.indexByKey.name);
+      const emailRaw = getCell(row.values, headerResolution.indexByKey.email);
+      const dateTimeRaw = getCell(row.values, headerResolution.indexByKey.dateTime);
+      const pickupRaw = getCell(row.values, headerResolution.indexByKey.pickup);
+      const dropoffRaw = getCell(row.values, headerResolution.indexByKey.dropoff);
 
-    const email = normalizeEmail(emailRaw);
+      const email = normalizeEmail(emailRaw);
 
-    if (!nameRaw || !email || !pickupRaw || !dropoffRaw || !dateTimeRaw) {
-      rejectedRows.push({
-        rowNumber: row.rowNumber,
-        reason: "Missing required field value(s) in row."
-      });
-      continue;
-    }
+      if (!nameRaw || !email || !pickupRaw || !dropoffRaw || !dateTimeRaw) {
+        rejectedRows.push({
+          rowNumber: row.rowNumber,
+          reason: "Missing required field value(s) in row."
+        });
+        continue;
+      }
 
-    const serviceDate = parseDateTime(dateTimeRaw);
+      const serviceDate = parseDateTime(dateTimeRaw);
 
-    if (!serviceDate) {
-      rejectedRows.push({
-        rowNumber: row.rowNumber,
-        reason: `Invalid Date & Time value: ${dateTimeRaw}`
-      });
-      continue;
-    }
+      if (!serviceDate) {
+        rejectedRows.push({
+          rowNumber: row.rowNumber,
+          reason: `Invalid Date & Time value: ${dateTimeRaw}`
+        });
+        continue;
+      }
 
-    const serviceDateTime = serviceDate.toISOString();
-    const sourceReferenceRaw = getCell(row.values, headerResolution.indexByKey.orderNo) || null;
-    const sourceAccountRaw = getCell(row.values, headerResolution.indexByKey.account) || null;
-    const customerPhone = normalizePhone(getCell(row.values, headerResolution.indexByKey.contactNo));
-    const vehicleClassRaw = getCell(row.values, headerResolution.indexByKey.vehicle) || null;
-    const paymentMethodRaw = getCell(row.values, headerResolution.indexByKey.payment) || null;
-    const fare = parseFare(getCell(row.values, headerResolution.indexByKey.totalFare));
-    const nameSplit = splitName(nameRaw);
-    const isFuture = serviceDate.getTime() > now.getTime();
-    const inferredTemporalStatus: TemporalStatus = isFuture ? "upcoming" : "past";
+      const serviceDateTime = serviceDate.toISOString();
+      const sourceReferenceRaw = getCell(row.values, headerResolution.indexByKey.orderNo) || null;
+      const sourceAccountRaw = getCell(row.values, headerResolution.indexByKey.account) || null;
+      const customerPhone = normalizePhone(getCell(row.values, headerResolution.indexByKey.contactNo));
+      const vehicleClassRaw = getCell(row.values, headerResolution.indexByKey.vehicle) || null;
+      const paymentMethodRaw = getCell(row.values, headerResolution.indexByKey.payment) || null;
+      const fare = parseFare(getCell(row.values, headerResolution.indexByKey.totalFare));
+      const nameSplit = splitName(nameRaw);
+      const isFuture = serviceDate.getTime() > now.getTime();
+      const inferredTemporalStatus: TemporalStatus = isFuture ? "upcoming" : "past";
 
-    const dedupeKey = [
-      email,
-      serviceDateTime,
-      pickupRaw.toLowerCase(),
-      dropoffRaw.toLowerCase(),
-      sourceReferenceRaw || ""
-    ].join("|");
+      const dedupeKey = [
+        email,
+        serviceDateTime,
+        pickupRaw.toLowerCase(),
+        dropoffRaw.toLowerCase(),
+        sourceReferenceRaw || ""
+      ].join("|");
 
-    if (duplicateGuard.has(dedupeKey)) {
-      rejectedRows.push({
-        rowNumber: row.rowNumber,
-        reason: "Duplicate row detected in this batch."
-      });
-      continue;
-    }
+      if (duplicateGuard.has(dedupeKey)) {
+        rejectedRows.push({
+          rowNumber: row.rowNumber,
+          reason: "Duplicate row detected in this batch."
+        });
+        continue;
+      }
 
-    if (isBookingAlreadyImported(database, dedupeKey)) {
+      if (isBookingAlreadyImported(database, dedupeKey)) {
+        duplicateGuard.add(dedupeKey);
+        rejectedRows.push({
+          rowNumber: row.rowNumber,
+          reason: "Duplicate row already imported in an earlier batch."
+        });
+        continue;
+      }
+
       duplicateGuard.add(dedupeKey);
-      rejectedRows.push({
-        rowNumber: row.rowNumber,
-        reason: "Duplicate row already imported in an earlier batch."
-      });
-      continue;
+
+      const booking: BookingImportRecord = {
+        id: `imp-book-${nextSequenceValue(database, "imported_booking")}`,
+        importBatchId: batch.id,
+        sourceSystem: "cabcher",
+        sourceReferenceRaw,
+        sourceAccountRaw,
+        customerEmail: email,
+        customerPhone,
+        customerNameRaw: nameRaw,
+        customerGivenName: nameSplit.givenName,
+        customerSurname: nameSplit.surname,
+        serviceDateTime,
+        pickupText: pickupRaw,
+        dropoffText: dropoffRaw,
+        vehicleClassRaw,
+        paymentMethodRaw,
+        totalFareAmount: fare.amount,
+        currency: fare.currency,
+        isFuture,
+        inferredTemporalStatus,
+        customerId: null,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      insertBooking(database, booking, dedupeKey);
+      importedEmails.add(email);
+
+      if (vehicleClassRaw) {
+        distinctVehicles.add(vehicleClassRaw);
+      }
+
+      if (paymentMethodRaw) {
+        distinctPayments.add(paymentMethodRaw);
+      }
     }
 
-    duplicateGuard.add(dedupeKey);
+    return deriveCustomersByEmail(database, importedEmails, nowIso);
+  });
 
-    const booking: BookingImportRecord = {
-      id: `imp-book-${nextSequenceValue(database, "imported_booking")}`,
-      importBatchId: batch.id,
-      sourceSystem: "cabcher",
-      sourceReferenceRaw,
-      sourceAccountRaw,
-      customerEmail: email,
-      customerPhone,
-      customerNameRaw: nameRaw,
-      customerGivenName: nameSplit.givenName,
-      customerSurname: nameSplit.surname,
-      serviceDateTime,
-      pickupText: pickupRaw,
-      dropoffText: dropoffRaw,
-      vehicleClassRaw,
-      paymentMethodRaw,
-      totalFareAmount: fare.amount,
-      currency: fare.currency,
-      isFuture,
-      inferredTemporalStatus,
-      customerId: null,
-      createdAt: nowIso,
-      updatedAt: nowIso
-    };
-
-    insertBooking(database, booking, dedupeKey);
-    importedEmails.add(email);
-
-    if (vehicleClassRaw) {
-      distinctVehicles.add(vehicleClassRaw);
-    }
-
-    if (paymentMethodRaw) {
-      distinctPayments.add(paymentMethodRaw);
-    }
-  }
+  const customerStats = ingestRows();
 
   const totalRowsParsed = dataRows.filter((row) => !isRowEmpty(row.values)).length;
   const importedRows = totalRowsParsed - rejectedRows.length;
@@ -965,8 +976,6 @@ export function importCabcherBookings(input: ImportInput): CabcherImportResult {
   batch.totalRows = totalRowsParsed;
   batch.importedRows = importedRows;
   batch.rejectedRows = rejectedRows.length;
-
-  const customerStats = deriveCustomersByEmail(database, importedEmails, nowIso);
 
   batch.status = "imported";
   batch.notes = importedRows > 0

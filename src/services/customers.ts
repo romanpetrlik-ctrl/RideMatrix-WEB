@@ -242,6 +242,8 @@ function loadBookings(database: Database, customerIds: string[]): Map<string, Bo
       inferred_temporal_status: string;
     }>;
 
+  const nowIso = new Date().toISOString();
+
   for (const booking of importedBookings) {
     const list = grouped.get(booking.customer_id) || [];
     list.push({
@@ -250,7 +252,9 @@ function loadBookings(database: Database, customerIds: string[]): Map<string, Bo
       serviceDate: booking.service_date_time,
       pickup: booking.pickup_text,
       dropoff: booking.dropoff_text,
-      status: booking.inferred_temporal_status === "upcoming" ? "Scheduled" : "Completed"
+      // The temporal status is derived on read so that imported bookings do not
+      // stay "Scheduled" forever once their service date has passed.
+      status: booking.service_date_time > nowIso ? "Scheduled" : "Completed"
     });
     grouped.set(booking.customer_id, list);
   }
