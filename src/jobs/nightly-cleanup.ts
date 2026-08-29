@@ -6,6 +6,7 @@
  *
  * Environment variables:
  *   INACTIVITY_MONTHS  — inactivity threshold in months (default: 12)
+ *   DATABASE_FILE      — SQLite database file (default: data/ridematrix.sqlite)
  */
 
 import dotenv from "dotenv";

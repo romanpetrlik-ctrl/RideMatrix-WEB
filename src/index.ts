@@ -11,8 +11,13 @@ import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
 import { errorHandler } from "./middleware/error-handler";
+import { initializeDatabase } from "./database/connection";
 
 dotenv.config();
+
+// Fail fast when the database cannot be opened or migrated, instead of
+// surfacing the problem on the first customer request.
+initializeDatabase();
 
 const app = express();
 const port = Number(process.env.PORT || 5080);
