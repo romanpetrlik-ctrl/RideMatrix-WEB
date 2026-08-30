@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getSessionAccount, submitAccessRequest } from "../services/api";
+import { getLandingRoute } from "./auth-callback";
 
 type AccessRouterOptions = {
   appTitle: string;
@@ -15,13 +16,7 @@ export function createAccessRouter(options: AccessRouterOptions): Router {
       if (session.authenticated && session.user) {
         const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
 
-        if (roles.length === 1) {
-          return res.redirect(roles[0] === "admin" ? "/dashboard" : "/account");
-        }
-
-        if (roles.length > 1) {
-          return res.redirect("/choose-role");
-        }
+        if (roles.length > 0) return res.redirect(getLandingRoute(roles));
       }
 
       return res.render("pages/access", {

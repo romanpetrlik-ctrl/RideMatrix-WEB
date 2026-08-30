@@ -7,6 +7,24 @@ type RecoveryRouterOptions = {
 
 export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
   const router = Router();
+  router.use(async (req, res, next) => {
+    try {
+      const session = await getSessionAccount(req.headers.cookie);
+      if (!session.authenticated || !session.user) {
+        return res.redirect("/access");
+      }
+      const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+      if (!roles.includes("superuser")) {
+        return res.status(403).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.get("/recovery", async (req, res, next) => {
     try {
@@ -117,6 +135,9 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
       const session = await getSessionAccount(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
+      }
+      if (String(req.body.confirmed || "").trim() !== "yes") {
+        return res.redirect("/recovery/restart");
       }
 
       // Placeholder — no actual restart is performed from this interface.

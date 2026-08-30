@@ -1,12 +1,11 @@
 import { Router } from "express";
-import { getSessionAccount, selectActiveRole } from "../services/api";
+import { getSessionAccount } from "../services/api";
+import { availableWorkspaceModules } from "./role-sections";
 
-function getLandingRoute(roles: string[]): string {
-  if (roles.includes("admin")) {
-    return "/dashboard";
-  }
-
-  return "/account";
+export function getLandingRoute(roles: string[]): string {
+  const modules = availableWorkspaceModules(roles);
+  if (modules.length === 0) return "/account";
+  return modules.length === 1 ? modules[0].href : "/choose-role";
 }
 
 export function createAuthCallbackRouter(): Router {
@@ -26,17 +25,7 @@ export function createAuthCallbackRouter(): Router {
         return res.redirect("/access");
       }
 
-      if (roles.length === 1) {
-        const selected = await selectActiveRole(roles[0], req.headers.cookie);
-
-        for (const cookieValue of selected.setCookie) {
-          res.append("Set-Cookie", cookieValue);
-        }
-
-        return res.redirect(getLandingRoute(roles));
-      }
-
-      return res.redirect("/choose-role");
+      return res.redirect(getLandingRoute(roles));
     } catch (error) {
       next(error);
     }

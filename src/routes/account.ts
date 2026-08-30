@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { getSessionAccount, selectActiveRole } from "../services/api";
+import { getSessionAccount } from "../services/api";
+import { availableWorkspaceModules } from "./role-sections";
 
 type AccountRouterOptions = {
   appTitle: string;
@@ -69,27 +70,6 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         return res.redirect("/access");
       }
 
-      if (roles.length === 1 && activeRole !== roles[0]) {
-        const selected = await selectActiveRole(roles[0], req.headers.cookie);
-
-        for (const cookieValue of selected.setCookie) {
-          res.append("Set-Cookie", cookieValue);
-        }
-
-        if (roles[0] === "admin") {
-          return res.redirect("/dashboard");
-        }
-
-        return res.render("pages/account", {
-          title: "Account",
-          appTitle: options.appTitle,
-          email: session.user.email,
-          roles,
-          activeRole: roles[0],
-          getRoleLabel
-        });
-      }
-
       const resolvedActiveRole = activeRole && roles.includes(activeRole) ? activeRole : undefined;
 
       return res.render("pages/account", {
@@ -119,28 +99,11 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         return res.redirect("/access");
       }
 
-      if (roles.length === 1) {
-        const selected = await selectActiveRole(roles[0], req.headers.cookie);
-
-        for (const cookieValue of selected.setCookie) {
-          res.append("Set-Cookie", cookieValue);
-        }
-
-        if (roles[0] === "admin") {
-          return res.redirect("/dashboard");
-        }
-
-        return res.redirect("/account");
-      }
-
       return res.render("pages/choose-role", {
         title: "Choose workspace",
         appTitle: options.appTitle,
         email: session.user.email,
-        roles,
-        activeRole: session.user.active_role,
-        getRoleLabel,
-        getRoleDescription
+        modules: availableWorkspaceModules(roles)
       });
     } catch (error) {
       next(error);
@@ -149,23 +112,13 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
 
   router.post("/choose-role", async (req, res, next) => {
     try {
-      const requestedRole = String(req.body.role || "").trim();
-
-      if (!requestedRole) {
-        return res.redirect("/choose-role");
-      }
-
-      const selected = await selectActiveRole(requestedRole, req.headers.cookie);
-
-      for (const cookieValue of selected.setCookie) {
-        res.append("Set-Cookie", cookieValue);
-      }
-
-      if (selected.activeRole === "admin") {
-        return res.redirect("/dashboard");
-      }
-
-      return res.redirect("/account");
+      const requestedModule = String(req.body.module || "").trim();
+      const session = await getSessionAccount(req.headers.cookie);
+      if (!session.authenticated || !session.user) return res.redirect("/access");
+      const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+      const module = availableWorkspaceModules(roles).find((item) => item.key === requestedModule);
+      if (!module) return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      return res.redirect(module.href);
     } catch (error) {
       next(error);
     }
