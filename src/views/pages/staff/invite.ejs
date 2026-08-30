@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: "Create / Invite user",
+      pageMeta: "Internal staff account administration",
+      activeRoleLabel: "Staff",
+      hintsLabel: "Staff administration",
+      showRoleSwitch: true,
+      showExitLink: true
+    }) %>
+
+    <main class="container">
+      <% if (success) { %>
+        <section class="notice notice--warning">
+          <strong>Account created for <%= success.email %>.</strong>
+          <p>Assigned roles: <%= success.roleLabels.join(", ") %>.</p>
+          <% if (success.invitationSent) { %>
+            <p>An access link / login code has been requested for this address through the standard access flow.</p>
+          <% } else { %>
+            <p>
+              Invitation pending: access link or login code delivery is not configured in this environment.
+              The account can still sign in through the standard access request at <a href="/access">/access</a>.
+            </p>
+          <% } %>
+        </section>
+      <% } %>
+
+      <% if (errors.length > 0) { %>
+        <section class="notice notice--critical">
+          <strong>Please correct the following errors:</strong>
+          <ul>
+            <% errors.forEach((err) => { %>
+              <li><%= err %></li>
+            <% }) %>
+          </ul>
+        </section>
+      <% } %>
+
+      <section class="panel panel--compact">
+        <h1>Create / Invite user</h1>
+        <p>
+          Create an internal account and delegate the workspaces it may use. No credentials are set or shown here:
+          the invited account signs in through the existing access-request flow.
+        </p>
+
+        <form class="inline-form" method="post" action="/staff/invite">
+          <div class="form-field">
+            <label for="email">Email *</label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value="<%= formData.email || '' %>"
+              required
+              autocomplete="email"
+            />
+          </div>
+
+          <fieldset class="form-field">
+            <legend>Roles *</legend>
+            <% assignableRoles.forEach((role) => { %>
+              <div class="form-field form-field--checkbox">
+                <input
+                  type="checkbox"
+                  id="role-<%= role.name %>"
+                  name="roles"
+                  value="<%= role.name %>"
+                  <%= formData.roles.includes(role.name) ? 'checked' : '' %>
+                  <%= role.canDelegate ? '' : 'disabled' %>
+                />
+                <div>
+                  <label for="role-<%= role.name %>"><%= role.label %></label>
+                  <p><%= role.description %></p>
+                  <% if (!role.canDelegate) { %>
+                    <p>You are not authorized to delegate this role.</p>
+                  <% } %>
+                </div>
+              </div>
+            <% }) %>
+          </fieldset>
+
+          <% const superuserOption = assignableRoles.find((role) => role.name === superuserRole); %>
+          <% if (superuserOption && superuserOption.canDelegate) { %>
+            <section class="notice notice--critical">
+              <strong>Superuser delegation warning</strong>
+              <p>
+                Selecting <%= superuserOption.label %> grants full system access, including role
+                delegation and platform controls. Only assign it to an account you fully control.
+              </p>
+              <div class="form-field form-field--checkbox">
+                <input type="checkbox" id="confirmSuperuser" name="confirmSuperuser" value="yes" />
+                <div>
+                  <label for="confirmSuperuser">I confirm this account may be delegated superuser access.</label>
+                </div>
+              </div>
+            </section>
+          <% } %>
+
+          <div class="action-row">
+            <button type="submit" class="button">Create / Invite user</button>
+            <a class="button button--secondary" href="/staff">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

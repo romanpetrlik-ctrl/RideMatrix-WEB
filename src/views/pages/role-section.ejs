@@ -1,3 +1,11 @@
+<%
+  const pageActions = typeof actions !== "undefined" && Array.isArray(actions) ? actions : [];
+  const actionRow = pageActions.length
+    ? `<div class="action-row">${pageActions
+        .map((action) => `<a class="button" href="${action.href}">${action.label}</a>`)
+        .join("")}</div>`
+    : "";
+%>
 <%- include("../layouts/base", {
   title,
   appTitle,
@@ -14,6 +22,8 @@
       <h1>${roleLabel}</h1>
       <p><strong>Signed in as:</strong> ${email}</p>
       <p>This is the active workspace for <strong>${roleLabel}</strong>.</p>
+
+      ${actionRow}
 
       <p><a href="/choose-role">Switch workspace</a></p>
     </section>

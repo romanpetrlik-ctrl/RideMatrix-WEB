@@ -10,6 +10,7 @@ import { createRoleSectionsRouter } from "./routes/role-sections";
 import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
+import { createStaffRouter } from "./routes/staff";
 import { errorHandler } from "./middleware/error-handler";
 import { initializeDatabase } from "./database/connection";
 
@@ -42,6 +43,7 @@ async function startServer() {
   app.use(createRecoveryRouter({ appTitle }));
   app.use(createDashboardRouter({ appTitle }));
   app.use(createCustomersRouter({ appTitle }));
+  app.use(createStaffRouter({ appTitle }));
   app.use(createRoleSectionsRouter({ appTitle }));
 
   app.use((_req, res) => {
