@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getSessionAccount } from "../services/api";
+import { canManageStaffUsers, getPermissionsForRoles } from "../services/staff-users";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
@@ -66,12 +67,23 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           return res.redirect("/account");
         }
 
+        const actions: Array<{ label: string; href: string }> = [];
+
+        if (requiredRole === "staff") {
+          const permissions = await getPermissionsForRoles(roles);
+
+          if (canManageStaffUsers({ email: session.user.email, roles, permissions })) {
+            actions.push({ label: "Create / Invite user", href: "/staff/invite" });
+          }
+        }
+
         return res.render("pages/role-section", {
           title: getRoleLabel(requiredRole),
           appTitle: options.appTitle,
           email: session.user.email,
           role: requiredRole,
-          roleLabel: getRoleLabel(requiredRole)
+          roleLabel: getRoleLabel(requiredRole),
+          actions
         });
       } catch (error) {
         next(error);
