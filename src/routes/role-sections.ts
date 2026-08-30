@@ -30,6 +30,16 @@ export function canAccessWorkspace(roles: string[], key: string): boolean {
   return availableWorkspaceModules(roles).some((module) => module.key === key);
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[character] || character);
+}
+
 function renderUnavailable(res: Response, appTitle: string) {
   return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle });
 }
@@ -55,7 +65,16 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
             ORDER BY u.email
             LIMIT 100
           `);
-          return res.render("pages/staff", { title: "Staff", appTitle: options.appTitle, email: session.user.email, staff: staff.rows });
+          return res.render("pages/staff", {
+            title: "Staff",
+            appTitle: options.appTitle,
+            email: session.user.email,
+            staff: staff.rows.map((user) => ({
+              email: escapeHtml(user.email),
+              status: escapeHtml(user.status),
+              roles: user.roles?.map(escapeHtml) ?? []
+            }))
+          });
         }
 
         return res.render("pages/role-section", {
