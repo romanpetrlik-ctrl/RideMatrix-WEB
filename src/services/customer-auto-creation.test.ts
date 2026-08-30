@@ -29,3 +29,16 @@ test("creates a customer once and reuses it for the same normalized email", asyn
   assert.equal(second.customerId, first.customerId);
   assert.equal(await getCustomerCount(), countBefore + 1);
 });
+
+test("concurrent booking auto-creation reuses the active customer", async () => {
+  const countBefore = await getCustomerCount();
+
+  const [first, second] = await Promise.all([
+    getOrCreateCustomer("Race.Booking@Example.com", "Race Booking", "+44 7700 900401"),
+    getOrCreateCustomer(" race.booking@example.com ", "Race Booking", null)
+  ]);
+
+  assert.equal(first.customerId, second.customerId);
+  assert.equal([first.isNew, second.isNew].filter(Boolean).length, 1);
+  assert.equal(await getCustomerCount(), countBefore + 1);
+});

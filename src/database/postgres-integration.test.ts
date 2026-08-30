@@ -4,6 +4,8 @@ import { closeDatabase, initializeDatabase, query, withTransaction } from "./con
 import { TestDatabaseContext, createTestDatabaseContext } from "./test-helper";
 import {
   createCustomer,
+  deleteCustomer,
+  DuplicateActiveCustomerEmailError,
   getCustomerByEmail,
   getCustomerById,
   getCustomerCount,
@@ -37,7 +39,7 @@ test("PostgreSQL migrations preserve existing auth tables and auth records", asy
   assert.deepEqual(authRowsAfter, authRows);
 });
 
-test("Customer email normalization and uniqueness", async () => {
+test("Customer email normalization and lookup", async () => {
   const created = await createCustomer({
     givenName: "Unique",
     surname: "Test",
@@ -60,6 +62,54 @@ test("Customer email normalization and uniqueness", async () => {
     [created.id]
   );
   assert.equal(dbRow.rows[0].email_normalized, "unique.person@domain.com");
+});
+
+test("active customer email uniqueness is enforced and soft-delete allows reuse", async () => {
+  const created = await createCustomer({
+    givenName: "Constraint",
+    surname: "Owner",
+    email: "Constraint.Owner@domain.com",
+    phone: null,
+    status: "Active"
+  });
+
+  await assert.rejects(
+    () => createCustomer({
+      givenName: "Constraint",
+      surname: "Duplicate",
+      email: " constraint.owner@domain.com ",
+      phone: null,
+      status: "Active"
+    }),
+    DuplicateActiveCustomerEmailError
+  );
+
+  await assert.rejects(
+    () => query(
+      `INSERT INTO customers (
+        id, given_name, surname, email, email_normalized, preferred_contact,
+        status, source, created_at, updated_at
+      ) VALUES (
+        $1, 'Raw', 'Duplicate', $2, $3, 'Unknown',
+        'Active', 'manual', $4, $4
+      )`,
+      ["cust-raw-duplicate-email", "raw.duplicate@domain.com", "constraint.owner@domain.com", new Date().toISOString()]
+    ),
+    (error: unknown) => (error as { code?: string }).code === "23505"
+  );
+
+  assert.equal(await deleteCustomer(created.id), true);
+
+  const reused = await createCustomer({
+    givenName: "Constraint",
+    surname: "Reuse",
+    email: "CONSTRAINT.OWNER@domain.com",
+    phone: null,
+    status: "Active"
+  });
+
+  assert.notEqual(reused.id, created.id);
+  assert.equal(reused.email, "CONSTRAINT.OWNER@domain.com");
 });
 
 test("Customer origin markers are set accurately by source", async () => {

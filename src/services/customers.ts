@@ -122,6 +122,20 @@ type CustomerRow = {
   last_booking_at: string | null;
 };
 
+type PgError = Error & {
+  code?: string;
+  constraint?: string;
+};
+
+const ACTIVE_CUSTOMER_EMAIL_UNIQUE_INDEX = "idx_customers_active_email_normalized_unique";
+
+export class DuplicateActiveCustomerEmailError extends Error {
+  constructor(readonly normalizedEmail: string) {
+    super(`An active customer with email ${normalizedEmail} already exists.`);
+    this.name = "DuplicateActiveCustomerEmailError";
+  }
+}
+
 const PREFERRED_CONTACT_VALUES: PreferredContact[] = ["WhatsApp", "Email", "Phone", "Unknown"];
 
 function normalizePreferredContact(value: string | null | undefined): PreferredContact {
@@ -149,6 +163,13 @@ function trimOrNull(value: string | null | undefined): string | null {
 export function normalizeCustomerEmail(email: string | null | undefined): string | null {
   const trimmed = trimOrNull(email);
   return trimmed ? trimmed.toLowerCase() : null;
+}
+
+export function isActiveCustomerEmailUniqueViolation(
+  error: unknown
+): error is PgError {
+  const pgError = error as PgError;
+  return pgError?.code === "23505" && pgError.constraint === ACTIVE_CUSTOMER_EMAIL_UNIQUE_INDEX;
 }
 
 function normalizePhoneDigits(value: string | null | undefined): string {
@@ -331,46 +352,56 @@ export async function createCustomer(
   const id = input.id || generateCustomerId();
   const email = trimOrNull(input.email);
 
-  await runner.query(
-    `INSERT INTO customers (
-      id, title, given_name, surname, email, email_normalized, phone, company, address,
-      house_name_number, address_line1, address_line2, address_line3,
-      city_town, county, state, postcode,
-      preferred_contact, notes, status, source, created_at, updated_at,
-      last_login_at, last_booking_at, deleted_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9,
-      $10, $11, $12, $13,
-      $14, $15, $16, $17,
-      $18, $19, $20, $21, $22, $23,
-      NULL, NULL, NULL
-    )`,
-    [
-      id,
-      trimOrNull(input.title),
-      String(input.givenName || "").trim(),
-      String(input.surname || "").trim(),
-      email,
-      normalizeCustomerEmail(email),
-      trimOrNull(input.phone),
-      trimOrNull(input.company),
-      trimOrNull(input.address),
-      trimOrNull(input.houseNameNumber),
-      trimOrNull(input.addressLine1),
-      trimOrNull(input.addressLine2),
-      trimOrNull(input.addressLine3),
-      trimOrNull(input.cityTown),
-      trimOrNull(input.county),
-      trimOrNull(input.state),
-      trimOrNull(input.postcode),
-      normalizePreferredContact(input.preferredContact),
-      trimOrNull(input.notes),
-      input.status || "Pending",
-      input.source || "manual",
-      now,
-      now
-    ]
-  );
+  const normalizedEmail = normalizeCustomerEmail(email);
+
+  try {
+    await runner.query(
+      `INSERT INTO customers (
+        id, title, given_name, surname, email, email_normalized, phone, company, address,
+        house_name_number, address_line1, address_line2, address_line3,
+        city_town, county, state, postcode,
+        preferred_contact, notes, status, source, created_at, updated_at,
+        last_login_at, last_booking_at, deleted_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13,
+        $14, $15, $16, $17,
+        $18, $19, $20, $21, $22, $23,
+        NULL, NULL, NULL
+      )`,
+      [
+        id,
+        trimOrNull(input.title),
+        String(input.givenName || "").trim(),
+        String(input.surname || "").trim(),
+        email,
+        normalizedEmail,
+        trimOrNull(input.phone),
+        trimOrNull(input.company),
+        trimOrNull(input.address),
+        trimOrNull(input.houseNameNumber),
+        trimOrNull(input.addressLine1),
+        trimOrNull(input.addressLine2),
+        trimOrNull(input.addressLine3),
+        trimOrNull(input.cityTown),
+        trimOrNull(input.county),
+        trimOrNull(input.state),
+        trimOrNull(input.postcode),
+        normalizePreferredContact(input.preferredContact),
+        trimOrNull(input.notes),
+        input.status || "Pending",
+        input.source || "manual",
+        now,
+        now
+      ]
+    );
+  } catch (error) {
+    if (normalizedEmail && isActiveCustomerEmailUniqueViolation(error)) {
+      throw new DuplicateActiveCustomerEmailError(normalizedEmail);
+    }
+
+    throw error;
+  }
 
   const created = await getCustomerById(id, runner);
 
@@ -446,10 +477,19 @@ export async function updateCustomer(
   values.push(new Date().toISOString());
   assignments.push(`updated_at = $${values.length}`);
 
-  await runner.query(
-    `UPDATE customers SET ${assignments.join(", ")} WHERE id = $1 AND deleted_at IS NULL`,
-    values
-  );
+  try {
+    await runner.query(
+      `UPDATE customers SET ${assignments.join(", ")} WHERE id = $1 AND deleted_at IS NULL`,
+      values
+    );
+  } catch (error) {
+    const normalizedEmail = normalizeCustomerEmail(input.email);
+    if (normalizedEmail && isActiveCustomerEmailUniqueViolation(error)) {
+      throw new DuplicateActiveCustomerEmailError(normalizedEmail);
+    }
+
+    throw error;
+  }
 
   return getCustomerById(id, runner);
 }

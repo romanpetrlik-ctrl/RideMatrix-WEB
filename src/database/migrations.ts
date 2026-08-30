@@ -7,6 +7,8 @@ export type Migration = {
 
 type Queryable = Pool | PoolClient;
 
+export const MIGRATION_ADVISORY_LOCK_KEY = [1383695443, 1735357005] as const;
+
 /**
  * Ordered list of PostgreSQL migrations.
  *
@@ -161,6 +163,35 @@ export const MIGRATIONS: Migration[] = [
         applied_at TEXT NOT NULL
       );
     `
+  },
+  {
+    id: "0002_active_customer_email_uniqueness",
+    sql: `
+      DO $$
+      DECLARE
+        duplicate_email text;
+      BEGIN
+        SELECT email_normalized INTO duplicate_email
+        FROM customers
+        WHERE deleted_at IS NULL
+          AND email_normalized IS NOT NULL
+        GROUP BY email_normalized
+        HAVING COUNT(*) > 1
+        LIMIT 1;
+
+        IF duplicate_email IS NOT NULL THEN
+          RAISE EXCEPTION
+            'Cannot create active customer email uniqueness index; duplicate active email_normalized value exists: %. Soft-delete or merge duplicate active customers before rerunning migration.',
+            duplicate_email
+            USING ERRCODE = 'unique_violation';
+        END IF;
+      END $$;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_active_email_normalized_unique
+        ON customers (email_normalized)
+        WHERE deleted_at IS NULL
+          AND email_normalized IS NOT NULL;
+    `
   }
 ];
 
@@ -174,34 +205,39 @@ async function ensureMigrationsTable(client: Queryable): Promise<void> {
 }
 
 export async function runMigrations(client: Queryable): Promise<string[]> {
-  await ensureMigrationsTable(client);
+  await client.query("SELECT pg_advisory_lock($1, $2)", [...MIGRATION_ADVISORY_LOCK_KEY]);
 
-  const appliedRes = await client.query<{ id: string }>("SELECT id FROM schema_migrations");
-  const applied = new Set(appliedRes.rows.map((row) => String(row.id)));
+  try {
+    await ensureMigrationsTable(client);
 
-  const executed: string[] = [];
+    const appliedRes = await client.query<{ id: string }>("SELECT id FROM schema_migrations");
+    const applied = new Set(appliedRes.rows.map((row) => String(row.id)));
 
-  for (const migration of MIGRATIONS) {
-    if (applied.has(migration.id)) {
-      continue;
+    const executed: string[] = [];
+
+    for (const migration of MIGRATIONS) {
+      if (applied.has(migration.id)) {
+        continue;
+      }
+
+      await client.query("BEGIN");
+      try {
+        await client.query(migration.sql);
+        await client.query("INSERT INTO schema_migrations (id, applied_at) VALUES ($1, $2)", [
+          migration.id,
+          new Date().toISOString()
+        ]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+
+      executed.push(migration.id);
     }
 
-    // Execute migration in transaction if we can, or execute directly
-    await client.query("BEGIN");
-    try {
-      await client.query(migration.sql);
-      await client.query("INSERT INTO schema_migrations (id, applied_at) VALUES ($1, $2)", [
-        migration.id,
-        new Date().toISOString()
-      ]);
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    }
-
-    executed.push(migration.id);
+    return executed;
+  } finally {
+    await client.query("SELECT pg_advisory_unlock($1, $2)", [...MIGRATION_ADVISORY_LOCK_KEY]);
   }
-
-  return executed;
 }

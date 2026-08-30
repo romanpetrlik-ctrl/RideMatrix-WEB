@@ -25,6 +25,8 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
   const baseUrl = getBaseTestDatabaseUrl();
   schemaCounter += 1;
   const schemaName = `${prefix}_${Date.now()}_${schemaCounter}_${Math.floor(Math.random() * 100000)}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  let cleanedUp = false;
 
   const adminPool = new Pool({ connectionString: baseUrl });
   await adminPool.query(`CREATE SCHEMA IF NOT EXISTS ${schemaName};`);
@@ -32,6 +34,7 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
   const separator = baseUrl.includes("?") ? "&" : "?";
   const databaseUrl = `${baseUrl}${separator}options=-csearch_path%3D${schemaName}`;
 
+  await closeDatabase();
   process.env.DATABASE_URL = databaseUrl;
 
   const createAuthTables = async () => {
@@ -107,11 +110,26 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
   };
 
   const cleanup = async () => {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
     await closeDatabase();
     try {
       await adminPool.query(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE;`);
     } finally {
-      await adminPool.end();
+      try {
+        await adminPool.end();
+      } finally {
+        if (process.env.DATABASE_URL === databaseUrl) {
+          if (previousDatabaseUrl === undefined) {
+            delete process.env.DATABASE_URL;
+          } else {
+            process.env.DATABASE_URL = previousDatabaseUrl;
+          }
+        }
+      }
     }
   };
 

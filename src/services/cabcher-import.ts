@@ -714,7 +714,7 @@ async function persistDerivedCustomer(
 async function syncCustomerRecord(
   client: Queryable,
   derived: DerivedCustomerRecord
-): Promise<void> {
+): Promise<string> {
   const existingRes = await client.query<{ id: string; source: string; deleted_at: string | null }>(
     "SELECT id, source, deleted_at FROM customers WHERE id = $1",
     [derived.id]
@@ -725,7 +725,7 @@ async function syncCustomerRecord(
   const lastBookingAt = derived.lastSeenAt || derived.firstSeenAt;
 
   if (!existing) {
-    await client.query(
+    const insertRes = await client.query<{ id: string }>(
       `INSERT INTO customers (
         id, title, given_name, surname, email, email_normalized, phone, company, address,
         preferred_contact, notes, status, source, created_at, updated_at,
@@ -734,7 +734,12 @@ async function syncCustomerRecord(
         $1, NULL, $2, $3, $4, $5, $6, NULL, NULL,
         $7, $8, 'Active', 'import', $9, $10,
         NULL, $11, NULL
-      )`,
+      )
+      ON CONFLICT (email_normalized)
+        WHERE deleted_at IS NULL
+          AND email_normalized IS NOT NULL
+      DO NOTHING
+      RETURNING id`,
       [
         derived.id,
         derived.givenName || derived.fullName || "Imported",
@@ -750,7 +755,68 @@ async function syncCustomerRecord(
       ]
     );
 
-    return;
+    if (insertRes.rows[0]?.id) {
+      return insertRes.rows[0].id;
+    }
+
+    const matchedRes = await client.query<{ id: string; source: string }>(
+      `SELECT id, source
+       FROM customers
+       WHERE email_normalized = $1
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [derived.email]
+    );
+    const matched = matchedRes.rows[0];
+
+    if (!matched) {
+      throw new Error(
+        `Active customer email conflict for ${derived.email}, but the existing customer could not be loaded.`
+      );
+    }
+
+    await client.query(
+      "UPDATE imported_customers SET id = $1 WHERE email = $2 AND id = $3",
+      [matched.id, derived.email, derived.id]
+    );
+
+    if (matched.source === "import") {
+      await client.query(
+        `UPDATE customers SET
+          given_name = $1,
+          surname = $2,
+          phone = $3,
+          notes = $4,
+          last_booking_at = $5,
+          updated_at = $6
+        WHERE id = $7`,
+        [
+          derived.givenName || derived.fullName || "Imported",
+          derived.surname || "Customer",
+          derived.phone,
+          notes,
+          lastBookingAt,
+          derived.updatedAt,
+          matched.id
+        ]
+      );
+    } else {
+      await client.query(
+        `UPDATE customers SET
+          phone = COALESCE(phone, $1),
+          last_booking_at = COALESCE($2, last_booking_at),
+          updated_at = $3
+        WHERE id = $4`,
+        [
+          derived.phone,
+          lastBookingAt,
+          derived.updatedAt,
+          matched.id
+        ]
+      );
+    }
+
+    return matched.id;
   }
 
   if (existing.source === "import") {
@@ -774,7 +840,7 @@ async function syncCustomerRecord(
       ]
     );
 
-    return;
+    return derived.id;
   }
 
   // Manually maintained customer: only enrich missing contact data and the
@@ -792,6 +858,8 @@ async function syncCustomerRecord(
       derived.id
     ]
   );
+
+  return derived.id;
 }
 
 async function deriveCustomersByEmail(
@@ -825,7 +893,7 @@ async function deriveCustomersByEmail(
       derivedId = existing.id;
     } else {
       const matchedRes = await client.query<{ id: string }>(
-        "SELECT id FROM customers WHERE email_normalized = $1 LIMIT 1",
+        "SELECT id FROM customers WHERE email_normalized = $1 AND deleted_at IS NULL LIMIT 1",
         [email]
       );
       if (matchedRes.rows[0]?.id) {
@@ -839,11 +907,11 @@ async function deriveCustomersByEmail(
     const derived = deriveCustomerFromBookings(email, groupedBookings, nowIso, existing, () => derivedId);
 
     await persistDerivedCustomer(client, derived);
-    await syncCustomerRecord(client, derived);
+    const customerId = await syncCustomerRecord(client, derived);
 
     await client.query(
       "UPDATE imported_bookings SET customer_id = $1, updated_at = $2 WHERE customer_email = $3",
-      [derived.id, nowIso, email]
+      [customerId, nowIso, email]
     );
 
     if (existing) {

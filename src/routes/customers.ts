@@ -12,6 +12,7 @@ import {
   CUSTOMER_STATUS_OPTIONS,
   CustomerRecord,
   CustomerStatus,
+  DuplicateActiveCustomerEmailError,
   createCustomer,
   deleteCustomer,
   getCustomerById,
@@ -649,6 +650,18 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         buildCustomerHref(newCustomer.id, { notice: "customer-created", returnTo: "/customers" })
       );
     } catch (err) {
+      if (err instanceof DuplicateActiveCustomerEmailError) {
+        return res.status(409).render("pages/customers/register", {
+          title: "New Customer",
+          appTitle: options.appTitle,
+          email: sessionContext.email,
+          activeRoleLabel: sessionContext.activeRoleLabel,
+          customerType: "private",
+          formData: registerFormData,
+          errors: ["An active customer with this email address already exists."]
+        });
+      }
+
       return next(err);
     }
   });
@@ -1009,6 +1022,19 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         buildCustomerHref(updated.id, { notice: "customer-updated", returnTo: backToCustomersHref })
       );
     } catch (error) {
+      if (error instanceof DuplicateActiveCustomerEmailError) {
+        return res.status(409).render("pages/customers/edit", {
+          title: `Edit ${customer.surname}, ${customer.givenName}`,
+          appTitle: options.appTitle,
+          email: sessionContext.email,
+          activeRoleLabel: sessionContext.activeRoleLabel,
+          customer,
+          backToCustomersHref,
+          formData,
+          errors: ["An active customer with this email address already exists."]
+        });
+      }
+
       return next(error);
     }
   });

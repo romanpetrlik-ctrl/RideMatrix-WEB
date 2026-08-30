@@ -1,4 +1,8 @@
-import { createCustomer, getCustomerByEmail } from "./customers";
+import {
+  DuplicateActiveCustomerEmailError,
+  createCustomer,
+  getCustomerByEmail
+} from "./customers";
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -39,17 +43,29 @@ export async function getOrCreateCustomer(
     }
   }
 
-  const newCustomer = await createCustomer({
-    givenName,
-    surname,
-    email: normalizedEmail,
-    phone: phone ?? null,
-    status: "Active",
-    // Distinct origin marker so booking-driven records can be told apart from
-    // manually registered customers, Cabcher imports ("import") and demo seed
-    // data ("seed") — see docs/customer-persistence.md.
-    source: "booking"
-  });
+  let newCustomer;
+  try {
+    newCustomer = await createCustomer({
+      givenName,
+      surname,
+      email: normalizedEmail,
+      phone: phone ?? null,
+      status: "Active",
+      // Distinct origin marker so booking-driven records can be told apart from
+      // manually registered customers, Cabcher imports ("import") and demo seed
+      // data ("seed") — see docs/customer-persistence.md.
+      source: "booking"
+    });
+  } catch (error) {
+    if (error instanceof DuplicateActiveCustomerEmailError) {
+      const existingAfterRace = await getCustomerByEmail(normalizedEmail);
+      if (existingAfterRace) {
+        return { customerId: existingAfterRace.id, isNew: false };
+      }
+    }
+
+    throw error;
+  }
 
   console.log(`[customer-auto-creation] Created customer ${newCustomer.id} for email ${normalizedEmail}`);
 
