@@ -167,6 +167,12 @@ export const MIGRATIONS: Migration[] = [
   {
     id: "0002_active_customer_email_uniqueness",
     sql: `
+      UPDATE customers
+      SET email_normalized = lower(trim(email))
+      WHERE email_normalized IS NULL
+        AND email IS NOT NULL
+        AND trim(email) <> '';
+
       DO $$
       DECLARE
         duplicate_email text;

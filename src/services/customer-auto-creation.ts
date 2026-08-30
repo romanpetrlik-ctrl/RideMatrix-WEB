@@ -1,5 +1,6 @@
 import {
   DuplicateActiveCustomerEmailError,
+  CustomerRecord,
   createCustomer,
   getCustomerByEmail
 } from "./customers";
@@ -43,7 +44,7 @@ export async function getOrCreateCustomer(
     }
   }
 
-  let newCustomer;
+  let newCustomer: CustomerRecord;
   try {
     newCustomer = await createCustomer({
       givenName,
