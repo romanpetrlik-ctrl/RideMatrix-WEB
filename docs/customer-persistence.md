@@ -11,14 +11,23 @@ alongside the existing authentication tables (`users`, `roles`, `permissions`, `
 | `DATABASE_URL` | none    | PostgreSQL connection string (e.g. `******postgres:5432/ridematrix`). Required.     |
 
 `src/index.ts` initializes the database eagerly on startup, executing pending customer
-migrations without disturbing the existing auth schema. If `DATABASE_URL` is missing or
-the database cannot be reached, the application fails immediately on startup with a
-clear, descriptive error instead of failing silently or falling back to SQLite.
+migrations without disturbing the existing auth schema. The web server does not call
+`listen()` until database initialization and migrations have succeeded. If
+`DATABASE_URL` is missing or the database cannot be reached, the application fails
+immediately on startup with a clear, descriptive error instead of failing silently or
+falling back to SQLite.
 
 ## Schema and migrations
 
 Migrations live in `src/database/migrations.ts` and are applied by an automated runner that
 records applied migration ids in `schema_migrations`.
+
+Migration execution is coordinated with the PostgreSQL advisory lock key
+`(1383695443, 1735357005)`. The lock is held only while checking and applying schema
+migrations, and is released in a `finally` path if a migration fails. It is not a
+blanket application lock: normal reads and writes are not globally blocked for routine
+operation. Active customer email uniqueness is protected by PostgreSQL constraints and
+the application transaction paths.
 
 Tables:
 
@@ -35,6 +44,30 @@ Tables:
 Existing PostgreSQL auth tables (`users`, `roles`, `permissions`, `user_roles`,
 `role_permissions`, `login_codes`) are fully preserved and never altered, renamed,
 dropped, or truncated by customer migrations or cleanup routines.
+
+Active, non-deleted customers have a PostgreSQL-enforced unique partial index on
+`email_normalized` when the normalized email is not null. Soft-deleted customer rows
+keep their historical email value but no longer participate in that uniqueness check,
+so an email can be reused after a deliberate soft delete.
+
+The active-email migration refuses to create the unique index if duplicate active
+normalized emails already exist. If that happens, inspect the reported
+`email_normalized` value, decide which active customer should remain, and resolve the
+duplicate manually (for example by soft-deleting or correcting the unintended row)
+before rerunning migrations. The migration never silently deletes or merges customer
+records.
+
+### Explicit migration command
+
+```bash
+npm run db:migrate
+```
+
+The command loads environment configuration, opens the PostgreSQL pool from
+`DATABASE_URL`, applies pending migrations under the advisory lock, closes the pool,
+and exits non-zero on failure. Application startup still runs the same migration gate
+before serving requests, so deployments remain safe even if the explicit job was not
+run separately.
 
 ## Seed data
 
@@ -114,21 +147,30 @@ ALLOW_DEMO_CLEANUP=true npm run cleanup:demo -- --confirm --allow-override
 
 1. Ensure `DATABASE_URL` is set to the production PostgreSQL instance (`ridematrix`)
    and `NODE_ENV=production`.
-2. Deploy the application so that `initializeDatabase()` applies pending customer migrations
-   against PostgreSQL. Existing auth tables remain untouched.
-3. Confirm `SEED_DEMO_DATA=false` is set (the production default automatically skips seeding).
-4. Take a PostgreSQL database backup (e.g. `pg_dump` or managed database snapshot) and verify
+2. For non-backward-compatible migrations, take a PostgreSQL database backup (for
+   example `pg_dump` or a managed database snapshot) and verify it can be restored.
+3. Stop or remove the old web instance where old code could be incompatible with the
+   pending schema change.
+4. Run the migration job once (`npm run db:migrate`) and verify it succeeds.
+5. Start the new web instance. Startup will still verify migrations before calling
+   `listen()`.
+6. Confirm `SEED_DEMO_DATA=false` is set (the production default automatically skips seeding).
+7. Take a PostgreSQL database backup (e.g. `pg_dump` or managed database snapshot) and verify
    it can be restored before proceeding.
-5. Run the dry-run cleanup (`npm run cleanup:demo`) and inspect the exact candidate list:
+8. Run the dry-run cleanup (`npm run cleanup:demo`) and inspect the exact candidate list:
    it must show 18 records matching `EXPECTED_DEMO_CUSTOMER_IDS`.
-6. Run the confirmed cleanup with the required safety flags
+9. Run the confirmed cleanup with the required safety flags
    (`ALLOW_DEMO_CLEANUP=true npm run cleanup:demo -- --confirm`).
-7. Restart the application and confirm the demo records remain absent
+10. Restart the application and confirm the demo records remain absent
    (`npm run cleanup:demo` should now report `demoCustomerCount: 0`).
-8. Only after cleanup succeeds, import real customers/bookings (Cabcher import or manual
+11. Only after cleanup succeeds, import real customers/bookings (Cabcher import or manual
    registration).
-9. Keep `SEED_DEMO_DATA` disabled and `ALLOW_DEMO_CLEANUP` unset/`false` in production
+12. Keep `SEED_DEMO_DATA` disabled and `ALLOW_DEMO_CLEANUP` unset/`false` in production
    after rollout, so neither seeding nor cleanup can run unintentionally.
+
+Routine operation does not require globally locking normal traffic. Use the migration
+job and startup gate to coordinate schema changes; use PostgreSQL constraints and
+transactions to protect normal customer writes.
 
 ## Delete and suspend semantics
 
@@ -155,3 +197,7 @@ npm test
 ```
 
 `npm test` type-checks test files and executes `node:test` suites across `src/**/*.test.ts`.
+The test command uses `--test-concurrency=1` because PostgreSQL integration tests create
+temporary schemas by assigning a schema-scoped `DATABASE_URL` to the process environment.
+Each test context closes the application pool, drops its temporary schema, and restores
+the previous `DATABASE_URL` during cleanup.
