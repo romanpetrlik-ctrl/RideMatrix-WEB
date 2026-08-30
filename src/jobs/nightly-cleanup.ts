@@ -6,10 +6,11 @@
  *
  * Environment variables:
  *   INACTIVITY_MONTHS  — inactivity threshold in months (default: 12)
- *   DATABASE_FILE      — SQLite database file (default: data/ridematrix.sqlite)
+ *   DATABASE_URL       — PostgreSQL connection URL (e.g. ******localhost:5432/ridematrix)
  */
 
 import dotenv from "dotenv";
+import { closeDatabase, initializeDatabase } from "../database/connection";
 import { detectAndCleanupInactiveCustomers } from "../services/customer-inactivity-cleanup";
 
 dotenv.config();
@@ -21,13 +22,16 @@ async function run(): Promise<void> {
   console.log(`[nightly-cleanup] Inactivity threshold: ${INACTIVITY_MONTHS} month(s)`);
 
   try {
+    await initializeDatabase();
     const result = await detectAndCleanupInactiveCustomers(INACTIVITY_MONTHS);
     console.log(
       `[nightly-cleanup] Finished. Processed: ${result.processed}, Deleted: ${result.deleted}, Errors: ${result.errors}`
     );
+    await closeDatabase();
     process.exit(result.errors > 0 ? 1 : 0);
   } catch (err) {
     console.error("[nightly-cleanup] Fatal error:", err);
+    await closeDatabase().catch(() => {});
     process.exit(1);
   }
 }

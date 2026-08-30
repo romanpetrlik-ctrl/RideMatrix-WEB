@@ -37,13 +37,15 @@ function isInactive(customer: CustomerRecord, thresholdMonths: number): boolean 
   return new Date(customer.createdAt) < cutoff;
 }
 
-export function findInactiveCustomers(monthsThreshold: number = 12): CustomerRecord[] {
+export async function findInactiveCustomers(
+  monthsThreshold: number = 12
+): Promise<CustomerRecord[]> {
   const allCustomers: CustomerRecord[] = [];
   let page = 1;
   let totalPages = 1;
 
   do {
-    const result = listCustomers({
+    const result = await listCustomers({
       search: "",
       status: "all",
       page,
@@ -130,7 +132,7 @@ export async function detectAndCleanupInactiveCustomers(
 ): Promise<CleanupResult> {
   const result: CleanupResult = { processed: 0, deleted: 0, errors: 0 };
 
-  const inactiveCustomers = findInactiveCustomers(monthsThreshold);
+  const inactiveCustomers = await findInactiveCustomers(monthsThreshold);
   console.log(`[inactivity-cleanup] Found ${inactiveCustomers.length} inactive customer(s).`);
 
   for (const customer of inactiveCustomers) {
@@ -150,7 +152,7 @@ export async function detectAndCleanupInactiveCustomers(
       result.errors++;
     }
 
-    const deleted = deleteCustomer(customer.id);
+    const deleted = await deleteCustomer(customer.id);
     if (deleted) {
       result.deleted++;
       console.log(`[inactivity-cleanup] Deleted customer ${customer.id} (${customer.email}).`);

@@ -360,12 +360,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         : "all";
       const requestedPage = Number.parseInt(String(req.query.page || "1"), 10);
       const requestedPerPage = Number.parseInt(String(req.query.perPage || CUSTOMER_DEFAULT_PER_PAGE), 10);
-      const result = listCustomers({
+      const result = await listCustomers({
         search,
         status,
         page: Number.isFinite(requestedPage) ? requestedPage : 1,
         perPage: Number.isFinite(requestedPerPage) ? requestedPerPage : CUSTOMER_DEFAULT_PER_PAGE
       });
+      const customerCount = await getCustomerCount();
 
       const pagination = getPagination(search, status, result.page, result.totalPages, result.perPage, result.totalRecords);
 
@@ -405,7 +406,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
             })
           )}`
         })),
-        customerCount: getCustomerCount(),
+        customerCount,
         hasSearchFilters: Boolean(search || status !== "all"),
         notice: getNotice(req.query.notice),
         pagination,
@@ -434,13 +435,14 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/import", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
+      const batches = await listImportBatches();
 
       return res.render("pages/customers/import", {
         title: "Customers Import",
         appTitle: options.appTitle,
         email: session.email,
         activeRoleLabel: session.activeRoleLabel,
-        latestBatches: listImportBatches().slice(0, 5),
+        latestBatches: batches.slice(0, 5),
         summary: null,
         errors: []
       });
@@ -469,29 +471,31 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       const uploadedFile = req.file;
 
       if (!uploadedFile || !uploadedFile.buffer || uploadedFile.size === 0) {
+        const batches = await listImportBatches();
         return res.status(400).render("pages/customers/import", {
           title: "Customers Import",
           appTitle: options.appTitle,
           email: session.email,
           activeRoleLabel: session.activeRoleLabel,
-          latestBatches: listImportBatches().slice(0, 5),
+          latestBatches: batches.slice(0, 5),
           summary: null,
           errors: ["Please upload a non-empty CSV file."]
         });
       }
 
-      const result = importCabcherBookings({
+      const result = await importCabcherBookings({
         csvContent: uploadedFile.buffer.toString("utf-8"),
         originalFilename: uploadedFile.originalname,
         uploadedBy: session.email
       });
+      const batches = await listImportBatches();
 
       return res.render("pages/customers/import", {
         title: "Customers Import",
         appTitle: options.appTitle,
         email: session.email,
         activeRoleLabel: session.activeRoleLabel,
-        latestBatches: listImportBatches().slice(0, 5),
+        latestBatches: batches.slice(0, 5),
         summary: result.summary,
         errors: []
       });
@@ -508,12 +512,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       if (error instanceof MissingRequiredColumnsError) {
+        const batches = await listImportBatches().catch(() => []);
         return res.status(400).render("pages/customers/import", {
           title: "Customers Import",
           appTitle: options.appTitle,
           email: sessionContext?.email || "",
           activeRoleLabel: sessionContext?.activeRoleLabel || "Administration",
-          latestBatches: listImportBatches().slice(0, 5),
+          latestBatches: batches.slice(0, 5),
           summary: null,
           errors: [`Missing required columns: ${error.missingColumns.join(", ")}`]
         });
@@ -618,7 +623,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     try {
-      const newCustomer = createCustomer({
+      const newCustomer = await createCustomer({
         title: registerFormData.title || null,
         givenName: registerFormData.givenName,
         surname: registerFormData.surname,
@@ -651,7 +656,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
-      const customer = getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -707,7 +712,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.post("/customers/:customerId/suspend", async (req, res, next) => {
     try {
       await requireAdminSession(req.headers.cookie);
-      const customer = getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -718,7 +723,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
       const returnTo = resolveReturnTo(req.query.returnTo, "/customers");
       const nextStatus = customer.status === "Suspended" ? "Active" : "Suspended";
-      updateCustomer(customer.id, { status: nextStatus });
+      await updateCustomer(customer.id, { status: nextStatus });
 
       return res.redirect(
         buildCustomerHref(customer.id, {
@@ -745,7 +750,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/bookings", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
-      const customer = getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -791,7 +796,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/delete", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
-      const customer = getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -829,7 +834,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.post("/customers/:customerId/delete", async (req, res, next) => {
     try {
       await requireAdminSession(req.headers.cookie);
-      const customer = getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -839,7 +844,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const returnTo = resolveReturnTo(req.query.returnTo, "/customers");
-      const deleted = deleteCustomer(customer.id);
+      const deleted = await deleteCustomer(customer.id);
 
       return res.redirect(
         `${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=${deleted ? "customer-deleted" : "delete-customer"}`
@@ -863,7 +868,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/edit", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie);
-      const customer = getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -930,7 +935,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       return next(error);
     }
 
-    const customer = getCustomerById(req.params.customerId);
+    const customer = await getCustomerById(req.params.customerId);
 
     if (!customer) {
       return res.status(404).render("pages/unavailable", {
@@ -975,7 +980,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     try {
-      const updated = updateCustomer(customer.id, {
+      const updated = await updateCustomer(customer.id, {
         givenName: formData.givenName,
         surname: formData.surname,
         email: formData.email || null,

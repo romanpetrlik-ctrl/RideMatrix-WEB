@@ -1,5 +1,7 @@
-import type { Database } from "better-sqlite3";
-import { getDatabase } from "../database/connection";
+import type { Pool, PoolClient } from "pg";
+import { getPool, withTransaction } from "../database/connection";
+
+type Queryable = Pool | PoolClient;
 
 export const CABCHER_SOURCE_TYPE = "cabcher_cleaned_bookings" as const;
 
@@ -175,17 +177,17 @@ type DerivedCustomerRow = {
   updated_at: string;
 };
 
-function nextSequenceValue(database: Database, name: string): number {
-  database
-    .prepare("INSERT INTO id_sequences (name, value) VALUES (?, 0) ON CONFLICT(name) DO NOTHING")
-    .run(name);
-  database.prepare("UPDATE id_sequences SET value = value + 1 WHERE name = ?").run(name);
+async function nextSequenceValue(client: Queryable, name: string): Promise<number> {
+  await client.query(
+    "INSERT INTO id_sequences (name, value) VALUES ($1, 0) ON CONFLICT (name) DO NOTHING",
+    [name]
+  );
+  const res = await client.query<{ value: string | number }>(
+    "UPDATE id_sequences SET value = value + 1 WHERE name = $1 RETURNING value",
+    [name]
+  );
 
-  const row = database.prepare("SELECT value FROM id_sequences WHERE name = ?").get(name) as {
-    value: number;
-  };
-
-  return Number(row.value);
+  return Number(res.rows[0].value);
 }
 
 function mapBatchRow(row: ImportBatchRow): ImportBatchRecord {
@@ -220,9 +222,9 @@ function mapBookingRow(row: BookingRow): BookingImportRecord {
     dropoffText: row.dropoff_text,
     vehicleClassRaw: row.vehicle_class_raw,
     paymentMethodRaw: row.payment_method_raw,
-    totalFareAmount: row.total_fare_amount,
+    totalFareAmount: row.total_fare_amount !== null ? Number(row.total_fare_amount) : null,
     currency: row.currency,
-    isFuture: row.is_future === 1,
+    isFuture: Number(row.is_future) === 1,
     inferredTemporalStatus: row.inferred_temporal_status as TemporalStatus,
     customerId: row.customer_id,
     createdAt: row.created_at,
@@ -253,56 +255,90 @@ function mapDerivedCustomerRow(row: DerivedCustomerRow): DerivedCustomerRecord {
   };
 }
 
-function isBookingAlreadyImported(database: Database, dedupeKey: string): boolean {
-  const row = database
-    .prepare("SELECT 1 AS found FROM imported_bookings WHERE dedupe_key = ? LIMIT 1")
-    .get(dedupeKey) as { found: number } | undefined;
+async function isBookingAlreadyImported(client: Queryable, dedupeKey: string): Promise<boolean> {
+  const res = await client.query(
+    "SELECT 1 FROM imported_bookings WHERE dedupe_key = $1 LIMIT 1",
+    [dedupeKey]
+  );
 
-  return Boolean(row);
+  return res.rows.length > 0;
 }
 
-function insertBooking(database: Database, booking: BookingImportRecord, dedupeKey: string): void {
-  database
-    .prepare(
-      `INSERT INTO imported_bookings (
-        id, import_batch_id, source_system, source_reference_raw, source_account_raw,
-        customer_email, customer_phone, customer_name_raw, customer_given_name, customer_surname,
-        service_date_time, pickup_text, dropoff_text, vehicle_class_raw, payment_method_raw,
-        total_fare_amount, currency, is_future, inferred_temporal_status, customer_id,
-        dedupe_key, created_at, updated_at
-      ) VALUES (
-        @id, @importBatchId, @sourceSystem, @sourceReferenceRaw, @sourceAccountRaw,
-        @customerEmail, @customerPhone, @customerNameRaw, @customerGivenName, @customerSurname,
-        @serviceDateTime, @pickupText, @dropoffText, @vehicleClassRaw, @paymentMethodRaw,
-        @totalFareAmount, @currency, @isFuture, @inferredTemporalStatus, @customerId,
-        @dedupeKey, @createdAt, @updatedAt
-      )`
-    )
-    .run({
-      ...booking,
-      isFuture: booking.isFuture ? 1 : 0,
-      dedupeKey
-    });
+async function insertBooking(
+  client: Queryable,
+  booking: BookingImportRecord,
+  dedupeKey: string
+): Promise<void> {
+  await client.query(
+    `INSERT INTO imported_bookings (
+      id, import_batch_id, source_system, source_reference_raw, source_account_raw,
+      customer_email, customer_phone, customer_name_raw, customer_given_name, customer_surname,
+      service_date_time, pickup_text, dropoff_text, vehicle_class_raw, payment_method_raw,
+      total_fare_amount, currency, is_future, inferred_temporal_status, customer_id,
+      dedupe_key, created_at, updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5,
+      $6, $7, $8, $9, $10,
+      $11, $12, $13, $14, $15,
+      $16, $17, $18, $19, $20,
+      $21, $22, $23
+    )`,
+    [
+      booking.id,
+      booking.importBatchId,
+      booking.sourceSystem,
+      booking.sourceReferenceRaw,
+      booking.sourceAccountRaw,
+      booking.customerEmail,
+      booking.customerPhone,
+      booking.customerNameRaw,
+      booking.customerGivenName,
+      booking.customerSurname,
+      booking.serviceDateTime,
+      booking.pickupText,
+      booking.dropoffText,
+      booking.vehicleClassRaw,
+      booking.paymentMethodRaw,
+      booking.totalFareAmount,
+      booking.currency,
+      booking.isFuture ? 1 : 0,
+      booking.inferredTemporalStatus,
+      booking.customerId,
+      dedupeKey,
+      booking.createdAt,
+      booking.updatedAt
+    ]
+  );
 }
 
-function persistBatch(database: Database, batch: ImportBatchRecord): void {
-  database
-    .prepare(
-      `INSERT INTO import_batches (
-        id, source_type, original_filename, uploaded_by, uploaded_at,
-        status, total_rows, imported_rows, rejected_rows, notes
-      ) VALUES (
-        @id, @sourceType, @originalFilename, @uploadedBy, @uploadedAt,
-        @status, @totalRows, @importedRows, @rejectedRows, @notes
-      )
-      ON CONFLICT(id) DO UPDATE SET
-        status = excluded.status,
-        total_rows = excluded.total_rows,
-        imported_rows = excluded.imported_rows,
-        rejected_rows = excluded.rejected_rows,
-        notes = excluded.notes`
+async function persistBatch(client: Queryable, batch: ImportBatchRecord): Promise<void> {
+  await client.query(
+    `INSERT INTO import_batches (
+      id, source_type, original_filename, uploaded_by, uploaded_at,
+      status, total_rows, imported_rows, rejected_rows, notes
+    ) VALUES (
+      $1, $2, $3, $4, $5,
+      $6, $7, $8, $9, $10
     )
-    .run(batch);
+    ON CONFLICT(id) DO UPDATE SET
+      status = EXCLUDED.status,
+      total_rows = EXCLUDED.total_rows,
+      imported_rows = EXCLUDED.imported_rows,
+      rejected_rows = EXCLUDED.rejected_rows,
+      notes = EXCLUDED.notes`,
+    [
+      batch.id,
+      batch.sourceType,
+      batch.originalFilename,
+      batch.uploadedBy,
+      batch.uploadedAt,
+      batch.status,
+      batch.totalRows,
+      batch.importedRows,
+      batch.rejectedRows,
+      batch.notes
+    ]
+  );
 }
 
 const COLUMN_ALIASES: Record<string, string[]> = {
@@ -611,40 +647,61 @@ function deriveCustomerFromBookings(
   };
 }
 
-function persistDerivedCustomer(database: Database, derived: DerivedCustomerRecord): void {
-  database
-    .prepare(
-      `INSERT INTO imported_customers (
-        id, email, phone, full_name, given_name, surname,
-        booking_count_total, booking_count_past, booking_count_upcoming,
-        first_seen_at, last_seen_at, next_booking_at,
-        last_pickup_text, last_dropoff_text, preferred_vehicle_raw, last_payment_method_raw,
-        created_at, updated_at
-      ) VALUES (
-        @id, @email, @phone, @fullName, @givenName, @surname,
-        @bookingCountTotal, @bookingCountPast, @bookingCountUpcoming,
-        @firstSeenAt, @lastSeenAt, @nextBookingAt,
-        @lastPickupText, @lastDropoffText, @preferredVehicleRaw, @lastPaymentMethodRaw,
-        @createdAt, @updatedAt
-      )
-      ON CONFLICT(email) DO UPDATE SET
-        phone = excluded.phone,
-        full_name = excluded.full_name,
-        given_name = excluded.given_name,
-        surname = excluded.surname,
-        booking_count_total = excluded.booking_count_total,
-        booking_count_past = excluded.booking_count_past,
-        booking_count_upcoming = excluded.booking_count_upcoming,
-        first_seen_at = excluded.first_seen_at,
-        last_seen_at = excluded.last_seen_at,
-        next_booking_at = excluded.next_booking_at,
-        last_pickup_text = excluded.last_pickup_text,
-        last_dropoff_text = excluded.last_dropoff_text,
-        preferred_vehicle_raw = excluded.preferred_vehicle_raw,
-        last_payment_method_raw = excluded.last_payment_method_raw,
-        updated_at = excluded.updated_at`
+async function persistDerivedCustomer(
+  client: Queryable,
+  derived: DerivedCustomerRecord
+): Promise<void> {
+  await client.query(
+    `INSERT INTO imported_customers (
+      id, email, phone, full_name, given_name, surname,
+      booking_count_total, booking_count_past, booking_count_upcoming,
+      first_seen_at, last_seen_at, next_booking_at,
+      last_pickup_text, last_dropoff_text, preferred_vehicle_raw, last_payment_method_raw,
+      created_at, updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      $7, $8, $9,
+      $10, $11, $12,
+      $13, $14, $15, $16,
+      $17, $18
     )
-    .run(derived);
+    ON CONFLICT (email) DO UPDATE SET
+      phone = EXCLUDED.phone,
+      full_name = EXCLUDED.full_name,
+      given_name = EXCLUDED.given_name,
+      surname = EXCLUDED.surname,
+      booking_count_total = EXCLUDED.booking_count_total,
+      booking_count_past = EXCLUDED.booking_count_past,
+      booking_count_upcoming = EXCLUDED.booking_count_upcoming,
+      first_seen_at = EXCLUDED.first_seen_at,
+      last_seen_at = EXCLUDED.last_seen_at,
+      next_booking_at = EXCLUDED.next_booking_at,
+      last_pickup_text = EXCLUDED.last_pickup_text,
+      last_dropoff_text = EXCLUDED.last_dropoff_text,
+      preferred_vehicle_raw = EXCLUDED.preferred_vehicle_raw,
+      last_payment_method_raw = EXCLUDED.last_payment_method_raw,
+      updated_at = EXCLUDED.updated_at`,
+    [
+      derived.id,
+      derived.email,
+      derived.phone,
+      derived.fullName,
+      derived.givenName,
+      derived.surname,
+      derived.bookingCountTotal,
+      derived.bookingCountPast,
+      derived.bookingCountUpcoming,
+      derived.firstSeenAt,
+      derived.lastSeenAt,
+      derived.nextBookingAt,
+      derived.lastPickupText,
+      derived.lastDropoffText,
+      derived.preferredVehicleRaw,
+      derived.lastPaymentMethodRaw,
+      derived.createdAt,
+      derived.updatedAt
+    ]
+  );
 }
 
 /**
@@ -654,124 +711,140 @@ function persistDerivedCustomer(database: Database, derived: DerivedCustomerReco
  * newer export containing known customers) never creates duplicates. Customer
  * records that were created manually keep their own name and contact details.
  */
-function syncCustomerRecord(database: Database, derived: DerivedCustomerRecord): void {
-  const existing = database
-    .prepare("SELECT id, source, deleted_at FROM customers WHERE id = ?")
-    .get(derived.id) as { id: string; source: string; deleted_at: string | null } | undefined;
+async function syncCustomerRecord(
+  client: Queryable,
+  derived: DerivedCustomerRecord
+): Promise<void> {
+  const existingRes = await client.query<{ id: string; source: string; deleted_at: string | null }>(
+    "SELECT id, source, deleted_at FROM customers WHERE id = $1",
+    [derived.id]
+  );
+  const existing = existingRes.rows[0];
 
   const notes = `Imported from Cabcher cleaned bookings. Total bookings: ${derived.bookingCountTotal}.`;
   const lastBookingAt = derived.lastSeenAt || derived.firstSeenAt;
 
   if (!existing) {
-    database
-      .prepare(
-        `INSERT INTO customers (
-          id, title, given_name, surname, email, email_normalized, phone, company, address,
-          preferred_contact, notes, status, source, created_at, updated_at,
-          last_login_at, last_booking_at, deleted_at
-        ) VALUES (
-          @id, NULL, @givenName, @surname, @email, @email, @phone, NULL, NULL,
-          @preferredContact, @notes, 'Active', 'import', @createdAt, @updatedAt,
-          NULL, @lastBookingAt, NULL
-        )`
-      )
-      .run({
-        id: derived.id,
-        givenName: derived.givenName || derived.fullName || "Imported",
-        surname: derived.surname || "Customer",
-        email: derived.email,
-        phone: derived.phone,
-        preferredContact: derived.phone ? "Phone" : "Email",
+    await client.query(
+      `INSERT INTO customers (
+        id, title, given_name, surname, email, email_normalized, phone, company, address,
+        preferred_contact, notes, status, source, created_at, updated_at,
+        last_login_at, last_booking_at, deleted_at
+      ) VALUES (
+        $1, NULL, $2, $3, $4, $5, $6, NULL, NULL,
+        $7, $8, 'Active', 'import', $9, $10,
+        NULL, $11, NULL
+      )`,
+      [
+        derived.id,
+        derived.givenName || derived.fullName || "Imported",
+        derived.surname || "Customer",
+        derived.email,
+        derived.email,
+        derived.phone,
+        derived.phone ? "Phone" : "Email",
         notes,
-        createdAt: derived.firstSeenAt || derived.createdAt,
-        updatedAt: derived.updatedAt,
+        derived.firstSeenAt || derived.createdAt,
+        derived.updatedAt,
         lastBookingAt
-      });
+      ]
+    );
 
     return;
   }
 
   if (existing.source === "import") {
-    database
-      .prepare(
-        `UPDATE customers SET
-          given_name = @givenName,
-          surname = @surname,
-          phone = @phone,
-          notes = @notes,
-          last_booking_at = @lastBookingAt,
-          updated_at = @updatedAt
-        WHERE id = @id`
-      )
-      .run({
-        id: derived.id,
-        givenName: derived.givenName || derived.fullName || "Imported",
-        surname: derived.surname || "Customer",
-        phone: derived.phone,
+    await client.query(
+      `UPDATE customers SET
+        given_name = $1,
+        surname = $2,
+        phone = $3,
+        notes = $4,
+        last_booking_at = $5,
+        updated_at = $6
+      WHERE id = $7`,
+      [
+        derived.givenName || derived.fullName || "Imported",
+        derived.surname || "Customer",
+        derived.phone,
         notes,
         lastBookingAt,
-        updatedAt: derived.updatedAt
-      });
+        derived.updatedAt,
+        derived.id
+      ]
+    );
 
     return;
   }
 
   // Manually maintained customer: only enrich missing contact data and the
   // last booking date, never overwrite curated fields.
-  database
-    .prepare(
-      `UPDATE customers SET
-        phone = COALESCE(phone, @phone),
-        last_booking_at = COALESCE(@lastBookingAt, last_booking_at),
-        updated_at = @updatedAt
-      WHERE id = @id`
-    )
-    .run({
-      id: derived.id,
-      phone: derived.phone,
+  await client.query(
+    `UPDATE customers SET
+      phone = COALESCE(phone, $1),
+      last_booking_at = COALESCE($2, last_booking_at),
+      updated_at = $3
+    WHERE id = $4`,
+    [
+      derived.phone,
       lastBookingAt,
-      updatedAt: derived.updatedAt
-    });
+      derived.updatedAt,
+      derived.id
+    ]
+  );
 }
 
-function deriveCustomersByEmail(
-  database: Database,
+async function deriveCustomersByEmail(
+  client: Queryable,
   emails: Set<string>,
   nowIso: string
-): { created: number; updated: number } {
+): Promise<{ created: number; updated: number }> {
   let created = 0;
   let updated = 0;
 
   for (const email of emails) {
-    const groupedBookings = (
-      database
-        .prepare("SELECT * FROM imported_bookings WHERE customer_email = ?")
-        .all(email) as BookingRow[]
-    ).map(mapBookingRow);
+    const bookingsRes = await client.query<BookingRow>(
+      "SELECT * FROM imported_bookings WHERE customer_email = $1",
+      [email]
+    );
+    const groupedBookings = bookingsRes.rows.map(mapBookingRow);
 
     if (groupedBookings.length === 0) {
       continue;
     }
 
-    const existingRow = database
-      .prepare("SELECT * FROM imported_customers WHERE email = ?")
-      .get(email) as DerivedCustomerRow | undefined;
+    const existingRes = await client.query<DerivedCustomerRow>(
+      "SELECT * FROM imported_customers WHERE email = $1",
+      [email]
+    );
+    const existingRow = existingRes.rows[0];
     const existing = existingRow ? mapDerivedCustomerRow(existingRow) : undefined;
 
-    const derived = deriveCustomerFromBookings(email, groupedBookings, nowIso, existing, () => {
-      const matchedCustomer = database
-        .prepare("SELECT id FROM customers WHERE email_normalized = ? LIMIT 1")
-        .get(email) as { id: string } | undefined;
+    let derivedId: string;
+    if (existing?.id) {
+      derivedId = existing.id;
+    } else {
+      const matchedRes = await client.query<{ id: string }>(
+        "SELECT id FROM customers WHERE email_normalized = $1 LIMIT 1",
+        [email]
+      );
+      if (matchedRes.rows[0]?.id) {
+        derivedId = matchedRes.rows[0].id;
+      } else {
+        const seq = await nextSequenceValue(client, "imported_customer");
+        derivedId = `imp-cust-${seq}`;
+      }
+    }
 
-      return matchedCustomer?.id || `imp-cust-${nextSequenceValue(database, "imported_customer")}`;
-    });
+    const derived = deriveCustomerFromBookings(email, groupedBookings, nowIso, existing, () => derivedId);
 
-    persistDerivedCustomer(database, derived);
-    syncCustomerRecord(database, derived);
+    await persistDerivedCustomer(client, derived);
+    await syncCustomerRecord(client, derived);
 
-    database
-      .prepare("UPDATE imported_bookings SET customer_id = @customerId, updated_at = @updatedAt WHERE customer_email = @email")
-      .run({ customerId: derived.id, updatedAt: nowIso, email });
+    await client.query(
+      "UPDATE imported_bookings SET customer_id = $1, updated_at = $2 WHERE customer_email = $3",
+      [derived.id, nowIso, email]
+    );
 
     if (existing) {
       updated += 1;
@@ -783,82 +856,83 @@ function deriveCustomersByEmail(
   return { created, updated };
 }
 
-export function importCabcherBookings(input: ImportInput): CabcherImportResult {
+export async function importCabcherBookings(
+  input: ImportInput,
+  client?: Queryable
+): Promise<CabcherImportResult> {
   const now = input.now || new Date();
   const nowIso = now.toISOString();
-  const database = getDatabase();
-  const batch: ImportBatchRecord = {
-    id: `imp-batch-${nextSequenceValue(database, "import_batch")}`,
-    sourceType: CABCHER_SOURCE_TYPE,
-    originalFilename: input.originalFilename,
-    uploadedBy: input.uploadedBy,
-    uploadedAt: nowIso,
-    status: "uploaded",
-    totalRows: 0,
-    importedRows: 0,
-    rejectedRows: 0,
-    notes: null
-  };
 
-  persistBatch(database, batch);
-
-  const parsedRows = parseCsvRows(input.csvContent).filter((row) => row.length > 0);
-
-  if (parsedRows.length === 0) {
-    batch.status = "failed";
-    batch.notes = "Uploaded file is empty.";
-    persistBatch(database, batch);
-
-    return {
-      batch,
-      summary: {
-        totalRowsParsed: 0,
-        bookingsImported: 0,
-        customersCreated: 0,
-        customersUpdated: 0,
-        rejectedRows: 0,
-        distinctVehicleRawValues: [],
-        distinctPaymentRawValues: [],
-        failures: ["Uploaded file is empty."],
-        rejectedRowSamples: []
-      }
+  const runWithClient = async (txClient: Queryable) => {
+    const seq = await nextSequenceValue(txClient, "import_batch");
+    const batch: ImportBatchRecord = {
+      id: `imp-batch-${seq}`,
+      sourceType: CABCHER_SOURCE_TYPE,
+      originalFilename: input.originalFilename,
+      uploadedBy: input.uploadedBy,
+      uploadedAt: nowIso,
+      status: "uploaded",
+      totalRows: 0,
+      importedRows: 0,
+      rejectedRows: 0,
+      notes: null
     };
-  }
 
-  const headerRow = parsedRows[0].map((value) => String(value || "").trim());
-  const dataRows: ParsedRow[] = parsedRows.slice(1).map((values, index) => ({
-    rowNumber: index + 2,
-    values
-  }));
+    await persistBatch(txClient, batch);
 
-  let headerResolution: HeaderResolution;
+    const parsedRows = parseCsvRows(input.csvContent).filter((row) => row.length > 0);
 
-  try {
-    headerResolution = resolveHeaders(headerRow);
-  } catch (error) {
-    if (error instanceof MissingRequiredColumnsError) {
+    if (parsedRows.length === 0) {
       batch.status = "failed";
-      batch.notes = error.message;
-      persistBatch(database, batch);
+      batch.notes = "Uploaded file is empty.";
+      await persistBatch(txClient, batch);
+
+      return {
+        batch,
+        summary: {
+          totalRowsParsed: 0,
+          bookingsImported: 0,
+          customersCreated: 0,
+          customersUpdated: 0,
+          rejectedRows: 0,
+          distinctVehicleRawValues: [],
+          distinctPaymentRawValues: [],
+          failures: ["Uploaded file is empty."],
+          rejectedRowSamples: []
+        }
+      };
+    }
+
+    const headerRow = parsedRows[0].map((value) => String(value || "").trim());
+    const dataRows: ParsedRow[] = parsedRows.slice(1).map((values, index) => ({
+      rowNumber: index + 2,
+      values
+    }));
+
+    let headerResolution: HeaderResolution;
+
+    try {
+      headerResolution = resolveHeaders(headerRow);
+    } catch (error) {
+      if (error instanceof MissingRequiredColumnsError) {
+        batch.status = "failed";
+        batch.notes = error.message;
+        await persistBatch(txClient, batch);
+        throw error;
+      }
+
       throw error;
     }
 
-    throw error;
-  }
+    batch.status = "parsed";
+    await persistBatch(txClient, batch);
 
-  batch.status = "parsed";
-  persistBatch(database, batch);
+    const importedEmails = new Set<string>();
+    const rejectedRows: RowRejection[] = [];
+    const distinctVehicles = new Set<string>();
+    const distinctPayments = new Set<string>();
+    const duplicateGuard = new Set<string>();
 
-  const importedEmails = new Set<string>();
-  const rejectedRows: RowRejection[] = [];
-  const distinctVehicles = new Set<string>();
-  const distinctPayments = new Set<string>();
-  const duplicateGuard = new Set<string>();
-
-  // The whole ingestion runs in one transaction so that a failure mid-file never
-  // leaves a partially imported batch behind (which would also block a clean retry,
-  // because persisted rows keep their dedupe key).
-  const ingestRows = database.transaction(() => {
     for (const row of dataRows) {
       if (isRowEmpty(row.values)) {
         continue;
@@ -917,7 +991,7 @@ export function importCabcherBookings(input: ImportInput): CabcherImportResult {
         continue;
       }
 
-      if (isBookingAlreadyImported(database, dedupeKey)) {
+      if (await isBookingAlreadyImported(txClient, dedupeKey)) {
         duplicateGuard.add(dedupeKey);
         rejectedRows.push({
           rowNumber: row.rowNumber,
@@ -928,8 +1002,9 @@ export function importCabcherBookings(input: ImportInput): CabcherImportResult {
 
       duplicateGuard.add(dedupeKey);
 
+      const bookingSeq = await nextSequenceValue(txClient, "imported_booking");
       const booking: BookingImportRecord = {
-        id: `imp-book-${nextSequenceValue(database, "imported_booking")}`,
+        id: `imp-book-${bookingSeq}`,
         importBatchId: batch.id,
         sourceSystem: "cabcher",
         sourceReferenceRaw,
@@ -953,7 +1028,7 @@ export function importCabcherBookings(input: ImportInput): CabcherImportResult {
         updatedAt: nowIso
       };
 
-      insertBooking(database, booking, dedupeKey);
+      await insertBooking(txClient, booking, dedupeKey);
       importedEmails.add(email);
 
       if (vehicleClassRaw) {
@@ -965,75 +1040,86 @@ export function importCabcherBookings(input: ImportInput): CabcherImportResult {
       }
     }
 
-    return deriveCustomersByEmail(database, importedEmails, nowIso);
-  });
+    const customerStats = await deriveCustomersByEmail(txClient, importedEmails, nowIso);
 
-  const customerStats = ingestRows();
+    const totalRowsParsed = dataRows.filter((row) => !isRowEmpty(row.values)).length;
+    const importedRows = totalRowsParsed - rejectedRows.length;
 
-  const totalRowsParsed = dataRows.filter((row) => !isRowEmpty(row.values)).length;
-  const importedRows = totalRowsParsed - rejectedRows.length;
+    batch.totalRows = totalRowsParsed;
+    batch.importedRows = importedRows;
+    batch.rejectedRows = rejectedRows.length;
 
-  batch.totalRows = totalRowsParsed;
-  batch.importedRows = importedRows;
-  batch.rejectedRows = rejectedRows.length;
+    batch.status = "imported";
+    batch.notes = importedRows > 0
+      ? `Imported ${importedRows} bookings and derived ${customerStats.created + customerStats.updated} customer aggregates.`
+      : "No rows were imported from this file.";
 
-  batch.status = "imported";
-  batch.notes = importedRows > 0
-    ? `Imported ${importedRows} bookings and derived ${customerStats.created + customerStats.updated} customer aggregates.`
-    : "No rows were imported from this file.";
+    await persistBatch(txClient, batch);
 
-  persistBatch(database, batch);
-
-  return {
-    batch,
-    summary: {
-      totalRowsParsed,
-      bookingsImported: importedRows,
-      customersCreated: customerStats.created,
-      customersUpdated: customerStats.updated,
-      rejectedRows: rejectedRows.length,
-      distinctVehicleRawValues: [...distinctVehicles].sort((left, right) => left.localeCompare(right)),
-      distinctPaymentRawValues: [...distinctPayments].sort((left, right) => left.localeCompare(right)),
-      failures: [],
-      rejectedRowSamples: rejectedRows.slice(0, 20)
-    }
+    return {
+      batch,
+      summary: {
+        totalRowsParsed,
+        bookingsImported: importedRows,
+        customersCreated: customerStats.created,
+        customersUpdated: customerStats.updated,
+        rejectedRows: rejectedRows.length,
+        distinctVehicleRawValues: [...distinctVehicles].sort((left, right) => left.localeCompare(right)),
+        distinctPaymentRawValues: [...distinctPayments].sort((left, right) => left.localeCompare(right)),
+        failures: [],
+        rejectedRowSamples: rejectedRows.slice(0, 20)
+      }
+    };
   };
+
+  if (client) {
+    return runWithClient(client);
+  }
+
+  return withTransaction(async (txClient) => runWithClient(txClient));
 }
 
-export function listImportBatches(): ImportBatchRecord[] {
-  const database = getDatabase();
-  const rows = database
-    .prepare("SELECT * FROM import_batches ORDER BY uploaded_at DESC, rowid DESC")
-    .all() as ImportBatchRow[];
+export async function listImportBatches(client?: Queryable): Promise<ImportBatchRecord[]> {
+  const runner = client || getPool();
+  const res = await runner.query<ImportBatchRow>(
+    "SELECT * FROM import_batches ORDER BY uploaded_at DESC, id DESC"
+  );
 
-  return rows.map(mapBatchRow);
+  return res.rows.map(mapBatchRow);
 }
 
-export function listImportedBookingsForCustomer(customerId: string): BookingImportRecord[] {
-  const database = getDatabase();
-  const rows = database
-    .prepare(
-      "SELECT * FROM imported_bookings WHERE customer_id = ? ORDER BY service_date_time DESC"
-    )
-    .all(customerId) as BookingRow[];
+export async function listImportedBookingsForCustomer(
+  customerId: string,
+  client?: Queryable
+): Promise<BookingImportRecord[]> {
+  const runner = client || getPool();
+  const res = await runner.query<BookingRow>(
+    "SELECT * FROM imported_bookings WHERE customer_id = $1 ORDER BY service_date_time DESC",
+    [customerId]
+  );
 
-  return rows.map(mapBookingRow);
+  return res.rows.map(mapBookingRow);
 }
 
-export function listDerivedCustomers(): DerivedCustomerRecord[] {
-  const database = getDatabase();
-  const rows = database
-    .prepare("SELECT * FROM imported_customers ORDER BY email ASC")
-    .all() as DerivedCustomerRow[];
+export async function listDerivedCustomers(client?: Queryable): Promise<DerivedCustomerRecord[]> {
+  const runner = client || getPool();
+  const res = await runner.query<DerivedCustomerRow>(
+    "SELECT * FROM imported_customers ORDER BY email ASC"
+  );
 
-  return rows.map(mapDerivedCustomerRow);
+  return res.rows.map(mapDerivedCustomerRow);
 }
 
-export function getDerivedCustomerById(customerId: string): DerivedCustomerRecord | undefined {
-  const database = getDatabase();
-  const row = database
-    .prepare("SELECT * FROM imported_customers WHERE id = ?")
-    .get(customerId) as DerivedCustomerRow | undefined;
+export async function getDerivedCustomerById(
+  customerId: string,
+  client?: Queryable
+): Promise<DerivedCustomerRecord | undefined> {
+  const runner = client || getPool();
+  const res = await runner.query<DerivedCustomerRow>(
+    "SELECT * FROM imported_customers WHERE id = $1",
+    [customerId]
+  );
 
+  const row = res.rows[0];
   return row ? mapDerivedCustomerRow(row) : undefined;
 }

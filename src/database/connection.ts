@@ -1,12 +1,10 @@
-import fs from "fs";
-import path from "path";
-import Database from "better-sqlite3";
+import pg from "pg";
 import { runMigrations } from "./migrations";
 import { seedCustomers } from "./seed";
 
-export const DEFAULT_DATABASE_FILE = "data/ridematrix.sqlite";
+const { Pool } = pg;
 
-let connection: Database.Database | null = null;
+let pool: pg.Pool | null = null;
 
 /**
  * Demo/seed customer data must never be created automatically in production.
@@ -17,7 +15,7 @@ let connection: Database.Database | null = null;
  * environment that also has `NODE_ENV=production`), or `SEED_DEMO_DATA=false`
  * to disable it anywhere else.
  */
-function shouldSeedDemoData(): boolean {
+export function shouldSeedDemoData(): boolean {
   const configured = String(process.env.SEED_DEMO_DATA ?? "").trim().toLowerCase();
 
   if (configured === "true") {
@@ -31,105 +29,101 @@ function shouldSeedDemoData(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-function resolveDatabaseFile(): string {
-  const configured = String(process.env.DATABASE_FILE || "").trim() || DEFAULT_DATABASE_FILE;
+export function resolveDatabaseUrl(): string {
+  const configured = String(process.env.DATABASE_URL || "").trim();
 
-  if (configured === ":memory:") {
-    return configured;
-  }
-
-  return path.isAbsolute(configured) ? configured : path.join(process.cwd(), configured);
-}
-
-function openDatabase(): Database.Database {
-  const file = resolveDatabaseFile();
-
-  if (file !== ":memory:") {
-    const directory = path.dirname(file);
-
-    try {
-      fs.mkdirSync(directory, { recursive: true });
-    } catch (error) {
-      throw new Error(
-        `Unable to create database directory "${directory}". Check DATABASE_FILE configuration. Cause: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-  }
-
-  let database: Database.Database;
-
-  try {
-    database = new Database(file);
-  } catch (error) {
+  if (!configured) {
     throw new Error(
-      `Unable to open the SQLite database at "${file}". Check DATABASE_FILE configuration. Cause: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      "DATABASE_URL environment variable is missing. " +
+        "Configure a valid PostgreSQL connection string (e.g. ******host:5432/ridematrix)."
     );
   }
 
-  if (file !== ":memory:") {
-    database.pragma("journal_mode = WAL");
-  }
-
-  database.pragma("foreign_keys = ON");
-
-  // Used by customer search so that phone numbers can be matched regardless of
-  // the separators stored in the database.
-  database.function("rm_normalize_phone", { deterministic: true }, (value: unknown) =>
-    String(value ?? "").replace(/[^\d+]/g, "").toLowerCase()
-  );
-
-  return database;
+  return configured;
 }
 
 /**
- * Returns the shared SQLite connection, opening it and applying pending
- * migrations and the demo seed on first use.
+ * Returns the shared PostgreSQL connection pool, configuring it from DATABASE_URL.
  */
-export function getDatabase(): Database.Database {
-  if (connection) {
-    return connection;
+export function getPool(): pg.Pool {
+  if (pool) {
+    return pool;
   }
 
-  const database = openDatabase();
+  const connectionString = resolveDatabaseUrl();
+
+  pool = new Pool({
+    connectionString,
+    max: process.env.DATABASE_POOL_MAX ? parseInt(process.env.DATABASE_POOL_MAX, 10) : 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
+  });
+
+  pool.on("error", (err) => {
+    console.error("[database] Unexpected error on idle PostgreSQL client:", err);
+  });
+
+  return pool;
+}
+
+/**
+ * Executes a parameterized SQL query on the pool or on an existing client.
+ */
+export async function query<R extends pg.QueryResultRow = any>(
+  text: string,
+  params?: any[],
+  client?: pg.PoolClient | pg.Pool
+): Promise<pg.QueryResult<R>> {
+  const runner = client || getPool();
+  return runner.query<R>(text, params);
+}
+
+/**
+ * Executes a callback inside a PostgreSQL transaction using a dedicated client.
+ */
+export async function withTransaction<T>(
+  callback: (client: pg.PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await callback(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Opens the database eagerly and applies pending migrations and demo seed.
+ */
+export async function initializeDatabase(): Promise<void> {
+  const currentPool = getPool();
+  const client = await currentPool.connect();
 
   try {
-    runMigrations(database);
+    await runMigrations(client);
 
     if (shouldSeedDemoData()) {
-      seedCustomers(database);
+      await seedCustomers(client);
     } else {
       console.log("[database] SEED_DEMO_DATA is disabled; skipping demo customer seed.");
     }
-  } catch (error) {
-    database.close();
-    throw error;
+  } finally {
+    client.release();
   }
-
-  connection = database;
-  return connection;
 }
 
-/**
- * Opens the database eagerly so that configuration problems surface during
- * application startup instead of on the first request.
- */
-export function initializeDatabase(): void {
-  getDatabase();
-}
-
-export function closeDatabase(): void {
-  if (!connection) {
+export async function closeDatabase(): Promise<void> {
+  if (!pool) {
     return;
   }
 
-  connection.close();
-  connection = null;
-}
-
-export function getDatabaseFilePath(): string {
-  return resolveDatabaseFile();
+  const currentPool = pool;
+  pool = null;
+  await currentPool.end();
 }

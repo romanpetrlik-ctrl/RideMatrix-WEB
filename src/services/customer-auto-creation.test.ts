@@ -1,34 +1,31 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import test, { after, before } from "node:test";
-import { closeDatabase } from "../database/connection";
+import { closeDatabase, initializeDatabase } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
 import { getOrCreateCustomer } from "./customer-auto-creation";
 import { getCustomerCount } from "./customers";
 
-let temporaryDirectory: string;
+let dbContext: TestDatabaseContext;
 
-before(() => {
-  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "ridematrix-auto-creation-"));
-  process.env.DATABASE_FILE = path.join(temporaryDirectory, "test.sqlite");
+before(async () => {
+  dbContext = await createTestDatabaseContext("test_autocreate");
+  await initializeDatabase();
 });
 
-after(() => {
-  closeDatabase();
-  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+after(async () => {
+  await dbContext.cleanup();
 });
 
-test("creates a customer once and reuses it for the same normalized email", () => {
-  const countBefore = getCustomerCount();
+test("creates a customer once and reuses it for the same normalized email", async () => {
+  const countBefore = await getCustomerCount();
 
-  const first = getOrCreateCustomer("Guest.User@Example.com", "Guest User", "+44 7700 900400");
+  const first = await getOrCreateCustomer("Guest.User@Example.com", "Guest User", "+44 7700 900400");
   assert.equal(first.isNew, true);
 
-  closeDatabase();
+  await closeDatabase();
 
-  const second = getOrCreateCustomer("  guest.user@example.com ", "Guest User", null);
+  const second = await getOrCreateCustomer("  guest.user@example.com ", "Guest User", null);
   assert.equal(second.isNew, false);
   assert.equal(second.customerId, first.customerId);
-  assert.equal(getCustomerCount(), countBefore + 1);
+  assert.equal(await getCustomerCount(), countBefore + 1);
 });

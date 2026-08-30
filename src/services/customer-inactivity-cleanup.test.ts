@@ -1,34 +1,31 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import test, { after, before } from "node:test";
-import { closeDatabase } from "../database/connection";
+import { closeDatabase, initializeDatabase } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
 import { findInactiveCustomers } from "./customer-inactivity-cleanup";
 import { createCustomer, deleteCustomer, getCustomerById } from "./customers";
 
-let temporaryDirectory: string;
+let dbContext: TestDatabaseContext;
 
-before(() => {
-  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "ridematrix-cleanup-"));
-  process.env.DATABASE_FILE = path.join(temporaryDirectory, "test.sqlite");
+before(async () => {
+  dbContext = await createTestDatabaseContext("test_inactivity");
+  await initializeDatabase();
 });
 
-after(() => {
-  closeDatabase();
-  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+after(async () => {
+  await dbContext.cleanup();
 });
 
-test("only reports customers without recent bookings as inactive", () => {
-  const inactive = findInactiveCustomers(12);
+test("only reports customers without recent bookings as inactive", async () => {
+  const inactive = await findInactiveCustomers(12);
 
   assert.ok(inactive.every((customer) => customer.bookings.length === 0));
   assert.ok(inactive.some((customer) => customer.id === "cust-003"));
   assert.ok(!inactive.some((customer) => customer.id === "cust-001"));
 });
 
-test("keeps a freshly created customer out of the inactive set", () => {
-  const created = createCustomer({
+test("keeps a freshly created customer out of the inactive set", async () => {
+  const created = await createCustomer({
     givenName: "Recent",
     surname: "Signup",
     email: "recent.signup@example.com",
@@ -36,15 +33,15 @@ test("keeps a freshly created customer out of the inactive set", () => {
     status: "Active"
   });
 
-  const inactive = findInactiveCustomers(12);
+  const inactive = await findInactiveCustomers(12);
 
   assert.ok(!inactive.some((customer) => customer.id === created.id));
 });
 
-test("deletion performed by the cleanup survives a restart", () => {
-  assert.equal(deleteCustomer("cust-003"), true);
+test("deletion performed by the cleanup survives a restart", async () => {
+  assert.equal(await deleteCustomer("cust-003"), true);
 
-  closeDatabase();
+  await closeDatabase();
 
-  assert.equal(getCustomerById("cust-003"), undefined);
+  assert.equal(await getCustomerById("cust-003"), undefined);
 });
