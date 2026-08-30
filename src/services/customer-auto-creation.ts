@@ -13,14 +13,14 @@ export type GetOrCreateCustomerResult = {
  * Returns an existing customer for the given email, or creates a new one.
  * Email is normalized (lowercased, trimmed) before lookup/insert.
  */
-export function getOrCreateCustomer(
+export async function getOrCreateCustomer(
   email: string,
   fullName?: string | null,
   phone?: string | null
-): GetOrCreateCustomerResult {
+): Promise<GetOrCreateCustomerResult> {
   const normalizedEmail = normalizeEmail(email);
 
-  const existing = getCustomerByEmail(normalizedEmail);
+  const existing = await getCustomerByEmail(normalizedEmail);
   if (existing) {
     return { customerId: existing.id, isNew: false };
   }
@@ -39,7 +39,7 @@ export function getOrCreateCustomer(
     }
   }
 
-  const newCustomer = createCustomer({
+  const newCustomer = await createCustomer({
     givenName,
     surname,
     email: normalizedEmail,

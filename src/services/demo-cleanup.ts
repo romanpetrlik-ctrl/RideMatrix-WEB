@@ -1,6 +1,8 @@
-import type { Database } from "better-sqlite3";
-import { getDatabase } from "../database/connection";
+import type { Pool, PoolClient } from "pg";
+import { getPool, withTransaction } from "../database/connection";
 import { SEED_CUSTOMERS } from "../database/seed";
+
+type Queryable = Pool | PoolClient;
 
 /**
  * Origin marker used exclusively by `seedCustomers` (see `src/database/seed.ts`).
@@ -47,20 +49,22 @@ type CustomerRow = {
  * their related bookings, import batches and non-demo customer counts. This
  * never modifies the database and is safe to call at any time.
  */
-function loadReport(database: Database): DemoCleanupReport {
-  const demoRows = database
-    .prepare(
-      `SELECT id, given_name, surname, email, source
-       FROM customers
-       WHERE source = ? AND deleted_at IS NULL
-       ORDER BY id`
-    )
-    .all(DEMO_SOURCE) as CustomerRow[];
+async function loadReport(runner: Queryable): Promise<DemoCleanupReport> {
+  const demoRowsRes = await runner.query<CustomerRow>(
+    `SELECT id, given_name, surname, email, source
+     FROM customers
+     WHERE source = $1 AND deleted_at IS NULL
+     ORDER BY id`,
+    [DEMO_SOURCE]
+  );
+  const demoRows = demoRowsRes.rows;
 
-  const bookingCountRows = database
-    .prepare(`SELECT customer_id, COUNT(*) AS total FROM customer_bookings GROUP BY customer_id`)
-    .all() as Array<{ customer_id: string; total: number }>;
-  const bookingCountByCustomer = new Map(bookingCountRows.map((row) => [row.customer_id, row.total]));
+  const bookingCountRowsRes = await runner.query<{ customer_id: string; total: string | number }>(
+    `SELECT customer_id, COUNT(*) AS total FROM customer_bookings GROUP BY customer_id`
+  );
+  const bookingCountByCustomer = new Map(
+    bookingCountRowsRes.rows.map((row) => [row.customer_id, Number(row.total)])
+  );
 
   const demoCustomers: DemoCustomerCandidate[] = demoRows.map((row) => ({
     id: row.id,
@@ -73,17 +77,16 @@ function loadReport(database: Database): DemoCleanupReport {
 
   const demoBookingCount = demoCustomers.reduce((sum, customer) => sum + customer.bookingCount, 0);
 
-  const importBatchCount = Number(
-    (database.prepare(`SELECT COUNT(*) AS total FROM import_batches`).get() as { total: number }).total
+  const importBatchCountRes = await runner.query<{ total: string | number }>(
+    `SELECT COUNT(*) AS total FROM import_batches`
   );
+  const importBatchCount = Number(importBatchCountRes.rows[0]?.total ?? 0);
 
-  const nonDemoCustomerCount = Number(
-    (
-      database
-        .prepare(`SELECT COUNT(*) AS total FROM customers WHERE source != ? AND deleted_at IS NULL`)
-        .get(DEMO_SOURCE) as { total: number }
-    ).total
+  const nonDemoCustomerCountRes = await runner.query<{ total: string | number }>(
+    `SELECT COUNT(*) AS total FROM customers WHERE source != $1 AND deleted_at IS NULL`,
+    [DEMO_SOURCE]
   );
+  const nonDemoCustomerCount = Number(nonDemoCustomerCountRes.rows[0]?.total ?? 0);
 
   const candidateIds = demoCustomers.map((customer) => customer.id).sort();
   const expectedSet = new Set(EXPECTED_DEMO_CUSTOMER_IDS);
@@ -108,8 +111,9 @@ function loadReport(database: Database): DemoCleanupReport {
  * Read-only dry-run report. Never modifies data. Use this to inspect the
  * exact candidate list before running a confirmed cleanup.
  */
-export function getDemoCleanupReport(): DemoCleanupReport {
-  return loadReport(getDatabase());
+export async function getDemoCleanupReport(client?: Queryable): Promise<DemoCleanupReport> {
+  const runner = client || getPool();
+  return loadReport(runner);
 }
 
 export type DemoCleanupOptions = {
@@ -165,9 +169,12 @@ function refusal(report: DemoCleanupReport, reason: string): DemoCleanupResult {
  * - Idempotent: once no demo records remain, subsequent confirmed runs are a
  *   safe no-op and never require an override.
  */
-export function runDemoCleanup(options: DemoCleanupOptions): DemoCleanupResult {
-  const database = getDatabase();
-  const report = loadReport(database);
+export async function runDemoCleanup(
+  options: DemoCleanupOptions,
+  client?: Queryable
+): Promise<DemoCleanupResult> {
+  const runner = client || getPool();
+  const report = await loadReport(runner);
 
   if (!options.confirm) {
     return {
@@ -213,43 +220,54 @@ export function runDemoCleanup(options: DemoCleanupOptions): DemoCleanupResult {
   }
 
   const ids = report.demoCustomers.map((customer) => customer.id);
-  const emailByCustomerId = new Map(report.demoCustomers.map((customer) => [customer.id, customer.email]));
-  const placeholders = ids.map(() => "?").join(", ");
+  const emailByCustomerId = new Map(
+    report.demoCustomers.map((customer) => [customer.id, customer.email])
+  );
   let archivedBookingCount = 0;
 
-  const execute = database.transaction(() => {
-    const bookings = database
-      .prepare(`SELECT * FROM customer_bookings WHERE customer_id IN (${placeholders})`)
-      .all(...ids) as Array<Record<string, unknown> & { id: string; customer_id: string }>;
+  const runWithTx = async (txClient: Queryable) => {
+    const bookingsRes = await txClient.query<Record<string, unknown> & { id: string; customer_id: string }>(
+      "SELECT * FROM customer_bookings WHERE customer_id = ANY($1)",
+      [ids]
+    );
+    const bookings = bookingsRes.rows;
 
     const archivedAt = new Date().toISOString();
-    const archiveBooking = database.prepare(
-      `INSERT OR IGNORE INTO archived_bookings (
+    const insertArchiveSql = `
+      INSERT INTO archived_bookings (
         id, customer_id, customer_email, booking_id, booking_data, archived_at, reason
-      ) VALUES (@id, @customerId, @customerEmail, @bookingId, @bookingData, @archivedAt, @reason)`
-    );
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (id) DO NOTHING
+    `;
 
     for (const booking of bookings) {
-      archiveBooking.run({
-        id: `demo-cleanup-${booking.id}`,
-        customerId: booking.customer_id,
-        customerEmail: emailByCustomerId.get(booking.customer_id) ?? null,
-        bookingId: booking.id,
-        bookingData: JSON.stringify(booking),
+      await txClient.query(insertArchiveSql, [
+        `demo-cleanup-${booking.id}`,
+        booking.customer_id,
+        emailByCustomerId.get(booking.customer_id) ?? null,
+        booking.id,
+        JSON.stringify(booking),
         archivedAt,
-        reason: "demo_seed_cleanup"
-      });
+        "demo_seed_cleanup"
+      ]);
     }
 
-    database.prepare(`DELETE FROM customer_bookings WHERE customer_id IN (${placeholders})`).run(...ids);
+    await txClient.query("DELETE FROM customer_bookings WHERE customer_id = ANY($1)", [ids]);
     archivedBookingCount = bookings.length;
 
     // Belt-and-braces: only ever delete rows that are still marked as demo
     // seed data at the moment of the transaction, never anything else.
-    database.prepare(`DELETE FROM customers WHERE id IN (${placeholders}) AND source = ?`).run(...ids, DEMO_SOURCE);
-  });
+    await txClient.query(
+      "DELETE FROM customers WHERE id = ANY($1) AND source = $2",
+      [ids, DEMO_SOURCE]
+    );
+  };
 
-  execute();
+  if (client) {
+    await runWithTx(client);
+  } else {
+    await withTransaction(runWithTx);
+  }
 
   return {
     report,

@@ -1,5 +1,7 @@
-import type { Database } from "better-sqlite3";
-import { getDatabase } from "../database/connection";
+import type { Pool, PoolClient } from "pg";
+import { getPool } from "../database/connection";
+
+type Queryable = Pool | PoolClient;
 
 export const CUSTOMER_STATUS_OPTIONS = [
   "all",
@@ -187,33 +189,33 @@ function mapRow(row: CustomerRow, bookings: BookingRecord[]): CustomerRecord {
   };
 }
 
-function loadBookings(database: Database, customerIds: string[]): Map<string, BookingRecord[]> {
+async function loadBookings(
+  runner: Queryable,
+  customerIds: string[]
+): Promise<Map<string, BookingRecord[]>> {
   const grouped = new Map<string, BookingRecord[]>();
 
   if (customerIds.length === 0) {
     return grouped;
   }
 
-  const placeholders = customerIds.map(() => "?").join(", ");
+  const ownBookingsRes = await runner.query<{
+    id: string;
+    customer_id: string;
+    reference: string;
+    service_date: string;
+    pickup: string;
+    dropoff: string;
+    status: BookingRecord["status"];
+  }>(
+    `SELECT id, customer_id, reference, service_date, pickup, dropoff, status
+     FROM customer_bookings
+     WHERE customer_id = ANY($1)
+     ORDER BY service_date DESC`,
+    [customerIds]
+  );
 
-  const ownBookings = database
-    .prepare(
-      `SELECT id, customer_id, reference, service_date, pickup, dropoff, status
-       FROM customer_bookings
-       WHERE customer_id IN (${placeholders})
-       ORDER BY service_date DESC`
-    )
-    .all(...customerIds) as Array<{
-      id: string;
-      customer_id: string;
-      reference: string;
-      service_date: string;
-      pickup: string;
-      dropoff: string;
-      status: BookingRecord["status"];
-    }>;
-
-  for (const booking of ownBookings) {
+  for (const booking of ownBookingsRes.rows) {
     const list = grouped.get(booking.customer_id) || [];
     list.push({
       id: booking.id,
@@ -226,25 +228,24 @@ function loadBookings(database: Database, customerIds: string[]): Map<string, Bo
     grouped.set(booking.customer_id, list);
   }
 
-  const importedBookings = database
-    .prepare(
-      `SELECT id, customer_id, service_date_time, pickup_text, dropoff_text, inferred_temporal_status
-       FROM imported_bookings
-       WHERE customer_id IN (${placeholders})
-       ORDER BY service_date_time DESC`
-    )
-    .all(...customerIds) as Array<{
-      id: string;
-      customer_id: string;
-      service_date_time: string;
-      pickup_text: string;
-      dropoff_text: string;
-      inferred_temporal_status: string;
-    }>;
+  const importedBookingsRes = await runner.query<{
+    id: string;
+    customer_id: string;
+    service_date_time: string;
+    pickup_text: string;
+    dropoff_text: string;
+    inferred_temporal_status: string;
+  }>(
+    `SELECT id, customer_id, service_date_time, pickup_text, dropoff_text, inferred_temporal_status
+     FROM imported_bookings
+     WHERE customer_id = ANY($1)
+     ORDER BY service_date_time DESC`,
+    [customerIds]
+  );
 
   const nowIso = new Date().toISOString();
 
-  for (const booking of importedBookings) {
+  for (const booking of importedBookingsRes.rows) {
     const list = grouped.get(booking.customer_id) || [];
     list.push({
       id: booking.id,
@@ -269,8 +270,8 @@ function loadBookings(database: Database, customerIds: string[]): Map<string, Bo
   return grouped;
 }
 
-function hydrate(database: Database, rows: CustomerRow[]): CustomerRecord[] {
-  const bookings = loadBookings(database, rows.map((row) => row.id));
+async function hydrate(runner: Queryable, rows: CustomerRow[]): Promise<CustomerRecord[]> {
+  const bookings = await loadBookings(runner, rows.map((row) => row.id));
   return rows.map((row) => mapRow(row, bookings.get(row.id) || []));
 }
 
@@ -280,35 +281,36 @@ function generateCustomerId(): string {
 
 type FilterClause = {
   sql: string;
-  params: Record<string, string>;
+  params: any[];
 };
 
 function buildFilterClause(params: CustomerListParams): FilterClause {
   const conditions = ["deleted_at IS NULL"];
-  const values: Record<string, string> = {};
+  const values: any[] = [];
 
   if (params.status !== "all") {
-    conditions.push("status = @status");
-    values.status = params.status;
+    values.push(params.status);
+    conditions.push(`status = $${values.length}`);
   }
 
   const search = String(params.search || "").trim();
 
   if (search) {
-    const like = `%${escapeLike(search.toLowerCase())}%`;
-    values.like = like;
+    values.push(`%${escapeLike(search.toLowerCase())}%`);
+    const searchIdx = values.length;
 
     const phoneSearch = normalizePhoneDigits(search);
     const searchConditions = [
-      "lower(COALESCE(surname, '')) LIKE @like ESCAPE '\\'",
-      "lower(COALESCE(given_name, '')) LIKE @like ESCAPE '\\'",
-      "lower(COALESCE(email, '')) LIKE @like ESCAPE '\\'",
-      "lower(COALESCE(phone, '')) LIKE @like ESCAPE '\\'"
+      `lower(COALESCE(surname, '')) LIKE $${searchIdx} ESCAPE '\\'`,
+      `lower(COALESCE(given_name, '')) LIKE $${searchIdx} ESCAPE '\\'`,
+      `lower(COALESCE(email, '')) LIKE $${searchIdx} ESCAPE '\\'`,
+      `lower(COALESCE(phone, '')) LIKE $${searchIdx} ESCAPE '\\'`
     ];
 
     if (phoneSearch) {
-      values.phoneLike = `%${escapeLike(phoneSearch)}%`;
-      searchConditions.push("rm_normalize_phone(phone) LIKE @phoneLike ESCAPE '\\'");
+      values.push(`%${escapeLike(phoneSearch)}%`);
+      const phoneIdx = values.length;
+      searchConditions.push(`rm_normalize_phone(phone) LIKE $${phoneIdx} ESCAPE '\\'`);
     }
 
     conditions.push(`(${searchConditions.join(" OR ")})`);
@@ -320,55 +322,57 @@ function buildFilterClause(params: CustomerListParams): FilterClause {
   };
 }
 
-export function createCustomer(input: CustomerCreateInput): CustomerRecord {
-  const database = getDatabase();
+export async function createCustomer(
+  input: CustomerCreateInput,
+  client?: Queryable
+): Promise<CustomerRecord> {
+  const runner = client || getPool();
   const now = new Date().toISOString();
   const id = input.id || generateCustomerId();
   const email = trimOrNull(input.email);
 
-  database
-    .prepare(
-      `INSERT INTO customers (
-        id, title, given_name, surname, email, email_normalized, phone, company, address,
-        house_name_number, address_line1, address_line2, address_line3,
-        city_town, county, state, postcode,
-        preferred_contact, notes, status, source, created_at, updated_at,
-        last_login_at, last_booking_at, deleted_at
-      ) VALUES (
-        @id, @title, @givenName, @surname, @email, @emailNormalized, @phone, @company, @address,
-        @houseNameNumber, @addressLine1, @addressLine2, @addressLine3,
-        @cityTown, @county, @state, @postcode,
-        @preferredContact, @notes, @status, @source, @createdAt, @updatedAt,
-        NULL, NULL, NULL
-      )`
-    )
-    .run({
+  await runner.query(
+    `INSERT INTO customers (
+      id, title, given_name, surname, email, email_normalized, phone, company, address,
+      house_name_number, address_line1, address_line2, address_line3,
+      city_town, county, state, postcode,
+      preferred_contact, notes, status, source, created_at, updated_at,
+      last_login_at, last_booking_at, deleted_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9,
+      $10, $11, $12, $13,
+      $14, $15, $16, $17,
+      $18, $19, $20, $21, $22, $23,
+      NULL, NULL, NULL
+    )`,
+    [
       id,
-      title: trimOrNull(input.title),
-      givenName: String(input.givenName || "").trim(),
-      surname: String(input.surname || "").trim(),
+      trimOrNull(input.title),
+      String(input.givenName || "").trim(),
+      String(input.surname || "").trim(),
       email,
-      emailNormalized: normalizeCustomerEmail(email),
-      phone: trimOrNull(input.phone),
-      company: trimOrNull(input.company),
-      address: trimOrNull(input.address),
-      houseNameNumber: trimOrNull(input.houseNameNumber),
-      addressLine1: trimOrNull(input.addressLine1),
-      addressLine2: trimOrNull(input.addressLine2),
-      addressLine3: trimOrNull(input.addressLine3),
-      cityTown: trimOrNull(input.cityTown),
-      county: trimOrNull(input.county),
-      state: trimOrNull(input.state),
-      postcode: trimOrNull(input.postcode),
-      preferredContact: normalizePreferredContact(input.preferredContact),
-      notes: trimOrNull(input.notes),
-      status: input.status || "Pending",
-      source: input.source || "manual",
-      createdAt: now,
-      updatedAt: now
-    });
+      normalizeCustomerEmail(email),
+      trimOrNull(input.phone),
+      trimOrNull(input.company),
+      trimOrNull(input.address),
+      trimOrNull(input.houseNameNumber),
+      trimOrNull(input.addressLine1),
+      trimOrNull(input.addressLine2),
+      trimOrNull(input.addressLine3),
+      trimOrNull(input.cityTown),
+      trimOrNull(input.county),
+      trimOrNull(input.state),
+      trimOrNull(input.postcode),
+      normalizePreferredContact(input.preferredContact),
+      trimOrNull(input.notes),
+      input.status || "Pending",
+      input.source || "manual",
+      now,
+      now
+    ]
+  );
 
-  const created = getCustomerById(id);
+  const created = await getCustomerById(id, runner);
 
   if (!created) {
     throw new Error(`Customer ${id} could not be persisted.`);
@@ -395,16 +399,20 @@ const UPDATABLE_COLUMNS: Array<[keyof CustomerUpdateInput, string]> = [
   ["notes", "notes"]
 ];
 
-export function updateCustomer(id: string, input: CustomerUpdateInput): CustomerRecord | undefined {
-  const database = getDatabase();
-  const existing = getCustomerById(id);
+export async function updateCustomer(
+  id: string,
+  input: CustomerUpdateInput,
+  client?: Queryable
+): Promise<CustomerRecord | undefined> {
+  const runner = client || getPool();
+  const existing = await getCustomerById(id, runner);
 
   if (!existing) {
     return undefined;
   }
 
   const assignments: string[] = [];
-  const values: Record<string, string | null> = { id };
+  const values: any[] = [id]; // $1 is id
 
   for (const [inputKey, column] of UPDATABLE_COLUMNS) {
     const value = input[inputKey];
@@ -413,65 +421,80 @@ export function updateCustomer(id: string, input: CustomerUpdateInput): Customer
       continue;
     }
 
-    assignments.push(`${column} = @${column}`);
-    values[column] = trimOrNull(value as string | null);
+    values.push(trimOrNull(value as string | null));
+    assignments.push(`${column} = $${values.length}`);
   }
 
   if (input.email !== undefined) {
     const email = trimOrNull(input.email);
-    assignments.push("email = @email", "email_normalized = @email_normalized");
-    values.email = email;
-    values.email_normalized = normalizeCustomerEmail(email);
+    values.push(email);
+    assignments.push(`email = $${values.length}`);
+    values.push(normalizeCustomerEmail(email));
+    assignments.push(`email_normalized = $${values.length}`);
   }
 
   if (input.preferredContact !== undefined) {
-    assignments.push("preferred_contact = @preferred_contact");
-    values.preferred_contact = normalizePreferredContact(input.preferredContact);
+    values.push(normalizePreferredContact(input.preferredContact));
+    assignments.push(`preferred_contact = $${values.length}`);
   }
 
   if (input.status !== undefined) {
-    assignments.push("status = @status");
-    values.status = normalizeStatus(input.status);
+    values.push(normalizeStatus(input.status));
+    assignments.push(`status = $${values.length}`);
   }
 
-  assignments.push("updated_at = @updated_at");
-  values.updated_at = new Date().toISOString();
+  values.push(new Date().toISOString());
+  assignments.push(`updated_at = $${values.length}`);
 
-  database
-    .prepare(`UPDATE customers SET ${assignments.join(", ")} WHERE id = @id AND deleted_at IS NULL`)
-    .run(values);
+  await runner.query(
+    `UPDATE customers SET ${assignments.join(", ")} WHERE id = $1 AND deleted_at IS NULL`,
+    values
+  );
 
-  return getCustomerById(id);
+  return getCustomerById(id, runner);
 }
 
-export function getCustomerByEmail(email: string): CustomerRecord | undefined {
+export async function getCustomerByEmail(
+  email: string,
+  client?: Queryable
+): Promise<CustomerRecord | undefined> {
   const normalized = normalizeCustomerEmail(email);
 
   if (!normalized) {
     return undefined;
   }
 
-  const database = getDatabase();
-  const row = database
-    .prepare("SELECT * FROM customers WHERE email_normalized = ? AND deleted_at IS NULL LIMIT 1")
-    .get(normalized) as CustomerRow | undefined;
+  const runner = client || getPool();
+  const res = await runner.query<CustomerRow>(
+    "SELECT * FROM customers WHERE email_normalized = $1 AND deleted_at IS NULL LIMIT 1",
+    [normalized]
+  );
 
-  return row ? hydrate(database, [row])[0] : undefined;
-}
-
-export function updateCustomerLastBookingAt(id: string, bookingAt: string): CustomerRecord | undefined {
-  const database = getDatabase();
-  const result = database
-    .prepare(
-      "UPDATE customers SET last_booking_at = @bookingAt, updated_at = @updatedAt WHERE id = @id AND deleted_at IS NULL"
-    )
-    .run({ id, bookingAt, updatedAt: new Date().toISOString() });
-
-  if (result.changes === 0) {
+  const row = res.rows[0];
+  if (!row) {
     return undefined;
   }
 
-  return getCustomerById(id);
+  const records = await hydrate(runner, [row]);
+  return records[0];
+}
+
+export async function updateCustomerLastBookingAt(
+  id: string,
+  bookingAt: string,
+  client?: Queryable
+): Promise<CustomerRecord | undefined> {
+  const runner = client || getPool();
+  const result = await runner.query(
+    "UPDATE customers SET last_booking_at = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL",
+    [bookingAt, new Date().toISOString(), id]
+  );
+
+  if ((result.rowCount ?? 0) === 0) {
+    return undefined;
+  }
+
+  return getCustomerById(id, runner);
 }
 
 /**
@@ -479,47 +502,55 @@ export function updateCustomerLastBookingAt(id: string, bookingAt: string): Cust
  * for legal and compliance purposes, so only the customer profile is hidden
  * from the application.
  */
-export function deleteCustomer(id: string): boolean {
-  const database = getDatabase();
-  const result = database
-    .prepare(
-      "UPDATE customers SET deleted_at = @deletedAt, updated_at = @deletedAt WHERE id = @id AND deleted_at IS NULL"
-    )
-    .run({ id, deletedAt: new Date().toISOString() });
-
-  return result.changes > 0;
-}
-
-export function listCustomers(params: CustomerListParams): CustomerListResult {
-  const database = getDatabase();
-  const filter = buildFilterClause(params);
-
-  const totalRecords = Number(
-    (
-      database
-        .prepare(`SELECT COUNT(*) AS total FROM customers WHERE ${filter.sql}`)
-        .get(filter.params) as { total: number }
-    ).total
+export async function deleteCustomer(id: string, client?: Queryable): Promise<boolean> {
+  const runner = client || getPool();
+  const result = await runner.query(
+    "UPDATE customers SET deleted_at = $1, updated_at = $1 WHERE id = $2 AND deleted_at IS NULL",
+    [new Date().toISOString(), id]
   );
 
-  const perPage = CUSTOMER_PER_PAGE_OPTIONS.includes(params.perPage as (typeof CUSTOMER_PER_PAGE_OPTIONS)[number])
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function listCustomers(
+  params: CustomerListParams,
+  client?: Queryable
+): Promise<CustomerListResult> {
+  const runner = client || getPool();
+  const filter = buildFilterClause(params);
+
+  const countRes = await runner.query<{ total: string | number }>(
+    `SELECT COUNT(*) AS total FROM customers WHERE ${filter.sql}`,
+    filter.params
+  );
+
+  const totalRecords = Number(countRes.rows[0]?.total ?? 0);
+
+  const perPage = CUSTOMER_PER_PAGE_OPTIONS.includes(
+    params.perPage as (typeof CUSTOMER_PER_PAGE_OPTIONS)[number]
+  )
     ? params.perPage
     : CUSTOMER_DEFAULT_PER_PAGE;
   const totalPages = Math.max(1, Math.ceil(totalRecords / perPage));
   const page = Math.min(Math.max(1, params.page), totalPages);
   const offset = (page - 1) * perPage;
 
-  const rows = database
-    .prepare(
-      `SELECT * FROM customers
-       WHERE ${filter.sql}
-       ORDER BY surname COLLATE NOCASE ASC, given_name COLLATE NOCASE ASC, id ASC
-       LIMIT @limit OFFSET @offset`
-    )
-    .all({ ...filter.params, limit: perPage, offset }) as CustomerRow[];
+  const rowsParams = [...filter.params, perPage, offset];
+  const limitParamIdx = rowsParams.length - 1;
+  const offsetParamIdx = rowsParams.length;
+
+  const rowsRes = await runner.query<CustomerRow>(
+    `SELECT * FROM customers
+     WHERE ${filter.sql}
+     ORDER BY lower(surname) ASC, lower(given_name) ASC, id ASC
+     LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`,
+    rowsParams
+  );
+
+  const customers = await hydrate(runner, rowsRes.rows);
 
   return {
-    customers: hydrate(database, rows),
+    customers,
     totalRecords,
     totalPages,
     page,
@@ -527,20 +558,30 @@ export function listCustomers(params: CustomerListParams): CustomerListResult {
   };
 }
 
-export function getCustomerById(id: string): CustomerRecord | undefined {
-  const database = getDatabase();
-  const row = database
-    .prepare("SELECT * FROM customers WHERE id = ? AND deleted_at IS NULL")
-    .get(id) as CustomerRow | undefined;
+export async function getCustomerById(
+  id: string,
+  client?: Queryable
+): Promise<CustomerRecord | undefined> {
+  const runner = client || getPool();
+  const res = await runner.query<CustomerRow>(
+    "SELECT * FROM customers WHERE id = $1 AND deleted_at IS NULL",
+    [id]
+  );
 
-  return row ? hydrate(database, [row])[0] : undefined;
+  const row = res.rows[0];
+  if (!row) {
+    return undefined;
+  }
+
+  const records = await hydrate(runner, [row]);
+  return records[0];
 }
 
-export function getCustomerCount(): number {
-  const database = getDatabase();
-  const row = database
-    .prepare("SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL")
-    .get() as { total: number };
+export async function getCustomerCount(client?: Queryable): Promise<number> {
+  const runner = client || getPool();
+  const res = await runner.query<{ total: string | number }>(
+    "SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL"
+  );
 
-  return Number(row.total);
+  return Number(res.rows[0]?.total ?? 0);
 }

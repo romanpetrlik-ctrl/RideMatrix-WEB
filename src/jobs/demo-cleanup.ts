@@ -15,12 +15,11 @@
  *
  * Environment variables:
  *   ALLOW_DEMO_CLEANUP=true  — required in addition to --confirm to execute
- *   DATABASE_FILE            — SQLite database file (default: data/ridematrix.sqlite)
+ *   DATABASE_URL             — PostgreSQL connection URL (e.g. ******localhost:5432/ridematrix)
  */
 
 import dotenv from "dotenv";
-import fs from "fs";
-import { getDatabaseFilePath } from "../database/connection";
+import { closeDatabase, initializeDatabase } from "../database/connection";
 import { DemoCleanupReport, getDemoCleanupReport, runDemoCleanup } from "../services/demo-cleanup";
 
 dotenv.config();
@@ -55,70 +54,52 @@ function printReport(report: DemoCleanupReport): void {
   }
 }
 
-/**
- * Copies the SQLite database file to a timestamped backup path before any
- * destructive operation. This is a best-effort, practical backup for the
- * embedded SQLite file used by this application; it does not verify that the
- * backup can be restored. Operators must copy this file to durable/offsite
- * storage and confirm it can be opened before relying on it (see the
- * production runbook in docs/customer-persistence.md).
- */
-function backupDatabaseFile(): string | null {
-  const file = getDatabaseFilePath();
-
-  if (file === ":memory:") {
-    console.warn("[demo-cleanup] In-memory database detected; skipping file backup (nothing to copy).");
-    return null;
-  }
-
-  if (!fs.existsSync(file)) {
-    console.warn(`[demo-cleanup] Database file "${file}" does not exist yet; skipping backup.`);
-    return null;
-  }
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = `${file}.pre-demo-cleanup-${timestamp}.bak`;
-
-  fs.copyFileSync(file, backupPath);
-  console.log(
-    `[demo-cleanup] Backup written to ${backupPath}. Verify it can be restored before proceeding further.`
-  );
-
-  return backupPath;
-}
-
-function run(): void {
+async function run(): Promise<void> {
   console.log(`[demo-cleanup] Starting at ${new Date().toISOString()}`);
 
-  const report = getDemoCleanupReport();
-  printReport(report);
+  try {
+    await initializeDatabase();
+    const report = await getDemoCleanupReport();
+    printReport(report);
 
-  if (!confirm) {
-    console.log("[demo-cleanup] Dry run complete. No data was modified. Re-run with --confirm to execute cleanup.");
+    if (!confirm) {
+      console.log("[demo-cleanup] Dry run complete. No data was modified. Re-run with --confirm to execute cleanup.");
+      await closeDatabase();
+      process.exit(0);
+    }
+
+    if (report.demoCustomerCount > 0) {
+      console.log(
+        "[demo-cleanup] Note: For PostgreSQL production databases, ensure a database snapshot or pg_dump backup " +
+          "has been taken and verified before running destructive cleanup."
+      );
+    }
+
+    const result = await runDemoCleanup({ confirm: true, allowOverride });
+
+    if (result.refused) {
+      console.error(`[demo-cleanup] Refused: ${result.refusalReason}`);
+      await closeDatabase();
+      process.exit(1);
+    }
+
+    if (result.alreadyClean) {
+      console.log("[demo-cleanup] No demo records remain. Nothing to do.");
+      await closeDatabase();
+      process.exit(0);
+    }
+
+    console.log(
+      `[demo-cleanup] Removed ${result.deletedCustomerCount} demo customer(s) and archived ` +
+        `${result.archivedBookingCount} related booking(s).`
+    );
+    await closeDatabase();
     process.exit(0);
-  }
-
-  if (report.demoCustomerCount > 0) {
-    backupDatabaseFile();
-  }
-
-  const result = runDemoCleanup({ confirm: true, allowOverride });
-
-  if (result.refused) {
-    console.error(`[demo-cleanup] Refused: ${result.refusalReason}`);
+  } catch (error) {
+    console.error("[demo-cleanup] Fatal error:", error);
+    await closeDatabase().catch(() => {});
     process.exit(1);
   }
-
-  if (result.alreadyClean) {
-    console.log("[demo-cleanup] No demo records remain. Nothing to do.");
-    process.exit(0);
-  }
-
-  console.log(
-    `[demo-cleanup] Removed ${result.deletedCustomerCount} demo customer(s) and archived ` +
-      `${result.archivedBookingCount} related booking(s).`
-  );
-  process.exit(0);
 }
 
 run();

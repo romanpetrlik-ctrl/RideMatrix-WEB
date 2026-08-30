@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import test, { after, before } from "node:test";
-import { closeDatabase } from "../database/connection";
+import { closeDatabase, initializeDatabase } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
 import {
   importCabcherBookings,
   listDerivedCustomers,
@@ -21,20 +19,19 @@ const CSV = [
 
 const IMPORT_TIME = new Date("2026-01-01T00:00:00Z");
 
-let temporaryDirectory: string;
+let dbContext: TestDatabaseContext;
 
-before(() => {
-  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "ridematrix-import-"));
-  process.env.DATABASE_FILE = path.join(temporaryDirectory, "test.sqlite");
+before(async () => {
+  dbContext = await createTestDatabaseContext("test_import");
+  await initializeDatabase();
 });
 
-after(() => {
-  closeDatabase();
-  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+after(async () => {
+  await dbContext.cleanup();
 });
 
-test("imports bookings and derives customers durably", () => {
-  const result = importCabcherBookings({
+test("imports bookings and derives customers durably", async () => {
+  const result = await importCabcherBookings({
     csvContent: CSV,
     originalFilename: "cabcher.csv",
     uploadedBy: "admin@example.com",
@@ -45,18 +42,20 @@ test("imports bookings and derives customers durably", () => {
   assert.equal(result.summary.customersCreated, 2);
   assert.equal(result.batch.status, "imported");
 
-  closeDatabase();
+  await closeDatabase();
 
-  assert.equal(listImportBatches().length, 1);
-  assert.equal(listDerivedCustomers().length, 2);
+  const batches = await listImportBatches();
+  const derived = await listDerivedCustomers();
+  assert.equal(batches.length, 1);
+  assert.equal(derived.length, 2);
 
-  const jane = listDerivedCustomers().find((customer) => customer.email === "jane.doe@example.com");
+  const jane = derived.find((customer) => customer.email === "jane.doe@example.com");
   assert.ok(jane);
   assert.equal(jane.bookingCountTotal, 2);
 });
 
-test("exposes imported customers through the persistent customer service", () => {
-  const jane = getCustomerByEmail("jane.doe@example.com");
+test("exposes imported customers through the persistent customer service", async () => {
+  const jane = await getCustomerByEmail("jane.doe@example.com");
 
   assert.ok(jane);
   assert.equal(jane.surname, "Doe");
@@ -64,10 +63,10 @@ test("exposes imported customers through the persistent customer service", () =>
   assert.equal(jane.bookings.length, 2);
 });
 
-test("does not duplicate bookings or customers when the same file is imported again", () => {
-  const countBefore = getCustomerCount();
+test("does not duplicate bookings or customers when the same file is imported again", async () => {
+  const countBefore = await getCustomerCount();
 
-  const result = importCabcherBookings({
+  const result = await importCabcherBookings({
     csvContent: CSV,
     originalFilename: "cabcher.csv",
     uploadedBy: "admin@example.com",
@@ -76,16 +75,18 @@ test("does not duplicate bookings or customers when the same file is imported ag
 
   assert.equal(result.summary.bookingsImported, 0);
   assert.equal(result.summary.rejectedRows, 3);
-  assert.equal(listDerivedCustomers().length, 2);
-  assert.equal(getCustomerCount(), countBefore);
+  const derived = await listDerivedCustomers();
+  assert.equal(derived.length, 2);
+  assert.equal(await getCustomerCount(), countBefore);
 
-  const jane = getCustomerByEmail("jane.doe@example.com");
+  const jane = await getCustomerByEmail("jane.doe@example.com");
   assert.ok(jane);
-  assert.equal(listImportedBookingsForCustomer(jane.id).length, 2);
+  const bookings = await listImportedBookingsForCustomer(jane.id);
+  assert.equal(bookings.length, 2);
 });
 
-test("matches imported bookings to an existing customer with the same email", () => {
-  const existing = createCustomer({
+test("matches imported bookings to an existing customer with the same email", async () => {
+  const existing = await createCustomer({
     givenName: "Nina",
     surname: "Hall",
     email: "Nina.Hall@Example.com",
@@ -93,9 +94,9 @@ test("matches imported bookings to an existing customer with the same email", ()
     status: "Active"
   });
 
-  const countBefore = getCustomerCount();
+  const countBefore = await getCustomerCount();
 
-  importCabcherBookings({
+  await importCabcherBookings({
     csvContent: [
       "Name,Email,Date & Time,Pick Up,Drop Off",
       "Nina Hall,nina.hall@example.com,03/03/2025 11:00,Bath Spa,Bristol Airport"
@@ -105,9 +106,9 @@ test("matches imported bookings to an existing customer with the same email", ()
     now: IMPORT_TIME
   });
 
-  assert.equal(getCustomerCount(), countBefore);
+  assert.equal(await getCustomerCount(), countBefore);
 
-  const reloaded = getCustomerByEmail("nina.hall@example.com");
+  const reloaded = await getCustomerByEmail("nina.hall@example.com");
   assert.ok(reloaded);
   assert.equal(reloaded.id, existing.id);
   assert.equal(reloaded.surname, "Hall");

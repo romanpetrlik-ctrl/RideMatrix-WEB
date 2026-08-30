@@ -1,6 +1,8 @@
-import type { Database } from "better-sqlite3";
+import type { Pool, PoolClient } from "pg";
 
 const SEED_KEY = "customers_seed_v1";
+
+type Queryable = Pool | PoolClient;
 
 type SeedBooking = {
   id: string;
@@ -458,76 +460,84 @@ export const SEED_CUSTOMERS: SeedCustomer[] = [
  * makes the seed idempotent: restarts never duplicate records and never
  * resurrect customers that an administrator has deleted.
  */
-export function seedCustomers(database: Database): boolean {
-  const alreadySeeded = database
-    .prepare("SELECT key FROM bootstrap_state WHERE key = ?")
-    .get(SEED_KEY);
+export async function seedCustomers(client: Queryable): Promise<boolean> {
+  const alreadySeeded = await client.query<{ key: string }>(
+    "SELECT key FROM bootstrap_state WHERE key = $1",
+    [SEED_KEY]
+  );
 
-  if (alreadySeeded) {
+  if (alreadySeeded.rows.length > 0) {
     return false;
   }
 
-  const insertCustomer = database.prepare(`
-    INSERT OR IGNORE INTO customers (
+  const insertCustomerSql = `
+    INSERT INTO customers (
       id, title, given_name, surname, email, email_normalized, phone, company, address,
       house_name_number, address_line1, address_line2, address_line3,
       city_town, county, state, postcode,
       preferred_contact, notes, status, source,
       created_at, updated_at, last_login_at, last_booking_at, deleted_at
     ) VALUES (
-      @id, NULL, @givenName, @surname, @email, @emailNormalized, @phone, @company, @address,
+      $1, NULL, $2, $3, $4, $5, $6, $7, $8,
       NULL, NULL, NULL, NULL,
       NULL, NULL, NULL, NULL,
-      @preferredContact, @notes, @status, 'seed',
-      @createdAt, @createdAt, @lastLoginAt, @lastBookingAt, NULL
+      $9, $10, $11, 'seed',
+      $12, $12, $13, $14, NULL
     )
-  `);
+    ON CONFLICT (id) DO NOTHING
+  `;
 
-  const insertBooking = database.prepare(`
-    INSERT OR IGNORE INTO customer_bookings (
+  const insertBookingSql = `
+    INSERT INTO customer_bookings (
       id, customer_id, reference, service_date, pickup, dropoff, status, created_at
-    ) VALUES (@id, @customerId, @reference, @serviceDate, @pickup, @dropoff, @status, @createdAt)
-  `);
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ON CONFLICT (id) DO NOTHING
+  `;
 
-  const apply = database.transaction(() => {
+  await client.query("BEGIN");
+  try {
     for (const customer of SEED_CUSTOMERS) {
-      insertCustomer.run({
-        id: customer.id,
-        givenName: customer.givenName,
-        surname: customer.surname,
-        email: customer.email,
-        emailNormalized: customer.email ? customer.email.trim().toLowerCase() : null,
-        phone: customer.phone,
-        company: customer.company,
-        address: customer.address,
-        preferredContact: customer.preferredContact,
-        notes: customer.notes,
-        status: customer.status,
-        createdAt: customer.createdAt,
-        lastLoginAt: customer.lastLoginAt,
-        lastBookingAt: customer.lastBookingAt
-      });
+      const emailNormalized = customer.email ? customer.email.trim().toLowerCase() : null;
+      await client.query(insertCustomerSql, [
+        customer.id,
+        customer.givenName,
+        customer.surname,
+        customer.email,
+        emailNormalized,
+        customer.phone,
+        customer.company,
+        customer.address,
+        customer.preferredContact,
+        customer.notes,
+        customer.status,
+        customer.createdAt,
+        customer.lastLoginAt,
+        customer.lastBookingAt
+      ]);
 
       for (const booking of customer.bookings) {
-        insertBooking.run({
-          id: booking.id,
-          customerId: customer.id,
-          reference: booking.reference,
-          serviceDate: booking.serviceDate,
-          pickup: booking.pickup,
-          dropoff: booking.dropoff,
-          status: booking.status,
-          createdAt: customer.createdAt
-        });
+        await client.query(insertBookingSql, [
+          booking.id,
+          customer.id,
+          booking.reference,
+          booking.serviceDate,
+          booking.pickup,
+          booking.dropoff,
+          booking.status,
+          customer.createdAt
+        ]);
       }
     }
 
-    database
-      .prepare("INSERT INTO bootstrap_state (key, applied_at) VALUES (?, ?)")
-      .run(SEED_KEY, new Date().toISOString());
-  });
-
-  apply();
+    await client.query(
+      "INSERT INTO bootstrap_state (key, applied_at) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+      [SEED_KEY, new Date().toISOString()]
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
 
   return true;
 }

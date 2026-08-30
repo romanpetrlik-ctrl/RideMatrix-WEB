@@ -1,12 +1,14 @@
-import type { Database } from "better-sqlite3";
+import type { Pool, PoolClient } from "pg";
 
 export type Migration = {
   id: string;
   sql: string;
 };
 
+type Queryable = Pool | PoolClient;
+
 /**
- * Ordered list of SQLite migrations.
+ * Ordered list of PostgreSQL migrations.
  *
  * Migrations are kept as TypeScript modules (instead of loose `.sql` files) so
  * that they are shipped by `tsc` without an extra copy step and are applied by
@@ -16,6 +18,15 @@ export const MIGRATIONS: Migration[] = [
   {
     id: "0001_customer_persistence",
     sql: `
+      CREATE OR REPLACE FUNCTION rm_normalize_phone(val text) RETURNS text AS $$
+      BEGIN
+        IF val IS NULL THEN
+          RETURN '';
+        END IF;
+        RETURN lower(regexp_replace(val, '[^\\d+]', '', 'g'));
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE;
+
       CREATE TABLE IF NOT EXISTS customers (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -53,14 +64,13 @@ export const MIGRATIONS: Migration[] = [
 
       CREATE TABLE IF NOT EXISTS customer_bookings (
         id TEXT PRIMARY KEY,
-        customer_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL REFERENCES customers (id),
         reference TEXT NOT NULL,
         service_date TEXT NOT NULL,
         pickup TEXT NOT NULL,
         dropoff TEXT NOT NULL,
         status TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (customer_id) REFERENCES customers (id)
+        created_at TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_customer_bookings_customer_id
@@ -81,7 +91,7 @@ export const MIGRATIONS: Migration[] = [
 
       CREATE TABLE IF NOT EXISTS imported_bookings (
         id TEXT PRIMARY KEY,
-        import_batch_id TEXT NOT NULL,
+        import_batch_id TEXT NOT NULL REFERENCES import_batches (id),
         source_system TEXT NOT NULL,
         source_reference_raw TEXT,
         source_account_raw TEXT,
@@ -95,15 +105,14 @@ export const MIGRATIONS: Migration[] = [
         dropoff_text TEXT NOT NULL,
         vehicle_class_raw TEXT,
         payment_method_raw TEXT,
-        total_fare_amount REAL,
+        total_fare_amount DOUBLE PRECISION,
         currency TEXT,
         is_future INTEGER NOT NULL,
         inferred_temporal_status TEXT NOT NULL,
         customer_id TEXT,
         dedupe_key TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (import_batch_id) REFERENCES import_batches (id)
+        updated_at TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_imported_bookings_customer_id
@@ -144,7 +153,7 @@ export const MIGRATIONS: Migration[] = [
 
       CREATE TABLE IF NOT EXISTS id_sequences (
         name TEXT PRIMARY KEY,
-        value INTEGER NOT NULL
+        value BIGINT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS bootstrap_state (
@@ -155,8 +164,8 @@ export const MIGRATIONS: Migration[] = [
   }
 ];
 
-function ensureMigrationsTable(database: Database): void {
-  database.exec(`
+async function ensureMigrationsTable(client: Queryable): Promise<void> {
+  await client.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id TEXT PRIMARY KEY,
       applied_at TEXT NOT NULL
@@ -164,30 +173,33 @@ function ensureMigrationsTable(database: Database): void {
   `);
 }
 
-export function runMigrations(database: Database): string[] {
-  ensureMigrationsTable(database);
+export async function runMigrations(client: Queryable): Promise<string[]> {
+  await ensureMigrationsTable(client);
 
-  const applied = new Set(
-    database
-      .prepare("SELECT id FROM schema_migrations")
-      .all()
-      .map((row) => String((row as { id: string }).id))
-  );
+  const appliedRes = await client.query<{ id: string }>("SELECT id FROM schema_migrations");
+  const applied = new Set(appliedRes.rows.map((row) => String(row.id)));
 
   const executed: string[] = [];
-  const record = database.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)");
 
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.id)) {
       continue;
     }
 
-    const apply = database.transaction(() => {
-      database.exec(migration.sql);
-      record.run(migration.id, new Date().toISOString());
-    });
+    // Execute migration in transaction if we can, or execute directly
+    await client.query("BEGIN");
+    try {
+      await client.query(migration.sql);
+      await client.query("INSERT INTO schema_migrations (id, applied_at) VALUES ($1, $2)", [
+        migration.id,
+        new Date().toISOString()
+      ]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    }
 
-    apply();
     executed.push(migration.id);
   }
 
