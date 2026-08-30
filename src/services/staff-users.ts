@@ -132,7 +132,27 @@ export function normalizeUserEmail(email: string | null | undefined): string {
 
 /** Conservative email validation, matching the existing form-level checks. */
 export function isValidUserEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (email.length > 254) {
+    return false;
+  }
+
+  const parts = email.split("@");
+
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const [local, domain] = parts;
+
+  return (
+    local.length > 0 &&
+    !/\s/.test(local) &&
+    domain.length > 0 &&
+    !/\s/.test(domain) &&
+    domain.includes(".") &&
+    !domain.startsWith(".") &&
+    !domain.endsWith(".")
+  );
 }
 
 function isUniqueViolation(error: unknown): error is PgError {
