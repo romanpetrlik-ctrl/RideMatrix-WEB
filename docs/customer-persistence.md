@@ -188,6 +188,19 @@ matched by normalized email: an existing customer record with the same email is 
 rather than duplicated, and manually curated records are only enriched (missing phone,
 last booking date) and never overwritten.
 
+## Pre-import readiness check
+
+Before importing real customers into a production database, run the read-only readiness audit:
+
+```bash
+DATABASE_URL='<production connection string>' npm run audit:db
+```
+
+It only issues SELECT/metadata queries (inside a `READ ONLY` transaction) and reports whether the
+customer tables, columns, uniqueness constraints, and de-duplication keys match what the importer
+expects, plus any conflicting active e-mail identities. It never imports anything. See
+[docs/database-readiness-audit.md](./database-readiness-audit.md).
+
 ## Tests
 
 ```bash

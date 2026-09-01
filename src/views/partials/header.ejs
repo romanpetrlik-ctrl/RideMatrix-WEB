@@ -62,6 +62,7 @@
 
       <% if (showExitLink) { %>
         <form class="inline-form" method="post" action="/exit">
+          <%- locals.csrfField || "" %>
           <button type="submit">Exit</button>
         </form>
       <% } %>

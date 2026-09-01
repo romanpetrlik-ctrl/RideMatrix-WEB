@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { requireCsrfToken } from "../middleware/csrf";
 import { getSessionAccount } from "../services/api";
 import {
   MissingRequiredColumnsError,
@@ -463,7 +464,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
   });
 
-  router.post("/customers/import", upload.single("bookingsCsv"), async (req, res, next) => {
+  // The CSRF token of a multipart submission is only readable once multer has
+  // parsed the body, so validation runs here instead of in the global middleware.
+  const importCsrfGuard = requireCsrfToken({ appTitle: options.appTitle });
+
+  router.post("/customers/import", upload.single("bookingsCsv"), importCsrfGuard, async (req, res, next) => {
     let sessionContext: { email: string; activeRoleLabel: string } | null = null;
 
     try {
@@ -526,8 +531,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       return next(error);
+      }
     }
-  });
+  );
+
 
   router.get("/customers/register", async (req, res, next) => {
     try {

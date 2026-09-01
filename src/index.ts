@@ -12,6 +12,7 @@ import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
 import { createStaffRouter } from "./routes/staff";
 import { errorHandler } from "./middleware/error-handler";
+import { createCsrfProtection } from "./middleware/csrf";
 import { initializeDatabase } from "./database/connection";
 
 dotenv.config();
@@ -30,6 +31,10 @@ async function startServer() {
 
   app.use(express.urlencoded({ extended: true }));
   app.use(express.static(path.join(__dirname, "../public")));
+
+  // Issues a signed, cookie-bound CSRF token for every response and validates
+  // it on every state-changing request (see docs/csrf-protection.md).
+  app.use(createCsrfProtection({ appTitle }));
 
   app.get("/", (_req, res) => {
     res.redirect("/access");

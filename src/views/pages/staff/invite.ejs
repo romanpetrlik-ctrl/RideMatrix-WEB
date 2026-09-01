@@ -54,6 +54,7 @@
         </p>
 
         <form class="inline-form" method="post" action="/staff/invite">
+          <%- locals.csrfField || "" %>
           <div class="form-field">
             <label for="email">Email *</label>
             <input

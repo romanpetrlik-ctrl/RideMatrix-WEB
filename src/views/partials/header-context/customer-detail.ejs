@@ -17,6 +17,7 @@
     <a class="button button--secondary" href="<%= customer.editHref %>">Edit Customer</a>
 
     <form class="inline-form" method="post" action="/customers/<%= customer.id %>/suspend?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+      <%- locals.csrfField || "" %>
       <button type="submit" class="button button--secondary">Suspend Customer</button>
     </form>
 

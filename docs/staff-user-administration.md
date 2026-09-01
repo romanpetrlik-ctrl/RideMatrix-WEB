@@ -70,8 +70,13 @@ authorized to delegate `superuser`:
 `bookings@romanairporttransfers.co.uk` remains completely unchanged by this feature. It is only
 the temporary operational mailbox account and is never treated as the superuser.
 
-## Known limitation
+## Cross-site request forgery
 
-The repository has no CSRF token mechanism for its existing HTML forms, so this form follows the
-same existing form-security conventions instead of introducing an incompatible one. Adding CSRF
-protection consistently across all forms remains an open gap.
+`POST /staff/invite` is protected by the application-wide CSRF mechanism: the form renders a
+signed, cookie-bound token and the server rejects missing, invalid, expired, or foreign-session
+tokens with the shared `403` page. See [docs/csrf-protection.md](./csrf-protection.md), including
+its documented limitation.
+
+Before creating the first real superuser in production, run the read-only readiness audit
+described in [docs/database-readiness-audit.md](./database-readiness-audit.md); it reports whether
+the auth schema, roles, and permissions support this flow without changing any data.

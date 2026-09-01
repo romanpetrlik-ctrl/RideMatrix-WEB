@@ -38,6 +38,7 @@
         </div>
 
         <form method="post" action="/recovery/restart">
+          ${locals.csrfField || ""}
           <label>
             <input type="checkbox" name="confirmed" value="yes" required />
             I understand that this is only a placeholder and no VPS restart will be performed.
