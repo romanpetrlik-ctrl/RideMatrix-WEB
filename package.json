@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsc --noEmit -p tsconfig.test.json && node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "db:migrate": "tsx src/jobs/db-migrate.ts",
+    "audit:db": "tsx src/jobs/db-audit.ts",
     "cleanup:inactive": "tsx src/jobs/nightly-cleanup.ts",
     "cleanup:demo": "tsx src/jobs/demo-cleanup.ts"
   },
