@@ -28,7 +28,6 @@ When it is unset, a random process-local key is generated; tokens then become in
 restart, which only means an open form has to be reloaded.
 
 ### Known limitation
-
 Because the binding is to the CSRF cookie (and optionally a caller-supplied identity) rather than
 to a server-side session record, a token is **not** invalidated the moment the external auth
 session ends — it expires with the token lifetime or when the browser drops the CSRF cookie.
@@ -36,6 +35,15 @@ Cross-browser and cross-session replay is prevented, since a token only verifies
 cookie it was issued with. Authentication and authorization are unchanged: CSRF validation runs
 in addition to, never instead of, the existing session and role checks, and unauthenticated
 requests still redirect to `/access`.
+
+### Cookie storage
+
+The `rm_csrf` cookie necessarily stores a random secret on the client; there is no server-side
+session store to keep it in. It is mitigated by `HttpOnly` (no script access), `SameSite=Lax` (no
+cross-site sends), and `Secure` whenever `NODE_ENV=production`, so it is not transmitted in clear
+text on a correctly configured deployment. Static analysis flags this cookie write as
+"clear-text storage of sensitive data"; it is inherent to the double-submit design and is accepted
+on that basis. Always terminate production traffic over HTTPS.
 
 ## Protected routes
 
