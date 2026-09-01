@@ -11,7 +11,7 @@ A user is included in the staff list if they hold at least one role in
 `STAFF_MANAGEMENT_ROLES` (`src/services/staff.ts`):
 
 ```
-admin, superuser, staff, tech_support, dispatcher, driver
+admin, superuser, staff, tech_support, driver
 ```
 
 Users who are only assigned `customer` and/or `partner` roles are excluded. A user with
@@ -27,7 +27,7 @@ into an array rather than joining out one row per role.
 | ----------- | -------------------------------------------------------------------|
 | Email       | `users.email`                                                      |
 | Status      | `users.status`                                                     |
-| Roles       | `roles.name` via `user_roles`, one pill per assigned role           |
+| Roles       | `roles.key` via `user_roles`, one pill per assigned role            |
 | Created     | `users.created_at`, formatted; shown as `—` if absent               |
 | Last login  | Detected at runtime (see below); shown as `Never` if unavailable    |
 

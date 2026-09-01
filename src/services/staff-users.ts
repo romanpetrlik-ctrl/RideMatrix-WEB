@@ -18,7 +18,6 @@ export const INTERNAL_ROLE_ORDER = [
   "admin",
   "staff",
   "tech_support",
-  "dispatcher",
   "driver"
 ] as const;
 
@@ -165,7 +164,7 @@ function isUniqueViolation(error: unknown): error is PgError {
  */
 export async function listAssignableRoles(runner?: Queryable): Promise<AssignableRole[]> {
   const result = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM roles WHERE name = ANY($1::text[])`,
+    `SELECT id, key AS name FROM roles WHERE key = ANY($1::text[])`,
     [[...INTERNAL_ROLE_ORDER]],
     runner
   );
@@ -199,7 +198,7 @@ export async function getPermissionsForRoles(
        FROM permissions p
        JOIN role_permissions rp ON rp.permission_id = p.id
        JOIN roles r ON r.id = rp.role_id
-      WHERE r.name = ANY($1::text[])`,
+      WHERE r.key = ANY($1::text[])`,
     [roles],
     runner
   );

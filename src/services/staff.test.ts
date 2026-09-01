@@ -17,7 +17,6 @@ const ROLE_IDS = {
   driver: 2,
   staff: 3,
   tech_support: 4,
-  dispatcher: 5,
   superuser: 6,
   customer: 7,
   partner: 8
@@ -40,18 +39,16 @@ before(async () => {
   // roles and role_permissions used by production, plus fixtures covering
   // every classification case this feature must handle correctly.
   await query(
-    `INSERT INTO roles (id, name, description) VALUES
+    `INSERT INTO roles (id, key, description) VALUES
       ($1, 'staff', 'Staff'),
       ($2, 'tech_support', 'Technical Support'),
-      ($3, 'dispatcher', 'Dispatcher'),
-      ($4, 'superuser', 'Superuser'),
-      ($5, 'customer', 'Customer'),
-      ($6, 'partner', 'Partner')
+      ($3, 'superuser', 'Superuser'),
+      ($4, 'customer', 'Customer'),
+      ($5, 'partner', 'Partner')
      ON CONFLICT (id) DO NOTHING`,
     [
       ROLE_IDS.staff,
       ROLE_IDS.tech_support,
-      ROLE_IDS.dispatcher,
       ROLE_IDS.superuser,
       ROLE_IDS.customer,
       ROLE_IDS.partner
@@ -78,7 +75,7 @@ before(async () => {
   // admin@ridematrix.com (seeded by createAuthTables) -> admin
   // driver@ridematrix.com (seeded by createAuthTables) -> driver
   // staff.only -> staff
-  // multi.role -> staff + dispatcher
+  // multi.role -> staff + tech_support
   // customer.only -> customer (must be excluded from staff list)
   // partner.only -> partner (must be excluded from staff list)
   // staff.and.customer -> staff + customer (must appear once, with both roles)
@@ -98,7 +95,7 @@ before(async () => {
       ROLE_IDS.admin,
       ROLE_IDS.driver,
       ROLE_IDS.staff,
-      ROLE_IDS.dispatcher,
+      ROLE_IDS.tech_support,
       ROLE_IDS.customer,
       ROLE_IDS.partner
     ]
@@ -135,7 +132,7 @@ test("listStaffUsers never duplicates a user with multiple roles and shows every
   const multiRole = staff.filter((member) => member.email === "multi.role@ridematrix.com");
 
   assert.equal(multiRole.length, 1);
-  assert.deepEqual(multiRole[0].roles.slice().sort(), ["dispatcher", "staff"]);
+  assert.deepEqual(multiRole[0].roles.slice().sort(), ["staff", "tech_support"]);
 
   // A user with a mix of a staff-qualifying role and a non-staff role must
   // still appear exactly once, with all roles (not only the staff one).

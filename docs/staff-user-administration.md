@@ -31,8 +31,9 @@ never influence the authorization decision.
 
 ## Role delegation policy
 
-Only internal roles are offered: `superuser`, `admin`, `staff`, `tech_support`, `dispatcher`,
-and `driver` — and only the ones that actually exist in the current database. `customer` and
+Only internal roles are offered: `superuser`, `admin`, `staff`, `tech_support`, and `driver` —
+and only the ones that actually exist in the current database. The production `staff` role
+represents dispatcher/staff users; no separate `dispatcher` database role is required. `customer` and
 `partner` are deliberately excluded from this internal staff flow; those accounts are onboarded
 through their own domain flows.
 
