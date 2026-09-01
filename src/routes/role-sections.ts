@@ -1,88 +1,52 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { getSessionAccount } from "../services/api";
-import { canManageStaffUsers, getPermissionsForRoles } from "../services/staff-users";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
 };
 
-const routeRoleMap: Record<string, string> = {
-  "/superuser": "superuser",
-  "/tech-support": "tech_support",
-  "/dispatch": "dispatcher",
-  "/driver": "driver"
+export type WorkspaceModule = {
+  key: string;
+  title: string;
+  description: string;
+  href: string;
+  allowedRoles: string[];
 };
 
-function getRoleLabel(role: string): string {
-  switch (role) {
-    case "admin":
-      return "Administration";
-    case "superuser":
-      return "System Control";
-    case "staff":
-      return "Staff";
-    case "tech_support":
-      return "Technical Support";
-    case "dispatcher":
-      return "Dispatch";
-    case "driver":
-      return "Driver";
-    default:
-      return role;
-  }
+export const workspaceModules: WorkspaceModule[] = [
+  { key: "administration", title: "Administration", description: "Operations, customer management, and administration.", href: "/dashboard", allowedRoles: ["admin"] },
+  { key: "system-settings", title: "System settings", description: "Privileged platform configuration.", href: "/settings", allowedRoles: ["superuser"] },
+  { key: "staff", title: "Staff", description: "View internal user accounts and their roles.", href: "/staff", allowedRoles: ["admin"] },
+  { key: "technical-support", title: "Technical Support", description: "Technical diagnostics and support tools.", href: "/tech-support", allowedRoles: ["tech_support"] },
+  { key: "manage-vps", title: "Manage VPS", description: "Privileged reboot and recovery entry point.", href: "/vps", allowedRoles: ["superuser"] }
+];
+
+export function availableWorkspaceModules(roles: string[]): WorkspaceModule[] {
+  return workspaceModules.filter((module) => module.allowedRoles.some((role) => roles.includes(role)));
+}
+
+export function canAccessWorkspace(roles: string[], key: string): boolean {
+  return availableWorkspaceModules(roles).some((module) => module.key === key);
+}
+
+function renderUnavailable(res: Response, appTitle: string) {
+  return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle });
 }
 
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
 
-  for (const [routePath, requiredRole] of Object.entries(routeRoleMap)) {
-    router.get(routePath, async (req, res, next) => {
+  for (const module of workspaceModules.filter((item) => item.key !== "administration" && item.key !== "staff")) {
+    router.get(module.href, async (req, res, next) => {
       try {
         const session = await getSessionAccount(req.headers.cookie);
-
-        if (!session.authenticated || !session.user) {
-          return res.redirect("/access");
-        }
-
+        if (!session.authenticated || !session.user) return res.redirect("/access");
         const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-        const activeRole = session.user.active_role;
-
-        if (!roles.includes(requiredRole)) {
-          return res.status(403).render("pages/unavailable", {
-            title: "Unavailable",
-            appTitle: options.appTitle
-          });
-        }
-
-        if (!activeRole) {
-          if (roles.length > 1) {
-            return res.redirect("/choose-role");
-          }
-
-          return res.redirect("/auth/callback");
-        }
-
-        if (activeRole !== requiredRole) {
-          return res.redirect("/account");
-        }
-
-        const actions: Array<{ label: string; href: string }> = [];
-
-        if (requiredRole === "staff") {
-          const permissions = await getPermissionsForRoles(roles);
-
-          if (canManageStaffUsers({ email: session.user.email, roles, permissions })) {
-            actions.push({ label: "Create / Invite user", href: "/staff/invite" });
-          }
-        }
+        if (!canAccessWorkspace(roles, module.key)) return renderUnavailable(res, options.appTitle);
 
         return res.render("pages/role-section", {
-          title: getRoleLabel(requiredRole),
-          appTitle: options.appTitle,
-          email: session.user.email,
-          role: requiredRole,
-          roleLabel: getRoleLabel(requiredRole),
-          actions
+          title: module.title, appTitle: options.appTitle, email: session.user.email,
+          roleLabel: module.title, module
         });
       } catch (error) {
         next(error);

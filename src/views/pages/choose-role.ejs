@@ -3,9 +3,9 @@
   appTitle,
   currentUserEmail: email,
   currentUserHref: "/account",
-  pageTitle: "Workspaces",
-  pageMeta: "Select the workspace you want to access.",
-  activeRoleLabel: activeRole ? getRoleLabel(activeRole) : "",
+  pageTitle: "Select workspace",
+  pageMeta: "Choose an internal work module.",
+  activeRoleLabel: "",
   hintsLabel: "Hints: Off",
   showRoleSwitch: false,
   showExitLink: true,
@@ -16,17 +16,15 @@
 
     <div class="dashboard-layout">
       <div class="workspace-tile-grid">
-        ${roles
+        ${modules
           .map(
-            (role) => `
+            (module) => `
               <form method="post" action="/choose-role" class="workspace-tile-form">
-                <input type="hidden" name="role" value="${role}" />
-                <button type="submit" class="workspace-tile${activeRole === role ? " workspace-tile--active" : ""}">
-                  <span class="workspace-tile__title">${getRoleLabel(role)}</span>
-                  <span class="workspace-tile__description">${getRoleDescription(role)}</span>
-                  ${activeRole === role
-                    ? '<span class="workspace-tile__badge">Current workspace</span>'
-                    : '<span class="workspace-tile__action">Open workspace →</span>'}
+                <input type="hidden" name="module" value="${module.key}" />
+                <button type="submit" class="workspace-tile">
+                  <span class="workspace-tile__title">${module.title}</span>
+                  <span class="workspace-tile__description">${module.description}</span>
+                  <span class="workspace-tile__action">Open module →</span>
                 </button>
               </form>
             `

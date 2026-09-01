@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getSessionAccount } from "../services/api";
+import { getLandingRoute } from "./auth-callback";
 
 type EntryRouterOptions = {
   appTitle: string;
@@ -24,15 +25,7 @@ export function createEntryRouter(options: EntryRouterOptions): Router {
         return res.redirect("/access");
       }
 
-      if (session.user.active_role) {
-        return res.redirect(session.user.active_role === "admin" ? "/dashboard" : "/account");
-      }
-
-      if (roles.length === 1) {
-        return res.redirect("/auth/callback");
-      }
-
-      return res.redirect("/choose-role");
+      return res.redirect(getLandingRoute(roles));
     } catch (error) {
       next(error);
     }

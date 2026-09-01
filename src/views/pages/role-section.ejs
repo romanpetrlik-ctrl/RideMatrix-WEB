@@ -1,11 +1,3 @@
-<%
-  const pageActions = typeof actions !== "undefined" && Array.isArray(actions) ? actions : [];
-  const actionRow = pageActions.length
-    ? `<div class="action-row">${pageActions
-        .map((action) => `<a class="button" href="${action.href}">${action.label}</a>`)
-        .join("")}</div>`
-    : "";
-%>
 <%- include("../layouts/base", {
   title,
   appTitle,
@@ -21,10 +13,13 @@
     <section class="panel">
       <h1>${roleLabel}</h1>
       <p><strong>Signed in as:</strong> ${email}</p>
-      <p>This is the active workspace for <strong>${roleLabel}</strong>.</p>
-
-      ${actionRow}
-
+      <p>This module is available to your authorized internal account.</p>
+      ${module.key === "manage-vps" ? `
+        <div class="notice notice--warning">
+          <strong>Safety notice:</strong> reboot and recovery are placeholders and cannot execute VPS actions.
+        </div>
+        <p><a href="/recovery">Open reboot and recovery placeholder</a></p>
+      ` : ""}
       <p><a href="/choose-role">Switch workspace</a></p>
     </section>
   `

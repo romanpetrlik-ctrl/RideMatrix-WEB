@@ -9,6 +9,7 @@ type DashboardTile = {
   key: string;
   title: string;
   description: string;
+  href?: string;
 };
 
 type OperationalMenuAction = {
@@ -101,7 +102,7 @@ const operationalMenuRows: OperationalMenuRow[] = [
   }
 ];
 
-const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
+export const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
   {
     title: "Operations",
     tiles: [
@@ -128,12 +129,14 @@ const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
       {
         key: "customers",
         title: "Customers",
-        description: "Add, edit, suspend, or remove customer records."
+        description: "Manage customer records.",
+        href: "/customers"
       },
       {
         key: "staff",
         title: "Staff",
-        description: "Add, edit, suspend, or remove staff records."
+        description: "View internal user accounts and roles.",
+        href: "/staff"
       },
       {
         key: "drivers",
@@ -196,9 +199,7 @@ export function createDashboardRouter(options: DashboardRouterOptions): Router {
 
       const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
 
-      if (!roles.includes("admin")) {
-        return res.redirect("/account");
-      }
+      if (!roles.includes("admin")) return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
 
       const requestedTileKey = String(req.query.tile || "");
       const selectedTile = allTiles.find((tile) => tile.key === requestedTileKey);

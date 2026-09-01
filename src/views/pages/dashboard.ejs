@@ -17,6 +17,19 @@
         Use the operational menu below to open each area.
       </p>
     </section>
+    <div class="dashboard-layout">
+      ${sections.map((section) => `
+        <section class="panel">
+          <h2>${section.title}</h2>
+          <div class="workspace-tile-grid">
+            ${section.tiles.map((tile) => tile.href
+              ? `<a class="workspace-tile" href="${tile.href}"><span class="workspace-tile__title">${tile.title}</span><span class="workspace-tile__description">${tile.description}</span><span class="workspace-tile__action">Open →</span></a>`
+              : `<a class="workspace-tile" href="/dashboard?tile=${tile.key}"><span class="workspace-tile__title">${tile.title}</span><span class="workspace-tile__description">${tile.description}</span><span class="workspace-tile__action">Open →</span></a>`
+            ).join("")}
+          </div>
+        </section>
+      `).join("")}
+    </div>
 
     ${
       selectedTile

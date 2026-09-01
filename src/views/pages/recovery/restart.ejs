@@ -38,6 +38,10 @@
         </div>
 
         <form method="post" action="/recovery/restart">
+          <label>
+            <input type="checkbox" name="confirmed" value="yes" required />
+            I understand that this is only a placeholder and no VPS restart will be performed.
+          </label>
           <div class="action-row">
             <button class="button button--danger" type="submit">Restart VPS (placeholder)</button>
             <a class="button button--secondary" href="/recovery">Back to Help / Recovery</a>
