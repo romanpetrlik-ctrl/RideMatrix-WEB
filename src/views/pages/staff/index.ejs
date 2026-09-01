@@ -34,9 +34,10 @@
       <section class="staff-list-card">
         <div class="staff-list-card__header">
           <div>
-            <h2>All staff</h2>
+            <h2><%= staffCount %> staff record<%= staffCount === 1 ? "" : "s" %></h2>
             <p>Internal users with an administrative, dispatch, technical, or driving role. Sorted alphabetically by email.</p>
           </div>
+          <a class="button" href="/staff/invite">Create / Invite user</a>
         </div>
 
         <% if (staff.length > 0) { %>
@@ -76,8 +77,8 @@
           </div>
         <% } else { %>
           <div class="empty-state">
-            <h2>No staff users yet</h2>
-            <p>No internal accounts currently hold an administrative, dispatch, technical, or driving role.</p>
+            <h2>0 staff records</h2>
+            <p>No internal staff accounts are available.</p>
           </div>
         <% } %>
       </section>

@@ -112,7 +112,8 @@ describe("GET /staff (staff directory)", () => {
 
     assert.equal(response.status, 200);
     const body = await response.text();
-    assert.match(body, /No staff users yet/);
+    assert.match(body, /0 staff records/);
+    assert.match(body, /No internal staff accounts are available\./);
   });
 
   test("authorized admin sees internal users, excludes customer-only users, and lists each user once with all roles", async () => {
@@ -151,6 +152,59 @@ describe("GET /staff (staff directory)", () => {
     assert.match(body, /Driver/);
     assert.match(body, /Dispatch/);
     assert.doesNotMatch(body, /customer\.route\.test@ridematrix\.com/);
+  });
+
+  test("the create/invite action is available directly from the staff list", async () => {
+    mockSession = {
+      authenticated: true,
+      user: { id: "u-3", email: "admin@ridematrix.com", roles: ["admin"], active_role: "admin" }
+    };
+
+    const response = await fetch(`${baseUrl}/staff`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /href="\/staff\/invite"/);
+  });
+
+  test("bookings@romanairporttransfers.co.uk is listed only while it holds an internal role", async () => {
+    await query(
+      `INSERT INTO users (id, email, status) VALUES
+        ('b0000000-0000-0000-0000-000000000001', 'bookings@romanairporttransfers.co.uk', 'Active')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await query(
+      `INSERT INTO user_roles (user_id, role_id) VALUES
+        ('b0000000-0000-0000-0000-000000000001', $1)
+       ON CONFLICT DO NOTHING`,
+      [ROLE_IDS.customer]
+    );
+
+    mockSession = {
+      authenticated: true,
+      user: { id: "u-3", email: "admin@ridematrix.com", roles: ["admin"], active_role: "admin" }
+    };
+
+    const withoutInternalRole = await (await fetch(`${baseUrl}/staff`)).text();
+    assert.doesNotMatch(
+      withoutInternalRole,
+      /bookings@romanairporttransfers\.co\.uk/,
+      "a customer-only bookings@ account must not appear in the staff list"
+    );
+
+    await query(
+      `INSERT INTO user_roles (user_id, role_id) VALUES
+        ('b0000000-0000-0000-0000-000000000001', $1)
+       ON CONFLICT DO NOTHING`,
+      [ROLE_IDS.dispatcher]
+    );
+
+    const withInternalRole = await (await fetch(`${baseUrl}/staff`)).text();
+    assert.match(
+      withInternalRole,
+      /bookings@romanairporttransfers\.co\.uk/,
+      "bookings@ must appear once it also holds an internal (dispatcher) role"
+    );
   });
 });
 
