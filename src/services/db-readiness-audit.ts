@@ -72,7 +72,7 @@ const AUTH_TABLES = [
 const REQUIRED_AUTH_COLUMNS: Record<string, string[]> = {
   users: ["id", "email"],
   roles: ["id", "name"],
-  permissions: ["id", "name"],
+  permissions: ["id", "key"],
   user_roles: ["user_id", "role_id"],
   role_permissions: ["role_id", "permission_id"],
   login_codes: ["email", "code", "expires_at"]
@@ -426,9 +426,10 @@ async function auditAuthSchema(run: QueryRunner, facts: SchemaFacts): Promise<Au
   }
 
   if (facts.tables.has("permissions") && facts.tables.has("role_permissions")) {
-    const permissionRows = await run(`SELECT name FROM permissions WHERE name = ANY($1::text[])`, [
-      INVITE_PERMISSIONS
-    ]);
+    const permissionRows = await run(
+      `SELECT key AS name FROM permissions WHERE key = ANY($1::text[])`,
+      [INVITE_PERMISSIONS]
+    );
     const presentPermissions = permissionRows.rows.map((row) => String(row.name));
     const missingPermissions = INVITE_PERMISSIONS.filter(
       (permission) => !presentPermissions.includes(permission)
@@ -445,12 +446,12 @@ async function auditAuthSchema(run: QueryRunner, facts: SchemaFacts): Promise<Au
     });
 
     const grantRows = await run(
-      `SELECT r.name AS role_name, p.name AS permission_name
+      `SELECT r.name AS role_name, p.key AS permission_name
          FROM role_permissions rp
          JOIN roles r ON r.id = rp.role_id
          JOIN permissions p ON p.id = rp.permission_id
-        WHERE p.name = ANY($1::text[])
-        ORDER BY r.name, p.name`,
+        WHERE p.key = ANY($1::text[])
+        ORDER BY r.name, p.key`,
       [INVITE_PERMISSIONS]
     );
 

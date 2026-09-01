@@ -149,7 +149,7 @@ export async function hasManageUsersPermission(
          FROM role_permissions rp
          JOIN roles r ON r.id = rp.role_id
          JOIN permissions p ON p.id = rp.permission_id
-         WHERE r.name = ANY($1) AND p.name = $2
+         WHERE r.name = ANY($1) AND p.key = $2
        ) AS allowed`,
       [roles, MANAGE_USERS_PERMISSION]
     );

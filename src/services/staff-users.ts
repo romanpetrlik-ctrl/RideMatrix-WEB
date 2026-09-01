@@ -195,7 +195,7 @@ export async function getPermissionsForRoles(
   }
 
   const result = await query<{ name: string }>(
-    `SELECT DISTINCT p.name
+    `SELECT DISTINCT p.key AS name
        FROM permissions p
        JOIN role_permissions rp ON rp.permission_id = p.id
        JOIN roles r ON r.id = rp.role_id
