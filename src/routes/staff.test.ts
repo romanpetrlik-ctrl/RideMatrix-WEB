@@ -168,6 +168,21 @@ describe("GET /staff (staff directory)", () => {
     assert.match(body, /href="\/staff\/invite"/);
   });
 
+  test("the directory renders a summary card, a structured table, and separate role badges", async () => {
+    mockSession = {
+      authenticated: true,
+      user: { id: "u-3", email: "admin@ridematrix.com", roles: ["admin"], active_role: "admin" }
+    };
+
+    const body = await (await fetch(`${baseUrl}/staff`)).text();
+
+    assert.match(body, /class="staff-stat-card"/);
+    assert.match(body, /class="staff-table"/);
+    assert.match(body, /<a class="staff-button staff-button--primary" href="\/staff\/invite">/);
+    assert.match(body, /<span class="staff-role-badge">Driver<\/span>/);
+    assert.match(body, /<span class="staff-role-badge">Staff<\/span>/);
+  });
+
   test("bookings@romanairporttransfers.co.uk is listed only while it holds an internal role", async () => {
     await query(
       `INSERT INTO users (id, email, status) VALUES
@@ -350,6 +365,18 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
     assert.match(body, />Driver</);
     assert.match(body, />Technical Support</);
     assert.doesNotMatch(body, /value="dispatcher"/);
+  });
+
+  test("the invite form renders a styled card with individual role option cards", async () => {
+    signIn("admin@ridematrix.com", ["admin"]);
+
+    const body = await (await fetch(`${baseUrl}/staff/invite`)).text();
+    const roleOptions = body.match(/<li class="staff-role-option/g) || [];
+
+    assert.match(body, /class="staff-card staff-form-card"/);
+    assert.match(body, /class="staff-role-options"/);
+    assert.ok(roleOptions.length >= 5, "each assignable role must render its own option card");
+    assert.match(body, /class="staff-button staff-button--primary"/);
   });
 
   test("permission lookup reads grants from permissions.key", async () => {
