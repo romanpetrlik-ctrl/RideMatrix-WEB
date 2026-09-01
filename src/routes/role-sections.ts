@@ -8,7 +8,6 @@ type RoleSectionsRouterOptions = {
 
 const routeRoleMap: Record<string, string> = {
   "/superuser": "superuser",
-  "/staff": "staff",
   "/tech-support": "tech_support",
   "/dispatch": "dispatcher",
   "/driver": "driver"

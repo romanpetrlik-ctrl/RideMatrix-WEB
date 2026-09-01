@@ -1,5 +1,6 @@
 import { Request, Response, Router } from "express";
 import { SessionAccount, getSessionAccount, submitAccessRequest } from "../services/api";
+import { canManageStaff, listStaffUsers } from "../services/staff";
 import {
   AssignableRole,
   DuplicateStaffUserEmailError,
@@ -46,6 +47,55 @@ function toRoleList(value: unknown): string[] {
 
   const single = String(value ?? "").trim();
   return single ? [single] : [];
+}
+
+function getRoleLabel(role: string): string {
+  switch (role) {
+    case "admin":
+      return "Administration";
+    case "superuser":
+      return "System Control";
+    case "staff":
+      return "Staff";
+    case "tech_support":
+      return "Technical Support";
+    case "dispatcher":
+      return "Dispatch";
+    case "driver":
+      return "Driver";
+    case "customer":
+      return "Customer";
+    case "partner":
+      return "Partner";
+    default:
+      return role;
+  }
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "Never";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 export function createStaffRouter(options: StaffRouterOptions): Router {
@@ -112,6 +162,41 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       appTitle: options.appTitle
     });
   }
+
+  router.get("/staff", async (req, res, next) => {
+    try {
+      const session = await loadSession(req.headers.cookie);
+
+      if (!session.authenticated || !session.user) {
+        return res.redirect("/access");
+      }
+
+      const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+      const authorized = await canManageStaff(roles);
+
+      if (!authorized) {
+        return renderUnavailable(res);
+      }
+
+      const staff = await listStaffUsers();
+
+      return res.render("pages/staff/index", {
+        title: "Staff",
+        appTitle: options.appTitle,
+        email: session.user.email,
+        activeRoleLabel: getRoleLabel(session.user.active_role || "admin"),
+        staffCount: staff.length,
+        staff: staff.map((member) => ({
+          ...member,
+          roleLabels: member.roles.map(getRoleLabel),
+          formattedCreatedAt: formatDate(member.createdAt),
+          formattedLastLoginAt: formatDateTime(member.lastLoginAt)
+        }))
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.get("/staff/invite", async (req, res, next) => {
     try {

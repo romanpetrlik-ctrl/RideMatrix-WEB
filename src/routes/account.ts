@@ -51,6 +51,24 @@ function getRoleDescription(role: string): string {
   }
 }
 
+/**
+ * Resolves where a newly-selected workspace role should land. Administrative
+ * modules must have an explicit destination instead of falling back to the
+ * personal `/account` page: `admin` opens the operations dashboard and
+ * `staff` opens the staff management list (subject to its own authorization
+ * check). Every other role continues to land on the personal account page.
+ */
+function getWorkspaceRedirectHref(role: string): string {
+  switch (role) {
+    case "admin":
+      return "/dashboard";
+    case "staff":
+      return "/staff";
+    default:
+      return "/account";
+  }
+}
+
 export function createAccountRouter(options: AccountRouterOptions): Router {
   const router = Router();
 
@@ -130,7 +148,7 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
           return res.redirect("/dashboard");
         }
 
-        return res.redirect("/account");
+        return res.redirect(getWorkspaceRedirectHref(roles[0]));
       }
 
       return res.render("pages/choose-role", {
@@ -165,7 +183,7 @@ export function createAccountRouter(options: AccountRouterOptions): Router {
         return res.redirect("/dashboard");
       }
 
-      return res.redirect("/account");
+      return res.redirect(getWorkspaceRedirectHref(selected.activeRole));
     } catch (error) {
       next(error);
     }
