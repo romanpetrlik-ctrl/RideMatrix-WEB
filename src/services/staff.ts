@@ -156,10 +156,13 @@ export async function hasManageUsersPermission(
 
     return Boolean(result.rows[0]?.allowed);
   } catch (error) {
-    console.error(
-      "[staff] Failed to evaluate manage_users permission; falling back to admin/superuser role check:",
-      error
-    );
+    const pgError = error as { code?: string };
+    if (pgError?.code !== "42P01") {
+      console.error(
+        "[staff] Failed to evaluate manage_users permission; falling back to admin/superuser role check:",
+        error
+      );
+    }
     return false;
   }
 }
