@@ -48,7 +48,7 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
 
       CREATE TABLE IF NOT EXISTS ${schemaName}.permissions (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(100) UNIQUE NOT NULL,
+        key VARCHAR(100) UNIQUE NOT NULL,
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -86,7 +86,7 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
         (2, 'driver', 'Driver')
       ON CONFLICT (id) DO NOTHING;
 
-      INSERT INTO ${schemaName}.permissions (id, name, description) VALUES
+      INSERT INTO ${schemaName}.permissions (id, key, description) VALUES
         (1, 'view_dashboard', 'View Dashboard'),
         (2, 'manage_users', 'Manage Users')
       ON CONFLICT (id) DO NOTHING;

@@ -8,6 +8,7 @@ import { initializeDatabase, query } from "../database/connection";
 import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
 import { getCustomerCount } from "../services/customers";
 import { SessionAccount } from "../services/api";
+import { getPermissionsForRoles } from "../services/staff-users";
 import { createStaffRouter } from "./staff";
 
 describe("GET /staff (staff directory)", () => {
@@ -234,7 +235,7 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
        ON CONFLICT (id) DO NOTHING`
     );
     await query(
-      `INSERT INTO permissions (id, name, description) VALUES
+      `INSERT INTO permissions (id, key, description) VALUES
          (10, 'manage_user_roles', 'Manage user roles')
        ON CONFLICT (id) DO NOTHING`
     );
@@ -337,6 +338,10 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
     assert.match(body, /Create \/ Invite user/);
     assert.match(body, /value="staff"/);
     assert.match(body, /value="dispatcher"/);
+  });
+
+  test("permission lookup reads grants from permissions.key", async () => {
+    assert.deepEqual(await getPermissionsForRoles(["admin"]), ["manage_users"]);
   });
 
   test("customer and partner roles are not offered by the internal invite flow", async () => {
