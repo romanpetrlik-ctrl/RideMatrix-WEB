@@ -35,6 +35,7 @@
         <% } %>
 
         <form method="post" action="/customers/import" enctype="multipart/form-data" class="stack">
+          <%- locals.csrfField || "" %>
           <div>
             <label for="bookings-csv">CSV file</label>
             <input id="bookings-csv" type="file" name="bookingsCsv" accept=".csv,text/csv" required />

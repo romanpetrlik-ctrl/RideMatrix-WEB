@@ -76,6 +76,7 @@
           <p>Fill in the individual's details below. Fields marked with * are required.</p>
 
           <form class="inline-form private-customer-form" method="post" action="/customers/register">
+            <%- locals.csrfField || "" %>
             <div class="private-customer-form__grid">
               <section class="private-customer-form__column" aria-labelledby="private-contact-heading">
                 <h2 id="private-contact-heading">Personal and contact data</h2>

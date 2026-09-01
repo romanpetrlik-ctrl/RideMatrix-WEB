@@ -36,6 +36,7 @@
         <p>Update the customer's details below. Fields marked with * are required.</p>
 
         <form class="inline-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+          <%- locals.csrfField || "" %>
           <div class="form-field">
             <label for="givenName">First name *</label>
             <input

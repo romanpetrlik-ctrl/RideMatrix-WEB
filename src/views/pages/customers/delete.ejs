@@ -30,6 +30,7 @@
 
         <div class="action-row">
           <form class="inline-form" method="post" action="/customers/<%= customer.id %>/delete?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+            <%- locals.csrfField || "" %>
             <button type="submit" class="button button--danger">Delete Record</button>
           </form>
           <a class="button button--secondary" href="<%= backToCustomersHref %>">Cancel</a>

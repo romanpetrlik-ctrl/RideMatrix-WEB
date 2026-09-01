@@ -20,6 +20,7 @@
           .map(
             (module) => `
               <form method="post" action="/choose-role" class="workspace-tile-form">
+                ${locals.csrfField || ""}
                 <input type="hidden" name="module" value="${module.key}" />
                 <button type="submit" class="workspace-tile">
                   <span class="workspace-tile__title">${module.title}</span>

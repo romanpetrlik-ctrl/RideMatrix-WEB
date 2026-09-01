@@ -26,6 +26,7 @@
     <section class="panel panel--compact">
       <h2>Sign in</h2>
       <form method="post" action="/access">
+        ${locals.csrfField || ""}
         <label for="email">Email address</label>
         <input
           id="email"
