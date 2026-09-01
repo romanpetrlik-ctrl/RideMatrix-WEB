@@ -23,22 +23,35 @@
       showExitLink: true
     }) %>
 
-    <main class="container staff-list-page">
-      <section class="staff-list-summary" aria-label="Staff list summary">
-        <div>
-          <span class="staff-list-summary__label">Total staff</span>
-          <strong><%= staffCount %></strong>
+    <main class="container staff-page staff-list-page">
+      <div class="staff-page__header">
+        <div class="staff-page__heading">
+          <p class="staff-page__eyebrow">Administration</p>
+          <h1 class="staff-page__title">Staff directory</h1>
+          <p class="staff-page__subtitle">
+            Internal users with an administrative, dispatch, technical, or driving role.
+          </p>
+        </div>
+        <div class="staff-page__actions">
+          <a class="staff-button staff-button--primary" href="/staff/invite">Create / Invite user</a>
+        </div>
+      </div>
+
+      <section class="staff-stats" aria-label="Staff list summary">
+        <div class="staff-stat-card">
+          <span class="staff-stat-card__label">Total staff</span>
+          <strong class="staff-stat-card__value"><%= staffCount %></strong>
+          <span class="staff-stat-card__hint">Active internal accounts</span>
         </div>
       </section>
 
-      <section class="staff-list-card">
-        <div class="staff-list-card__header">
+      <section class="staff-card" aria-labelledby="staff-directory-heading">
+        <header class="staff-card__header">
           <div>
-            <h2><%= staffCount %> staff record<%= staffCount === 1 ? "" : "s" %></h2>
-            <p>Internal users with an administrative, dispatch, technical, or driving role. Sorted alphabetically by email.</p>
+            <h2 class="staff-card__title" id="staff-directory-heading"><%= staffCount %> staff record<%= staffCount === 1 ? "" : "s" %></h2>
+            <p class="staff-card__subtitle">Sorted alphabetically by email address.</p>
           </div>
-          <a class="button" href="/staff/invite">Create / Invite user</a>
-        </div>
+        </header>
 
         <% if (staff.length > 0) { %>
           <div class="staff-table-wrapper">
@@ -48,37 +61,47 @@
                   <th scope="col">Email</th>
                   <th scope="col">Status</th>
                   <th scope="col">Roles</th>
-                  <th scope="col">Created</th>
-                  <th scope="col">Last login</th>
+                  <th scope="col" class="staff-table__cell--date">Created</th>
+                  <th scope="col" class="staff-table__cell--date">Last login</th>
                 </tr>
               </thead>
               <tbody>
                 <% staff.forEach((member) => { %>
                   <tr>
-                    <td><%= member.email %></td>
-                    <td>
+                    <th scope="row" class="staff-table__identity">
+                      <span class="staff-table__avatar" aria-hidden="true"><%= member.email.charAt(0).toUpperCase() %></span>
+                      <span class="staff-table__email"><%= member.email %></span>
+                    </th>
+                    <td data-label="Status">
                       <% if (member.status) { %>
                         <span class="status-pill status-pill--<%= member.status.toLowerCase().replace(/\s+/g, "-") %>"><%= member.status %></span>
                       <% } else { %>
-                        <span>—</span>
+                        <span class="staff-table__muted">—</span>
                       <% } %>
                     </td>
-                    <td>
-                      <% member.roleLabels.forEach((roleLabel) => { %>
-                        <span class="role-pill"><%= roleLabel %></span>
-                      <% }) %>
+                    <td data-label="Roles">
+                      <% if (member.roleLabels.length > 0) { %>
+                        <ul class="staff-role-badges">
+                          <% member.roleLabels.forEach((roleLabel) => { %>
+                            <li><span class="staff-role-badge"><%= roleLabel %></span></li>
+                          <% }) %>
+                        </ul>
+                      <% } else { %>
+                        <span class="staff-table__muted">—</span>
+                      <% } %>
                     </td>
-                    <td><%= member.formattedCreatedAt %></td>
-                    <td><%= member.formattedLastLoginAt %></td>
+                    <td data-label="Created" class="staff-table__cell--date"><%= member.formattedCreatedAt %></td>
+                    <td data-label="Last login" class="staff-table__cell--date"><%= member.formattedLastLoginAt %></td>
                   </tr>
                 <% }) %>
               </tbody>
             </table>
           </div>
         <% } else { %>
-          <div class="empty-state">
-            <h2>0 staff records</h2>
-            <p>No internal staff accounts are available.</p>
+          <div class="staff-empty-state">
+            <h2 class="staff-empty-state__title"><%= staffCount %> staff records</h2>
+            <p class="staff-empty-state__text">No internal staff accounts are available.</p>
+            <a class="staff-button staff-button--primary" href="/staff/invite">Create / Invite user</a>
           </div>
         <% } %>
       </section>
