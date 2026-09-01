@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      pageTitle: "Staff",
+      pageMeta: "Internal user accounts, roles, and status.",
+      activeRoleLabel,
+      breadcrumbs: [
+        { label: "Administration", href: "/dashboard" },
+        { label: "Staff" }
+      ],
+      hintsLabel: `${staffCount} staff`,
+      showRoleSwitch: true,
+      showExitLink: true
+    }) %>
+
+    <main class="container staff-list-page">
+      <section class="staff-list-summary" aria-label="Staff list summary">
+        <div>
+          <span class="staff-list-summary__label">Total staff</span>
+          <strong><%= staffCount %></strong>
+        </div>
+      </section>
+
+      <section class="staff-list-card">
+        <div class="staff-list-card__header">
+          <div>
+            <h2>All staff</h2>
+            <p>Internal users with an administrative, dispatch, technical, or driving role. Sorted alphabetically by email.</p>
+          </div>
+        </div>
+
+        <% if (staff.length > 0) { %>
+          <div class="staff-table-wrapper">
+            <table class="staff-table">
+              <thead>
+                <tr>
+                  <th scope="col">Email</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Roles</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Last login</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% staff.forEach((member) => { %>
+                  <tr>
+                    <td><%= member.email %></td>
+                    <td>
+                      <% if (member.status) { %>
+                        <span class="status-pill status-pill--<%= member.status.toLowerCase().replace(/\s+/g, "-") %>"><%= member.status %></span>
+                      <% } else { %>
+                        <span>—</span>
+                      <% } %>
+                    </td>
+                    <td>
+                      <% member.roleLabels.forEach((roleLabel) => { %>
+                        <span class="role-pill"><%= roleLabel %></span>
+                      <% }) %>
+                    </td>
+                    <td><%= member.formattedCreatedAt %></td>
+                    <td><%= member.formattedLastLoginAt %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } else { %>
+          <div class="empty-state">
+            <h2>No staff users yet</h2>
+            <p>No internal accounts currently hold an administrative, dispatch, technical, or driving role.</p>
+          </div>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

@@ -1,5 +1,4 @@
 import { Router, type Response } from "express";
-import { query } from "../database/connection";
 import { getSessionAccount } from "../services/api";
 
 type RoleSectionsRouterOptions = {
@@ -30,16 +29,6 @@ export function canAccessWorkspace(roles: string[], key: string): boolean {
   return availableWorkspaceModules(roles).some((module) => module.key === key);
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[character] || character);
-}
-
 function renderUnavailable(res: Response, appTitle: string) {
   return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle });
 }
@@ -47,35 +36,13 @@ function renderUnavailable(res: Response, appTitle: string) {
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
 
-  for (const module of workspaceModules.filter((item) => item.key !== "administration")) {
+  for (const module of workspaceModules.filter((item) => item.key !== "administration" && item.key !== "staff")) {
     router.get(module.href, async (req, res, next) => {
       try {
         const session = await getSessionAccount(req.headers.cookie);
         if (!session.authenticated || !session.user) return res.redirect("/access");
         const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
         if (!canAccessWorkspace(roles, module.key)) return renderUnavailable(res, options.appTitle);
-
-        if (module.key === "staff") {
-          const staff = await query<{ email: string; status: string; roles: string[] | null }>(`
-            SELECT u.email, u.status, array_remove(array_agg(r.name ORDER BY r.name), NULL) AS roles
-            FROM users u
-            LEFT JOIN user_roles ur ON ur.user_id = u.id
-            LEFT JOIN roles r ON r.id = ur.role_id
-            GROUP BY u.id, u.email, u.status
-            ORDER BY u.email
-            LIMIT 100
-          `);
-          return res.render("pages/staff", {
-            title: "Staff",
-            appTitle: options.appTitle,
-            email: session.user.email,
-            staff: staff.rows.map((user) => ({
-              email: escapeHtml(user.email),
-              status: escapeHtml(user.status),
-              roles: user.roles?.map(escapeHtml) ?? []
-            }))
-          });
-        }
 
         return res.render("pages/role-section", {
           title: module.title, appTitle: options.appTitle, email: session.user.email,

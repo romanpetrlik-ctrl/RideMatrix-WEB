@@ -66,6 +66,10 @@ const operationalMenuRows: OperationalMenuRow[] = [
     ]
   },
   {
+    category: "Staff",
+    actions: [{ label: "All staff", href: "/staff" }]
+  },
+  {
     category: "Pricing",
     actions: [
       { label: "Distance slabs", href: "/dashboard?tile=pricing-distance-slabs" },

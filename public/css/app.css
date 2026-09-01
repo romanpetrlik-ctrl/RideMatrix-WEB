@@ -1076,7 +1076,8 @@ button:visited,
   margin-bottom: 1rem;
 }
 
-.customer-list-page {
+.customer-list-page,
+.staff-list-page {
   padding-top: 2rem;
 }
 
@@ -1109,7 +1110,8 @@ button:visited,
   color: var(--rm-text-soft);
 }
 
-.customer-list-summary {
+.customer-list-summary,
+.staff-list-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 1px;
@@ -1118,7 +1120,8 @@ button:visited,
   background: var(--rm-border);
 }
 
-.customer-list-summary > div {
+.customer-list-summary > div,
+.staff-list-summary > div {
   display: grid;
   gap: 0.2rem;
   padding: 1rem 1.15rem;
@@ -1126,29 +1129,34 @@ button:visited,
   min-width: 180px;
 }
 
-.customer-list-summary strong {
+.customer-list-summary strong,
+.staff-list-summary strong {
   color: #172b38;
   font-size: 1.35rem;
 }
 
-.customer-list-summary__label {
+.customer-list-summary__label,
+.staff-list-summary__label {
   color: var(--rm-text-soft);
   font-size: 0.82rem;
 }
 
-.customer-list-card {
+.customer-list-card,
+.staff-list-card {
   border: 1px solid var(--rm-border);
   background: #fff;
   box-shadow: 0 2px 8px rgba(23, 43, 56, 0.06);
 }
 
-.customer-list-card__header {
+.customer-list-card__header,
+.staff-list-card__header {
   display: flex;
   justify-content: space-between;
   padding: 1.25rem var(--rm-panel-inline-space) 0;
 }
 
-.customer-list-card__header h2 {
+.customer-list-card__header h2,
+.staff-list-card__header h2 {
   margin-bottom: 0.25rem;
   color: #172b38;
   font-size: 1.2rem;
@@ -1177,27 +1185,32 @@ button:visited,
   margin: 0 0.5rem 0 0.2rem;
 }
 
-.customers-table-wrapper {
+.customers-table-wrapper,
+.staff-table-wrapper {
   width: 100%;
   overflow-x: auto;
   padding-inline: var(--rm-panel-inline-space);
 }
 
-.customers-table {
+.customers-table,
+.staff-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 920px;
 }
 
 .customers-table th,
-.customers-table td {
+.customers-table td,
+.staff-table th,
+.staff-table td {
   padding: 0.85rem 0.75rem;
   border-bottom: 1px solid var(--rm-light-bronze);
   text-align: left;
   vertical-align: top;
 }
 
-.customers-table thead th {
+.customers-table thead th,
+.staff-table thead th {
   font-size: 0.82rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -1293,6 +1306,19 @@ button:visited,
 .status-pill--booking {
   background: rgba(0, 95, 115, 0.1);
   color: var(--rm-dark-teal);
+}
+
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.5rem;
+  margin: 0 0.3rem 0.25rem 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: rgba(96, 56, 8, 0.1);
+  color: var(--rm-walnut);
 }
 
 .empty-state {
@@ -1409,7 +1435,8 @@ button:visited,
     flex: 1 1 auto;
   }
 
-  .customers-table {
+  .customers-table,
+  .staff-table {
     min-width: 760px;
   }
 
