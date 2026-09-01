@@ -31,7 +31,7 @@ describe("GET /staff (staff directory)", () => {
   const ROLE_IDS = {
     admin: 1,
     driver: 2,
-    dispatcher: 3,
+    staff: 3,
     customer: 4
   };
 
@@ -41,11 +41,11 @@ describe("GET /staff (staff directory)", () => {
     await initializeDatabase();
 
     await query(
-      `INSERT INTO roles (id, name, description) VALUES
-        ($1, 'dispatcher', 'Dispatcher'),
+      `INSERT INTO roles (id, key, description) VALUES
+        ($1, 'staff', 'Dispatcher / staff user'),
         ($2, 'customer', 'Customer')
        ON CONFLICT (id) DO NOTHING`,
-      [ROLE_IDS.dispatcher, ROLE_IDS.customer]
+      [ROLE_IDS.staff, ROLE_IDS.customer]
     );
 
     // The auth service that owns the auth tables lives outside this repository;
@@ -93,7 +93,7 @@ describe("GET /staff (staff directory)", () => {
   test("authenticated users without staff-management authorization receive the existing 403 response", async () => {
     mockSession = {
       authenticated: true,
-      user: { id: "u-1", email: "dispatcher@ridematrix.com", roles: ["dispatcher"] }
+      user: { id: "u-1", email: "staff@ridematrix.com", roles: ["staff"] }
     };
 
     const response = await fetch(`${baseUrl}/staff`, { redirect: "manual" });
@@ -123,7 +123,7 @@ describe("GET /staff (staff directory)", () => {
         ('a0000000-0000-0000-0000-000000000002', $1),
         ('a0000000-0000-0000-0000-000000000002', $2)
        ON CONFLICT DO NOTHING`,
-      [ROLE_IDS.driver, ROLE_IDS.dispatcher]
+      [ROLE_IDS.driver, ROLE_IDS.staff]
     );
 
     await query(
@@ -151,7 +151,7 @@ describe("GET /staff (staff directory)", () => {
 
     assert.equal(driverOccurrences.length, 1, "driver@ridematrix.com must appear exactly once");
     assert.match(body, /Driver/);
-    assert.match(body, /Dispatch/);
+    assert.match(body, /Staff/);
     assert.doesNotMatch(body, /customer\.route\.test@ridematrix\.com/);
   });
 
@@ -197,14 +197,14 @@ describe("GET /staff (staff directory)", () => {
       `INSERT INTO user_roles (user_id, role_id) VALUES
         ('b0000000-0000-0000-0000-000000000001', $1)
        ON CONFLICT DO NOTHING`,
-      [ROLE_IDS.dispatcher]
+      [ROLE_IDS.staff]
     );
 
     const withInternalRole = await (await fetch(`${baseUrl}/staff`)).text();
     assert.match(
       withInternalRole,
       /bookings@romanairporttransfers\.co\.uk/,
-      "bookings@ must appear once it also holds an internal (dispatcher) role"
+      "bookings@ must appear once it also holds the internal staff role"
     );
   });
 });
@@ -225,11 +225,10 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
     // Extend the base auth fixture with the internal role catalogue and the
     // permissions used by the staff-management authorization rules.
     await query(
-      `INSERT INTO roles (id, name, description) VALUES
+      `INSERT INTO roles (id, key, description) VALUES
          (10, 'superuser', 'Superuser'),
          (11, 'staff', 'Staff'),
          (12, 'tech_support', 'Technical support'),
-         (13, 'dispatcher', 'Dispatcher'),
          (14, 'customer', 'Customer'),
          (15, 'partner', 'Partner')
        ON CONFLICT (id) DO NOTHING`
@@ -307,12 +306,12 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
 
   async function getRolesOf(email: string): Promise<string[]> {
     const result = await query<{ name: string }>(
-      `SELECT r.name
+      `SELECT r.key AS name
          FROM users u
          JOIN user_roles ur ON ur.user_id = u.id
          JOIN roles r ON r.id = ur.role_id
         WHERE lower(u.email) = $1
-        ORDER BY r.name`,
+        ORDER BY r.key`,
       [email.toLowerCase()]
     );
 
@@ -328,16 +327,29 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
     return result.rows[0].count;
   }
 
-  test("an authorized administrator can open the create/invite form", async () => {
+  test("a production-shaped role catalogue renders the internal role checkboxes", async () => {
     signIn("admin@ridematrix.com", ["admin"]);
 
+    const namedRoles = await query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM roles WHERE name IS NOT NULL`
+    );
     const response = await fetch(`${baseUrl}/staff/invite`);
     const body = await response.text();
 
+    assert.equal(namedRoles.rows[0].count, 0);
     assert.equal(response.status, 200);
     assert.match(body, /Create \/ Invite user/);
+    assert.match(body, /value="superuser"/);
+    assert.match(body, /value="admin"/);
     assert.match(body, /value="staff"/);
-    assert.match(body, /value="dispatcher"/);
+    assert.match(body, /value="driver"/);
+    assert.match(body, /value="tech_support"/);
+    assert.match(body, />System Control</);
+    assert.match(body, />Administration</);
+    assert.match(body, />Staff</);
+    assert.match(body, />Driver</);
+    assert.match(body, />Technical Support</);
+    assert.doesNotMatch(body, /value="dispatcher"/);
   });
 
   test("permission lookup reads grants from permissions.key", async () => {
@@ -417,13 +429,13 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
 
     const response = await postInvite({
       email: "multi.role@example.com",
-      roles: ["staff", "dispatcher", "tech_support"]
+      roles: ["staff", "driver", "tech_support"]
     });
 
     assert.equal(response.status, 200);
     assert.equal(await countUsers("multi.role@example.com"), 1);
     assert.deepEqual(await getRolesOf("multi.role@example.com"), [
-      "dispatcher",
+      "driver",
       "staff",
       "tech_support"
     ]);

@@ -34,7 +34,7 @@ describe("CSRF protection on state-changing HTML forms", () => {
     await initializeDatabase();
 
     await query(
-      `INSERT INTO roles (id, name, description) VALUES
+      `INSERT INTO roles (id, key, description) VALUES
          (20, 'staff', 'Staff'),
          (21, 'superuser', 'System control')
        ON CONFLICT (id) DO NOTHING`

@@ -71,7 +71,7 @@ const AUTH_TABLES = [
 
 const REQUIRED_AUTH_COLUMNS: Record<string, string[]> = {
   users: ["id", "email"],
-  roles: ["id", "name"],
+  roles: ["id", "key"],
   permissions: ["id", "key"],
   user_roles: ["user_id", "role_id"],
   role_permissions: ["role_id", "permission_id"],
@@ -135,7 +135,7 @@ const INVITE_PERMISSIONS = ["manage_users", "manage_user_roles"];
 
 const SUPERUSER_ROLE = "superuser";
 
-const INTERNAL_ROLES = ["superuser", "admin", "staff", "tech_support", "dispatcher", "driver"];
+const INTERNAL_ROLES = ["superuser", "admin", "staff", "tech_support", "driver"];
 
 /**
  * Masks an email address so a report can state *that* an account exists without
@@ -399,7 +399,7 @@ async function auditAuthSchema(run: QueryRunner, facts: SchemaFacts): Promise<Au
   }
 
   if (facts.tables.has("roles")) {
-    const roleRows = await run(`SELECT name FROM roles WHERE name = ANY($1::text[])`, [
+    const roleRows = await run(`SELECT key AS name FROM roles WHERE key = ANY($1::text[])`, [
       INTERNAL_ROLES
     ]);
     const presentRoles = roleRows.rows.map((row) => String(row.name));
@@ -446,12 +446,12 @@ async function auditAuthSchema(run: QueryRunner, facts: SchemaFacts): Promise<Au
     });
 
     const grantRows = await run(
-      `SELECT r.name AS role_name, p.key AS permission_name
+      `SELECT r.key AS role_name, p.key AS permission_name
          FROM role_permissions rp
          JOIN roles r ON r.id = rp.role_id
          JOIN permissions p ON p.id = rp.permission_id
         WHERE p.key = ANY($1::text[])
-        ORDER BY r.name, p.key`,
+        ORDER BY r.key, p.key`,
       [INVITE_PERMISSIONS]
     );
 
@@ -492,12 +492,12 @@ async function auditAuthSchema(run: QueryRunner, facts: SchemaFacts): Promise<Au
       const operationalExists = Number(operationalRow.rows[0]?.count || 0) > 0;
 
       const roleRows = await run(
-        `SELECT r.name
+        `SELECT r.key AS name
            FROM users u
            JOIN user_roles ur ON ur.user_id = u.id
            JOIN roles r ON r.id = ur.role_id
           WHERE lower(u.email) = lower($1)
-          ORDER BY r.name`,
+          ORDER BY r.key`,
         [OPERATIONAL_ACCOUNT_EMAIL]
       );
       const roleNames = roleRows.rows.map((row) => String(row.name));

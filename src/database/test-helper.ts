@@ -41,7 +41,8 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
     await adminPool.query(`
       CREATE TABLE IF NOT EXISTS ${schemaName}.roles (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(50) UNIQUE NOT NULL,
+        key VARCHAR(50) UNIQUE NOT NULL,
+        name VARCHAR(100),
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -81,7 +82,7 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      INSERT INTO ${schemaName}.roles (id, name, description) VALUES
+      INSERT INTO ${schemaName}.roles (id, key, description) VALUES
         (1, 'admin', 'Administrator'),
         (2, 'driver', 'Driver')
       ON CONFLICT (id) DO NOTHING;

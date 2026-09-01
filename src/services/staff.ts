@@ -13,7 +13,6 @@ export const STAFF_MANAGEMENT_ROLES = [
   "superuser",
   "staff",
   "tech_support",
-  "dispatcher",
   "driver"
 ] as const;
 
@@ -101,7 +100,7 @@ export async function listStaffUsers(client?: Queryable): Promise<StaffRecord[]>
        u.status,
        u.created_at,
        ${lastLoginSelect} AS last_login_at,
-       array_agg(DISTINCT r.name ORDER BY r.name) AS roles
+       array_agg(DISTINCT r.key ORDER BY r.key) AS roles
      FROM users u
      JOIN user_roles ur ON ur.user_id = u.id
      JOIN roles r ON r.id = ur.role_id
@@ -109,7 +108,7 @@ export async function listStaffUsers(client?: Queryable): Promise<StaffRecord[]>
        SELECT ur2.user_id
        FROM user_roles ur2
        JOIN roles r2 ON r2.id = ur2.role_id
-       WHERE r2.name = ANY($1)
+       WHERE r2.key = ANY($1)
      )
      GROUP BY u.id
      ORDER BY lower(u.email) ASC`,
@@ -149,7 +148,7 @@ export async function hasManageUsersPermission(
          FROM role_permissions rp
          JOIN roles r ON r.id = rp.role_id
          JOIN permissions p ON p.id = rp.permission_id
-         WHERE r.name = ANY($1) AND p.key = $2
+         WHERE r.key = ANY($1) AND p.key = $2
        ) AS allowed`,
       [roles, MANAGE_USERS_PERMISSION]
     );
