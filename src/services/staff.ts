@@ -113,7 +113,7 @@ export async function listStaffUsers(client?: Queryable): Promise<StaffRecord[]>
      )
      GROUP BY u.id
      ORDER BY lower(u.email) ASC`,
-    [STAFF_MANAGEMENT_ROLES as unknown as string[]]
+    [Array.from(STAFF_MANAGEMENT_ROLES)]
   );
 
   return result.rows.map((row) => ({
