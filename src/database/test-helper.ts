@@ -11,11 +11,21 @@ export function getBaseTestDatabaseUrl(): string {
   );
 }
 
+/**
+ * Shape of `users.status` in the test schema. Production deployments own the
+ * auth schema and model the column as the `user_status` enum, so tests can
+ * reproduce that shape without touching any production database.
+ */
+export type AuthTablesOptions = {
+  statusEnumValues?: string[];
+  statusDefault?: string;
+};
+
 export type TestDatabaseContext = {
   schemaName: string;
   databaseUrl: string;
   cleanup: () => Promise<void>;
-  createAuthTables: () => Promise<void>;
+  createAuthTables: (options?: AuthTablesOptions) => Promise<void>;
   countAuthRows: () => Promise<{ users: number; roles: number; permissions: number }>;
 };
 
@@ -37,7 +47,18 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
   await closeDatabase();
   process.env.DATABASE_URL = databaseUrl;
 
-  const createAuthTables = async () => {
+  const createAuthTables = async (options?: AuthTablesOptions) => {
+    const statusDefault = options?.statusDefault ?? "Active";
+    let statusColumnDefinition = `VARCHAR(50) DEFAULT '${statusDefault}'`;
+
+    if (options?.statusEnumValues) {
+      const labels = options.statusEnumValues.map((value) => `'${value.replace(/'/g, "''")}'`);
+      await adminPool.query(
+        `CREATE TYPE ${schemaName}.user_status AS ENUM (${labels.join(", ")});`
+      );
+      statusColumnDefinition = `${schemaName}.user_status DEFAULT '${statusDefault}'::${schemaName}.user_status`;
+    }
+
     await adminPool.query(`
       CREATE TABLE IF NOT EXISTS ${schemaName}.roles (
         id SERIAL PRIMARY KEY,
@@ -63,7 +84,7 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
       CREATE TABLE IF NOT EXISTS ${schemaName}.users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         email VARCHAR(255) UNIQUE NOT NULL,
-        status VARCHAR(50) DEFAULT 'Active',
+        status ${statusColumnDefinition},
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -93,8 +114,8 @@ export async function createTestDatabaseContext(prefix: string): Promise<TestDat
       ON CONFLICT (id) DO NOTHING;
 
       INSERT INTO ${schemaName}.users (id, email, status) VALUES
-        ('a0000000-0000-0000-0000-000000000001', 'admin@ridematrix.com', 'Active'),
-        ('a0000000-0000-0000-0000-000000000002', 'driver@ridematrix.com', 'Active')
+        ('a0000000-0000-0000-0000-000000000001', 'admin@ridematrix.com', '${statusDefault}'),
+        ('a0000000-0000-0000-0000-000000000002', 'driver@ridematrix.com', '${statusDefault}')
       ON CONFLICT (id) DO NOTHING;
     `);
   };

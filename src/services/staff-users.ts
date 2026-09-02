@@ -37,8 +37,132 @@ export const MANAGE_USER_ROLES_PERMISSION = "manage_user_roles";
 /** Role that may always manage internal accounts and delegate any role. */
 export const SUPERUSER_ROLE = "superuser";
 
-/** Initial status for an invited account when the auth schema supports it. */
+/**
+ * Initial status for an invited account when `users.status` is a free-form
+ * text column (the schema this application ships in `src/database/*`).
+ */
 export const INVITED_USER_STATUS = "Pending";
+
+/**
+ * Status labels that describe an invited, not-yet-active account, in
+ * preference order. Production deployments own the auth schema and may model
+ * `users.status` as a PostgreSQL enum (`user_status`) whose labels differ from
+ * the application default, so the invite flow resolves the label that actually
+ * exists instead of assuming `Pending`.
+ */
+export const INVITED_USER_STATUS_CANDIDATES = [
+  "Pending",
+  "Invited",
+  "Invitation Pending",
+  "Pending Invite",
+  "Pending Invitation",
+  "Pending Activation",
+  "Awaiting Activation",
+  "Pending Verification",
+  "Pending Approval",
+  "Registered",
+  "New"
+] as const;
+
+/** Description of the `users.status` column in the connected database. */
+export type UserStatusColumn =
+  | { kind: "absent" }
+  | { kind: "text" }
+  | { kind: "enum"; typeName: string; labels: string[] };
+
+/** Minimal query surface shared with the read-only readiness audit runner. */
+export type StatusColumnRunner = (
+  sql: string,
+  params?: unknown[]
+) => Promise<{ rows: Record<string, unknown>[] }>;
+
+function normalizeStatusLabel(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Picks the enum label that represents an invited account, or `null` when the
+ * enum has no such label. An active/suspended/deleted label is never chosen:
+ * an invited account must not silently become an active one.
+ */
+export function selectInvitedStatusLabel(labels: string[]): string | null {
+  const normalized = labels.map((label) => ({ label, key: normalizeStatusLabel(label) }));
+
+  for (const candidate of INVITED_USER_STATUS_CANDIDATES) {
+    const key = normalizeStatusLabel(candidate);
+    const match = normalized.find((entry) => entry.key === key);
+
+    if (match) {
+      return match.label;
+    }
+  }
+
+  const heuristic = normalized.find(
+    (entry) => entry.key.includes("pending") || entry.key.includes("invit")
+  );
+
+  return heuristic ? heuristic.label : null;
+}
+
+/**
+ * Reads the type of `users.status` from the catalogue: absent, a plain text
+ * column, or an enum together with its labels.
+ */
+export async function describeUserStatusColumn(run: StatusColumnRunner): Promise<UserStatusColumn> {
+  const result = await run(
+    `SELECT t.typtype::text AS typtype,
+            t.typname::text AS typname,
+            COALESCE(
+              ARRAY(
+                SELECT e.enumlabel::text
+                  FROM pg_enum e
+                 WHERE e.enumtypid = t.oid
+                 ORDER BY e.enumsortorder
+              ),
+              ARRAY[]::text[]
+            ) AS labels
+       FROM pg_attribute a
+       JOIN pg_type t ON t.oid = a.atttypid
+      WHERE a.attrelid = to_regclass('users')
+        AND a.attname = 'status'
+        AND a.attnum > 0
+        AND NOT a.attisdropped`
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
+    return { kind: "absent" };
+  }
+
+  if (String(row.typtype) !== "e") {
+    return { kind: "text" };
+  }
+
+  return {
+    kind: "enum",
+    typeName: String(row.typname),
+    labels: (row.labels as string[] | null) ?? []
+  };
+}
+
+/**
+ * Resolves the status value to insert for a newly invited account, or `null`
+ * when the account must be inserted without an explicit status (no status
+ * column, or an enum without any invited-style label — in which case the
+ * column default defined by the auth service applies).
+ */
+export function resolveInvitedUserStatus(column: UserStatusColumn): string | null {
+  if (column.kind === "absent") {
+    return null;
+  }
+
+  if (column.kind === "text") {
+    return INVITED_USER_STATUS;
+  }
+
+  return selectInvitedStatusLabel(column.labels);
+}
 
 export type AssignableRole = {
   id: number;
@@ -237,23 +361,6 @@ export function canDelegateRole(actor: StaffUserActor, role: string): boolean {
   return true;
 }
 
-/** Returns true when the `users` table exposes a `status` column. */
-async function hasUserStatusColumn(runner?: Queryable): Promise<boolean> {
-  const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1
-         FROM information_schema.columns
-        WHERE table_name = 'users'
-          AND column_name = 'status'
-          AND table_schema = ANY (current_schemas(false))
-     ) AS exists`,
-    [],
-    runner
-  );
-
-  return Boolean(result.rows[0]?.exists);
-}
-
 export async function findUserByEmail(
   email: string,
   runner?: Queryable
@@ -314,15 +421,21 @@ export async function createStaffUser(input: CreateStaffUserInput): Promise<Crea
     throw new DuplicateStaffUserEmailError(email);
   }
 
-  const withStatus = await hasUserStatusColumn();
+  const statusColumn = await describeUserStatusColumn((sql, params) =>
+    query(sql, params as unknown[])
+  );
+  const invitedStatus = resolveInvitedUserStatus(statusColumn);
+  const returnsStatus = statusColumn.kind !== "absent";
 
   try {
     return await withTransaction(async (client) => {
       const inserted = await query<{ id: string; email: string; status: string | null }>(
-        withStatus
-          ? `INSERT INTO users (email, status) VALUES ($1, $2) RETURNING id, email, status`
-          : `INSERT INTO users (email) VALUES ($1) RETURNING id, email, NULL::text AS status`,
-        withStatus ? [email, INVITED_USER_STATUS] : [email],
+        invitedStatus === null
+          ? `INSERT INTO users (email) VALUES ($1) RETURNING id, email, ${
+              returnsStatus ? "status" : "NULL::text AS status"
+            }`
+          : `INSERT INTO users (email, status) VALUES ($1, $2) RETURNING id, email, status`,
+        invitedStatus === null ? [email] : [email, invitedStatus],
         client
       );
 
