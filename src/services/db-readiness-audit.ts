@@ -15,6 +15,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../database/connection";
+import { describeUserStatusColumn, resolveInvitedUserStatus } from "./staff-users";
 
 export type ReadinessStatus = "READY" | "BLOCKED" | "NEEDS_REVIEW" | "NOT_VERIFIED";
 
@@ -388,14 +389,34 @@ async function auditAuthSchema(run: QueryRunner, facts: SchemaFacts): Promise<Au
     });
 
     const statusColumn = facts.columns.get("users")?.get("status");
-    checks.push({
-      id: "auth_users_status_column",
-      label: "users.status supports the Pending invite state",
-      status: statusColumn ? "PASS" : "WARN",
-      detail: statusColumn
-        ? `Present (${statusColumn.dataType}${statusColumn.hasDefault ? ", has default" : ""}).`
-        : "Column absent; invited accounts are created without an explicit status."
-    });
+
+    if (!statusColumn) {
+      checks.push({
+        id: "auth_users_status_column",
+        label: "users.status can carry an invited (non-active) state",
+        status: "WARN",
+        detail: "Column absent; invited accounts are created without an explicit status."
+      });
+    } else {
+      const column = await describeUserStatusColumn(run);
+      const invitedStatus = resolveInvitedUserStatus(column);
+
+      checks.push({
+        id: "auth_users_status_column",
+        label: "users.status can carry an invited (non-active) state",
+        status: invitedStatus || statusColumn.hasDefault ? "PASS" : "WARN",
+        detail:
+          column.kind === "enum"
+            ? invitedStatus
+              ? `Enum ${column.typeName} (${column.labels.join(", ")}); invited accounts use "${invitedStatus}".`
+              : `Enum ${column.typeName} (${column.labels.join(", ")}) has no invited/pending label; invited accounts are created without an explicit status${
+                  statusColumn.hasDefault ? " and fall back to the column default" : ""
+                }.`
+            : `Present (${statusColumn.dataType}${
+                statusColumn.hasDefault ? ", has default" : ""
+              }); invited accounts use "${invitedStatus}".`
+      });
+    }
   }
 
   if (facts.tables.has("roles")) {

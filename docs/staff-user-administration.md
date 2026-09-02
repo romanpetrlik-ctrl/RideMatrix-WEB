@@ -53,9 +53,21 @@ integration is unavailable, the form reports `Invitation pending: access link or
 delivery is not configured`, and the account can still sign in through `/access`. No reusable
 secret is ever rendered or logged.
 
-Where the `users` table exposes a `status` column, new accounts are created with the `Pending`
-status. The user row and all role rows are inserted in a single transaction, and duplicate-email
-races are surfaced as a clean validation error via the existing unique email constraint.
+Where the `users` table exposes a `status` column, the invite flow resolves a status that the
+column actually accepts, because production owns the auth schema and models `status` as the
+`user_status` enum:
+
+- text/`varchar` column: the account is created with the `Pending` status (the value used by the
+  schema shipped in `src/database`),
+- enum column: the first invited-style label of the enum is used (`Pending`, `Invited`,
+  `pending_invite`, `pending_activation`, ... — matched case- and separator-insensitively); an
+  active, suspended, or deleted label is never chosen for an invited account,
+- enum column without any invited-style label, or no `status` column at all: the account is
+  inserted without an explicit status, so the column default defined by the auth service applies.
+
+The user row and all role rows are inserted in a single transaction, and duplicate-email races are
+surfaced as a clean validation error via the existing unique email constraint. A status the
+database rejects can therefore never leave a half-created account behind.
 
 ## Onboarding `roman.petrlik@hotmail.com`
 

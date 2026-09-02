@@ -67,7 +67,8 @@ Auth schema (`auth_schema`):
 
 - `users`, `roles`, `permissions`, `user_roles`, `role_permissions`, `login_codes` exist,
 - the columns the application queries exist on each of them,
-- `users.email` is unique and `users.status` can carry the `Pending` invite state,
+- `users.email` is unique and `users.status` can carry an invited (non-active) state — for an
+  enum column the report names the enum, its labels, and the label the invite flow will use,
 - the `superuser` role and the other internal roles exist,
 - the `manage_users` / `manage_user_roles` permissions exist and are granted to at least one role,
 - whether a row already uses `roman.petrlik@hotmail.com` (existence only — no other column is read),
