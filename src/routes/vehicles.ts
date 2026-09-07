@@ -11,6 +11,22 @@ import {
 
 type Options = { appTitle: string; loadSession?: (cookie?: string) => Promise<SessionAccount> };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const uploadAttempts = new Map<string, { startedAt: number; count: number }>();
+function limitDocumentUploads(req: any, res: any, next: any) {
+  const now = Date.now();
+  for (const [address, attempt] of uploadAttempts) {
+    if (now - attempt.startedAt >= 60_000) uploadAttempts.delete(address);
+  }
+  const key = String(req.ip || req.headers["x-forwarded-for"] || "unknown").split(",")[0];
+  const current = uploadAttempts.get(key);
+  if (!current || now - current.startedAt >= 60_000) {
+    uploadAttempts.set(key, { startedAt: now, count: 1 });
+    return next();
+  }
+  current.count += 1;
+  if (current.count > 30) return res.status(429).send("Too many document uploads. Try again later.");
+  return next();
+}
 const text = (value: unknown) => String(value ?? "").trim();
 function input(body: any): VehicleInput {
   const year = text(body.year);
@@ -81,7 +97,7 @@ export function createVehiclesRouter(options: Options): Router {
   router.post("/vehicles/:vehicleId/driver", async (req, res, next) => {
     try { if (await guard(req, res)) { await assignVehicleDriver(req.params.vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${req.params.vehicleId}?notice=driver-updated`); } } catch (error) { next(error); }
   });
-  router.post("/vehicles/:vehicleId/documents", upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/documents", limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
     try {
       if (!(await guard(req, res))) return;
       const file = req.file;
