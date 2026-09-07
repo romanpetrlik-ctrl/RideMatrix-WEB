@@ -70,3 +70,71 @@ test("unauthenticated users cannot upload vehicle documents", async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("mutating vehicle routes reject missing or invalid CSRF tokens", async () => {
+  const app = express();
+  app.set("view engine", "ejs");
+  app.set("views", `${process.cwd()}/src/views`);
+  app.use(express.urlencoded({ extended: true }));
+  app.use(createCsrfProtection({ appTitle: "Test" }));
+  app.use(createVehiclesRouter({
+    appTitle: "Test",
+    loadSession: async () => session(true),
+    consumeUploadRateLimit: async () => true
+  }));
+  const server = app.listen(0);
+  const address = server.address() as { port: number };
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  try {
+    for (const pathname of ["/vehicles/new", "/vehicles/v1/edit", "/vehicles/v1/driver"]) {
+      const missing = await fetch(`${baseUrl}${pathname}`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "registration=AB1",
+        redirect: "manual"
+      });
+      assert.equal(missing.status, 403, `${pathname} should reject missing CSRF`);
+
+      const invalid = await fetch(`${baseUrl}${pathname}`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "registration=AB1&_csrf=v1.1.forged-signature",
+        redirect: "manual"
+      });
+      assert.equal(invalid.status, 403, `${pathname} should reject invalid CSRF`);
+    }
+
+    const body = new FormData();
+    body.append("documentType", "insurance");
+    body.append("expiresOn", "2099-01-01");
+    body.append("document", new Blob([Buffer.from("%PDF-1.7")], { type: "application/pdf" }), "insurance.pdf");
+    const upload = await fetch(`${baseUrl}/vehicles/v1/documents`, {
+      method: "POST",
+      body,
+      redirect: "manual"
+    });
+    assert.equal(upload.status, 403, "document upload should reject missing CSRF after authorization and rate limit");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("unauthenticated users cannot view/download vehicle documents or driver details", async () => {
+  const app = express();
+  app.use(createCsrfProtection({ appTitle: "Test" }));
+  app.use(createVehiclesRouter({
+    appTitle: "Test",
+    loadSession: async () => session(false)
+  }));
+  const server = app.listen(0);
+  const address = server.address() as { port: number };
+  try {
+    for (const pathname of ["/vehicles/documents/doc-1", "/vehicles/v1/driver-details"]) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${pathname}`, { redirect: "manual" });
+      assert.equal(response.status, 302);
+      assert.equal(response.headers.get("location"), "/access");
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
