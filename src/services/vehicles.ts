@@ -12,6 +12,7 @@ export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
+export const VEHICLE_MUTATION_LIMIT = 120;
 export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
 export type VehicleDocumentType = (typeof VEHICLE_DOCUMENT_TYPES)[number];
@@ -100,7 +101,26 @@ function capacityAggregate(): string {
 }
 const vehicleSelect = `v.*, ${classAggregate()}, ${capacityAggregate()},
   a.driver_id, u.email AS driver_email,
-  (SELECT count(*)::int FROM vehicle_documents d WHERE d.vehicle_id = v.id) AS documents_count`;
+  (SELECT count(*)::int FROM vehicle_documents d WHERE d.vehicle_id = v.id AND d.is_latest = TRUE) AS documents_count`;
+
+async function withVehicleTransaction<T>(client: Queryable | undefined, work: (runner: Queryable) => Promise<T>): Promise<T> {
+  const runner = client || getPool();
+  if ("connect" in runner && typeof runner.connect === "function") {
+    const tx = await (runner as Pool).connect();
+    try {
+      await tx.query("BEGIN");
+      const result = await work(tx);
+      await tx.query("COMMIT");
+      return result;
+    } catch (error) {
+      await tx.query("ROLLBACK");
+      throw error;
+    } finally {
+      tx.release();
+    }
+  }
+  return work(runner);
+}
 
 export async function getVehicleCount(search = "", client?: Queryable): Promise<number> {
   const result = await db(client).query<{ count: string }>(
@@ -143,8 +163,10 @@ export async function getVehicleById(id: string, client?: Queryable): Promise<Ve
 }
 
 function normalizedClasses(input: VehicleInput): string[] {
-  return Array.from(new Set((input.classKeys || (input.vehicleClassKey ? [input.vehicleClassKey] : []))
-    .map(text).filter(Boolean)));
+  const keys = (input.classKeys || (input.vehicleClassKey ? [input.vehicleClassKey] : []))
+    .map(text).filter(Boolean);
+  if (input.wheelchairAccessible) keys.push("wheelchair_accessible");
+  return Array.from(new Set(keys));
 }
 function validateVehicleInput(input: VehicleInput): string[] {
   const errors: string[] = [];
@@ -185,45 +207,45 @@ async function persistAssignments(id: string, input: VehicleInput, client: Query
       );
     }
   }
-  if (classes.includes("wheelchair_accessible") && !input.wheelchairAccessible) {
-    await client.query("UPDATE vehicles SET wheelchair_accessible = TRUE WHERE id = $1", [id]);
-  }
+  await client.query("UPDATE vehicles SET wheelchair_accessible = $2 WHERE id = $1", [id, classes.includes("wheelchair_accessible")]);
 }
 
 export async function createVehicle(input: VehicleInput, client?: Queryable): Promise<Vehicle> {
   const errors = validateVehicleInput(input);
   if (errors.length) throw new Error(errors.join(" "));
   const id = randomUUID();
-  const runner = db(client);
-  await runner.query(
-    `INSERT INTO vehicles
-      (id, registration, make, model, year, colour, registered_keeper_details, fuel_type,
-       passenger_capacity, wheelchair_accessible, status, notes, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
-    [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year || null,
-      text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
-      input.passengerCapacity, Boolean(input.wheelchairAccessible || normalizedClasses(input).includes("wheelchair_accessible")),
-      input.status, text(input.notes) || null, new Date().toISOString()]
-  );
-  await persistAssignments(id, input, runner);
-  return (await getVehicleById(id, runner))!;
+  return withVehicleTransaction(client, async (runner) => {
+    await runner.query(
+      `INSERT INTO vehicles
+        (id, registration, make, model, year, colour, registered_keeper_details, fuel_type,
+         passenger_capacity, wheelchair_accessible, status, notes, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
+      [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year || null,
+        text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
+        input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
+        input.status, text(input.notes) || null, new Date().toISOString()]
+    );
+    await persistAssignments(id, input, runner);
+    return (await getVehicleById(id, runner))!;
+  });
 }
 
 export async function updateVehicle(id: string, input: VehicleInput, client?: Queryable): Promise<Vehicle | null> {
   const errors = validateVehicleInput(input);
   if (errors.length) throw new Error(errors.join(" "));
-  const runner = db(client);
-  await runner.query(
-    `UPDATE vehicles SET registration=$2, make=$3, model=$4, year=$5, colour=$6,
-       registered_keeper_details=$7, fuel_type=$8, passenger_capacity=$9,
-       wheelchair_accessible=$10, status=$11, notes=$12, updated_at=$13 WHERE id=$1`,
-    [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year || null,
-      text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
-      input.passengerCapacity, Boolean(input.wheelchairAccessible || normalizedClasses(input).includes("wheelchair_accessible")),
-      input.status, text(input.notes) || null, new Date().toISOString()]
-  );
-  await persistAssignments(id, input, runner);
-  return getVehicleById(id, runner);
+  return withVehicleTransaction(client, async (runner) => {
+    await runner.query(
+      `UPDATE vehicles SET registration=$2, make=$3, model=$4, year=$5, colour=$6,
+         registered_keeper_details=$7, fuel_type=$8, passenger_capacity=$9,
+         wheelchair_accessible=$10, status=$11, notes=$12, updated_at=$13 WHERE id=$1`,
+      [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year || null,
+        text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
+        input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
+        input.status, text(input.notes) || null, new Date().toISOString()]
+    );
+    await persistAssignments(id, input, runner);
+    return getVehicleById(id, runner);
+  });
 }
 
 export async function assignVehicleDriver(vehicleId: string, driverId: string, client?: Queryable): Promise<void> {
@@ -242,6 +264,23 @@ export async function listVehicleDriverAssignments(vehicleId: string, client?: Q
   );
   return result.rows;
 }
+export async function getVehicleDriverSummary(vehicleId: string, client?: Queryable) {
+  try {
+    const result = await db(client).query(
+      `SELECT a.driver_id AS id, u.email, u.status, a.assigned_at
+       FROM vehicle_driver_assignments a
+       JOIN users u ON u.id = a.driver_id
+       WHERE a.vehicle_id = $1 AND a.unassigned_at IS NULL
+       ORDER BY a.assigned_at DESC
+       LIMIT 1`,
+      [vehicleId]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") return null;
+    throw error;
+  }
+}
 
 export function getDocumentStatus(expiresOn: string | null, now = new Date()): "Missing" | "Valid" | "Expiring soon" | "Expired" {
   if (!expiresOn) return "Missing";
@@ -253,7 +292,7 @@ export function getDocumentStatus(expiresOn: string | null, now = new Date()): "
 export async function listVehicleDocuments(vehicleId: string, client?: Queryable) {
   const result = await db(client).query(
     `SELECT id, document_type, document_number, issued_on, expires_on, original_filename,
-       mime_type, uploaded_at FROM vehicle_documents WHERE vehicle_id=$1 ORDER BY document_type`, [vehicleId]
+       mime_type, uploaded_at FROM vehicle_documents WHERE vehicle_id=$1 AND is_latest = TRUE ORDER BY document_type`, [vehicleId]
   );
   return result.rows.map((row) => ({ ...row, status: getDocumentStatus(row.expires_on) }));
 }
@@ -263,38 +302,37 @@ export async function createVehicleDocument(input: {
 }, client?: Queryable) {
   if (!VEHICLE_DOCUMENT_TYPES.includes(input.documentType as VehicleDocumentType)) throw new Error("Select a valid compliance document type.");
   if (!input.expiresOn || getDocumentStatus(input.expiresOn) === "Expired") throw new Error("Enter a valid current or future expiry date.");
-  const id = randomUUID();
-  const runner = db(client);
-  const existing = await runner.query(
-    "SELECT id FROM vehicle_documents WHERE vehicle_id = $1 AND document_type = $2 ORDER BY uploaded_at DESC LIMIT 1",
-    [input.vehicleId, input.documentType]
-  );
-  if (existing.rows[0]) {
+  return withVehicleTransaction(client, async (runner) => {
+    const id = randomUUID();
+    const now = new Date().toISOString();
     await runner.query(
-      `UPDATE vehicle_documents SET document_number=$2, issued_on=$3, expires_on=$4,
-         original_filename=$5, mime_type=$6, content=$7, uploaded_by=$8, uploaded_at=$9
-       WHERE id=$1`,
-      [existing.rows[0].id, text(input.documentNumber) || null, input.issuedOn || null, input.expiresOn,
-        input.originalFilename || null, input.mimeType || null, input.content || null,
-        input.uploadedBy || null, new Date().toISOString()]
+      `UPDATE vehicle_documents
+       SET is_latest = FALSE, superseded_at = $3
+       WHERE vehicle_id = $1 AND document_type = $2 AND is_latest = TRUE`,
+      [input.vehicleId, input.documentType, now]
     );
-    return existing.rows[0].id;
-  }
-  await runner.query(
-    `INSERT INTO vehicle_documents
-      (id, vehicle_id, document_type, document_number, issued_on, expires_on, original_filename, mime_type, content, uploaded_by, uploaded_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [id, input.vehicleId, input.documentType, text(input.documentNumber) || null, input.issuedOn || null,
-      input.expiresOn, input.originalFilename || null, input.mimeType || null, input.content || null,
-      input.uploadedBy || null, new Date().toISOString()]
-  );
-  return id;
+    await runner.query(
+      `INSERT INTO vehicle_documents
+        (id, vehicle_id, document_type, document_number, issued_on, expires_on, original_filename, mime_type, content, uploaded_by, uploaded_at, is_latest)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE)`,
+      [id, input.vehicleId, input.documentType, text(input.documentNumber) || null, input.issuedOn || null,
+        input.expiresOn, input.originalFilename || null, input.mimeType || null, input.content || null,
+        input.uploadedBy || null, now]
+    );
+    return id;
+  });
 }
 export async function getVehicleDocument(id: string, client?: Queryable) {
-  const result = await db(client).query("SELECT * FROM vehicle_documents WHERE id=$1", [id]);
+  const result = await db(client).query("SELECT * FROM vehicle_documents WHERE id=$1 AND is_latest = TRUE", [id]);
   return result.rows[0] || null;
 }
 export async function consumeVehicleDocumentUploadRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
+  return consumeVehicleRateLimit(rateLimitKey, VEHICLE_DOCUMENT_UPLOAD_LIMIT, client);
+}
+export async function consumeVehicleMutationRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
+  return consumeVehicleRateLimit(rateLimitKey, VEHICLE_MUTATION_LIMIT, client);
+}
+async function consumeVehicleRateLimit(rateLimitKey: string, limit: number, client?: Queryable): Promise<boolean> {
   const result = await db(client).query<{ allowed: boolean }>(
     `INSERT INTO vehicle_document_upload_rate_limits (rate_limit_key, window_started_at, request_count)
      VALUES ($1, date_trunc('minute', now()), 1)
@@ -303,7 +341,7 @@ export async function consumeVehicleDocumentUploadRateLimit(rateLimitKey: string
          THEN 1 ELSE vehicle_document_upload_rate_limits.request_count + 1 END,
        window_started_at = CASE WHEN vehicle_document_upload_rate_limits.window_started_at <= now() - interval '1 minute'
          THEN date_trunc('minute', now()) ELSE vehicle_document_upload_rate_limits.window_started_at END
-     RETURNING request_count <= $2 AS allowed`, [rateLimitKey, VEHICLE_DOCUMENT_UPLOAD_LIMIT]
+     RETURNING request_count <= $2 AS allowed`, [rateLimitKey, limit]
   );
   return Boolean(result.rows[0]?.allowed);
 }

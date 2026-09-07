@@ -17,10 +17,10 @@ export const VEHICLE_CLASSES = [
 ] as const;
 
 export const BAGGAGE_CATEGORIES = [
-  ["xl_suitcase", "XL suitcase"],
-  ["l_suitcase", "L suitcase"],
-  ["cabin_bag", "CB cabin bag"],
-  ["backpack", "BP backpack"]
+  ["xl_suitcase", "XL suitcase", 31, null],
+  ["l_suitcase", "L suitcase", null, 23],
+  ["cabin_bag", "CB cabin bag", null, 12],
+  ["backpack", "BP backpack", null, 8]
 ] as const;
 
 type Queryable = Pool | PoolClient;
@@ -576,10 +576,16 @@ export async function seedVehicleCatalogue(client: Queryable): Promise<boolean> 
         [key, label]
       );
     }
-    for (const [key, label] of BAGGAGE_CATEGORIES) {
+    for (const [key, label, minReferenceWeightKg, maxReferenceWeightKg] of BAGGAGE_CATEGORIES) {
       await client.query(
-        "INSERT INTO baggage_categories (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
-        [key, label]
+        `INSERT INTO baggage_categories
+          (key, label, min_reference_weight_kg, max_reference_weight_kg, nominal_length_mm, nominal_width_mm, nominal_height_mm)
+         VALUES ($1, $2, $3, $4, NULL, NULL, NULL)
+         ON CONFLICT (key) DO UPDATE SET
+           label = EXCLUDED.label,
+           min_reference_weight_kg = EXCLUDED.min_reference_weight_kg,
+           max_reference_weight_kg = EXCLUDED.max_reference_weight_kg`,
+        [key, label, minReferenceWeightKg, maxReferenceWeightKg]
       );
     }
     await client.query(
