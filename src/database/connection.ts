@@ -1,6 +1,6 @@
 import pg from "pg";
 import { runMigrations } from "./migrations";
-import { seedCustomers } from "./seed";
+import { seedCustomers, seedVehicleCatalogue } from "./seed";
 
 const { Pool } = pg;
 
@@ -110,6 +110,7 @@ export async function initializeDatabase(): Promise<void> {
 
     if (shouldSeedDemoData()) {
       await seedCustomers(client);
+      await seedVehicleCatalogue(client);
     } else {
       console.log("[database] SEED_DEMO_DATA is disabled; skipping demo customer seed.");
     }

@@ -198,6 +198,67 @@ export const MIGRATIONS: Migration[] = [
         WHERE deleted_at IS NULL
           AND email_normalized IS NOT NULL;
     `
+  },
+  {
+    id: "0003_vehicle_management_mvp",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vehicle_classes (
+        key TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE
+      );
+      CREATE TABLE IF NOT EXISTS baggage_categories (
+        key TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        description TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE
+      );
+      CREATE TABLE IF NOT EXISTS vehicle_class_baggage_capacity (
+        vehicle_class_key TEXT NOT NULL REFERENCES vehicle_classes(key),
+        baggage_category_key TEXT NOT NULL REFERENCES baggage_categories(key),
+        capacity INTEGER NOT NULL CHECK (capacity >= 0),
+        PRIMARY KEY (vehicle_class_key, baggage_category_key)
+      );
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id TEXT PRIMARY KEY,
+        registration TEXT NOT NULL UNIQUE,
+        make TEXT NOT NULL,
+        model TEXT NOT NULL,
+        year INTEGER,
+        colour TEXT,
+        vehicle_class_key TEXT NOT NULL REFERENCES vehicle_classes(key),
+        status TEXT NOT NULL DEFAULT 'available',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_vehicles_class ON vehicles(vehicle_class_key);
+      CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
+      CREATE TABLE IF NOT EXISTS vehicle_driver_assignments (
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL,
+        assigned_at TEXT NOT NULL,
+        unassigned_at TEXT,
+        PRIMARY KEY (vehicle_id, driver_id, assigned_at)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_active_vehicle_driver
+        ON vehicle_driver_assignments(vehicle_id) WHERE unassigned_at IS NULL;
+      CREATE TABLE IF NOT EXISTS vehicle_documents (
+        id TEXT PRIMARY KEY,
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        document_type TEXT NOT NULL,
+        document_number TEXT,
+        issued_on TEXT,
+        expires_on TEXT,
+        original_filename TEXT,
+        mime_type TEXT,
+        storage_key TEXT,
+        content BYTEA,
+        uploaded_by TEXT,
+        uploaded_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle ON vehicle_documents(vehicle_id);
+    `
   }
 ];
 

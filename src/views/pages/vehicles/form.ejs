@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: null, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle, pageTitle: title, pageMeta: "Vehicle management", breadcrumbs: [{ label: "Vehicles", href: "/vehicles" }, { label: title }] }) %>
+    <main class="container vehicle-page"><section class="vehicle-card vehicle-form"><h1><%= title %></h1>
+      <% if (errors.length) { %><div class="notice notice--critical"><% errors.forEach((error) => { %><p><%= error %></p><% }) %></div><% } %>
+      <form method="post" action="<%= vehicle ? `/vehicles/${vehicle.id}/edit` : '/vehicles/new' %>"><%- locals.csrfField || "" %>
+        <div class="vehicle-form__grid">
+          <label>Registration<input name="registration" required value="<%= vehicle?.registration || '' %>"></label>
+          <label>Make<input name="make" required value="<%= vehicle?.make || '' %>"></label>
+          <label>Model<input name="model" required value="<%= vehicle?.model || '' %>"></label>
+          <label>Year<input name="year" type="number" min="1900" max="2200" value="<%= vehicle?.year || '' %>"></label>
+          <label>Colour<input name="colour" value="<%= vehicle?.colour || '' %>"></label>
+          <label>Vehicle class<select name="vehicleClassKey" required><% classes.forEach((item) => { %><option value="<%= item.key %>" <%= vehicle?.vehicleClassKey === item.key ? 'selected' : '' %>><%= item.label %></option><% }) %></select></label>
+          <label>Status<select name="status"><% statuses.forEach((item) => { %><option value="<%= item %>" <%= (vehicle?.status || 'available') === item ? 'selected' : '' %>><%= item %></option><% }) %></select></label>
+          <label class="vehicle-form__wide">Notes<textarea name="notes"><%= vehicle?.notes || '' %></textarea></label>
+        </div><button class="button button--primary" type="submit">Save vehicle</button> <a class="button button--secondary" href="/vehicles">Cancel</a>
+      </form>
+    </section></main><%- include("../../partials/footer") %>
+  </body>
+</html>

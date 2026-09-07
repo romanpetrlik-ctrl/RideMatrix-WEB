@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle, pageTitle: vehicle.registration, pageMeta: `${vehicle.make} ${vehicle.model}`, breadcrumbs: [{ label: "Vehicles", href: "/vehicles" }, { label: vehicle.registration }] }) %>
+    <main class="container vehicle-page"><header class="vehicle-page__header"><div><h1><%= vehicle.registration %></h1><p><%= vehicle.make %> <%= vehicle.model %> · <%= vehicle.vehicleClassLabel %></p></div><a class="button button--primary" href="/vehicles/<%= vehicle.id %>/edit">Edit vehicle</a></header>
+      <% if (notice) { %><div class="notice notice--warning">Vehicle updated.</div><% } %>
+      <section class="vehicle-detail-grid"><article class="vehicle-card"><h2>Vehicle details</h2><dl><dt>Status</dt><dd><%= vehicle.status %></dd><dt>Year</dt><dd><%= vehicle.year || "—" %></dd><dt>Colour</dt><dd><%= vehicle.colour || "—" %></dd><dt>Notes</dt><dd><%= vehicle.notes || "—" %></dd></dl></article>
+      <article class="vehicle-card"><h2>Driver assignment</h2><form method="post" action="/vehicles/<%= vehicle.id %>/driver"><%- locals.csrfField || "" %><label for="driverId">Assigned driver</label><select id="driverId" name="driverId"><option value="">Unassigned</option><% drivers.forEach((driver) => { %><option value="<%= driver.id %>" <%= driver.id === vehicle.driverId ? "selected" : "" %>><%= driver.email %></option><% }) %></select><button class="button button--secondary" type="submit">Save assignment</button></form></article></section>
+      <section class="vehicle-card"><h2>Compliance documents</h2><form method="post" action="/vehicles/<%= vehicle.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form"><%- locals.csrfField || "" %><label>Type<input name="documentType" required placeholder="Insurance, MOT, licence"></label><label>Number<input name="documentNumber"></label><label>Expires<input name="expiresOn" type="date"></label><label>File<input name="document" type="file" required></label><button class="button button--secondary" type="submit">Upload metadata and file</button></form><% if (documents.length) { %><ul class="vehicle-documents"><% documents.forEach((document) => { %><li><a href="/vehicles/documents/<%= document.id %>"><%= document.document_type %></a> <span><%= document.expires_on || "No expiry" %></span></li><% }) %></ul><% } else { %><p>No compliance documents uploaded.</p><% } %></section>
+    </main><%- include("../../partials/footer") %>
+  </body>
+</html>
