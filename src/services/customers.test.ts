@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import { closeDatabase, initializeDatabase, query } from "../database/connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
+import { closeDatabase, initializeDatabase, query  } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import {
   createCustomer,
   deleteCustomer,
@@ -21,7 +21,7 @@ before(async () => {
 });
 
 after(async () => {
-  await dbContext.cleanup();
+  await safeCleanupTestDatabase(dbContext);
 });
 
 /** Simulates a process restart by dropping the cached pool. */

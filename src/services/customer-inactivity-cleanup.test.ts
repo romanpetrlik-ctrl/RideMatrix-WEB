@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import { closeDatabase, initializeDatabase } from "../database/connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
+import { closeDatabase, initializeDatabase  } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import { findInactiveCustomers } from "./customer-inactivity-cleanup";
 import { createCustomer, deleteCustomer, getCustomerById } from "./customers";
 
@@ -13,7 +13,7 @@ before(async () => {
 });
 
 after(async () => {
-  await dbContext.cleanup();
+  await safeCleanupTestDatabase(dbContext);
 });
 
 test("only reports customers without recent bookings as inactive", async () => {

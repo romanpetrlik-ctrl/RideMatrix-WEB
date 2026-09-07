@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { closeDatabase, initializeDatabase } from "../database/connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import { getCustomerCount } from "../services/customers";
 
 let dbContext: TestDatabaseContext;
@@ -13,7 +13,7 @@ before(async () => {
 after(async () => {
   delete process.env.SEED_DEMO_DATA;
   delete process.env.NODE_ENV;
-  await dbContext.cleanup();
+  await safeCleanupTestDatabase(dbContext);
 });
 
 test("does not seed demo customers when SEED_DEMO_DATA=false", async () => {
