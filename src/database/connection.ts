@@ -107,10 +107,10 @@ export async function initializeDatabase(): Promise<void> {
 
   try {
     await runMigrations(client);
+    await seedVehicleCatalogue(client);
 
     if (shouldSeedDemoData()) {
       await seedCustomers(client);
-      await seedVehicleCatalogue(client);
     } else {
       console.log("[database] SEED_DEMO_DATA is disabled; skipping demo customer seed.");
     }

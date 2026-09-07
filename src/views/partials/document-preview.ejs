@@ -1,0 +1,6 @@
+<details class="document-preview">
+  <summary><%= label || "Preview document" %></summary>
+  <div class="document-preview__modal">
+    <% if (mimeType && mimeType.startsWith("image/")) { %><img src="<%= href %>" alt="<%= label || 'Document preview' %>"><% } else if (mimeType === "application/pdf") { %><iframe src="<%= href %>" title="<%= label || 'Document preview' %>"></iframe><% } else { %><a href="<%= href %>">Open document</a><% } %>
+  </div>
+</details>

@@ -490,37 +490,6 @@ export async function seedCustomers(client: Queryable): Promise<boolean> {
     return false;
   }
 
-  export async function seedVehicleCatalogue(client: Queryable): Promise<boolean> {
-    const existing = await client.query("SELECT 1 FROM bootstrap_state WHERE key = $1", [
-      VEHICLE_CATALOGUE_SEED_KEY
-    ]);
-    if (existing.rows.length > 0) return false;
-    await client.query("BEGIN");
-    try {
-      for (const [key, label] of VEHICLE_CLASSES) {
-        await client.query(
-          "INSERT INTO vehicle_classes (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
-          [key, label]
-        );
-      }
-      for (const [key, label] of BAGGAGE_CATEGORIES) {
-        await client.query(
-          "INSERT INTO baggage_categories (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
-          [key, label]
-        );
-      }
-      await client.query(
-        "INSERT INTO bootstrap_state (key, applied_at) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
-        [VEHICLE_CATALOGUE_SEED_KEY, new Date().toISOString()]
-      );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    }
-    return true;
-  }
-
   const insertCustomerSql = `
     INSERT INTO customers (
       id, title, given_name, surname, email, email_normalized, phone, company, address,
@@ -590,5 +559,36 @@ export async function seedCustomers(client: Queryable): Promise<boolean> {
     throw error;
   }
 
+  return true;
+}
+
+export async function seedVehicleCatalogue(client: Queryable): Promise<boolean> {
+  const existing = await client.query("SELECT 1 FROM bootstrap_state WHERE key = $1", [
+    VEHICLE_CATALOGUE_SEED_KEY
+  ]);
+  if (existing.rows.length > 0) return false;
+  await client.query("BEGIN");
+  try {
+    for (const [key, label] of VEHICLE_CLASSES) {
+      await client.query(
+        "INSERT INTO vehicle_classes (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+        [key, label]
+      );
+    }
+    for (const [key, label] of BAGGAGE_CATEGORIES) {
+      await client.query(
+        "INSERT INTO baggage_categories (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+        [key, label]
+      );
+    }
+    await client.query(
+      "INSERT INTO bootstrap_state (key, applied_at) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+      [VEHICLE_CATALOGUE_SEED_KEY, new Date().toISOString()]
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
   return true;
 }

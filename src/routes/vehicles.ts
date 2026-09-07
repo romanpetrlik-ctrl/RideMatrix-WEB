@@ -86,7 +86,7 @@ export function createVehiclesRouter(options: Options): Router {
       if (!(await guard(req, res))) return;
       const file = req.file;
       if (!file || !text(req.body.documentType)) return res.redirect(`/vehicles/${req.params.vehicleId}?notice=document-required`);
-      await createVehicleDocument({ vehicleId: req.params.vehicleId, documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
+      await createVehicleDocument({ vehicleId: text(req.params.vehicleId), documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
         issuedOn: text(req.body.issuedOn), expiresOn: text(req.body.expiresOn), originalFilename: file.originalname, mimeType: file.mimetype,
         content: file.buffer, uploadedBy: res.locals.vehicleUser.id });
       return res.redirect(`/vehicles/${req.params.vehicleId}?notice=document-added`);

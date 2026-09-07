@@ -1493,6 +1493,31 @@ button:visited,
   padding-bottom: calc(var(--staff-space) * 5);
 }
 
+/* Vehicle management */
+.vehicle-page { padding-bottom: 3rem; }
+.vehicle-page__header, .vehicle-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin:1.5rem 0; }
+.vehicle-page__header h1 { margin-bottom:.25rem; }
+.vehicle-toolbar { justify-content:flex-start; }
+.vehicle-toolbar label { display:flex; align-items:center; gap:.5rem; }
+.vehicle-card { background:#fff; border:1px solid #e1dfdd; border-radius:8px; padding:1.25rem; margin:1rem 0; overflow:auto; }
+.vehicle-table { width:100%; border-collapse:collapse; min-width:760px; }
+.vehicle-table th, .vehicle-table td { padding:.8rem; border-bottom:1px solid #e1dfdd; text-align:left; }
+.vehicle-form__grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:1rem; }
+.vehicle-form label, .vehicle-document-form label { display:grid; gap:.35rem; font-weight:600; }
+.vehicle-form__wide { grid-column:1/-1; }
+.vehicle-form textarea { min-height:6rem; }
+.vehicle-detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; }
+.vehicle-detail-grid dl { display:grid; grid-template-columns:8rem 1fr; gap:.5rem; }
+.vehicle-detail-grid dt { font-weight:700; }
+.vehicle-document-form { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; }
+.vehicle-documents { padding-left:1.2rem; }
+.help-popover { display:inline-block; position:relative; }
+.help-popover summary { cursor:pointer; border:1px solid #c8c6c4; border-radius:50%; width:1.8rem; height:1.8rem; text-align:center; }
+.help-popover__content { position:absolute; z-index:2; right:0; width:18rem; padding:1rem; background:#fff; border:1px solid #c8c6c4; box-shadow:0 3px 12px #0002; }
+.document-preview { display:inline-block; }
+.document-preview__modal { position:fixed; inset:10% 10%; z-index:3; padding:1rem; background:#fff; border:1px solid #999; box-shadow:0 4px 20px #0004; }
+.document-preview__modal img, .document-preview__modal iframe { max-width:100%; width:100%; height:70vh; object-fit:contain; }
+
 .staff-page__header {
   display: flex;
   flex-wrap: wrap;
