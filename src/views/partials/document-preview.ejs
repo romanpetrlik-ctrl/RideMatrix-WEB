@@ -1,11 +1,31 @@
-<button class="button button--secondary button--small" type="button" onclick="document.getElementById('document-preview-<%= id %>').showModal()">View document</button>
-<dialog id="document-preview-<%= id %>" class="document-preview-modal">
-  <form method="dialog"><button class="button button--secondary" type="submit">Close</button></form>
-  <% if (mimeType && mimeType.startsWith("image/")) { %>
-    <img src="<%= href %>" alt="<%= label || 'Document preview' %>">
-  <% } else if (mimeType === "application/pdf") { %>
-    <iframe src="<%= href %>" title="<%= label || 'Document preview' %>"></iframe>
-  <% } else { %>
-    <a href="<%= href %>">Open document</a>
-  <% } %>
+<% const dialogId = `document-preview-${id}`; const documentLabel = label || "Document"; %>
+<button class="button button--secondary button--small" type="button" aria-haspopup="dialog" aria-controls="<%= dialogId %>" onclick="document.getElementById('<%= dialogId %>').showModal()">View document</button>
+<dialog id="<%= dialogId %>" class="document-preview-modal" aria-labelledby="<%= dialogId %>-title">
+  <header class="document-preview-modal__header">
+    <h2 id="<%= dialogId %>-title"><%= documentLabel %></h2>
+  </header>
+  <div class="document-preview-modal__body">
+    <% if (mimeType && mimeType.startsWith("image/")) { %>
+      <img src="<%= href %>" alt="<%= documentLabel %> preview">
+    <% } else if (mimeType === "application/pdf") { %>
+      <iframe src="<%= href %>" title="<%= documentLabel %> preview"></iframe>
+    <% } else { %>
+      <p>Preview is not available for this document format. Use Download to retrieve the authorized copy.</p>
+    <% } %>
+  </div>
+  <div class="document-preview-modal__actions">
+    <button class="button button--secondary" type="button" data-document-print-url="<%= href %>">Print</button>
+    <a class="button button--secondary" href="<%= href %>?download=1">Download</a>
+    <form method="dialog"><button class="button button--primary" type="submit">Close</button></form>
+  </div>
 </dialog>
+<script>
+  (() => {
+    const dialog = document.getElementById("<%= dialogId %>");
+    const printButton = dialog?.querySelector("[data-document-print-url]");
+    printButton?.addEventListener("click", () => {
+      const printWindow = window.open(printButton.getAttribute("data-document-print-url") || "", "_blank", "noopener,noreferrer");
+      if (printWindow) printWindow.addEventListener("load", () => printWindow.print(), { once: true });
+    });
+  })();
+</script>

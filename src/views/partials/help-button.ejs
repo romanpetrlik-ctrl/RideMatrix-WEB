@@ -1,4 +1,7 @@
-<details class="help-popover">
-  <summary aria-label="<%= label || 'Help' %>">?</summary>
-  <div class="help-popover__content"><strong><%= label || "Help" %></strong><p><%= text %></p></div>
-</details>
+<% const helpItem = typeof helpFor === "function" ? helpFor(key) : { title: "Help unavailable", body: "Help content is not available for this field yet." }; const helpId = `help-${String(key).replace(/[^a-z0-9_-]/gi, "-")}`; %>
+<button class="help-button" type="button" aria-haspopup="dialog" aria-controls="<%= helpId %>" onclick="document.getElementById('<%= helpId %>').showModal()" aria-label="Help: <%= helpItem.title %>">?</button>
+<dialog id="<%= helpId %>" class="help-modal" aria-labelledby="<%= helpId %>-title">
+  <h2 id="<%= helpId %>-title"><%= helpItem.title %></h2>
+  <p><%= helpItem.body %></p>
+  <form method="dialog"><button class="button button--secondary" type="submit">Close</button></form>
+</dialog>

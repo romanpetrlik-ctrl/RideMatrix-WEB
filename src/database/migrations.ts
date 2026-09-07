@@ -345,6 +345,31 @@ export const MIGRATIONS: Migration[] = [
         min_reference_weight_kg = EXCLUDED.min_reference_weight_kg,
         max_reference_weight_kg = EXCLUDED.max_reference_weight_kg;
     `
+  },
+  {
+    id: "0005_vehicle_document_replacement_history",
+    sql: `
+      ALTER TABLE vehicle_documents ADD COLUMN IF NOT EXISTS is_latest BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE vehicle_documents ADD COLUMN IF NOT EXISTS superseded_at TEXT;
+
+      WITH ranked AS (
+         SELECT id,
+           row_number() OVER (PARTITION BY vehicle_id, document_type ORDER BY uploaded_at DESC, id DESC) AS position
+         FROM vehicle_documents
+      )
+      UPDATE vehicle_documents d
+      SET is_latest = ranked.position = 1,
+           superseded_at = CASE
+             WHEN ranked.position = 1 THEN NULL
+             ELSE COALESCE(d.superseded_at, d.uploaded_at)
+           END
+      FROM ranked
+      WHERE ranked.id = d.id;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicle_documents_latest_type
+         ON vehicle_documents(vehicle_id, document_type)
+         WHERE is_latest = TRUE;
+    `
   }
 ];
 
