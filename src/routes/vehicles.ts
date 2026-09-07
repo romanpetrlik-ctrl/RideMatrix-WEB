@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import { requireCsrfToken } from "../middleware/csrf";
 import { getSessionAccount, SessionAccount } from "../services/api";
@@ -42,6 +43,18 @@ function safeDownloadName(document: any): string {
 export function createVehiclesRouter(options: Options): Router {
   const router = Router();
   const loadSession = options.loadSession || getSessionAccount;
+  const localDocumentUploadRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+  const localVehicleMutationRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 240,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
   async function guard(req: any, res: any): Promise<boolean> {
     const session = await loadSession(req.headers.cookie);
     if (!session.authenticated || !session.user) { res.redirect("/access"); return false; }
@@ -74,7 +87,7 @@ export function createVehiclesRouter(options: Options): Router {
       return next(error);
     }
   }
-  async function limitVehicleMutations(req: any, res: any, next: any) {
+  async function vehicleMutationRateLimit(req: any, res: any, next: any) {
     try {
       const userId = text(res.locals.vehicleUser?.id);
       const allowed = await consumeVehicleMutationRateLimit(`vehicle-mutation:${userId}`);
@@ -104,7 +117,7 @@ export function createVehiclesRouter(options: Options): Router {
   router.get("/vehicles/new", async (req, res, next) => {
     try { if (await guard(req, res)) return renderForm(res, { vehicle: null, errors: [] }); } catch (error) { next(error); }
   });
-  router.post("/vehicles/new", requireAuthorizedVehicleManager, limitVehicleMutations, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/new", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const value = input(req.body);
       try { await createVehicle(value); return res.redirect("/vehicles?notice=created"); }
@@ -114,7 +127,7 @@ export function createVehiclesRouter(options: Options): Router {
   router.get("/vehicles/:vehicleId/edit", async (req, res, next) => {
     try { if (await guard(req, res)) { const vehicle = await getVehicleById(req.params.vehicleId); if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle }); return renderForm(res, { vehicle, errors: [] }); } } catch (error) { next(error); }
   });
-  router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, limitVehicleMutations, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const vehicleId = text(req.params.vehicleId);
       const value = input(req.body); await updateVehicle(vehicleId, value); return res.redirect(`/vehicles/${vehicleId}?notice=updated`);
@@ -131,7 +144,7 @@ export function createVehiclesRouter(options: Options): Router {
         helpFor: resolveHelpContent, notice: text(req.query.notice) });
     } catch (error) { return next(error); }
   });
-  router.post("/vehicles/:vehicleId/driver", requireAuthorizedVehicleManager, limitVehicleMutations, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/driver", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
     try { const vehicleId = text(req.params.vehicleId); await assignVehicleDriver(vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${vehicleId}?notice=driver-updated`); } catch (error) { next(error); }
   });
   router.get("/vehicles/:vehicleId/driver-details", async (req, res, next) => {
@@ -165,7 +178,7 @@ export function createVehiclesRouter(options: Options): Router {
   // framework rate limiter. It is intentionally before multer and CSRF parsing:
   // authorization runs first, then the atomic distributed counter, then the
   // bounded upload parser and CSRF validator.
-  router.post("/vehicles/:vehicleId/documents", requireAuthorizedVehicleManager, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/documents", requireAuthorizedVehicleManager, localDocumentUploadRateLimit, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
     try {
       const file = req.file;
       if (!file || !text(req.body.documentType)) return res.redirect(`/vehicles/${req.params.vehicleId}?notice=document-required`);

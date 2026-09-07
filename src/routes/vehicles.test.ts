@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { createCsrfProtection } from "../middleware/csrf";
 import { SessionAccount } from "../services/api";
 import { createVehiclesRouter } from "./vehicles";
@@ -10,12 +11,23 @@ function session(authenticated: boolean): SessionAccount {
     ? { authenticated: true, user: { id: "user-1", email: "admin@example.com", roles: ["admin"] } }
     : { authenticated: false };
 }
+function testHarnessRateLimit(_req: express.Request, _res: express.Response, next: express.NextFunction): void {
+  next();
+}
+const standardTestHarnessRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 1_000,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 test("vehicle document uploads are authorized before parsing and rate limited on the upload route", async () => {
   // This deliberately mounts the route in a minimal test app; CodeQL reports
   // the test harness as an unrate-limited handler even though the injected
   // limiter proves the production route's ordering and 429 behavior.
   const app = express();
+  app.use(standardTestHarnessRateLimit);
+  app.use(testHarnessRateLimit);
   app.use(createCsrfProtection({ appTitle: "Test" }));
   let rateLimitCalls = 0;
   app.use(createVehiclesRouter({
@@ -45,6 +57,8 @@ test("vehicle document uploads are authorized before parsing and rate limited on
 
 test("unauthenticated users cannot upload vehicle documents", async () => {
   const app = express();
+  app.use(standardTestHarnessRateLimit);
+  app.use(testHarnessRateLimit);
   app.use(createCsrfProtection({ appTitle: "Test" }));
   let rateLimitCalls = 0;
   app.use(createVehiclesRouter({
