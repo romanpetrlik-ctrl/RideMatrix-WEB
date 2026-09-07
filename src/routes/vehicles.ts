@@ -6,27 +6,16 @@ import { canManageStaff } from "../services/staff";
 import {
   assignVehicleDriver, createVehicle, createVehicleDocument, getVehicleById, getVehicleDocument,
   listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicles,
-  updateVehicle, VEHICLE_DEFAULT_PER_PAGE, VEHICLE_STATUS_OPTIONS, VehicleInput
+  consumeVehicleDocumentUploadRateLimit, updateVehicle, validateVehicleDocumentUpload,
+  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_STATUS_OPTIONS, VehicleInput
 } from "../services/vehicles";
 
-type Options = { appTitle: string; loadSession?: (cookie?: string) => Promise<SessionAccount> };
+type Options = {
+  appTitle: string;
+  loadSession?: (cookie?: string) => Promise<SessionAccount>;
+  consumeUploadRateLimit?: (key: string) => Promise<boolean>;
+};
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const uploadAttempts = new Map<string, { startedAt: number; count: number }>();
-function limitDocumentUploads(req: any, res: any, next: any) {
-  const now = Date.now();
-  for (const [address, attempt] of uploadAttempts) {
-    if (now - attempt.startedAt >= 60_000) uploadAttempts.delete(address);
-  }
-  const key = String(req.ip || req.headers["x-forwarded-for"] || "unknown").split(",")[0];
-  const current = uploadAttempts.get(key);
-  if (!current || now - current.startedAt >= 60_000) {
-    uploadAttempts.set(key, { startedAt: now, count: 1 });
-    return next();
-  }
-  current.count += 1;
-  if (current.count > 30) return res.status(429).send("Too many document uploads. Try again later.");
-  return next();
-}
 const text = (value: unknown) => String(value ?? "").trim();
 function input(body: any): VehicleInput {
   const year = text(body.year);
@@ -48,6 +37,28 @@ export function createVehiclesRouter(options: Options): Router {
     }
     res.locals.vehicleUser = session.user;
     return true;
+  }
+  async function requireAuthorizedVehicleManager(req: any, res: any, next: any) {
+    try {
+      if (await guard(req, res)) return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
+  async function limitDocumentUploads(req: any, res: any, next: any) {
+    try {
+      // This is an atomic PostgreSQL window counter, so limits apply across
+      // processes and instances; no unbounded process-local state is used.
+      const userId = text(res.locals.vehicleUser?.id);
+      const consumeRateLimit = options.consumeUploadRateLimit || consumeVehicleDocumentUploadRateLimit;
+      const allowed = await consumeRateLimit(
+        `vehicle-document:${userId}`
+      );
+      if (!allowed) return res.status(429).send("Too many document uploads. Try again later.");
+      return next();
+    } catch (error) {
+      return next(error);
+    }
   }
   const renderForm = async (res: any, data: any, status = 200) => res.status(status).render("pages/vehicles/form", {
     title: data.vehicle ? "Edit vehicle" : "New vehicle", appTitle: options.appTitle,
@@ -97,11 +108,11 @@ export function createVehiclesRouter(options: Options): Router {
   router.post("/vehicles/:vehicleId/driver", async (req, res, next) => {
     try { if (await guard(req, res)) { await assignVehicleDriver(req.params.vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${req.params.vehicleId}?notice=driver-updated`); } } catch (error) { next(error); }
   });
-  router.post("/vehicles/:vehicleId/documents", limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/documents", requireAuthorizedVehicleManager, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
     try {
-      if (!(await guard(req, res))) return;
       const file = req.file;
       if (!file || !text(req.body.documentType)) return res.redirect(`/vehicles/${req.params.vehicleId}?notice=document-required`);
+      validateVehicleDocumentUpload(file);
       await createVehicleDocument({ vehicleId: text(req.params.vehicleId), documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
         issuedOn: text(req.body.issuedOn), expiresOn: text(req.body.expiresOn), originalFilename: file.originalname, mimeType: file.mimetype,
         content: file.buffer, uploadedBy: res.locals.vehicleUser.id });

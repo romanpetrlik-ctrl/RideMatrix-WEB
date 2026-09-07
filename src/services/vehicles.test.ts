@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createVehicle, listVehicleClasses, VEHICLE_DEFAULT_PER_PAGE } from "./vehicles";
+import {
+  consumeVehicleDocumentUploadRateLimit,
+  createVehicle,
+  listVehicleClasses,
+  validateVehicleDocumentUpload,
+  VEHICLE_DEFAULT_PER_PAGE
+} from "./vehicles";
 
 test("vehicle management uses a fifteen-row default and exposes catalogue classes", async () => {
   const queries: string[] = [];
@@ -35,4 +41,35 @@ test("vehicle creation rejects incomplete records", async () => {
     } as any),
     /required/
   );
+});
+
+test("document validation requires an allowed extension, MIME type, and signature", () => {
+  assert.doesNotThrow(() => validateVehicleDocumentUpload({
+    originalname: "insurance.PDF",
+    mimetype: "application/pdf",
+    buffer: Buffer.from("%PDF-1.7")
+  }));
+  assert.throws(() => validateVehicleDocumentUpload({
+    originalname: "insurance.pdf",
+    mimetype: "image/png",
+    buffer: Buffer.from("%PDF-1.7")
+  }), /valid PDF/);
+  assert.throws(() => validateVehicleDocumentUpload({
+    originalname: "insurance.txt",
+    mimetype: "application/pdf",
+    buffer: Buffer.from("%PDF-1.7")
+  }), /valid PDF/);
+});
+
+test("document upload rate limiting uses an atomic database counter", async () => {
+  let queryText = "";
+  const client: any = {
+    async query(text: string) {
+      queryText = text;
+      return { rows: [{ allowed: false }] };
+    }
+  };
+  assert.equal(await consumeVehicleDocumentUploadRateLimit("vehicle-document:u1:127.0.0.1", client), false);
+  assert.match(queryText, /ON CONFLICT \(rate_limit_key\) DO UPDATE/);
+  assert.match(queryText, /request_count <=/);
 });

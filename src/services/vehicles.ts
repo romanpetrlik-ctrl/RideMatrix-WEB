@@ -5,6 +5,7 @@ import { getPool } from "../database/connection";
 type Queryable = Pool | PoolClient;
 export const VEHICLE_DEFAULT_PER_PAGE = 15;
 export const VEHICLE_STATUS_OPTIONS = ["available", "maintenance", "retired"] as const;
+export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
 export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 
 export type VehicleClass = { key: string; label: string };
@@ -30,6 +31,50 @@ function mapVehicle(row: any): Vehicle {
     status: row.status, notes: row.notes, driverId: row.driver_id, driverEmail: row.driver_email,
     documentsCount: Number(row.documents_count || 0)
   };
+}
+
+export type VehicleDocumentUpload = {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+};
+
+const DOCUMENT_FORMATS = {
+  ".pdf": { mime: "application/pdf", signature: (buffer: Buffer) => buffer.subarray(0, 5).toString() === "%PDF-" },
+  ".jpg": { mime: "image/jpeg", signature: (buffer: Buffer) => buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) },
+  ".jpeg": { mime: "image/jpeg", signature: (buffer: Buffer) => buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) },
+  ".png": { mime: "image/png", signature: (buffer: Buffer) => buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) }
+} as const;
+
+export function validateVehicleDocumentUpload(file: VehicleDocumentUpload): void {
+  const extension = file.originalname.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] || "";
+  const format = DOCUMENT_FORMATS[extension as keyof typeof DOCUMENT_FORMATS];
+  if (!format || file.mimetype !== format.mime || !format.signature(file.buffer)) {
+    throw new Error("Only valid PDF, JPEG, and PNG documents are accepted.");
+  }
+}
+
+export async function consumeVehicleDocumentUploadRateLimit(
+  rateLimitKey: string,
+  client?: Queryable
+): Promise<boolean> {
+  const result = await runner(client).query<{ allowed: boolean }>(
+    `INSERT INTO vehicle_document_upload_rate_limits
+       (rate_limit_key, window_started_at, request_count)
+     VALUES ($1, date_trunc('minute', now()), 1)
+     ON CONFLICT (rate_limit_key) DO UPDATE SET
+       request_count = CASE
+         WHEN vehicle_document_upload_rate_limits.window_started_at <= now() - interval '1 minute' THEN 1
+         ELSE vehicle_document_upload_rate_limits.request_count + 1
+       END,
+       window_started_at = CASE
+         WHEN vehicle_document_upload_rate_limits.window_started_at <= now() - interval '1 minute' THEN date_trunc('minute', now())
+         ELSE vehicle_document_upload_rate_limits.window_started_at
+       END
+     RETURNING request_count <= $2 AS allowed`,
+    [rateLimitKey, VEHICLE_DOCUMENT_UPLOAD_LIMIT]
+  );
+  return Boolean(result.rows[0]?.allowed);
 }
 
 export async function listVehicleClasses(client?: Queryable): Promise<VehicleClass[]> {

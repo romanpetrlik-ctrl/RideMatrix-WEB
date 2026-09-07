@@ -258,6 +258,11 @@ export const MIGRATIONS: Migration[] = [
         uploaded_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle ON vehicle_documents(vehicle_id);
+      CREATE TABLE IF NOT EXISTS vehicle_document_upload_rate_limits (
+        rate_limit_key TEXT PRIMARY KEY,
+        window_started_at TIMESTAMPTZ NOT NULL,
+        request_count INTEGER NOT NULL CHECK (request_count > 0)
+      );
     `
   }
 ];
