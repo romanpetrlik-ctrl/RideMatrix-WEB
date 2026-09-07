@@ -272,11 +272,25 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS passenger_capacity INTEGER NOT NULL DEFAULT 4;
       ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS registered_keeper_details TEXT;
       ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS wheelchair_accessible BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE vehicles ALTER COLUMN vehicle_class_key DROP NOT NULL;
+      ALTER TABLE vehicles ALTER COLUMN status SET DEFAULT 'active';
 
       UPDATE vehicles SET status = 'active' WHERE status = 'available';
       UPDATE vehicles SET status = 'inactive' WHERE status = 'retired';
       UPDATE vehicles SET fuel_type = 'ICE' WHERE fuel_type IS NULL OR fuel_type NOT IN ('ICE', 'HYBRID', 'EV');
       UPDATE vehicles SET passenger_capacity = 4 WHERE passenger_capacity IS NULL OR passenger_capacity < 1;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_fuel_type_check') THEN
+          ALTER TABLE vehicles ADD CONSTRAINT vehicles_fuel_type_check CHECK (fuel_type IN ('ICE', 'HYBRID', 'EV'));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_passenger_capacity_check') THEN
+          ALTER TABLE vehicles ADD CONSTRAINT vehicles_passenger_capacity_check CHECK (passenger_capacity > 0);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_status_check') THEN
+          ALTER TABLE vehicles ADD CONSTRAINT vehicles_status_check CHECK (status IN ('active', 'inactive', 'maintenance'));
+        END IF;
+      END $$;
 
       CREATE TABLE IF NOT EXISTS vehicle_class_assignments (
         vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
