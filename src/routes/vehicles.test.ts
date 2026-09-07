@@ -12,6 +12,9 @@ function session(authenticated: boolean): SessionAccount {
 }
 
 test("vehicle document uploads are authorized before parsing and rate limited on the upload route", async () => {
+  // This deliberately mounts the route in a minimal test app; CodeQL reports
+  // the test harness as an unrate-limited handler even though the injected
+  // limiter proves the production route's ordering and 429 behavior.
   const app = express();
   app.use(createCsrfProtection({ appTitle: "Test" }));
   let rateLimitCalls = 0;

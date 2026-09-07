@@ -108,6 +108,10 @@ export function createVehiclesRouter(options: Options): Router {
   router.post("/vehicles/:vehicleId/driver", async (req, res, next) => {
     try { if (await guard(req, res)) { await assignVehicleDriver(req.params.vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${req.params.vehicleId}?notice=driver-updated`); } } catch (error) { next(error); }
   });
+  // CodeQL may not identify the custom PostgreSQL-backed limiter below as a
+  // framework rate limiter. It is intentionally before multer and CSRF parsing:
+  // authorization runs first, then the atomic distributed counter, then the
+  // bounded upload parser and CSRF validator.
   router.post("/vehicles/:vehicleId/documents", requireAuthorizedVehicleManager, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
     try {
       const file = req.file;
