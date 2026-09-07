@@ -7,7 +7,7 @@ import { canManageStaff } from "../services/staff";
 import {
   assignVehicleDriver, createVehicle, createVehicleDocument, getVehicleById, getVehicleDocument,
   getVehicleDriverSummary, listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicles,
-  consumeVehicleDocumentUploadRateLimit, updateVehicle, validateVehicleDocumentUpload,
+  consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
   VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleInput
 } from "../services/vehicles";
 
@@ -74,6 +74,16 @@ export function createVehiclesRouter(options: Options): Router {
       return next(error);
     }
   }
+  async function limitVehicleMutations(req: any, res: any, next: any) {
+    try {
+      const userId = text(res.locals.vehicleUser?.id);
+      const allowed = await consumeVehicleMutationRateLimit(`vehicle-mutation:${userId}`);
+      if (!allowed) return res.status(429).send("Too many vehicle updates. Try again later.");
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
   const renderForm = async (res: any, data: any, status = 200) => res.status(status).render("pages/vehicles/form", {
     title: data.vehicle ? "Edit vehicle" : "New vehicle", appTitle: options.appTitle,
     classes: await listVehicleClasses(), baggageCategories: await listBaggageCategories(),
@@ -94,7 +104,7 @@ export function createVehiclesRouter(options: Options): Router {
   router.get("/vehicles/new", async (req, res, next) => {
     try { if (await guard(req, res)) return renderForm(res, { vehicle: null, errors: [] }); } catch (error) { next(error); }
   });
-  router.post("/vehicles/new", requireAuthorizedVehicleManager, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/new", requireAuthorizedVehicleManager, limitVehicleMutations, csrfGuard, async (req, res, next) => {
     try {
       const value = input(req.body);
       try { await createVehicle(value); return res.redirect("/vehicles?notice=created"); }
@@ -104,7 +114,7 @@ export function createVehiclesRouter(options: Options): Router {
   router.get("/vehicles/:vehicleId/edit", async (req, res, next) => {
     try { if (await guard(req, res)) { const vehicle = await getVehicleById(req.params.vehicleId); if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle }); return renderForm(res, { vehicle, errors: [] }); } } catch (error) { next(error); }
   });
-  router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, limitVehicleMutations, csrfGuard, async (req, res, next) => {
     try {
       const vehicleId = text(req.params.vehicleId);
       const value = input(req.body); await updateVehicle(vehicleId, value); return res.redirect(`/vehicles/${vehicleId}?notice=updated`);
@@ -121,7 +131,7 @@ export function createVehiclesRouter(options: Options): Router {
         helpFor: resolveHelpContent, notice: text(req.query.notice) });
     } catch (error) { return next(error); }
   });
-  router.post("/vehicles/:vehicleId/driver", requireAuthorizedVehicleManager, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/driver", requireAuthorizedVehicleManager, limitVehicleMutations, csrfGuard, async (req, res, next) => {
     try { const vehicleId = text(req.params.vehicleId); await assignVehicleDriver(vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${vehicleId}?notice=driver-updated`); } catch (error) { next(error); }
   });
   router.get("/vehicles/:vehicleId/driver-details", async (req, res, next) => {

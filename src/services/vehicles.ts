@@ -12,6 +12,7 @@ export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
+export const VEHICLE_MUTATION_LIMIT = 120;
 export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
 export type VehicleDocumentType = (typeof VEHICLE_DOCUMENT_TYPES)[number];
@@ -326,6 +327,12 @@ export async function getVehicleDocument(id: string, client?: Queryable) {
   return result.rows[0] || null;
 }
 export async function consumeVehicleDocumentUploadRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
+  return consumeVehicleRateLimit(rateLimitKey, VEHICLE_DOCUMENT_UPLOAD_LIMIT, client);
+}
+export async function consumeVehicleMutationRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
+  return consumeVehicleRateLimit(rateLimitKey, VEHICLE_MUTATION_LIMIT, client);
+}
+async function consumeVehicleRateLimit(rateLimitKey: string, limit: number, client?: Queryable): Promise<boolean> {
   const result = await db(client).query<{ allowed: boolean }>(
     `INSERT INTO vehicle_document_upload_rate_limits (rate_limit_key, window_started_at, request_count)
      VALUES ($1, date_trunc('minute', now()), 1)
@@ -334,7 +341,7 @@ export async function consumeVehicleDocumentUploadRateLimit(rateLimitKey: string
          THEN 1 ELSE vehicle_document_upload_rate_limits.request_count + 1 END,
        window_started_at = CASE WHEN vehicle_document_upload_rate_limits.window_started_at <= now() - interval '1 minute'
          THEN date_trunc('minute', now()) ELSE vehicle_document_upload_rate_limits.window_started_at END
-     RETURNING request_count <= $2 AS allowed`, [rateLimitKey, VEHICLE_DOCUMENT_UPLOAD_LIMIT]
+     RETURNING request_count <= $2 AS allowed`, [rateLimitKey, limit]
   );
   return Boolean(result.rows[0]?.allowed);
 }

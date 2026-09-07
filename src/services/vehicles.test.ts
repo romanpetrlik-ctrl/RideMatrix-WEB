@@ -6,6 +6,7 @@ import { BAGGAGE_CATEGORIES } from "../database/seed";
 import { resolveHelpContent } from "./help";
 import {
   consumeVehicleDocumentUploadRateLimit,
+  consumeVehicleMutationRateLimit,
   createVehicleDocument,
   createVehicle,
   getVehicleDocument,
@@ -84,6 +85,19 @@ test("document upload rate limiting uses an atomic database counter", async () =
   assert.equal(await consumeVehicleDocumentUploadRateLimit("vehicle-document:u1:127.0.0.1", client), false);
   assert.match(queryText, /ON CONFLICT \(rate_limit_key\) DO UPDATE/);
   assert.match(queryText, /request_count <=/);
+});
+
+test("vehicle mutation rate limiting uses the distributed database counter separately from uploads", async () => {
+  let params: unknown[] = [];
+  const client: any = {
+    async query(_text: string, values: unknown[]) {
+      params = values;
+      return { rows: [{ allowed: true }] };
+    }
+  };
+  assert.equal(await consumeVehicleMutationRateLimit("vehicle-mutation:u1", client), true);
+  assert.equal(params[0], "vehicle-mutation:u1");
+  assert.equal(params[1], 120);
 });
 
 test("vehicle validation requires operational fields and non-negative baggage capacities", async () => {
