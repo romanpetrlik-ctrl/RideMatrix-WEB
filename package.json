@@ -21,7 +21,8 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.0",
     "multer": "^2.2.0",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "qs": "^6.16.0"
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",

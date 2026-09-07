@@ -30,7 +30,10 @@ async function startServer() {
   app.set("view engine", "ejs");
   app.set("views", path.join(process.cwd(), "src/views"));
 
-  app.use(express.urlencoded({ extended: true }));
+  // Add explicit limits to prevent DoS attacks via oversized or excessively parameterized requests.
+  // Note: limits do not apply to multipart/form-data (handled separately by multer with 10 MiB limit).
+  app.use(express.urlencoded({ extended: true, limit: "100kb", parameterLimit: 1000 }));
+  app.use(express.json({ limit: "100kb" }));
   app.use(express.static(path.join(__dirname, "../public")));
 
   // Issues a signed, cookie-bound CSRF token for every response and validates
