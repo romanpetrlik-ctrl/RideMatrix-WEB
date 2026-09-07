@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle, pageTitle: title, pageMeta: `${vehicle.registration} · ${vehicle.make} ${vehicle.model}`, breadcrumbs: [{ label: "Vehicles", href: "/vehicles" }, { label: vehicle.registration, href: `/vehicles/${vehicle.id}` }, { label: title }] }) %>
+    <main class="container vehicle-page"><section class="vehicle-card empty-state"><h1><%= title %></h1><p>This operational view is ready for booking and assignment data when that source is connected.</p><a class="button button--secondary" href="/vehicles/<%= vehicle.id %>">Back to vehicle</a></section></main>
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

@@ -17,9 +17,10 @@ export const VEHICLE_CLASSES = [
 ] as const;
 
 export const BAGGAGE_CATEGORIES = [
-  ["small_case", "Small case"],
-  ["large_case", "Large case"],
-  ["specialist", "Specialist / oversized"]
+  ["xl_suitcase", "XL suitcase"],
+  ["l_suitcase", "L suitcase"],
+  ["cabin_bag", "CB cabin bag"],
+  ["backpack", "BP backpack"]
 ] as const;
 
 type Queryable = Pool | PoolClient;

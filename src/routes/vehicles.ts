@@ -5,9 +5,9 @@ import { getSessionAccount, SessionAccount } from "../services/api";
 import { canManageStaff } from "../services/staff";
 import {
   assignVehicleDriver, createVehicle, createVehicleDocument, getVehicleById, getVehicleDocument,
-  listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicles,
+  listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicles,
   consumeVehicleDocumentUploadRateLimit, updateVehicle, validateVehicleDocumentUpload,
-  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_STATUS_OPTIONS, VehicleInput
+  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleInput
 } from "../services/vehicles";
 
 type Options = {
@@ -19,10 +19,19 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const text = (value: unknown) => String(value ?? "").trim();
 function input(body: any): VehicleInput {
   const year = text(body.year);
+  const rawClasses = Array.isArray(body.classKeys) ? body.classKeys : [body.classKeys || body.vehicleClassKey];
+  const baggageCapacities: Record<string, number | null> = {};
+  for (const key of ["xl_suitcase", "l_suitcase", "cabin_bag", "backpack"]) {
+    const value = text(body[`capacity_${key}`]);
+    baggageCapacities[key] = value === "" ? null : Number(value);
+  }
   return { registration: text(body.registration), make: text(body.make), model: text(body.model),
     year: year ? Number(year) : null, colour: text(body.colour) || null,
-    vehicleClassKey: text(body.vehicleClassKey), status: text(body.status) as any || "available",
-    notes: text(body.notes) || null };
+    classKeys: rawClasses.map(text).filter(Boolean), fuelType: text(body.fuelType) as any,
+    passengerCapacity: Number(body.passengerCapacity), status: text(body.status) as any,
+    registeredKeeperDetails: text(body.registeredKeeperDetails) || null,
+    wheelchairAccessible: body.wheelchairAccessible === "on",
+    notes: text(body.notes) || null, baggageCapacities };
 }
 
 export function createVehiclesRouter(options: Options): Router {
@@ -62,7 +71,8 @@ export function createVehiclesRouter(options: Options): Router {
   }
   const renderForm = async (res: any, data: any, status = 200) => res.status(status).render("pages/vehicles/form", {
     title: data.vehicle ? "Edit vehicle" : "New vehicle", appTitle: options.appTitle,
-    classes: await listVehicleClasses(), statuses: VEHICLE_STATUS_OPTIONS, ...data
+    classes: await listVehicleClasses(), baggageCategories: await listBaggageCategories(),
+    statuses: VEHICLE_STATUS_OPTIONS, fuelTypes: VEHICLE_FUEL_TYPES, ...data
   });
 
   router.get("/vehicles", async (req, res, next) => {
@@ -101,12 +111,29 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicle = await getVehicleById(req.params.vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
       return res.render("pages/vehicles/detail", { title: vehicle.registration, appTitle: options.appTitle, email: res.locals.vehicleUser.email,
-        vehicle, documents: await listVehicleDocuments(vehicle.id), drivers: await listDrivers(), baggageCategories: await listBaggageCategories(),
+        vehicle, documents: await listVehicleDocuments(vehicle.id), driverAssignments: await listVehicleDriverAssignments(vehicle.id),
+        drivers: await listDrivers(), baggageCategories: await listBaggageCategories(), documentTypes: VEHICLE_DOCUMENT_TYPES,
         notice: text(req.query.notice) });
     } catch (error) { return next(error); }
   });
   router.post("/vehicles/:vehicleId/driver", async (req, res, next) => {
     try { if (await guard(req, res)) { await assignVehicleDriver(req.params.vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${req.params.vehicleId}?notice=driver-updated`); } } catch (error) { next(error); }
+  });
+  router.get("/vehicles/:vehicleId/bookings", async (req, res, next) => {
+    try {
+      if (!(await guard(req, res))) return;
+      const vehicle = await getVehicleById(req.params.vehicleId);
+      if (!vehicle) return res.sendStatus(404);
+      return res.render("pages/vehicles/operations", { title: "Assigned bookings", appTitle: options.appTitle, email: res.locals.vehicleUser.email, vehicle });
+    } catch (error) { return next(error); }
+  });
+  router.get("/vehicles/:vehicleId/driver-history", async (req, res, next) => {
+    try {
+      if (!(await guard(req, res))) return;
+      const vehicle = await getVehicleById(req.params.vehicleId);
+      if (!vehicle) return res.sendStatus(404);
+      return res.render("pages/vehicles/operations", { title: "Driver assignment history", appTitle: options.appTitle, email: res.locals.vehicleUser.email, vehicle });
+    } catch (error) { return next(error); }
   });
   // CodeQL may not identify the custom PostgreSQL-backed limiter below as a
   // framework rate limiter. It is intentionally before multer and CSRF parsing:
