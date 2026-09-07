@@ -1,0 +1,11 @@
+<button class="button button--secondary button--small" type="button" onclick="document.getElementById('document-preview-<%= id %>').showModal()">View document</button>
+<dialog id="document-preview-<%= id %>" class="document-preview-modal">
+  <form method="dialog"><button class="button button--secondary" type="submit">Close</button></form>
+  <% if (mimeType && mimeType.startsWith("image/")) { %>
+    <img src="<%= href %>" alt="<%= label || 'Document preview' %>">
+  <% } else if (mimeType === "application/pdf") { %>
+    <iframe src="<%= href %>" title="<%= label || 'Document preview' %>"></iframe>
+  <% } else { %>
+    <a href="<%= href %>">Open document</a>
+  <% } %>
+</dialog>

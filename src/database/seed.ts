@@ -1,6 +1,27 @@
 import type { Pool, PoolClient } from "pg";
 
 const SEED_KEY = "customers_seed_v1";
+const VEHICLE_CATALOGUE_SEED_KEY = "vehicle_catalogue_seed_v1";
+
+export const VEHICLE_CLASSES = [
+  ["standard_sedan_hatchback", "Standard Sedan / Hatchback"],
+  ["standard_estate", "Standard Estate"],
+  ["premium_sedan_hatchback", "Premium Sedan / Hatchback"],
+  ["premium_estate", "Premium Estate"],
+  ["executive", "Executive"],
+  ["luxury", "Luxury"],
+  ["multi_seater", "Multi-seater"],
+  ["minibus", "Minibus"],
+  ["coach", "Coach"],
+  ["wheelchair_accessible", "Wheelchair Accessible"]
+] as const;
+
+export const BAGGAGE_CATEGORIES = [
+  ["xl_suitcase", "XL suitcase"],
+  ["l_suitcase", "L suitcase"],
+  ["cabin_bag", "CB cabin bag"],
+  ["backpack", "BP backpack"]
+] as const;
 
 type Queryable = Pool | PoolClient;
 
@@ -539,5 +560,36 @@ export async function seedCustomers(client: Queryable): Promise<boolean> {
     throw error;
   }
 
+  return true;
+}
+
+export async function seedVehicleCatalogue(client: Queryable): Promise<boolean> {
+  const existing = await client.query("SELECT 1 FROM bootstrap_state WHERE key = $1", [
+    VEHICLE_CATALOGUE_SEED_KEY
+  ]);
+  if (existing.rows.length > 0) return false;
+  await client.query("BEGIN");
+  try {
+    for (const [key, label] of VEHICLE_CLASSES) {
+      await client.query(
+        "INSERT INTO vehicle_classes (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+        [key, label]
+      );
+    }
+    for (const [key, label] of BAGGAGE_CATEGORIES) {
+      await client.query(
+        "INSERT INTO baggage_categories (key, label) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+        [key, label]
+      );
+    }
+    await client.query(
+      "INSERT INTO bootstrap_state (key, applied_at) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+      [VEHICLE_CATALOGUE_SEED_KEY, new Date().toISOString()]
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
   return true;
 }

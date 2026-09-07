@@ -198,6 +198,153 @@ export const MIGRATIONS: Migration[] = [
         WHERE deleted_at IS NULL
           AND email_normalized IS NOT NULL;
     `
+  },
+  {
+    id: "0003_vehicle_management_mvp",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vehicle_classes (
+        key TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE
+      );
+      CREATE TABLE IF NOT EXISTS baggage_categories (
+        key TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        description TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE
+      );
+      CREATE TABLE IF NOT EXISTS vehicle_class_baggage_capacity (
+        vehicle_class_key TEXT NOT NULL REFERENCES vehicle_classes(key),
+        baggage_category_key TEXT NOT NULL REFERENCES baggage_categories(key),
+        capacity INTEGER NOT NULL CHECK (capacity >= 0),
+        PRIMARY KEY (vehicle_class_key, baggage_category_key)
+      );
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id TEXT PRIMARY KEY,
+        registration TEXT NOT NULL UNIQUE,
+        make TEXT NOT NULL,
+        model TEXT NOT NULL,
+        year INTEGER,
+        colour TEXT,
+        vehicle_class_key TEXT NOT NULL REFERENCES vehicle_classes(key),
+        status TEXT NOT NULL DEFAULT 'available',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_vehicles_class ON vehicles(vehicle_class_key);
+      CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
+      CREATE TABLE IF NOT EXISTS vehicle_driver_assignments (
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL,
+        assigned_at TEXT NOT NULL,
+        unassigned_at TEXT,
+        PRIMARY KEY (vehicle_id, driver_id, assigned_at)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_active_vehicle_driver
+        ON vehicle_driver_assignments(vehicle_id) WHERE unassigned_at IS NULL;
+      CREATE TABLE IF NOT EXISTS vehicle_documents (
+        id TEXT PRIMARY KEY,
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        document_type TEXT NOT NULL,
+        document_number TEXT,
+        issued_on TEXT,
+        expires_on TEXT,
+        original_filename TEXT,
+        mime_type TEXT,
+        storage_key TEXT,
+        content BYTEA,
+        uploaded_by TEXT,
+        uploaded_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle ON vehicle_documents(vehicle_id);
+      CREATE TABLE IF NOT EXISTS vehicle_document_upload_rate_limits (
+        rate_limit_key TEXT PRIMARY KEY,
+        window_started_at TIMESTAMPTZ NOT NULL,
+        request_count INTEGER NOT NULL CHECK (request_count > 0)
+      );
+    `
+  },
+  {
+    id: "0004_vehicle_mvp_review_alignment",
+    sql: `
+      ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fuel_type TEXT NOT NULL DEFAULT 'ICE';
+      ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS passenger_capacity INTEGER NOT NULL DEFAULT 4;
+      ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS registered_keeper_details TEXT;
+      ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS wheelchair_accessible BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE vehicles ALTER COLUMN vehicle_class_key DROP NOT NULL;
+      ALTER TABLE vehicles ALTER COLUMN status SET DEFAULT 'active';
+
+      UPDATE vehicles SET status = 'active' WHERE status = 'available';
+      UPDATE vehicles SET status = 'inactive' WHERE status = 'retired';
+      UPDATE vehicles SET fuel_type = 'ICE' WHERE fuel_type IS NULL OR fuel_type NOT IN ('ICE', 'HYBRID', 'EV');
+      UPDATE vehicles SET passenger_capacity = 4 WHERE passenger_capacity IS NULL OR passenger_capacity < 1;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_fuel_type_check') THEN
+          ALTER TABLE vehicles ADD CONSTRAINT vehicles_fuel_type_check CHECK (fuel_type IN ('ICE', 'HYBRID', 'EV'));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_passenger_capacity_check') THEN
+          ALTER TABLE vehicles ADD CONSTRAINT vehicles_passenger_capacity_check CHECK (passenger_capacity > 0);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_status_check') THEN
+          ALTER TABLE vehicles ADD CONSTRAINT vehicles_status_check CHECK (status IN ('active', 'inactive', 'maintenance'));
+        END IF;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS vehicle_class_assignments (
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        vehicle_class_key TEXT NOT NULL REFERENCES vehicle_classes(key),
+        assigned_at TEXT NOT NULL,
+        unassigned_at TEXT,
+        PRIMARY KEY (vehicle_id, vehicle_class_key, assigned_at)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_active_vehicle_class_assignment
+        ON vehicle_class_assignments(vehicle_id, vehicle_class_key)
+        WHERE unassigned_at IS NULL;
+      INSERT INTO vehicle_class_assignments (vehicle_id, vehicle_class_key, assigned_at)
+      SELECT id, vehicle_class_key, COALESCE(created_at, now()::text)
+      FROM vehicles
+      WHERE vehicle_class_key IS NOT NULL
+      ON CONFLICT DO NOTHING;
+      INSERT INTO vehicle_class_assignments (vehicle_id, vehicle_class_key, assigned_at)
+      SELECT v.id, 'wheelchair_accessible', COALESCE(v.created_at, now()::text)
+      FROM vehicles v
+      WHERE v.wheelchair_accessible = TRUE
+        AND EXISTS (SELECT 1 FROM vehicle_classes vc WHERE vc.key = 'wheelchair_accessible')
+      ON CONFLICT DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS vehicle_baggage_capacities (
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        baggage_category_key TEXT NOT NULL REFERENCES baggage_categories(key),
+        max_quantity INTEGER NOT NULL CHECK (max_quantity >= 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (vehicle_id, baggage_category_key)
+      );
+
+      ALTER TABLE baggage_categories ADD COLUMN IF NOT EXISTS min_reference_weight_kg NUMERIC;
+      ALTER TABLE baggage_categories ADD COLUMN IF NOT EXISTS max_reference_weight_kg NUMERIC;
+      ALTER TABLE baggage_categories ADD COLUMN IF NOT EXISTS nominal_length_mm INTEGER;
+      ALTER TABLE baggage_categories ADD COLUMN IF NOT EXISTS nominal_width_mm INTEGER;
+      ALTER TABLE baggage_categories ADD COLUMN IF NOT EXISTS nominal_height_mm INTEGER;
+
+      UPDATE baggage_categories SET active = FALSE
+      WHERE key IN ('small_case', 'large_case', 'specialist');
+      INSERT INTO baggage_categories
+        (key, label, description, active, min_reference_weight_kg, max_reference_weight_kg)
+      VALUES
+        ('xl_suitcase', 'XL suitcase', 'XL suitcase', TRUE, 31, NULL),
+        ('l_suitcase', 'L suitcase', 'L suitcase', TRUE, NULL, 23),
+        ('cabin_bag', 'CB cabin bag', 'CB cabin bag', TRUE, NULL, 12),
+        ('backpack', 'BP backpack', 'BP backpack', TRUE, NULL, 8)
+      ON CONFLICT (key) DO UPDATE SET
+        label = EXCLUDED.label,
+        description = EXCLUDED.description,
+        active = TRUE,
+        min_reference_weight_kg = EXCLUDED.min_reference_weight_kg,
+        max_reference_weight_kg = EXCLUDED.max_reference_weight_kg;
+    `
   }
 ];
 

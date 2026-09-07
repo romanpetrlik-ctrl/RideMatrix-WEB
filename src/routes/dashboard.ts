@@ -146,7 +146,8 @@ export const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }>
       {
         key: "vehicles",
         title: "Vehicles",
-        description: "Manage fleet vehicles and availability."
+        description: "Manage fleet vehicles and availability.",
+        href: "/vehicles"
       }
     ]
   },
