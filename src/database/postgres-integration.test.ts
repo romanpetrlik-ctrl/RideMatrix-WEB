@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { closeDatabase, initializeDatabase, query, withTransaction } from "./connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "./test-helper";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "./test-helper";
 import {
   createCustomer,
   deleteCustomer,
@@ -23,7 +23,7 @@ before(async () => {
 });
 
 after(async () => {
-  await dbContext.cleanup();
+  await safeCleanupTestDatabase(dbContext);
 });
 
 test("PostgreSQL migrations preserve existing auth tables and auth records", async () => {

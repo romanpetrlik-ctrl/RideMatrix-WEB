@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before, describe } from "node:test";
-import { getPool, initializeDatabase } from "../database/connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
+import { getPool, initializeDatabase  } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import {
   FUTURE_SUPERUSER_EMAIL,
   OPERATIONAL_ACCOUNT_EMAIL,
@@ -170,8 +170,8 @@ describe("database readiness audit — against a migrated database", () => {
   });
 
   after(async () => {
-    await dbContext.cleanup();
-  });
+  await safeCleanupTestDatabase(dbContext);
+});
 
   async function audit() {
     return runDatabaseReadinessAudit({ connect: () => getPool().connect() });

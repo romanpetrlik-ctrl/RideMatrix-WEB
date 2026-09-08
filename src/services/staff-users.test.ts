@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before, describe } from "node:test";
-import { initializeDatabase, query } from "../database/connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
+import { initializeDatabase, query  } from "../database/connection";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import {
   StaffUserActor,
   createStaffUser,
@@ -66,8 +66,8 @@ describe("createStaffUser against a production-shaped user_status enum", () => {
   });
 
   after(async () => {
-    await dbContext.cleanup();
-  });
+  await safeCleanupTestDatabase(dbContext);
+});
 
   test("the enum rejects the hard-coded Pending value (production failure mode)", async () => {
     await assert.rejects(
@@ -119,8 +119,8 @@ describe("createStaffUser against an enum without an invited label", () => {
   });
 
   after(async () => {
-    await dbContext.cleanup();
-  });
+  await safeCleanupTestDatabase(dbContext);
+});
 
   test("the account is inserted without an explicit status instead of failing", async () => {
     const created = await createStaffUser({
@@ -145,8 +145,8 @@ describe("createStaffUser against a text status column", () => {
   });
 
   after(async () => {
-    await dbContext.cleanup();
-  });
+  await safeCleanupTestDatabase(dbContext);
+});
 
   test("the account keeps the Pending status", async () => {
     const created = await createStaffUser({

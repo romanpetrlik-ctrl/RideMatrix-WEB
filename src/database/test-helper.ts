@@ -4,11 +4,18 @@ import { closeDatabase, initializeDatabase } from "./connection";
 const { Pool } = pg;
 
 export function getBaseTestDatabaseUrl(): string {
-  return (
-    process.env.TEST_DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    "postgres://runner@127.0.0.1:5432/ridematrix_test"
-  );
+  const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+
+  if (!testDatabaseUrl) {
+    throw new Error(
+      "PostgreSQL integration tests require TEST_DATABASE_URL to be explicitly set. " +
+        "This prevents accidental use of the production DATABASE_URL. " +
+        "Set TEST_DATABASE_URL to a test-only PostgreSQL connection string and try again. " +
+        "Example: TEST_DATABASE_URL='postgresql://localhost/ridematrix_test' npm run test:integration"
+    );
+  }
+
+  return testDatabaseUrl;
 }
 
 /**
@@ -28,6 +35,25 @@ export type TestDatabaseContext = {
   createAuthTables: (options?: AuthTablesOptions) => Promise<void>;
   countAuthRows: () => Promise<{ users: number; roles: number; permissions: number }>;
 };
+
+/**
+ * Safe cleanup helper for integration tests. Use this in after() hooks to
+ * safely cleanup even if before() failed to create the context.
+ *
+ * Example:
+ *   let dbContext: TestDatabaseContext | undefined;
+ *   before(async () => {
+ *     dbContext = await createTestDatabaseContext("test_name");
+ *   });
+ *   after(async () => {
+ *     await safeCleanupTestDatabase(dbContext);
+ *   });
+ */
+export async function safeCleanupTestDatabase(dbContext: TestDatabaseContext | undefined): Promise<void> {
+  if (dbContext && typeof dbContext.cleanup === "function") {
+    await dbContext.cleanup();
+  }
+}
 
 let schemaCounter = 0;
 

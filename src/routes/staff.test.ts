@@ -5,7 +5,7 @@ import path from "node:path";
 import test, { after, before, describe } from "node:test";
 import express from "express";
 import { initializeDatabase, query } from "../database/connection";
-import { TestDatabaseContext, createTestDatabaseContext } from "../database/test-helper";
+import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import { getCustomerCount } from "../services/customers";
 import { SessionAccount } from "../services/api";
 import { getPermissionsForRoles } from "../services/staff-users";
@@ -78,7 +78,7 @@ describe("GET /staff (staff directory)", () => {
   after(async () => {
     await new Promise<void>((resolve) => appServer.close(() => resolve()));
     await new Promise<void>((resolve) => authServer.close(() => resolve()));
-    await dbContext.cleanup();
+    await safeCleanupTestDatabase(dbContext);
   });
 
   test("unauthenticated requests are redirected to /access", async () => {
@@ -286,7 +286,7 @@ describe("GET/POST /staff/invite (create / invite user)", () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve));
-    await dbContext.cleanup();
+    await safeCleanupTestDatabase(dbContext);
   });
 
   function signIn(email: string, roles: string[]): void {
