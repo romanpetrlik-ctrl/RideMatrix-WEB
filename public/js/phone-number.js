@@ -18,6 +18,7 @@
     var form = input.closest("form");
     var timer;
     var state = null;
+    var tracker = window.PhonePreviewState.createPhonePreviewTracker();
 
     function render(preview) {
       state = preview;
@@ -46,16 +47,38 @@
     function preview() {
       clearTimeout(timer);
       if (!input.value.trim()) {
+        tracker.trackRequest(input.value);
         render({ valid: false });
         return;
       }
       timer = setTimeout(function () {
-        fetch("/customers/phone-preview?value=" + encodeURIComponent(input.value), {
+        var snapshot = tracker.trackRequest(input.value);
+        fetch("/customers/phone-preview?value=" + encodeURIComponent(snapshot.value), {
           headers: { Accept: "application/json" }
         })
           .then(function (response) { return response.ok ? response.json() : { valid: false }; })
-          .then(render)
-          .catch(function () { render({ valid: false }); });
+          .then(function (previewResult) {
+            if (!input.value.trim()) {
+              tracker.trackRequest(input.value);
+              render({ valid: false });
+              return;
+            }
+            var current = tracker.resolve(snapshot, previewResult);
+            if (current === null) {
+              return;
+            }
+            if (current.valid && current.normalized) {
+              input.value = current.normalized;
+              tracker.trackRequest(current.normalized);
+            }
+            render(current);
+          })
+          .catch(function () {
+            var current = tracker.resolve(snapshot, { valid: false });
+            if (current !== null) {
+              render(current);
+            }
+          });
       }, 150);
     }
 
