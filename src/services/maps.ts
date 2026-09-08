@@ -10,6 +10,8 @@ export type GeocodedAddress = {
   countryName?: string;
   city?: string;
   postcode?: string;
+  providerPlaceId?: string;
+  matchQuality?: "exact" | "partial" | "ambiguous";
 };
 
 export type MapView = {
@@ -25,8 +27,11 @@ export interface MapProvider {
 }
 
 export type MapConfiguration = {
-  provider: string;
-  apiKey?: string;
+  enabled: boolean;
+  provider: "google" | "";
+  serverApiKey?: string;
+  browserApiKey?: string;
+  mapId?: string;
   geocodingEnabled: boolean;
   defaultPoint?: GeoPoint;
 };
@@ -61,18 +66,13 @@ export function normalizeAddress(address: string): string {
 }
 
 export function readMapConfiguration(env: NodeJS.ProcessEnv = process.env): MapConfiguration {
-  const latitude = Number(env.MAP_DEFAULT_LATITUDE);
-  const longitude = Number(env.MAP_DEFAULT_LONGITUDE);
-  const defaultPoint =
-    Number.isFinite(latitude) && Number.isFinite(longitude) && isValidGeoPoint({ latitude, longitude })
-      ? { latitude, longitude }
-      : undefined;
-
   return {
-    provider: String(env.MAP_PROVIDER || "").trim().toLowerCase(),
-    apiKey: String(env.MAP_API_KEY || "").trim() || undefined,
-    geocodingEnabled: String(env.MAP_GEOCODING_ENABLED || "").trim().toLowerCase() === "true",
-    defaultPoint
+    enabled: String(env.GOOGLE_MAPS_ENABLED || "").trim().toLowerCase() === "true",
+    provider: "google",
+    serverApiKey: String(env.GOOGLE_MAPS_SERVER_API_KEY || "").trim() || undefined,
+    browserApiKey: String(env.GOOGLE_MAPS_BROWSER_API_KEY || "").trim() || undefined,
+    mapId: String(env.GOOGLE_MAPS_MAP_ID || "").trim() || undefined,
+    geocodingEnabled: String(env.GOOGLE_MAPS_ENABLED || "").trim().toLowerCase() === "true"
   };
 }
 
@@ -108,8 +108,9 @@ export function createMapService(
 ): MapService {
   const enabled = Boolean(
     !(provider instanceof DisabledMapProvider) &&
-      configuration.provider &&
-      configuration.apiKey &&
+      configuration.enabled &&
+      configuration.provider === "google" &&
+      configuration.serverApiKey &&
       configuration.geocodingEnabled
   );
 
@@ -151,5 +152,10 @@ export function toMapView(address: GeocodedAddress, label = "Customer address", 
 }
 
 export function getMapService(): MapService {
-  return createMapService();
+  const configuration = readMapConfiguration();
+  const provider = configuration.serverApiKey
+    ? createGoogleMapsProvider(configuration.serverApiKey)
+    : new DisabledMapProvider();
+  return createMapService(provider, configuration);
 }
+import { createGoogleMapsProvider } from "./google-maps";

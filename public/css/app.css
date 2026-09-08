@@ -618,6 +618,13 @@ button:visited,
   text-align: center;
 }
 
+.address-map-preview__canvas {
+  width: 100%;
+  min-height: 18rem;
+  border-radius: 0.5rem;
+  background: var(--rm-canvas);
+}
+
 .customer-map-card {
   margin-block: 1rem;
 }
