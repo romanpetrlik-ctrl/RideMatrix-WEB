@@ -8,6 +8,7 @@ import {
   getCustomerByEmail,
   getCustomerById,
   getCustomerCount,
+  listRecentBookingsForCustomer,
   listCustomers,
   updateCustomer
 } from "./customers";
@@ -82,6 +83,40 @@ test("persists updates and status changes", async () => {
   assert.ok(reloaded);
   assert.equal(reloaded.status, "Suspended");
   assert.equal(reloaded.notes, "On hold.");
+});
+
+test("lists at most five recent bookings for the requested customer", async () => {
+  const customer = await createCustomer({
+    givenName: "Recent",
+    surname: "Bookings",
+    email: "recent.bookings@example.com",
+    phone: "+44 7700 900299",
+    status: "Active"
+  });
+
+  for (let index = 0; index < 6; index += 1) {
+    await query(
+      `INSERT INTO customer_bookings
+       (id, customer_id, reference, service_date, pickup, dropoff, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        `recent-booking-${index}`,
+        customer.id,
+        `REC-${index}`,
+        `2026-09-${String(index + 1).padStart(2, "0")}T10:00:00.000Z`,
+        `Pickup ${index}`,
+        `Dropoff ${index}`,
+        "Completed",
+        new Date().toISOString()
+      ]
+    );
+  }
+
+  const bookings = await listRecentBookingsForCustomer(customer.id);
+
+  assert.equal(bookings.length, 5);
+  assert.equal(bookings[0].reference, "REC-5");
+  assert.ok(bookings.every((booking) => booking.reference.startsWith("REC-")));
 });
 
 test("filters, searches and paginates the persisted list", async () => {
