@@ -495,14 +495,15 @@ button:visited,
 }
 
 .private-customer-form {
-  min-width: 1080px;
+  min-width: 0;
 }
 
 .private-customer-form__grid {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(440px, 1.35fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.9fr);
   gap: 1.25rem;
   align-items: start;
+  min-width: 0;
 }
 
 .private-customer-form__column {
@@ -512,6 +513,7 @@ button:visited,
   padding: 1rem;
   border: 1px solid var(--rm-border);
   background: rgba(255, 249, 242, 0.6);
+  min-width: 0;
 }
 
 .private-customer-form__column h2 {
@@ -522,20 +524,20 @@ button:visited,
 
 .private-customer-form .form-field {
   margin-bottom: 0;
+  min-width: 0;
 }
 
-.private-customer-form input[type="email"],
-.private-customer-form input[type="text"],
-.private-customer-form input[type="tel"],
+.private-customer-form input,
 .private-customer-form select,
 .private-customer-form textarea {
-  max-width: none;
+  max-width: 100%;
   margin-bottom: 0;
 }
 
 .private-customer-form .form-row {
   display: grid;
   gap: 0.85rem;
+  min-width: 0;
 }
 
 .private-customer-form .form-row--two {
@@ -543,7 +545,16 @@ button:visited,
 }
 
 .private-customer-form .form-row--contact {
-  grid-template-columns: minmax(20rem, 1.4fr) minmax(18rem, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
+.phone-number-component {
+  min-width: 0;
+}
+
+.phone-number-component__input,
+.phone-number-component__input input {
+  max-width: 100%;
 }
 
 .private-customer-form .form-row--three {
@@ -607,6 +618,18 @@ button:visited,
 .button--secondary:focus {
   background: var(--rm-soft-apricot);
   color: var(--rm-walnut-3);
+}
+
+@media (max-width: 1200px) {
+  .private-customer-form .form-row--contact {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .private-customer-form__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .button--danger {
