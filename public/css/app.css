@@ -605,6 +605,27 @@ button:visited,
   color: var(--rm-walnut);
 }
 
+.address-map-preview {
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  min-height: 23rem;
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  border-radius: 0.5rem;
+  background: var(--rm-surface);
+  color: var(--rm-text-soft);
+  text-align: center;
+}
+
+.customer-map-card {
+  margin-block: 1rem;
+}
+
+.customer-map-card h2 {
+  margin-bottom: 0.5rem;
+}
+
 .private-customer-form__notes {
   margin-top: 1rem;
 }

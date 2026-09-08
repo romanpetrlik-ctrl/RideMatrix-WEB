@@ -28,6 +28,7 @@ import {
   getWhatsAppHref,
   normalizePhoneToE164
 } from "../services/phone-numbers";
+import { isValidGeoPoint, toMapView, type MapView } from "../services/maps";
 
 type CustomersRouterOptions = {
   appTitle: string;
@@ -352,6 +353,17 @@ function buildAddressFromParts(parts: {
     parts.state,
     parts.postcode
   ].filter(Boolean).join(", ");
+}
+
+function getCustomerMapView(customer: CustomerRecord): MapView | null {
+  if (!isValidGeoPoint({ latitude: customer.latitude, longitude: customer.longitude })) {
+    return null;
+  }
+
+  return toMapView({
+    formattedAddress: customer.address || "Customer address",
+    point: { latitude: customer.latitude, longitude: customer.longitude }
+  });
 }
 
 export function createCustomersRouter(options: CustomersRouterOptions): Router {
@@ -875,6 +887,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         email: session.email,
         activeRoleLabel: session.activeRoleLabel,
         customer,
+        mapView: getCustomerMapView(customer),
         backToCustomersHref
       });
     } catch (error) {
@@ -947,6 +960,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         email: session.email,
         activeRoleLabel: session.activeRoleLabel,
         customer,
+        mapView: getCustomerMapView(customer),
         backToCustomersHref,
         formData: {
           givenName: customer.givenName,
@@ -1041,6 +1055,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         email: sessionContext.email,
         activeRoleLabel: sessionContext.activeRoleLabel,
         customer,
+        mapView: getCustomerMapView(customer),
         backToCustomersHref,
         formData,
         errors
