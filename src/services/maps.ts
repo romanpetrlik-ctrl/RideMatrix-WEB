@@ -106,7 +106,12 @@ export function createMapService(
   provider: MapProvider = new DisabledMapProvider(),
   configuration: MapConfiguration = readMapConfiguration()
 ): MapService {
-  const enabled = Boolean(configuration.provider && configuration.apiKey && configuration.geocodingEnabled);
+  const enabled = Boolean(
+    !(provider instanceof DisabledMapProvider) &&
+      configuration.provider &&
+      configuration.apiKey &&
+      configuration.geocodingEnabled
+  );
 
   return {
     enabled,

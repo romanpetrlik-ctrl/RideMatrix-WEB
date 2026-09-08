@@ -1,0 +1,11 @@
+<% if (mapView) { %>
+  <div class="address-map-preview" role="img" aria-label="Map showing <%= mapView.label %>">
+    <p><strong><%= mapView.label %></strong></p>
+    <p><%= mapView.latitude.toFixed(5) %>, <%= mapView.longitude.toFixed(5) %></p>
+  </div>
+<% } else { %>
+  <div class="address-map-placeholder" role="status">
+    <strong><%= emptyTitle %></strong>
+    <p><%= emptyMessage %></p>
+  </div>
+<% } %>

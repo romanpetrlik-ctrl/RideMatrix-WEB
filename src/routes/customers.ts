@@ -356,13 +356,14 @@ function buildAddressFromParts(parts: {
 }
 
 function getCustomerMapView(customer: CustomerRecord): MapView | null {
-  if (!isValidGeoPoint({ latitude: customer.latitude, longitude: customer.longitude })) {
+  const point = { latitude: customer.latitude, longitude: customer.longitude };
+  if (!isValidGeoPoint(point)) {
     return null;
   }
 
   return toMapView({
     formattedAddress: customer.address || "Customer address",
-    point: { latitude: customer.latitude, longitude: customer.longitude }
+    point
   });
 }
 
