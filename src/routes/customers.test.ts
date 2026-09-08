@@ -42,6 +42,18 @@ test("phone preview route is registered and returns international metadata", asy
   assert.equal(body.country.isoCode, "CZ");
 });
 
+test("phone preview normalizes 00 international prefixes and builds E.164 links", async () => {
+  const response = await requestPreview(adminSession, "00420724982564");
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.valid, true);
+  assert.equal(body.normalized, "+420724982564");
+  assert.equal(body.country.isoCode, "CZ");
+  assert.equal(body.telHref, "tel:+420724982564");
+  assert.equal(body.whatsappHref, "https://wa.me/420724982564");
+});
+
 test("phone preview uses GB for local numbers", async () => {
   const response = await requestPreview(adminSession, "07777 888 999");
   const body = await response.json();
