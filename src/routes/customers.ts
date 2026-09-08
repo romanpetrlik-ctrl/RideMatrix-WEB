@@ -21,6 +21,13 @@ import {
   listCustomers,
   updateCustomer
 } from "../services/customers";
+import {
+  getPhoneCountry,
+  getPhoneDisplayValue,
+  getPhoneTelHref,
+  getWhatsAppHref,
+  normalizePhoneToE164
+} from "../services/phone-numbers";
 
 type CustomersRouterOptions = {
   appTitle: string;
@@ -96,20 +103,17 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
+function countryFlag(isoCode: string | undefined): string {
+  return isoCode
+    ? isoCode.toUpperCase().replace(/[A-Z]/g, (letter) => String.fromCodePoint(letter.charCodeAt(0) + 127397))
+    : "🌐";
+}
+
 function getLastBookingAt(customer: CustomerRecord): string | null {
   return customer.lastBookingAt || customer.bookings.reduce<string | null>(
     (latest, booking) => (!latest || booking.serviceDate > latest ? booking.serviceDate : latest),
     null
   );
-}
-
-function formatPhoneHref(phone: string | null): string | null {
-  if (!phone) {
-    return null;
-  }
-
-  const digits = phone.replace(/[^\d]/g, "");
-  return digits ? `https://wa.me/${digits}` : null;
 }
 
 function resolveReturnTo(returnTo: unknown, fallback: string): string {
@@ -551,6 +555,31 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         formData: {},
         errors: []
       });
+
+      router.get("/customers/phone-preview", async (req, res, next) => {
+        try {
+          await requireAdminSession(req.headers.cookie);
+          const value = String(req.query.value || "");
+          const normalized = normalizePhoneToE164(value);
+          const country = getPhoneCountry(value);
+          return res.json({
+            valid: Boolean(normalized),
+            normalized,
+            display: normalized ? getPhoneDisplayValue(normalized) : null,
+            country,
+            telHref: normalized ? getPhoneTelHref(normalized) : null,
+            whatsappHref: normalized ? getWhatsAppHref(normalized) : null
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message === "unauthenticated") {
+            return res.status(401).json({ valid: false });
+          }
+          if (error instanceof Error && error.message === "forbidden") {
+            return res.status(403).json({ valid: false });
+          }
+          return next(error);
+        }
+      });
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
@@ -612,10 +641,14 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     if (!registerFormData.givenName) registerErrors.push("First name is required.");
     if (!registerFormData.surname) registerErrors.push("Surname is required.");
-    if (!registerFormData.email) {
-      registerErrors.push("Email address is required.");
-    } else if (!isValidEmail(registerFormData.email)) {
+    if (registerFormData.email && !isValidEmail(registerFormData.email)) {
       registerErrors.push("Email address is not valid.");
+    }
+    const normalizedPhone = normalizePhoneToE164(registerFormData.phone);
+    if (!registerFormData.phone) {
+      registerErrors.push("Phone number is required.");
+    } else if (!normalizedPhone) {
+      registerErrors.push("Phone number is not valid.");
     }
 
     if (registerErrors.length > 0) {
@@ -636,7 +669,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         givenName: registerFormData.givenName,
         surname: registerFormData.surname,
         email: registerFormData.email || null,
-        phone: registerFormData.phone || null,
+        phone: normalizedPhone,
         company: registerFormData.company || null,
         address: address || null,
         houseNameNumber: registerFormData.houseNameNumber || null,
@@ -700,7 +733,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
             ...booking,
             formattedServiceDate: formatBookingDate(booking.serviceDate)
           })),
-          whatsappHref: formatPhoneHref(customer.phone),
+          phoneDisplay: customer.phone ? getPhoneDisplayValue(customer.phone) : null,
+          phoneCountry: customer.phone ? getPhoneCountry(customer.phone) : null,
+          phoneFlag: customer.phone ? countryFlag(getPhoneCountry(customer.phone)?.isoCode) : "🌐",
+          telHref: customer.phone ? getPhoneTelHref(customer.phone) : null,
+          whatsappHref: customer.phone ? getWhatsAppHref(customer.phone) : null,
           emailHref: customer.email ? `mailto:${customer.email}` : null,
           deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(backToCustomersHref)}`,
           bookingsHref: buildCustomerBookingsHref(customer.id, backToCustomersHref),
@@ -910,7 +947,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           givenName: customer.givenName,
           surname: customer.surname,
           email: customer.email || "",
-          phone: customer.phone || "",
+          phone: customer.phone ? getPhoneDisplayValue(customer.phone) || customer.phone : "",
           company: customer.company || "",
           address: customer.address || "",
           notes: customer.notes || "",
@@ -985,6 +1022,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     if (formData.email && !isValidEmail(formData.email)) {
       errors.push("Email address is not valid.");
     }
+    const normalizedPhone = normalizePhoneToE164(formData.phone);
+    if (!formData.phone) {
+      errors.push("Phone number is required.");
+    } else if (!normalizedPhone) {
+      errors.push("Phone number is not valid.");
+    }
 
     if (errors.length > 0) {
       return res.status(400).render("pages/customers/edit", {
@@ -1004,7 +1047,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         givenName: formData.givenName,
         surname: formData.surname,
         email: formData.email || null,
-        phone: formData.phone || null,
+        phone: normalizedPhone,
         company: formData.company || null,
         address: formData.address || null,
         notes: formData.notes || null,

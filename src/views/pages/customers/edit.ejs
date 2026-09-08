@@ -73,14 +73,11 @@
           </div>
 
           <div class="form-field">
-            <label for="phone">Phone</label>
-            <input
-              type="text"
-              id="phone"
-              name="phone"
-              value="<%= formData.phone %>"
-              autocomplete="tel"
-            />
+            <%- include("../../partials/phone-number", {
+              phoneId: "phone",
+              phoneValue: formData.phone,
+              phoneRequired: true
+            }) %>
           </div>
 
           <div class="form-field">

@@ -83,6 +83,40 @@ a {
   margin: 0 auto;
 }
 
+.phone-number-component__input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.phone-number-component__flag {
+  font-size: 1.35rem;
+  min-width: 1.75rem;
+}
+
+.phone-number-component__input input {
+  flex: 1;
+}
+
+.phone-number-component__country,
+.phone-number-component__error {
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.phone-number-component__error {
+  color: var(--rm-brown-red);
+}
+
+.phone-number-component__actions,
+.phone-number-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
 .system-status-bar {
   background: var(--rm-system-bar-bg);
   color: var(--rm-system-bar-text);
@@ -483,6 +517,7 @@ button:visited,
 
 .private-customer-form input[type="email"],
 .private-customer-form input[type="text"],
+.private-customer-form input[type="tel"],
 .private-customer-form select,
 .private-customer-form textarea {
   max-width: none;

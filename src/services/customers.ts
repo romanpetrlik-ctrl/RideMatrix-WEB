@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../database/connection";
+import { normalizePhoneToE164 } from "./phone-numbers";
 
 type Queryable = Pool | PoolClient;
 
@@ -376,7 +377,7 @@ export async function createCustomer(
         String(input.surname || "").trim(),
         email,
         normalizedEmail,
-        trimOrNull(input.phone),
+        normalizePhoneToE164(String(input.phone || "")),
         trimOrNull(input.company),
         trimOrNull(input.address),
         trimOrNull(input.houseNameNumber),
@@ -452,7 +453,11 @@ export async function updateCustomer(
       continue;
     }
 
-    values.push(trimOrNull(value as string | null));
+    values.push(
+      inputKey === "phone"
+        ? normalizePhoneToE164(String(value || ""))
+        : trimOrNull(value as string | null)
+    );
     assignments.push(`${column} = $${values.length}`);
   }
 
