@@ -49,7 +49,20 @@
             </div>
             <div>
               <dt>Phone</dt>
-              <dd><%= customer.phone || "No phone on file" %></dd>
+              <dd>
+                <% if (customer.phoneDisplay && customer.phoneCountry) { %>
+                  <span class="phone-number-display" title="<%= customer.phoneCountry.countryName %> (<%= customer.phoneCountry.callingCode %>)" aria-label="<%= customer.phoneCountry.countryName %> (<%= customer.phoneCountry.callingCode %>)">
+                    <span aria-hidden="true"><%= customer.phoneFlag %></span>
+                    <%= customer.phoneDisplay %>
+                  </span>
+                  <span class="phone-number-actions">
+                    <% if (customer.telHref) { %><a href="<%= customer.telHref %>">Call</a><% } %>
+                    <% if (customer.whatsappHref) { %><a href="<%= customer.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message</a><% } %>
+                  </span>
+                <% } else { %>
+                  No phone on file
+                <% } %>
+              </dd>
             </div>
             <div>
               <dt>Created</dt>

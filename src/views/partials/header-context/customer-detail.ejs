@@ -2,8 +2,12 @@
   <div class="context-toolbar__actions">
     <a class="button" href="<%= customer.newBookingHref %>">New Booking</a>
 
+    <% if (customer.telHref) { %>
+      <a class="button button--secondary" href="<%= customer.telHref %>">Call</a>
+    <% } %>
+
     <% if (customer.whatsappHref) { %>
-      <a class="button button--secondary" href="<%= customer.whatsappHref %>" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+      <a class="button button--secondary" href="<%= customer.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message</a>
     <% } else { %>
       <span class="button button--secondary button--disabled" aria-disabled="true">WhatsApp unavailable</span>
     <% } %>
