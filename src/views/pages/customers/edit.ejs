@@ -122,13 +122,37 @@
             </select>
           </div>
 
-          <div class="form-field">
-            <label for="notes">Internal notes</label>
-            <textarea
-              id="notes"
-              name="notes"
-              rows="3"
-            ><%= formData.notes %></textarea>
+          <div class="private-customer-form__notes-layout">
+            <div class="form-field private-customer-form__notes">
+              <label for="notes">Internal notes</label>
+              <textarea
+                id="notes"
+                name="notes"
+                rows="5"
+              ><%= formData.notes %></textarea>
+            </div>
+
+            <section class="customer-bookings-panel" aria-labelledby="customer-bookings-title">
+              <h2 id="customer-bookings-title">Last 5 bookings</h2>
+              <% if (recentBookingsError) { %>
+                <p class="customer-bookings-panel__message">Recent bookings could not be loaded.</p>
+              <% } else if (recentBookings.length === 0) { %>
+                <p class="customer-bookings-panel__message">No bookings found.</p>
+              <% } else { %>
+                <ol class="customer-bookings-panel__list">
+                  <% recentBookings.forEach((booking) => { %>
+                    <li class="customer-bookings-panel__booking">
+                      <div class="customer-bookings-panel__booking-header">
+                        <strong><%= booking.formattedServiceDate %></strong>
+                        <span class="status-pill status-pill--booking"><%= booking.status %></span>
+                      </div>
+                      <span class="customer-bookings-panel__reference"><%= booking.reference %></span>
+                      <span class="customer-bookings-panel__route"><%= booking.pickup %> → <%= booking.dropoff %></span>
+                    </li>
+                  <% }) %>
+                </ol>
+              <% } %>
+            </section>
           </div>
 
           <div class="action-row">

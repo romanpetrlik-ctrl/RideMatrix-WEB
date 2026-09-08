@@ -18,6 +18,7 @@ import {
   deleteCustomer,
   getCustomerById,
   getCustomerCount,
+  listRecentBookingsForCustomer,
   listCustomers,
   updateCustomer
 } from "../services/customers";
@@ -88,6 +89,32 @@ function formatBookingDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+async function loadRecentBookings(customerId: string): Promise<{
+  bookings: Array<{
+    id: string;
+    reference: string;
+    serviceDate: string;
+    pickup: string;
+    dropoff: string;
+    status: "Scheduled" | "Completed" | "Cancelled";
+    formattedServiceDate: string;
+  }>;
+  error: boolean;
+}> {
+  try {
+    const bookings = await listRecentBookingsForCustomer(customerId);
+    return {
+      bookings: bookings.map((booking) => ({
+        ...booking,
+        formattedServiceDate: formatBookingDate(booking.serviceDate)
+      })),
+      error: false
+    };
+  } catch {
+    return { bookings: [], error: true };
+  }
 }
 
 function formatDateTime(value: string | null): string {
@@ -930,7 +957,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/edit", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId);
+      const customer = await getCustomerById(req.params.customerId, undefined, { loadBookings: false });
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -940,6 +967,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+      const recentBookings = await loadRecentBookings(customer.id);
 
       return res.render("pages/customers/edit", {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
@@ -948,6 +976,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: session.activeRoleLabel,
         customer,
         backToCustomersHref,
+        recentBookings: recentBookings.bookings,
+        recentBookingsError: recentBookings.error,
         formData: {
           givenName: customer.givenName,
           surname: customer.surname,
@@ -1035,6 +1065,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     if (errors.length > 0) {
+      const recentBookings = await loadRecentBookings(customer.id);
       return res.status(400).render("pages/customers/edit", {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
@@ -1042,6 +1073,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: sessionContext.activeRoleLabel,
         customer,
         backToCustomersHref,
+        recentBookings: recentBookings.bookings,
+        recentBookingsError: recentBookings.error,
         formData,
         errors
       });

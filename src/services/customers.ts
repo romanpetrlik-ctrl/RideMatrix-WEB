@@ -28,6 +28,50 @@ export type BookingRecord = {
   status: "Scheduled" | "Completed" | "Cancelled";
 };
 
+export async function listRecentBookingsForCustomer(
+  customerId: string,
+  client?: Queryable
+): Promise<BookingRecord[]> {
+  const runner = client || getPool();
+  const result = await runner.query<{
+    id: string;
+    reference: string;
+    service_date: string;
+    pickup: string;
+    dropoff: string;
+    status: BookingRecord["status"];
+  }>(
+    `SELECT id, reference, service_date, pickup, dropoff, status
+     FROM (
+       SELECT id, reference, service_date, pickup, dropoff, status
+       FROM customer_bookings
+       WHERE customer_id = $1
+       UNION ALL
+       SELECT
+         id,
+         'RM-HIST-' || REPLACE(id, 'imp-book-', ''),
+         service_date_time,
+         pickup_text,
+         dropoff_text,
+         CASE WHEN service_date_time > NOW() THEN 'Scheduled' ELSE 'Completed' END
+       FROM imported_bookings
+       WHERE customer_id = $1
+     ) AS customer_booking_history
+     ORDER BY service_date DESC
+     LIMIT 5`,
+    [customerId]
+  );
+
+  return result.rows.map((booking) => ({
+    id: booking.id,
+    reference: booking.reference,
+    serviceDate: booking.service_date,
+    pickup: booking.pickup,
+    dropoff: booking.dropoff,
+    status: booking.status
+  }));
+}
+
 export type CustomerRecord = {
   id: string;
   title: string | null;
@@ -605,7 +649,8 @@ export async function listCustomers(
 
 export async function getCustomerById(
   id: string,
-  client?: Queryable
+  client?: Queryable,
+  options?: { loadBookings?: boolean }
 ): Promise<CustomerRecord | undefined> {
   const runner = client || getPool();
   const res = await runner.query<CustomerRow>(
@@ -616,6 +661,10 @@ export async function getCustomerById(
   const row = res.rows[0];
   if (!row) {
     return undefined;
+  }
+
+  if (options?.loadBookings === false) {
+    return mapRow(row, []);
   }
 
   const records = await hydrate(runner, [row]);
