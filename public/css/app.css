@@ -358,6 +358,7 @@ label {
 
 input[type="email"],
 input[type="text"],
+input[type="tel"],
 input[type="search"],
 input[type="password"],
 select,
@@ -441,7 +442,7 @@ button:visited,
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--rm-light-bronze);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.7);
+  background: #fff9f2;
   color: var(--rm-text);
   resize: vertical;
 }
@@ -449,7 +450,7 @@ button:visited,
 .form-field textarea:focus {
   outline: none;
   border-color: var(--rm-camel);
-  background: #fff;
+  background: #fff9f2;
 }
 
 .customer-register-panel {
@@ -617,6 +618,11 @@ button:visited,
 .button--secondary:hover,
 .button--secondary:focus {
   background: var(--rm-soft-apricot);
+  color: var(--rm-walnut-3);
+}
+
+.button--secondary:visited {
+  background: transparent;
   color: var(--rm-walnut-3);
 }
 
