@@ -61,23 +61,25 @@
             />
           </div>
 
-          <div class="form-field">
-            <label for="email">Email address</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value="<%= formData.email %>"
-              autocomplete="email"
-            />
-          </div>
+          <div class="form-row form-row--contact">
+            <div class="form-field">
+              <label for="email">Email address</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value="<%= formData.email %>"
+                autocomplete="email"
+              />
+            </div>
 
-          <div class="form-field">
-            <%- include("../../partials/phone-number", {
-              phoneId: "phone",
-              phoneValue: formData.phone,
-              phoneRequired: true
-            }) %>
+            <div class="form-field">
+              <%- include("../../partials/phone-number", {
+                phoneId: "phone",
+                phoneValue: formData.phone,
+                phoneRequired: true
+              }) %>
+            </div>
           </div>
 
           <div class="form-field">

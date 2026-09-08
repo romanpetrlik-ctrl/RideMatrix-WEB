@@ -11,6 +11,9 @@ import {
 
 test("normalizes supported local and international formats", () => {
   const cases = [
+    ["00420724982564", "+420724982564"],
+    ["0044207777888999", "+44207777888999"],
+    ["00433612345678", "+33612345678"],
     ["07777 888 999", "+447777888999"],
     ["07777888999", "+447777888999"],
     ["0044 7777 888 999", "+447777888999"],
@@ -36,6 +39,13 @@ test("resolves country metadata and integration links", () => {
     countryName: "Czechia",
     callingCode: "+420"
   });
+  assert.deepEqual(getPhoneCountry("+447777888999"), {
+    isoCode: "GB",
+    countryName: "United Kingdom",
+    callingCode: "+44"
+  });
+  assert.equal(getPhoneTelHref("00420724982564"), "tel:+420724982564");
+  assert.equal(getWhatsAppHref("00420724982564"), "https://wa.me/420724982564");
   assert.equal(getPhoneTelHref("07777 888 999"), "tel:+447777888999");
   assert.equal(getWhatsAppHref("+420 555 666 777"), "https://wa.me/420555666777");
   assert.equal(getPhoneDisplayValue("+447777888999"), "+44 7777 888999");

@@ -10,7 +10,7 @@ export type ParsedPhoneNumber = PhoneNumber;
 const DEFAULT_COUNTRY: CountryCode = "GB";
 
 function parse(value: string, defaultCountry: CountryCode = DEFAULT_COUNTRY): ParsedPhoneNumber | null {
-  const trimmed = String(value || "").trim();
+  const trimmed = String(value || "").trim().replace(/^00/, "+");
   if (!trimmed) {
     return null;
   }

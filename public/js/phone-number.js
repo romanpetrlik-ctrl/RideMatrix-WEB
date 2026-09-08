@@ -26,6 +26,9 @@
       input.setCustomValidity(input.value && !valid ? "Phone number is not valid." : "");
       actions.hidden = !valid;
       if (valid) {
+        if (preview.normalized && input.value !== preview.normalized) {
+          input.value = preview.normalized;
+        }
         flag.textContent = flagForIso(preview.country.isoCode);
         country.textContent = preview.country.countryName + " (" + preview.country.callingCode + ")";
         country.title = country.textContent;
