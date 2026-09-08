@@ -359,6 +359,31 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const upload = multer({ storage: multer.memoryStorage() });
   const loadSession = options.loadSession ?? getSessionAccount;
 
+  router.get("/customers/phone-preview", async (req, res, next) => {
+    try {
+      await requireAdminSession(req.headers.cookie, loadSession);
+      const value = String(req.query.value || "");
+      const normalized = normalizePhoneToE164(value);
+      const country = getPhoneCountry(value);
+      return res.json({
+        valid: Boolean(normalized),
+        normalized,
+        display: normalized ? getPhoneDisplayValue(normalized) : null,
+        country,
+        telHref: normalized ? getPhoneTelHref(normalized) : null,
+        whatsappHref: normalized ? getWhatsAppHref(normalized) : null
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") {
+        return res.status(401).json({ valid: false });
+      }
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).json({ valid: false });
+      }
+      return next(error);
+    }
+  });
+
 
   router.get("/customers", async (req, res, next) => {
     try {
@@ -560,30 +585,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         errors: []
       });
 
-      router.get("/customers/phone-preview", async (req, res, next) => {
-        try {
-          await requireAdminSession(req.headers.cookie, loadSession);
-          const value = String(req.query.value || "");
-          const normalized = normalizePhoneToE164(value);
-          const country = getPhoneCountry(value);
-          return res.json({
-            valid: Boolean(normalized),
-            normalized,
-            display: normalized ? getPhoneDisplayValue(normalized) : null,
-            country,
-            telHref: normalized ? getPhoneTelHref(normalized) : null,
-            whatsappHref: normalized ? getWhatsAppHref(normalized) : null
-          });
-        } catch (error) {
-          if (error instanceof Error && error.message === "unauthenticated") {
-            return res.status(401).json({ valid: false });
-          }
-          if (error instanceof Error && error.message === "forbidden") {
-            return res.status(403).json({ valid: false });
-          }
-          return next(error);
-        }
-      });
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
