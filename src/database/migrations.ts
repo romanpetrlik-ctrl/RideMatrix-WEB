@@ -370,6 +370,17 @@ export const MIGRATIONS: Migration[] = [
          ON vehicle_documents(vehicle_id, document_type)
          WHERE is_latest = TRUE;
     `
+  },
+  {
+    id: "0005_customer_geocoding",
+    sql: `
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS geocoded_at TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS geocode_status TEXT;
+      CREATE INDEX IF NOT EXISTS idx_customers_coordinates
+        ON customers (latitude, longitude);
+    `
   }
 ];
 

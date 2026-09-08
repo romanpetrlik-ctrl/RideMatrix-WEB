@@ -97,6 +97,10 @@ export type CustomerRecord = {
   company: string | null;
   preferredContact: PreferredContact;
   source: string;
+  latitude: number | null;
+  longitude: number | null;
+  geocodedAt: string | null;
+  geocodeStatus: string | null;
   bookings: BookingRecord[];
 };
 
@@ -161,6 +165,10 @@ type CustomerRow = {
   notes: string | null;
   status: string;
   source: string;
+  latitude: number | null;
+  longitude: number | null;
+  geocoded_at: string | null;
+  geocode_status: string | null;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
@@ -251,6 +259,10 @@ function mapRow(row: CustomerRow, bookings: BookingRecord[]): CustomerRecord {
     company: row.company,
     preferredContact: normalizePreferredContact(row.preferred_contact),
     source: row.source,
+    latitude: typeof row.latitude === "number" ? row.latitude : null,
+    longitude: typeof row.longitude === "number" ? row.longitude : null,
+    geocodedAt: row.geocoded_at,
+    geocodeStatus: row.geocode_status,
     bookings
   };
 }

@@ -155,6 +155,17 @@
             </section>
           </div>
 
+          <section class="customer-map-card" aria-labelledby="customer-map-heading">
+            <h2 id="customer-map-heading">Address map</h2>
+            <%- include("../../partials/map-preview", {
+              mapView,
+              emptyTitle: customer.address ? "Map preview unavailable." : "Address has not been geocoded.",
+              emptyMessage: customer.address
+                ? "Address has not been geocoded."
+                : "No customer address is available for a map preview."
+            }) %>
+          </section>
+
           <div class="action-row">
             <button type="submit" class="button">Save Changes</button>
             <a class="button button--secondary" href="/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">Cancel</a>
