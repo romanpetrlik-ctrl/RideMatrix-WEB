@@ -3,10 +3,12 @@
 Google Maps Platform is the production provider. Access is isolated behind
 `src/services/maps.ts` and `src/services/google-maps.ts`; callers consume
 `GeoPoint`, `GeocodedAddress`, and `MapView`, never Google response objects.
+The browser preview helper accepts a browser key explicitly and only loads the
+Google Maps JavaScript API when a configured page opts into it.
 
 ## Configuration
 
-Required environment variables are `GOOGLE_MAPS_ENABLED`, 
+Required environment variables are `GOOGLE_MAPS_ENABLED`,
 `GOOGLE_MAPS_SERVER_API_KEY`, `GOOGLE_MAPS_BROWSER_API_KEY`, and
 `GOOGLE_MAPS_MAP_ID`. The server key is used only by the server-side Geocoding
 API adapter; the browser key is separate and may be used by the JavaScript map
