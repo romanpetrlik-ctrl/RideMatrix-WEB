@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { requireCsrfToken } from "../middleware/csrf";
-import { getSessionAccount } from "../services/api";
+import { getSessionAccount, type SessionAccount } from "../services/api";
 import {
   MissingRequiredColumnsError,
   importCabcherBookings,
@@ -31,6 +31,7 @@ import {
 
 type CustomersRouterOptions = {
   appTitle: string;
+  loadSession?: (cookieHeader?: string) => Promise<SessionAccount>;
 };
 
 type NoticeTone = "warning" | "critical";
@@ -302,9 +303,10 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
 }
 
 async function requireAdminSession(
-  cookieHeader: string | undefined
+  cookieHeader: string | undefined,
+  loadSession: (cookieHeader?: string) => Promise<SessionAccount>
 ): Promise<{ email: string; activeRoleLabel: string }> {
-  const session = await getSessionAccount(cookieHeader);
+  const session = await loadSession(cookieHeader);
 
   if (!session.authenticated || !session.user) {
     throw new Error("unauthenticated");
@@ -355,10 +357,12 @@ function buildAddressFromParts(parts: {
 export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const router = Router();
   const upload = multer({ storage: multer.memoryStorage() });
+  const loadSession = options.loadSession ?? getSessionAccount;
+
 
   router.get("/customers", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const search = String(req.query.q || "").trim();
       const requestedStatus = String(req.query.status || "all");
       const status = CUSTOMER_STATUS_OPTIONS.includes(requestedStatus as CustomerStatus)
@@ -440,7 +444,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.get("/customers/import", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const batches = await listImportBatches();
 
       return res.render("pages/customers/import", {
@@ -476,7 +480,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     let sessionContext: { email: string; activeRoleLabel: string } | null = null;
 
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       sessionContext = session;
       const uploadedFile = req.file;
 
@@ -542,7 +546,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.get("/customers/register", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const requestedType = String(req.query.type || "").trim().toLowerCase();
       const customerType = requestedType === "private" || requestedType === "business" ? requestedType : "";
 
@@ -558,7 +562,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
       router.get("/customers/phone-preview", async (req, res, next) => {
         try {
-          await requireAdminSession(req.headers.cookie);
+          await requireAdminSession(req.headers.cookie, loadSession);
           const value = String(req.query.value || "");
           const normalized = normalizePhoneToE164(value);
           const country = getPhoneCountry(value);
@@ -600,7 +604,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     let sessionContext: { email: string; activeRoleLabel: string } | null = null;
 
     try {
-      sessionContext = await requireAdminSession(req.headers.cookie);
+      sessionContext = await requireAdminSession(req.headers.cookie, loadSession);
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
@@ -708,7 +712,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.get("/customers/:customerId", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
@@ -768,7 +772,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.post("/customers/:customerId/suspend", async (req, res, next) => {
     try {
-      await requireAdminSession(req.headers.cookie);
+      await requireAdminSession(req.headers.cookie, loadSession);
       const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
@@ -806,7 +810,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.get("/customers/:customerId/bookings", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
@@ -852,7 +856,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.get("/customers/:customerId/delete", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
@@ -890,7 +894,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.post("/customers/:customerId/delete", async (req, res, next) => {
     try {
-      await requireAdminSession(req.headers.cookie);
+      await requireAdminSession(req.headers.cookie, loadSession);
       const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
@@ -924,7 +928,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
   router.get("/customers/:customerId/edit", async (req, res, next) => {
     try {
-      const session = await requireAdminSession(req.headers.cookie);
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
       const customer = await getCustomerById(req.params.customerId);
 
       if (!customer) {
@@ -976,7 +980,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     let sessionContext: { email: string; activeRoleLabel: string } | null = null;
 
     try {
-      sessionContext = await requireAdminSession(req.headers.cookie);
+      sessionContext = await requireAdminSession(req.headers.cookie, loadSession);
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
