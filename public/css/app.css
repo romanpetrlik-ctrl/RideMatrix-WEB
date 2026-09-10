@@ -122,8 +122,16 @@ a {
 .phone-number-actions {
   display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
   margin-top: 0.5rem;
+}
+
+.phone-number-component__actions .button,
+.phone-number-actions .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .system-status-bar {
@@ -1558,6 +1566,11 @@ button:visited,
   @media (max-width: 700px) {
     .phone-number-component__input {
       grid-template-columns: 1fr;
+    }
+
+    .phone-number-component__actions,
+    .phone-number-actions {
+      flex-wrap: wrap;
     }
 
     .private-customer-form .form-row--contact {
