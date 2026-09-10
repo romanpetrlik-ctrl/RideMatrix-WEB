@@ -17,12 +17,13 @@ const result: GeocodedAddress = {
   postcode: "SW1A 2AA"
 };
 
-const configured = { provider: "test", apiKey: "test-key", geocodingEnabled: true };
+const configured = { enabled: true, provider: "google" as const, serverApiKey: "test-key", geocodingEnabled: true };
 
 test("map configuration is disabled without provider or API key", () => {
-  assert.equal(readMapConfiguration({ MAP_GEOCODING_ENABLED: "true" }).provider, "");
+  assert.equal(readMapConfiguration({ GOOGLE_MAPS_ENABLED: "true" }).provider, "google");
   assert.equal(createMapService(undefined, {
-    provider: "test",
+    enabled: true,
+    provider: "google",
     geocodingEnabled: true
   }).enabled, false);
 });

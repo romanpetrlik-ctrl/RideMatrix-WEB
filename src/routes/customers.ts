@@ -29,7 +29,7 @@ import {
   getWhatsAppHref,
   normalizePhoneToE164
 } from "../services/phone-numbers";
-import { isValidGeoPoint, toMapView, type MapView } from "../services/maps";
+import { isValidGeoPoint, readMapConfiguration, toMapView, type MapView } from "../services/maps";
 
 type CustomersRouterOptions = {
   appTitle: string;
@@ -383,6 +383,11 @@ function buildAddressFromParts(parts: {
 }
 
 function getCustomerMapView(customer: CustomerRecord): MapView | null {
+  const mapConfiguration = readMapConfiguration();
+  if (!mapConfiguration.enabled || !mapConfiguration.browserApiKey) {
+    return null;
+  }
+
   const point = { latitude: customer.latitude, longitude: customer.longitude };
   if (!isValidGeoPoint(point)) {
     return null;
