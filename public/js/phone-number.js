@@ -6,11 +6,11 @@
     var flag = component.querySelector("[data-phone-flag]");
     var country = component.querySelector("[data-phone-country]");
     var error = component.querySelector("[data-phone-error]");
-    var actions = component.querySelector("[data-phone-actions]");
-    var email = component.querySelector("[data-phone-email]");
-    var tel = component.querySelector("[data-phone-tel]");
-    var whatsapp = component.querySelector("[data-phone-whatsapp]");
     var form = input.closest("form");
+    var actions = form && form.querySelector("[data-phone-actions]");
+    var email = actions && actions.querySelector("[data-phone-email]");
+    var tel = actions && actions.querySelector("[data-phone-tel]");
+    var whatsapp = actions && actions.querySelector("[data-phone-whatsapp]");
     var emailInput = form && form.querySelector('input[type="email"]');
     var timer;
     var state = null;
@@ -22,6 +22,9 @@
     }
 
     function renderActions() {
+      if (!actions || !email || !tel || !whatsapp) {
+        return;
+      }
       var validPhone = Boolean(state && state.valid);
       var validEmail = hasUsableEmail();
       email.hidden = !validEmail;

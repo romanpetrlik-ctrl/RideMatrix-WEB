@@ -35,7 +35,7 @@
         <h1>Edit <%= customer.surname %>, <%= customer.givenName %></h1>
         <p>Update the customer's details below. Fields marked with * are required.</p>
 
-        <form class="inline-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+        <form class="inline-form private-customer-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
           <%- locals.csrfField || "" %>
           <div class="form-field">
             <label for="givenName">First name *</label>
@@ -81,6 +81,8 @@
               }) %>
             </div>
           </div>
+
+          <%- include("../../partials/customer-contact-actions") %>
 
           <div class="form-field">
             <label for="company">Company</label>
