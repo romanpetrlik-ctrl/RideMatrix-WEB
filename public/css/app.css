@@ -1569,6 +1569,11 @@ button:visited,
       grid-template-columns: 1fr;
     }
 
+    .phone-number-component__actions,
+    .phone-number-actions {
+      flex-wrap: wrap;
+    }
+
     .private-customer-form .form-row--contact {
       grid-template-columns: 1fr;
     }

@@ -1,11 +1,5 @@
 (function () {
-  function flagForIso(isoCode) {
-    return isoCode
-      ? isoCode.toUpperCase().replace(/[A-Z]/g, function (letter) {
-          return String.fromCodePoint(letter.charCodeAt(0) + 127397);
-        })
-      : "🌐";
-  }
+  var flagForIso = window.PhoneFlags.flagForIso;
 
   document.querySelectorAll("[data-phone-number]").forEach(function (component) {
     var input = component.querySelector("[data-phone-input]");
@@ -57,8 +51,10 @@
         if (preview.normalized && input.value !== preview.normalized) {
           input.value = preview.normalized;
         }
-        flag.textContent = flagForIso(preview.country.isoCode);
-        country.textContent = preview.country.countryName + " (" + preview.country.callingCode + ")";
+        flag.textContent = flagForIso(preview.country && preview.country.isoCode);
+        country.textContent = preview.country
+          ? preview.country.countryName + " (" + preview.country.callingCode + ")"
+          : "Enter a phone number";
         country.title = country.textContent;
         country.setAttribute("aria-label", country.textContent);
         tel.href = preview.telHref;

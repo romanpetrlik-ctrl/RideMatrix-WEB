@@ -54,6 +54,25 @@ test("phone preview normalizes 00 international prefixes and builds E.164 links"
   assert.equal(body.whatsappHref, "https://wa.me/420724982564");
 });
 
+test("phone preview accepts the Czech mobile example and preserves metadata", async () => {
+  const response = await requestPreview(adminSession, "+420777888999");
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body, {
+    valid: true,
+    normalized: "+420777888999",
+    display: "+420 777 888 999",
+    country: {
+      isoCode: "CZ",
+      countryName: "Czechia",
+      callingCode: "+420"
+    },
+    telHref: "tel:+420777888999",
+    whatsappHref: "https://wa.me/420777888999"
+  });
+});
+
 test("phone preview uses GB for local numbers", async () => {
   const response = await requestPreview(adminSession, "07777 888 999");
   const body = await response.json();
