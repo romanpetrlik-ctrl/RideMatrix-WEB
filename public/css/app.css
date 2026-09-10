@@ -120,10 +120,19 @@ a {
 
 .phone-number-component__actions,
 .phone-number-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
-  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
   margin-top: 0.5rem;
+}
+
+.phone-number-component__actions .button,
+.phone-number-actions .button {
+  width: 100%;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .system-status-bar {
@@ -1562,6 +1571,18 @@ button:visited,
 
     .private-customer-form .form-row--contact {
       grid-template-columns: 1fr;
+    }
+
+    .phone-number-component__actions,
+    .phone-number-actions {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (min-width: 701px) and (max-width: 1100px) {
+    .phone-number-component__actions,
+    .phone-number-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
