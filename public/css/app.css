@@ -516,18 +516,32 @@ button:visited,
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.9fr);
   gap: 1.25rem;
-  align-items: start;
+  align-items: stretch;
   min-width: 0;
 }
 
 .private-customer-form__column {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.85rem;
-  align-content: start;
   padding: 1rem;
   border: 1px solid var(--rm-border);
   background: rgba(255, 249, 242, 0.6);
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.private-customer-form__column *,
+.private-customer-form__column .form-row,
+.private-customer-form__column .form-field {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.private-customer-form__column--map {
+  min-height: 0;
 }
 
 .private-customer-form__column h2 {
@@ -604,10 +618,13 @@ button:visited,
 }
 
 .address-map-placeholder {
+  flex: 1 1 auto;
   display: grid;
   place-content: center;
   gap: 0.5rem;
-  min-height: 23rem;
+  min-height: 15rem;
+  height: auto;
+  max-width: 100%;
   padding: 1rem;
   border: 1px dashed var(--rm-faded-copper);
   background:
@@ -616,6 +633,7 @@ button:visited,
     #fff9f2;
   color: var(--rm-text-soft);
   text-align: center;
+  box-sizing: border-box;
 }
 
 .address-map-placeholder strong {
@@ -623,6 +641,7 @@ button:visited,
 }
 
 .address-map-preview {
+  flex: 1 1 auto;
   display: grid;
   place-content: center;
   gap: 0.5rem;
@@ -633,6 +652,7 @@ button:visited,
   background: var(--rm-surface);
   color: var(--rm-text-soft);
   text-align: center;
+  box-sizing: border-box;
 }
 
 .address-map-preview__canvas {
@@ -724,6 +744,11 @@ button:visited,
 }
 
 @media (max-width: 900px) {
+  .private-customer-form__column {
+    height: auto;
+    min-height: 0;
+  }
+
   .private-customer-form__notes-layout {
     grid-template-columns: 1fr;
   }
