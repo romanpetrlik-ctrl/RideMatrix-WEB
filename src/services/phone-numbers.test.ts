@@ -16,6 +16,8 @@ test("normalizes supported local and international formats", () => {
     ["07777888999", "+447777888999"],
     ["0044 7777 888 999", "+447777888999"],
     ["+44 7777 888 999", "+447777888999"],
+    ["00420777888999", "+420777888999"],
+    ["+420777888999", "+420777888999"],
     ["+420 555 666 777", "+420555666777"],
     ["+33 6 12 34 56 78", "+33612345678"]
   ];
@@ -32,6 +34,8 @@ test("rejects empty and invalid numbers", () => {
 });
 
 test("resolves country metadata and integration links", () => {
+  assert.equal(isValidPhoneNumberValue("+420777888999"), true);
+  assert.equal(normalizePhoneToE164("+420724982564"), "+420724982564");
   assert.deepEqual(getPhoneCountry("+420 555 666 777"), {
     isoCode: "CZ",
     countryName: "Czechia",
@@ -46,5 +50,7 @@ test("resolves country metadata and integration links", () => {
   assert.equal(getWhatsAppHref("00420724982564"), "https://wa.me/420724982564");
   assert.equal(getPhoneTelHref("07777 888 999"), "tel:+447777888999");
   assert.equal(getWhatsAppHref("+420 555 666 777"), "https://wa.me/420555666777");
+  assert.equal(getPhoneTelHref("+420777888999"), "tel:+420777888999");
+  assert.equal(getWhatsAppHref("+420777888999"), "https://wa.me/420777888999");
   assert.equal(getPhoneDisplayValue("+447777888999"), "+44 7777 888999");
 });
