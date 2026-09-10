@@ -35,7 +35,7 @@
       whatsapp.hidden = !validPhone;
       actions.hidden = !validEmail && !validPhone;
       if (validEmail) {
-        email.href = "mailto:" + encodeURI(emailInput.value.trim());
+        email.href = "mailto:" + encodeURIComponent(emailInput.value.trim()).replace(/%40/g, "@");
       } else {
         email.removeAttribute("href");
       }
@@ -74,13 +74,14 @@
 
     function preview() {
       clearTimeout(timer);
+      var snapshot = tracker.trackRequest(input.value);
+      state = null;
+      renderActions();
       if (!input.value.trim()) {
-        tracker.trackRequest(input.value);
         render({ valid: false });
         return;
       }
       timer = setTimeout(function () {
-        var snapshot = tracker.trackRequest(input.value);
         fetch("/customers/phone-preview?value=" + encodeURIComponent(snapshot.value), {
           headers: { Accept: "application/json" }
         })
