@@ -54,6 +54,17 @@ test("phone preview normalizes 00 international prefixes and builds E.164 links"
   assert.equal(body.whatsappHref, "https://wa.me/420724982564");
 });
 
+test("phone preview accepts the Czech mobile regression values", async () => {
+  for (const value of ["+420774521617", "00420774521617", "+420777888999", "+420724982564"]) {
+    const response = await requestPreview(adminSession, value);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.valid, true);
+    assert.equal(body.country.isoCode, "CZ");
+  }
+});
+
 test("phone preview accepts the Czech mobile example and preserves metadata", async () => {
   const response = await requestPreview(adminSession, "+420777888999");
   const body = await response.json();

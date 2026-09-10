@@ -17,7 +17,10 @@ test("normalizes supported local and international formats", () => {
     ["0044 7777 888 999", "+447777888999"],
     ["+44 7777 888 999", "+447777888999"],
     ["00420777888999", "+420777888999"],
+    ["00420774521617", "+420774521617"],
     ["+420777888999", "+420777888999"],
+    ["+420774521617", "+420774521617"],
+    ["+420724982564", "+420724982564"],
     ["+420 555 666 777", "+420555666777"],
     ["+33 6 12 34 56 78", "+33612345678"]
   ];
@@ -34,6 +37,7 @@ test("rejects empty and invalid numbers", () => {
 });
 
 test("resolves country metadata and integration links", () => {
+  assert.equal(isValidPhoneNumberValue("+420774521617"), true);
   assert.equal(isValidPhoneNumberValue("+420777888999"), true);
   assert.equal(normalizePhoneToE164("+420724982564"), "+420724982564");
   assert.deepEqual(getPhoneCountry("+420 555 666 777"), {

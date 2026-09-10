@@ -47,7 +47,7 @@
 
     function render(preview) {
       state = preview;
-      var valid = preview && preview.valid;
+      var valid = Boolean(preview && preview.valid === true);
       error.hidden = !input.value || valid;
       input.setCustomValidity(input.value && !valid ? "Phone number is not valid." : "");
       if (valid) {
