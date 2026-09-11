@@ -46,9 +46,11 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(header, /site-header__action site-header__system-action.*Switch workspace/);
   assert.match(header, /class="site-header__action site-header__system-action" type="submit">Exit/);
   assert.match(css, /\.site-header__action \{[\s\S]*height: 2\.5rem;[\s\S]*align-items: center;/);
-  assert.match(css, /\.customer-form-page--private \.customer-form-panel > h1 \{[\s\S]*font-size: clamp\(1\.75rem, 2\.4vw, 2rem\);/);
+  assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
+  assert.match(css, /h1,\s*h2,\s*h3 \{[\s\S]*margin-top: 0;/);
+  assert.doesNotMatch(css, /\.customer-form-page--private \.customer-form-panel > h1 \{[\s\S]*font-size: clamp\(1\.75rem, 2\.4vw, 2rem\);/);
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);
   assert.match(header, /headerContextActions\.length > 0/);
   assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
