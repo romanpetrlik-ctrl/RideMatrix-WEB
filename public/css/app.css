@@ -65,6 +65,7 @@ html {
 }
 
 body {
+  font-family: inherit;
   margin: 0;
   background: var(--rm-page-bg);
   color: var(--rm-text);
@@ -472,6 +473,12 @@ main.container {
 }
 
 h1,
+h2 {
+  font-family: "Lato", Arial, Helvetica, sans-serif;
+  font-weight: 700;
+}
+
+h1,
 h2,
 h3 {
   margin-top: 0;
@@ -589,24 +596,6 @@ button:visited,
   outline: none;
   border-color: var(--rm-camel);
   background: #fff9f2;
-}
-
-/* Temporary typography preview: /customers/register?fontPreview=lato-headings */
-body.font-preview--lato-headings {
-  font-family: "Open Sans", Arial, Helvetica, sans-serif;
-}
-
-body.font-preview--lato-headings h1,
-body.font-preview--lato-headings h2 {
-  font-family: "Lato", Arial, Helvetica, sans-serif;
-  font-weight: 700;
-}
-
-body.font-preview--lato-headings button,
-body.font-preview--lato-headings input,
-body.font-preview--lato-headings select,
-body.font-preview--lato-headings textarea {
-  font-family: "Open Sans", Arial, Helvetica, sans-serif;
 }
 
 .customer-register-panel {
