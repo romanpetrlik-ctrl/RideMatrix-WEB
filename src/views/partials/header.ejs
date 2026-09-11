@@ -67,13 +67,13 @@
       <% } %>
 
       <% if (showRoleSwitch) { %>
-        <a class="site-header__link" href="/choose-role">Switch workspace</a>
+        <a class="site-header__link site-header__action site-header__system-action" href="/choose-role">Switch workspace</a>
       <% } %>
 
       <% if (showExitLink) { %>
         <form class="inline-form" method="post" action="/exit">
           <%- locals.csrfField || "" %>
-          <button type="submit">Exit</button>
+          <button class="site-header__action site-header__system-action" type="submit">Exit</button>
         </form>
       <% } %>
     </div>

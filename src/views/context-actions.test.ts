@@ -30,11 +30,16 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
 test("shared context action partial renders only supplied actions with semantic controls", () => {
   const header = read("src/views/partials/header.ejs");
   const actions = read("src/views/partials/context-actions.ejs");
+  const css = read("public/css/app.css");
 
   assert.match(header, /headerContextActions\.length > 0/);
   assert.match(actions, /type="submit"/);
   assert.match(actions, /form="<%= action\.formId %>"/);
   assert.match(actions, /href="<%= action\.href \|\| '#' %>"/);
+  assert.match(actions, /site-header__action context-bar__action/);
+  assert.match(header, /site-header__action site-header__system-action.*Switch workspace/);
+  assert.match(header, /class="site-header__action site-header__system-action" type="submit">Exit/);
+  assert.match(css, /\.site-header__action \{[\s\S]*height: 2\.5rem;[\s\S]*align-items: center;/);
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);
   assert.match(header, /headerContextActions\.length > 0/);
   assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
