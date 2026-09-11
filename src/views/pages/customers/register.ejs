@@ -3,12 +3,8 @@
   <%
     const selectedCustomerType = typeof customerType === "string" ? customerType : "";
   %>
-  <%- include("../../partials/head", {
-    title,
-    appTitle,
-    fontPreview: typeof fontPreview !== "undefined" ? fontPreview : ""
-  }) %>
-  <body class="<%= typeof fontPreview !== "undefined" && fontPreview === "lato-headings" ? "font-preview--lato-headings" : "" %>">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
     <%- include("../../partials/system-status-bar", {
       appTitle,
       systemStatus: "System status: Healthy",
