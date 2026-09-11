@@ -154,24 +154,26 @@
                 <h2 id="private-address-heading">Address data</h2>
 
                 <div class="form-field">
-                  <label for="houseNameNumber">House name / number</label>
+                  <label for="houseNameNumber">House name / number *</label>
                   <input
                     type="text"
                     id="houseNameNumber"
                     name="houseNameNumber"
                     value="<%= formData.houseNameNumber || '' %>"
+                    required
                   />
                 </div>
 
                 <div class="form-row form-row--three">
                   <div class="form-field">
-                    <label for="addressLine1">Address line 1</label>
+                    <label for="addressLine1">Address line 1 *</label>
                     <input
                       type="text"
                       id="addressLine1"
                       name="addressLine1"
                       value="<%= formData.addressLine1 || '' %>"
                       autocomplete="address-line1"
+                      required
                     />
                   </div>
 
@@ -199,13 +201,14 @@
 
                 <div class="form-row form-row--four">
                   <div class="form-field">
-                    <label for="cityTown">City / Town</label>
+                    <label for="cityTown">City / Town *</label>
                     <input
                       type="text"
                       id="cityTown"
                       name="cityTown"
                       value="<%= formData.cityTown || '' %>"
                       autocomplete="address-level2"
+                      required
                     />
                   </div>
 
@@ -231,13 +234,14 @@
                   </div>
 
                   <div class="form-field">
-                    <label for="postcode">Postcode</label>
+                    <label for="postcode">Postcode *</label>
                     <input
                       type="text"
                       id="postcode"
                       name="postcode"
                       value="<%= formData.postcode || '' %>"
                       autocomplete="postal-code"
+                      required
                     />
                   </div>
                 </div>

@@ -165,6 +165,14 @@ test("customer register validation errors still render without fontPreview in th
     assert.match(body, /Surname is required\./);
     assert.match(body, /Email address is not valid\./);
     assert.match(body, /Phone number is not valid\./);
+    assert.match(body, /House name \/ number is required\./);
+    assert.match(body, /Address line 1 is required\./);
+    assert.match(body, /City \/ Town is required\./);
+    assert.match(body, /Postcode is required\./);
+    assert.match(body, /id="houseNameNumber"[^>]*required/);
+    assert.match(body, /id="addressLine1"[^>]*required/);
+    assert.match(body, /id="cityTown"[^>]*required/);
+    assert.match(body, /id="postcode"[^>]*required/);
     assert.match(body, /family=Lato:wght@400;700&family=Open\+Sans:wght@400;600;700&display=swap/);
     assert.doesNotMatch(body, /font-preview--lato-headings/);
   } finally {
