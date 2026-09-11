@@ -28,7 +28,7 @@
       ]
     }) %>
 
-    <main class="container customer-page">
+    <main class="container customer-page<%= selectedCustomerType === "private" ? " customer-page--private" : "" %>">
       <% if (errors.length > 0) { %>
         <section class="notice notice--critical">
           <strong>Please correct the following errors:</strong>
@@ -40,7 +40,7 @@
         </section>
       <% } %>
 
-      <section class="panel panel--compact customer-register-panel">
+      <section class="panel panel--compact customer-register-panel<%= selectedCustomerType === "private" ? " customer-register-panel--private" : "" %>">
         <% if (!selectedCustomerType) { %>
           <h1>New customer</h1>
           <p>Choose the customer type first so the registration flow matches the account you want to create.</p>
@@ -71,8 +71,8 @@
 
           <a class="button" href="/customers/register?type=private">Create a private customer</a>
         <% } else { %>
-          <h1>Private customer</h1>
-          <p>Fill in the individual's details below. Fields marked with * are required.</p>
+          <h1 class="private-customer-page__heading">Private customer</h1>
+          <p class="private-customer-page__intro">Fill in the individual's details below. Fields marked with * are required.</p>
 
           <form id="private-customer-form" class="inline-form private-customer-form" method="post" action="/customers/register">
             <%- locals.csrfField || "" %>
