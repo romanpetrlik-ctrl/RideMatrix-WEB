@@ -19,7 +19,14 @@
       activeRoleLabel,
       hintsLabel: "Registration",
       showRoleSwitch: true,
-      showExitLink: true
+      showExitLink: true,
+      contextBarActions: [
+        { label: "Back to customer type", href: "/customers/register", tone: "secondary" },
+        { label: "Cancel", href: "/customers", tone: "danger" },
+        ...(selectedCustomerType === "private"
+          ? [{ label: "Create Customer", type: "submit", formId: "private-customer-form", tone: "primary" }]
+          : [])
+      ]
     }) %>
 
     <main class="container">
@@ -75,7 +82,7 @@
           <h1>Private customer</h1>
           <p>Fill in the individual's details below. Fields marked with * are required.</p>
 
-          <form class="inline-form private-customer-form" method="post" action="/customers/register">
+          <form id="private-customer-form" class="inline-form private-customer-form" method="post" action="/customers/register">
             <%- locals.csrfField || "" %>
             <div class="private-customer-form__grid">
               <section class="private-customer-form__column" aria-labelledby="private-contact-heading">
@@ -276,11 +283,6 @@
               ><%= formData.notes || '' %></textarea>
             </div>
 
-            <div class="action-row">
-              <button type="submit" class="button">Create Customer</button>
-              <a class="button button--secondary" href="/customers/register">Back to customer type</a>
-              <a class="button button--secondary" href="/customers">Cancel</a>
-            </div>
           </form>
         <% } %>
       </section>
