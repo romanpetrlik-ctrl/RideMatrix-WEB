@@ -24,8 +24,14 @@ test("customer detail keeps a home address map area and readable context actions
   const css = read("public/css/app.css");
 
   assert.match(detail, /customer-detail-content/);
+  assert.match(content, /class="customer-detail-layout"/);
+  assert.match(content, /class="customer-detail-layout__information"/);
+  assert.match(content, /<aside class="panel customer-detail-layout__map"/);
+  assert.match(content, /mapView,/);
   assert.match(content, /Home address map/);
   assert.match(content, /map-preview/);
+  assert.match(css, /grid-template-columns: minmax\(0, 3fr\) minmax\(16rem, 1fr\)/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?grid-template-columns: 1fr/);
   assert.match(css, /\.context-bar__action--secondary[\s\S]*?color: var\(--rm-antique-white\)/);
   assert.match(css, /\.context-bar__action--danger[\s\S]*?color: var\(--rm-antique-white\)/);
 });
