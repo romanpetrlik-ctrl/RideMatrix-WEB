@@ -427,6 +427,29 @@ main.container {
   margin-bottom: 0.75rem;
 }
 
+.customer-page--private {
+  padding-top: 0.5rem;
+}
+
+.customer-register-panel--private {
+  padding-block: 0.75rem;
+}
+
+.customer-register-panel--private > .private-customer-page__heading {
+  font-size: clamp(1.75rem, 2.5vw, 2.25rem);
+  line-height: 1.1;
+  margin-block: 0 0.35rem;
+}
+
+.customer-register-panel--private > .private-customer-page__intro {
+  margin-top: 0;
+  margin-bottom: 0.6rem;
+}
+
+.customer-register-panel--private .private-customer-form {
+  margin-top: 0;
+}
+
 .panel {
   background: var(--rm-page-bg);
   box-shadow: var(--rm-shadow-soft);
