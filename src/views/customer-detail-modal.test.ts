@@ -21,6 +21,7 @@ test("customer list progressively enhances View links with an accessible dialog"
 test("customer detail keeps a home address map area and readable context actions", () => {
   const detail = read("src/views/pages/customers/detail.ejs");
   const content = read("src/views/partials/customer-detail-content.ejs");
+  const context = read("src/views/partials/header-context/customer-detail.ejs");
   const css = read("public/css/app.css");
 
   assert.match(detail, /customer-detail-content/);
@@ -38,6 +39,10 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?grid-template-columns: 1fr/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.customer-detail-layout > \* \{[\s\S]*?height: auto;/);
   assert.match(css, /\.site-header \.context-bar__action,[\s\S]*?\.site-header \.context-bar__action:visited,[\s\S]*?\.site-header \.context-bar__action:hover,[\s\S]*?\.site-header \.context-bar__action:focus \{[\s\S]*?color: var\(--rm-antique-white\);/);
+  assert.match(css, /\.site-header \.context-toolbar \.button,[\s\S]*?\.site-header \.context-toolbar \.button:visited,[\s\S]*?\.site-header \.context-toolbar \.button:hover,[\s\S]*?\.site-header \.context-toolbar \.button:focus \{[\s\S]*?color: var\(--rm-antique-white\);/);
+  for (const label of ["Call", "Send WhatsApp message", "Send Email", "Edit Customer", "Suspend Customer", "Delete Record", "Back to Customers"]) {
+    assert.match(context, new RegExp(`>${label}<`));
+  }
   assert.match(content, /class="button button--secondary" href="<%= customer\.telHref %>">Call/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message/);
 });

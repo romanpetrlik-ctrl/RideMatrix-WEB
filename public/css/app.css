@@ -1595,6 +1595,13 @@ button:visited,
   color: var(--rm-antique-white);
 }
 
+.site-header .context-toolbar .button,
+.site-header .context-toolbar .button:visited,
+.site-header .context-toolbar .button:hover,
+.site-header .context-toolbar .button:focus {
+  color: var(--rm-antique-white);
+}
+
 .customer-detail-panel__header,
 .customer-bookings-panel__header {
   display: flex;
