@@ -14,6 +14,7 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
   assert.match(register, /Back to customer type/);
   assert.match(register, /Cancel/);
   assert.match(register, /Create Customer/);
+  assert.doesNotMatch(register, /hintsLabel:\s*"Registration"/);
   assert.match(register, /id="private-customer-form"/);
   assert.match(register, /formId: "private-customer-form"/);
   assert.doesNotMatch(register, /<div class="action-row">[\s\S]*Create Customer/);
@@ -34,4 +35,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(actions, /type="submit"/);
   assert.match(actions, /form="<%= action\.formId %>"/);
   assert.match(actions, /href="<%= action\.href \|\| '#' %>"/);
+  assert.match(header, /site-header__action-divider" aria-hidden="true"/);
+  assert.match(header, /headerContextActions\.length > 0/);
+  assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
 });
