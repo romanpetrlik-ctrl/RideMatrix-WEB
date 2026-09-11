@@ -591,6 +591,24 @@ button:visited,
   background: #fff9f2;
 }
 
+/* Temporary typography preview: /customers/register?fontPreview=roboto-condensed */
+body.font-preview--variant-b {
+  font-family: "Open Sans", Arial, Helvetica, sans-serif;
+}
+
+body.font-preview--variant-b h1,
+body.font-preview--variant-b h2 {
+  font-family: "Roboto Condensed", "Arial Narrow", Arial, sans-serif;
+  font-weight: 700;
+}
+
+body.font-preview--variant-b button,
+body.font-preview--variant-b input,
+body.font-preview--variant-b select,
+body.font-preview--variant-b textarea {
+  font-family: inherit;
+}
+
 .customer-register-panel {
   overflow-x: auto;
 }

@@ -4,7 +4,7 @@
     const selectedCustomerType = typeof customerType === "string" ? customerType : "";
   %>
   <%- include("../../partials/head", { title, appTitle }) %>
-  <body>
+  <body class="<%= typeof fontPreview !== "undefined" && fontPreview === "roboto-condensed" ? "font-preview--variant-b" : "" %>">
     <%- include("../../partials/system-status-bar", {
       appTitle,
       systemStatus: "System status: Healthy",
