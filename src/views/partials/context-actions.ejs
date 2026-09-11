@@ -1,0 +1,23 @@
+<% if (Array.isArray(actions) && actions.length > 0) { %>
+  <nav class="context-bar__actions" aria-label="Page actions">
+    <% actions.forEach((action) => {
+      const tone = action.tone || (action.type === "submit" ? "primary" : "secondary");
+      const actionClass = `button context-bar__action context-bar__action--${tone}`;
+    %>
+      <% if (action.type === "submit") { %>
+        <button
+          type="submit"
+          class="<%= actionClass %>"
+          <% if (action.formId) { %>form="<%= action.formId %>"<% } %>
+        ><%= action.label %></button>
+      <% } else { %>
+        <a
+          class="<%= actionClass %>"
+          href="<%= action.href || '#' %>"
+          <% if (action.target) { %>target="<%= action.target %>"<% } %>
+          <% if (action.rel) { %>rel="<%= action.rel %>"<% } %>
+        ><%= action.label %></a>
+      <% } %>
+    <% }); %>
+  </nav>
+<% } %>

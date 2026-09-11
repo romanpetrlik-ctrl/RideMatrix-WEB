@@ -22,6 +22,9 @@
   const headerContextBarData = typeof contextBarData === "object" && contextBarData
     ? contextBarData
     : {};
+  const headerContextActions = typeof contextBarActions !== "undefined" && Array.isArray(contextBarActions)
+    ? contextBarActions
+    : [];
 %>
 
 <header class="site-header">
@@ -69,9 +72,12 @@
     </div>
   </div>
 
-  <% if (headerContextBarPartial) { %>
+  <% if (headerContextBarPartial || headerContextActions.length > 0) { %>
     <div class="container site-header__context">
-      <%- include(headerContextBarPartial, headerContextBarData) %>
+      <% if (headerContextBarPartial) { %>
+        <%- include(headerContextBarPartial, headerContextBarData) %>
+      <% } %>
+      <%- include("context-actions", { actions: headerContextActions }) %>
     </div>
   <% } %>
 </header>

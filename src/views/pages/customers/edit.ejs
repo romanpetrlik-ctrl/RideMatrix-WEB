@@ -16,7 +16,12 @@
       activeRoleLabel,
       hintsLabel: customer.status,
       showRoleSwitch: true,
-      showExitLink: true
+      showExitLink: true,
+      contextBarActions: [
+        { label: "Back to customer list", href: backToCustomersHref, tone: "secondary" },
+        { label: "Cancel", href: `/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>`, tone: "danger" },
+        { label: "Save Changes", type: "submit", formId: "edit-customer-form", tone: "primary" }
+      ]
     }) %>
 
     <main class="container">
@@ -35,7 +40,7 @@
         <h1>Edit <%= customer.surname %>, <%= customer.givenName %></h1>
         <p>Update the customer's details below. Fields marked with * are required.</p>
 
-        <form class="inline-form private-customer-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+        <form id="edit-customer-form" class="inline-form private-customer-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
           <%- locals.csrfField || "" %>
           <div class="form-field">
             <label for="givenName">First name *</label>
@@ -168,10 +173,6 @@
             }) %>
           </section>
 
-          <div class="action-row">
-            <button type="submit" class="button">Save Changes</button>
-            <a class="button button--secondary" href="/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">Cancel</a>
-          </div>
         </form>
       </section>
     </main>
