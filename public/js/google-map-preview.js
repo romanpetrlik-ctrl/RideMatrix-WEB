@@ -40,4 +40,11 @@
       });
     }
   };
+
+  if (typeof document === "undefined") return;
+  document.addEventListener("DOMContentLoaded", function () {
+    var elements = Array.prototype.slice.call(document.querySelectorAll(".address-map-preview[data-map-browser-key]"));
+    var browserKey = elements.length ? elements[0].dataset.mapBrowserKey : "";
+    if (browserKey && elements.length) window.RideMatrixMaps.load(browserKey, elements).catch(function () {});
+  });
 }());

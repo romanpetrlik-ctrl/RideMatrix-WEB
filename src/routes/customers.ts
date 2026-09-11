@@ -803,7 +803,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         },
         backToCustomersHref,
         notice: getNotice(req.query.notice, customer),
-        mapView: getCustomerMapView(customer)
+        mapView: getCustomerMapView(customer),
+        mapBrowserApiKey: readMapConfiguration().browserApiKey
       };
 
       return res.render(req.query.fragment === "1"
