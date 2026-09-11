@@ -626,6 +626,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         email: session.email,
         activeRoleLabel: session.activeRoleLabel,
         customerType,
+        fontPreview: String(req.query.fontPreview || ""),
         formData: {},
         errors: []
       });
@@ -995,6 +996,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: session.activeRoleLabel,
         customer,
         mapView: getCustomerMapView(customer),
+        fontPreview: String(req.query.fontPreview || ""),
         backToCustomersHref,
         recentBookings: recentBookings.bookings,
         recentBookingsError: recentBookings.error,
