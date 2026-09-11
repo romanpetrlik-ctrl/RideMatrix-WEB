@@ -2,7 +2,7 @@
   <nav class="context-bar__actions" aria-label="Page actions">
     <% actions.forEach((action) => {
       const tone = action.tone || (action.type === "submit" ? "primary" : "secondary");
-      const actionClass = `button context-bar__action context-bar__action--${tone}`;
+      const actionClass = `button site-header__action context-bar__action context-bar__action--${tone}`;
     %>
       <% if (action.type === "submit") { %>
         <button
