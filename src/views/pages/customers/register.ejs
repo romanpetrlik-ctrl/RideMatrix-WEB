@@ -28,7 +28,7 @@
       ]
     }) %>
 
-    <main class="container customer-page<%= selectedCustomerType === "private" ? " customer-page--private" : "" %>">
+    <main class="container customer-page<%= selectedCustomerType === "private" ? " customer-page--private customer-form-page customer-form-page--private" : "" %>">
       <% if (errors.length > 0) { %>
         <section class="notice notice--critical">
           <strong>Please correct the following errors:</strong>
@@ -40,7 +40,7 @@
         </section>
       <% } %>
 
-      <section class="panel panel--compact customer-register-panel<%= selectedCustomerType === "private" ? " customer-register-panel--private" : "" %>">
+      <section class="panel panel--compact customer-form-panel customer-register-panel<%= selectedCustomerType === "private" ? " customer-register-panel--private" : "" %>">
         <% if (!selectedCustomerType) { %>
           <h1>New customer</h1>
           <p>Choose the customer type first so the registration flow matches the account you want to create.</p>

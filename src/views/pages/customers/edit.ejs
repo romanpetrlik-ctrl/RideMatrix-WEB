@@ -24,7 +24,7 @@
       ]
     }) %>
 
-    <main class="container customer-page">
+    <main class="container customer-page customer-form-page customer-form-page--private">
       <% if (errors.length > 0) { %>
         <section class="notice notice--critical">
           <strong>Please correct the following errors:</strong>
@@ -36,7 +36,7 @@
         </section>
       <% } %>
 
-      <section class="panel panel--compact">
+      <section class="panel panel--compact customer-form-panel">
         <h1>Edit <%= customer.surname %>, <%= customer.givenName %></h1>
         <p>Update the customer's details below. Fields marked with * are required.</p>
 

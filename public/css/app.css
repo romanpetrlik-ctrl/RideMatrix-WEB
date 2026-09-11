@@ -435,17 +435,6 @@ main.container {
   padding-block: 0.75rem;
 }
 
-.customer-register-panel--private > .private-customer-page__heading {
-  font-size: clamp(1.75rem, 2.5vw, 2.25rem);
-  line-height: 1.1;
-  margin-block: 0 0.35rem;
-}
-
-.customer-register-panel--private > .private-customer-page__intro {
-  margin-top: 0;
-  margin-bottom: 0.6rem;
-}
-
 .customer-register-panel--private .private-customer-form {
   margin-top: 0;
 }
@@ -486,6 +475,17 @@ h1,
 h2,
 h3 {
   margin-top: 0;
+}
+
+.customer-form-page--private .customer-form-panel > h1 {
+  font-size: clamp(1.75rem, 2.4vw, 2rem);
+  line-height: 1.1;
+  margin: 0 0 0.4rem;
+}
+
+.customer-form-page--private .customer-form-panel > p {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
 }
 
 label {
