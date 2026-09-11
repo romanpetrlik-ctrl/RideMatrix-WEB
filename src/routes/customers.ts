@@ -691,6 +691,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     if (!registerFormData.givenName) registerErrors.push("First name is required.");
     if (!registerFormData.surname) registerErrors.push("Surname is required.");
+    if (!registerFormData.houseNameNumber) registerErrors.push("House name / number is required.");
+    if (!registerFormData.addressLine1) registerErrors.push("Address line 1 is required.");
+    if (!registerFormData.cityTown) registerErrors.push("City / Town is required.");
+    if (!registerFormData.postcode) registerErrors.push("Postcode is required.");
     if (registerFormData.email && !isValidEmail(registerFormData.email)) {
       registerErrors.push("Email address is not valid.");
     }
@@ -770,7 +774,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
 
-      return res.render("pages/customers/detail", {
+      const detailViewModel = {
         title: `${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: session.email,
@@ -798,8 +802,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           editHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}`
         },
         backToCustomersHref,
-        notice: getNotice(req.query.notice, customer)
-      });
+        notice: getNotice(req.query.notice, customer),
+        mapView: getCustomerMapView(customer)
+      };
+
+      return res.render(req.query.fragment === "1"
+        ? "pages/customers/detail-fragment"
+        : "pages/customers/detail", detailViewModel);
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");
