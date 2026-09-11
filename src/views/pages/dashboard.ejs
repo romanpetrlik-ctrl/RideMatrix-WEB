@@ -17,33 +17,12 @@
         Use the operational menu below to open each area.
       </p>
     </section>
-    <div class="dashboard-layout">
-      ${sections.map((section) => `
-        <section class="panel">
-          <h2>${section.title}</h2>
-          <div class="workspace-tile-grid">
-            ${section.tiles.map((tile) => tile.href
-              ? `<a class="workspace-tile" href="${tile.href}"><span class="workspace-tile__title">${tile.title}</span><span class="workspace-tile__description">${tile.description}</span><span class="workspace-tile__action">Open →</span></a>`
-              : `<a class="workspace-tile" href="/dashboard?tile=${tile.key}"><span class="workspace-tile__title">${tile.title}</span><span class="workspace-tile__description">${tile.description}</span><span class="workspace-tile__action">Open →</span></a>`
-            ).join("")}
-          </div>
-        </section>
-      `).join("")}
-    </div>
-
     ${
-      selectedTile
-        ? `
-          <section class="notice dashboard-selection-notice">
-            <strong>${selectedTile.title}</strong> is prepared as a dashboard entry point.
-            The full workflow for this area will be expanded in a later phase.
-          </section>
-        `
-        : selectedOperationalAction
+      selectedOperationalAction
           ? `
             <section class="notice dashboard-selection-notice">
               <strong>${selectedOperationalAction.category} / ${selectedOperationalAction.label}</strong>
-              is a prototype navigation target.
+              is an operational navigation target.
               ${
                 selectedOperationalAction.externalMode === "window"
                   ? "The final Live Map is intended to open as a separate map workspace."
@@ -59,7 +38,7 @@
     <section class="operations-menu-prototype" aria-labelledby="operations-menu-title">
       <div class="operations-menu-prototype__header">
         <div>
-          <p class="eyebrow">Prototype / Operations menu</p>
+          <p class="eyebrow">Operations menu</p>
           <h2 id="operations-menu-title">Operational shortcuts</h2>
         </div>
         <p>Static visual mock data only. Status indicators are not connected to live checks yet.</p>

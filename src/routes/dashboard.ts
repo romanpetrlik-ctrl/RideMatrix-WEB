@@ -5,13 +5,6 @@ type DashboardRouterOptions = {
   appTitle: string;
 };
 
-type DashboardTile = {
-  key: string;
-  title: string;
-  description: string;
-  href?: string;
-};
-
 type OperationalMenuAction = {
   label: string;
   href: string;
@@ -33,7 +26,7 @@ type SelectedOperationalAction = {
   externalMode?: "tab" | "window";
 };
 
-const operationalMenuRows: OperationalMenuRow[] = [
+export const operationalMenuRows: OperationalMenuRow[] = [
   {
     category: "Bookings",
     actions: [
@@ -102,78 +95,18 @@ const operationalMenuRows: OperationalMenuRow[] = [
   }
 ];
 
-export const dashboardSections: Array<{ title: string; tiles: DashboardTile[] }> = [
-  {
-    title: "Operations",
-    tiles: [
-      {
-        key: "bookings",
-        title: "Bookings",
-        description: "View and manage active and scheduled bookings."
-      },
-      {
-        key: "active-drivers",
-        title: "Active Drivers",
-        description: "Entry point for active drivers and map monitoring."
-      },
-      {
-        key: "financial-reports",
-        title: "Financial Reports",
-        description: "Revenue and finance reporting access."
-      }
-    ]
-  },
-  {
-    title: "Management",
-    tiles: [
-      {
-        key: "customers",
-        title: "Customers",
-        description: "Manage customer records.",
-        href: "/customers"
-      },
-      {
-        key: "staff",
-        title: "Staff",
-        description: "View internal user accounts and roles.",
-        href: "/staff"
-      },
-      {
-        key: "drivers",
-        title: "Drivers",
-        description: "Add, edit, suspend, or remove driver records."
-      },
-      {
-        key: "vehicles",
-        title: "Vehicles",
-        description: "Manage fleet vehicles and availability.",
-        href: "/vehicles"
-      }
-    ]
-  },
-  {
-    title: "Platform",
-    tiles: [
-      {
-        key: "core-settings",
-        title: "Core Settings",
-        description: "Umbrella entry point for deeper platform configuration."
-      },
-      {
-        key: "quick-system-check",
-        title: "Quick System Check",
-        description: "Lightweight system health and status checks."
-      },
-      {
-        key: "backup-recovery",
-        title: "Backup & Recovery",
-        description: "Manual backup and controlled recovery workflow entry point."
-      }
-    ]
-  }
-];
-
-const allTiles = dashboardSections.flatMap((section) => section.tiles);
+export function findSelectedOperationalAction(requestedTileKey: string): SelectedOperationalAction | undefined {
+  return operationalMenuRows
+    .flatMap((row) =>
+      row.actions.map((action) => ({
+        category: row.category,
+        label: action.label,
+        externalMode: action.externalMode,
+        href: action.href
+      }))
+    )
+    .find((action) => action.href === `/dashboard?tile=${requestedTileKey}`);
+}
 
 export function createDashboardRouter(options: DashboardRouterOptions): Router {
   const router = Router();
@@ -203,27 +136,14 @@ export function createDashboardRouter(options: DashboardRouterOptions): Router {
       if (!roles.includes("admin")) return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
 
       const requestedTileKey = String(req.query.tile || "");
-      const selectedTile = allTiles.find((tile) => tile.key === requestedTileKey);
-      const selectedOperationalAction = operationalMenuRows
-        .flatMap((row) =>
-          row.actions.map((action) => ({
-            category: row.category,
-            label: action.label,
-            externalMode: action.externalMode,
-            href: action.href
-          }))
-        )
-        .find((action) => action.href === `/dashboard?tile=${requestedTileKey}`) satisfies
-        SelectedOperationalAction | undefined;
+      const selectedOperationalAction = findSelectedOperationalAction(requestedTileKey);
 
       return res.render("pages/dashboard", {
         title: "Admin Dashboard",
         appTitle: options.appTitle,
         email: session.user.email,
         operationalMenuRows,
-        sections: dashboardSections,
-        selectedOperationalAction,
-        selectedTile
+        selectedOperationalAction
       });
     } catch (error) {
       next(error);
