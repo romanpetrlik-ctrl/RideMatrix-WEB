@@ -54,6 +54,13 @@
       <% } %>
     </div>
 
+    <% if (headerContextActions.length > 0) { %>
+      <div class="site-header__context-actions">
+        <%- include("context-actions", { actions: headerContextActions }) %>
+      </div>
+      <div class="site-header__action-divider" aria-hidden="true"></div>
+    <% } %>
+
     <div class="site-header__right">
       <% if (showHintsToggle) { %>
         <div class="site-header__hint"><%= hintsLabel %></div>
@@ -72,12 +79,11 @@
     </div>
   </div>
 
-  <% if (headerContextBarPartial || headerContextActions.length > 0) { %>
+  <% if (headerContextBarPartial) { %>
     <div class="container site-header__context">
       <% if (headerContextBarPartial) { %>
         <%- include(headerContextBarPartial, headerContextBarData) %>
       <% } %>
-      <%- include("context-actions", { actions: headerContextActions }) %>
     </div>
   <% } %>
 </header>
