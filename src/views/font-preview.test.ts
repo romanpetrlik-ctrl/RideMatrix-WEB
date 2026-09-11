@@ -20,10 +20,19 @@ test("head and stylesheet permanently load Open Sans for body text and Lato for 
 
   assert.match(head, /family=Lato:wght@400;700&family=Open\+Sans:wght@400;600;700&display=swap/);
   assert.doesNotMatch(head, /fontPreview/);
+  assert.match(css, /^\s*@import url\("https:\/\/fonts.googleapis.com\/css2\?family=Lato:wght@400;700&display=swap"\);/);
+  assert.ok(
+    css.indexOf('@import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap");') <
+      css.indexOf(":root {")
+  );
   assert.match(css, /--rm-font-sans: "Open Sans", Arial, Helvetica, sans-serif;/);
   assert.match(css, /html \{[\s\S]*font-family: var\(--rm-font-sans\);/);
   assert.match(css, /body \{[\s\S]*font-family: inherit;/);
   assert.match(css, /h1,\s*h2 \{[\s\S]*font-family: "Lato", Arial, Helvetica, sans-serif;[\s\S]*font-weight: 700;/);
+  assert.match(
+    css,
+    /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/
+  );
   assert.doesNotMatch(css, /font-preview--lato-headings/);
   assert.doesNotMatch(css, /\bRoboto\b|\bInter\b|Roboto\+Condensed/);
 });
