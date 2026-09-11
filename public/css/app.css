@@ -796,14 +796,6 @@ button:visited,
   background: var(--rm-canvas);
 }
 
-.customer-map-card {
-  margin-block: 1rem;
-}
-
-.customer-map-card h2 {
-  margin-bottom: 0.5rem;
-}
-
 .private-customer-form__notes {
   margin-top: 1rem;
 }
@@ -1547,9 +1539,36 @@ button:visited,
   padding: 0.5rem 0;
 }
 
-.customer-detail-grid {
+.customer-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(16rem, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.customer-detail-layout__information {
   display: grid;
   gap: 1.25rem;
+  min-width: 0;
+}
+
+.customer-detail-layout__map {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.customer-detail-layout__map-header {
+  margin-bottom: 1rem;
+}
+
+.customer-detail-layout__map-header h2 {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .customer-detail-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .customer-detail-panel__header,
