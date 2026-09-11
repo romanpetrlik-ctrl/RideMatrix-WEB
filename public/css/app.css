@@ -1543,7 +1543,12 @@ button:visited,
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(16rem, 1fr);
   gap: 1.25rem;
-  align-items: start;
+  align-items: stretch;
+}
+
+.customer-detail-layout > * {
+  min-width: 0;
+  height: 100%;
 }
 
 .customer-detail-layout__information {
@@ -1553,8 +1558,16 @@ button:visited,
 }
 
 .customer-detail-layout__map {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
+}
+
+.customer-detail-layout__map .address-map-preview,
+.customer-detail-layout__map .address-map-placeholder {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .customer-detail-layout__map-header {
@@ -1569,6 +1582,17 @@ button:visited,
   .customer-detail-layout {
     grid-template-columns: 1fr;
   }
+
+  .customer-detail-layout > * {
+    height: auto;
+  }
+}
+
+.site-header .context-bar__action,
+.site-header .context-bar__action:visited,
+.site-header .context-bar__action:hover,
+.site-header .context-bar__action:focus {
+  color: var(--rm-antique-white);
 }
 
 .customer-detail-panel__header,

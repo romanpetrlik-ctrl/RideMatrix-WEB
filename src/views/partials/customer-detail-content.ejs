@@ -25,8 +25,8 @@
                 <%= customer.phoneDisplay %>
               </span>
               <span class="phone-number-actions">
-                <% if (customer.telHref) { %><a href="<%= customer.telHref %>">Call</a><% } %>
-                <% if (customer.whatsappHref) { %><a href="<%= customer.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message</a><% } %>
+                <% if (customer.telHref) { %><a class="button button--secondary" href="<%= customer.telHref %>">Call</a><% } %>
+                <% if (customer.whatsappHref) { %><a class="button button--secondary" href="<%= customer.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message</a><% } %>
               </span>
             <% } else { %>No phone on file<% } %>
           </dd>
