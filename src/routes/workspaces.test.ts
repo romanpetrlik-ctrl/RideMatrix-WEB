@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { getLandingRoute } from "./auth-callback";
 import { findSelectedOperationalAction, operationalMenuRows } from "./dashboard";
@@ -60,13 +61,13 @@ test("operational dashboard links resolve to their selected-action notices", () 
 });
 
 test("dashboard template renders only the canonical operational menu", () => {
-  const template = readFileSync(new URL("../views/pages/dashboard.ejs", import.meta.url), "utf8");
+  const template = readFileSync(path.join(process.cwd(), "src/views/pages/dashboard.ejs"), "utf8");
   assert.match(template, /Operational shortcuts/);
   assert.doesNotMatch(template, /dashboard-layout|Management|Platform/);
 });
 
 test("dashboard keeps the admin redirect and authorization guard", () => {
-  const route = readFileSync(new URL("./dashboard.ts", import.meta.url), "utf8");
+  const route = readFileSync(path.join(process.cwd(), "src/routes/dashboard.ts"), "utf8");
   assert.match(route, /router\.get\("\/admin"/);
   assert.match(route, /return res\.redirect\("\/dashboard"\)/);
   assert.match(route, /if \(!roles\.includes\("admin"\)\)/);
