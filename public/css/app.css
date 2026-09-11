@@ -591,22 +591,22 @@ button:visited,
   background: #fff9f2;
 }
 
-/* Temporary typography preview: /customers/register?fontPreview=roboto-condensed */
-body.font-preview--variant-b {
+/* Temporary typography preview: /customers/register?fontPreview=lato-headings */
+body.font-preview--lato-headings {
   font-family: "Open Sans", Arial, Helvetica, sans-serif;
 }
 
-body.font-preview--variant-b h1,
-body.font-preview--variant-b h2 {
-  font-family: "Roboto Condensed", "Arial Narrow", Arial, sans-serif;
+body.font-preview--lato-headings h1,
+body.font-preview--lato-headings h2 {
+  font-family: "Lato", Arial, Helvetica, sans-serif;
   font-weight: 700;
 }
 
-body.font-preview--variant-b button,
-body.font-preview--variant-b input,
-body.font-preview--variant-b select,
-body.font-preview--variant-b textarea {
-  font-family: inherit;
+body.font-preview--lato-headings button,
+body.font-preview--lato-headings input,
+body.font-preview--lato-headings select,
+body.font-preview--lato-headings textarea {
+  font-family: "Open Sans", Arial, Helvetica, sans-serif;
 }
 
 .customer-register-panel {
