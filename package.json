@@ -15,6 +15,7 @@
     "db:migrate": "tsx src/jobs/db-migrate.ts",
     "audit:db": "tsx src/jobs/db-audit.ts",
     "cleanup:inactive": "tsx src/jobs/nightly-cleanup.ts",
+    "customers:retention": "tsx src/jobs/customers-retention.ts",
     "cleanup:demo": "tsx src/jobs/demo-cleanup.ts"
   },
   "dependencies": {

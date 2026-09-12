@@ -49,7 +49,7 @@ export const MIGRATIONS: Migration[] = [
         postcode TEXT,
         preferred_contact TEXT NOT NULL DEFAULT 'Unknown',
         notes TEXT,
-        status TEXT NOT NULL DEFAULT 'Pending',
+        status TEXT NOT NULL DEFAULT 'Active',
         source TEXT NOT NULL DEFAULT 'manual',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,

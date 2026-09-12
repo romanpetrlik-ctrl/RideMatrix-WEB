@@ -199,12 +199,12 @@ export class DuplicateActiveCustomerEmailError extends Error {
     super(`An active customer with email ${normalizedEmail} already exists.`);
     this.name = "DuplicateActiveCustomerEmailError";
   }
+}
 
-  export class InvalidCustomerStatusError extends Error {
-    constructor(readonly status: string) {
-      super(`Unsupported customer status: ${status}. Only Active and Suspended are allowed.`);
-      this.name = "InvalidCustomerStatusError";
-    }
+export class InvalidCustomerStatusError extends Error {
+  constructor(readonly status: string) {
+    super(`Unsupported customer status: ${status}. Only Active and Suspended are allowed.`);
+    this.name = "InvalidCustomerStatusError";
   }
 }
 

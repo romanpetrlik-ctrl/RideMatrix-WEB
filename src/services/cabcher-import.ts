@@ -787,7 +787,9 @@ async function syncCustomerRecord(
           surname = $2,
           phone = $3,
           notes = $4,
-          last_booking_at = $5,
+          last_booking_at = GREATEST(COALESCE(last_booking_at, $5), $5),
+          inactive_at = CASE WHEN erasure_requested_at IS NULL
+            AND (retention_hold_until IS NULL OR retention_hold_until <= $6) THEN NULL ELSE inactive_at END,
           updated_at = $6
         WHERE id = $7`,
         [
@@ -804,7 +806,9 @@ async function syncCustomerRecord(
       await client.query(
         `UPDATE customers SET
           phone = COALESCE(phone, $1),
-          last_booking_at = COALESCE($2, last_booking_at),
+          last_booking_at = CASE WHEN $2 IS NULL THEN last_booking_at ELSE GREATEST(COALESCE(last_booking_at, $2), $2) END,
+          inactive_at = CASE WHEN $2 IS NOT NULL AND erasure_requested_at IS NULL
+            AND (retention_hold_until IS NULL OR retention_hold_until <= $3) THEN NULL ELSE inactive_at END,
           updated_at = $3
         WHERE id = $4`,
         [
@@ -826,7 +830,9 @@ async function syncCustomerRecord(
         surname = $2,
         phone = $3,
         notes = $4,
-        last_booking_at = $5,
+        last_booking_at = GREATEST(COALESCE(last_booking_at, $5), $5),
+        inactive_at = CASE WHEN erasure_requested_at IS NULL
+          AND (retention_hold_until IS NULL OR retention_hold_until <= $6) THEN NULL ELSE inactive_at END,
         updated_at = $6
       WHERE id = $7`,
       [
@@ -848,7 +854,9 @@ async function syncCustomerRecord(
   await client.query(
     `UPDATE customers SET
       phone = COALESCE(phone, $1),
-      last_booking_at = COALESCE($2, last_booking_at),
+      last_booking_at = CASE WHEN $2 IS NULL THEN last_booking_at ELSE GREATEST(COALESCE(last_booking_at, $2), $2) END,
+      inactive_at = CASE WHEN $2 IS NOT NULL AND erasure_requested_at IS NULL
+        AND (retention_hold_until IS NULL OR retention_hold_until <= $3) THEN NULL ELSE inactive_at END,
       updated_at = $3
     WHERE id = $4`,
     [
