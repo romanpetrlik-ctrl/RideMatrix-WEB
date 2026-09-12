@@ -1226,7 +1226,7 @@ button:visited,
   border-bottom-width: 3px;
   background: #fdf8f2;
   color: var(--rm-menu-action-text);
-  font-size: 0.9rem;
+  font-size: var(--rm-control-font-size);
   font-weight: 700;
   line-height: 1.2;
   text-decoration: none;
