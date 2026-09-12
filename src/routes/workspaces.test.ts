@@ -146,7 +146,6 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   assert.match(workspaceTileTitle, /font-weight: 700;/);
   assert.match(workspaceTileDescription, /line-height: 1\.4;/);
   assert.match(workspaceTileAction, /opacity: 0\.75;/);
-  assert.match(operationalAction, /height: var\(--rm-control-height\);/);
   assert.match(operationalAction, /min-height: var\(--rm-control-height\);/);
   assert.match(operationalAction, /font-size: var\(--rm-control-font-size\);/);
   assert.match(operationalAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);

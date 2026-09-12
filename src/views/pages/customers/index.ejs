@@ -89,9 +89,11 @@
                       <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
                     </td>
                     <td class="customers-table__actions">
-                      <a class="button button--secondary button--small" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">View</a>
-                      <a class="button button--secondary button--small" href="<%= customer.editHref %>">Edit</a>
-                      <a class="button button--danger button--small" href="<%= customer.deleteHref %>">Delete</a>
+                      <div class="customers-table__actions-list">
+                        <a class="button button--secondary button--small" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">View</a>
+                        <a class="button button--secondary button--small" href="<%= customer.editHref %>">Edit</a>
+                        <a class="button button--danger button--small" href="<%= customer.deleteHref %>">Delete</a>
+                      </div>
                     </td>
                   </tr>
                 <% }) %>

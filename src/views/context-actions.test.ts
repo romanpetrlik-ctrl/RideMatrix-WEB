@@ -47,6 +47,7 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
 test("shared context action partial renders only supplied actions with semantic controls", () => {
   const header = read("src/views/partials/header.ejs");
   const actions = read("src/views/partials/context-actions.ejs");
+  const customersIndex = read("src/views/pages/customers/index.ejs");
   const css = read("public/css/app.css");
   const siteHeaderAction = extractRuleBody(css, ".site-header__action");
   const contextBarDangerAction = extractRuleBody(css, ".context-bar__action--danger");
@@ -61,6 +62,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(actions, /form="<%= action\.formId %>"/);
   assert.match(actions, /href="<%= action\.href \|\| '#' %>"/);
   assert.match(actions, /site-header__action context-bar__action/);
+  assert.match(customersIndex, /customers-table__actions-list"/);
   assert.doesNotMatch(header, /Switch workspace/);
   assert.doesNotMatch(header, /action="\/exit"/);
   assert.match(css, /--rm-control-height:\s*3rem;/);
@@ -71,6 +73,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /--rm-control-font-size-compact:\s*0\.88rem;/);
   assert.match(css, /--rm-control-border-radius:\s*0\.25rem;/);
   assert.match(css, /--rm-control-focus-color:\s*var\(--rm-dark-cyan\);/);
+  assert.match(css, /--rm-dashboard-action-width:\s*190px;/);
   assert.match(css, /--rm-control-border-width:\s*1px;/);
   assert.match(css, /--rm-control-focus-outline:\s*2px solid var\(--rm-control-focus-color\);/);
   assert.match(css, /--rm-control-focus-shadow:\s*0 0 0 3px rgba\(10, 147, 150, 0\.22\);/);
@@ -82,18 +85,30 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(systemBarAccountAction, /font-size: var\(--rm-control-font-size\);/);
   assert.match(operationsAction, /min-height: var\(--rm-control-height\);/);
   assert.match(operationsAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
+  assert.match(operationsAction, /flex: 0 0 var\(--rm-dashboard-action-width\);/);
+  assert.match(operationsAction, /width: var\(--rm-dashboard-action-width\);/);
   assert.match(compactButton, /min-height: var\(--rm-control-height-compact\);/);
   assert.match(compactButton, /font-size: var\(--rm-control-font-size-compact\);/);
+  assert.match(paginationLink, /min-width: var\(--rm-control-height-compact\);/);
   assert.match(paginationLink, /min-height: var\(--rm-control-height-compact\);/);
+  assert.match(paginationLink, /color: var\(--rm-walnut-3\);/);
+  assert.match(paginationLink, /font: inherit;/);
   assert.match(paginationLink, /font-size: var\(--rm-control-font-size-compact\);/);
+  assert.match(css, /\.pagination-bar__link:visited \{[\s\S]*color: var\(--rm-walnut-3\);/);
+  assert.match(css, /\.pagination-bar__link:hover,\s*\.pagination-bar__link:focus \{[\s\S]*color: var\(--rm-walnut\);/);
   assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-bottom-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
   assert.match(css, /\.button--danger \{[\s\S]*border-color: var\(--rm-brown-red\);/);
   assert.match(workspaceTile, /min-height: 118px;/);
   assert.doesNotMatch(workspaceTile, /min-height: var\(--rm-control-height-compact\);/);
-  assert.match(css, /\.customers-table__actions \{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;[\s\S]*gap: var\(--rm-control-gap\);/);
-  assert.match(css, /\.context-toolbar \.button,\s*\.context-toolbar button \{[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.customers-table__actions-list \{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;[\s\S]*gap: var\(--rm-control-gap\);[\s\S]*white-space: normal;/);
+  assert.match(css, /\.context-toolbar \.button:not\(\.button--small\),/);
+  assert.match(css, /\.context-toolbar button:not\(\.button--small\),/);
+  assert.match(css, /\.context-toolbar input\[type="submit"\]:not\(\.button--small\) \{[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.context-toolbar \.button--small,/);
+  assert.match(css, /\.context-toolbar button\.button--small,/);
+  assert.match(css, /\.context-toolbar input\[type="submit"\]\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
