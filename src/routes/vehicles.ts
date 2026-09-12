@@ -2,6 +2,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import { requireCsrfToken } from "../middleware/csrf";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, SessionAccount } from "../services/api";
 import { resolveHelpContent } from "../services/help";
 import { canManageStaff } from "../services/staff";
@@ -42,6 +43,7 @@ function safeDownloadName(document: any): string {
 
 export function createVehiclesRouter(options: Options): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
   const loadSession = options.loadSession || getSessionAccount;
   const localDocumentUploadRateLimit = rateLimit({
     windowMs: 60_000,

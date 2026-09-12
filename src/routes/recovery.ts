@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getSessionAccount } from "../services/api";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 
 type RecoveryRouterOptions = {
   appTitle: string;
@@ -7,6 +8,7 @@ type RecoveryRouterOptions = {
 
 export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
   router.use(async (req, res, next) => {
     try {
       const session = await getSessionAccount(req.headers.cookie);

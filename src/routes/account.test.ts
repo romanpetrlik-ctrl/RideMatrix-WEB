@@ -74,6 +74,9 @@ describe("GET /account (personal account page)", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store, no-cache, must-revalidate, private");
+    assert.equal(response.headers.get("pragma"), "no-cache");
+    assert.equal(response.headers.get("expires"), "0");
     assert.match(body, /Signed in as:.*staff\.member@ridematrix\.com/);
     assert.doesNotMatch(body, /staff records/);
     assert.doesNotMatch(body, /staff-table/);
