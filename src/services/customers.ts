@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../database/connection";
+import { addCalendarMonths, readCustomerRetentionPolicy } from "./customer-retention-config";
 import { normalizePhoneToE164 } from "./phone-numbers";
 
 type Queryable = Pool | PoolClient;
@@ -7,9 +8,7 @@ type Queryable = Pool | PoolClient;
 export const CUSTOMER_STATUS_OPTIONS = [
   "all",
   "Active",
-  "Suspended",
-  "Pending",
-  "Delete Pending"
+  "Suspended"
 ] as const;
 
 export const CUSTOMER_PER_PAGE_OPTIONS = [10, 25, 50] as const;
@@ -94,6 +93,12 @@ export type CustomerRecord = {
   updatedAt: string;
   lastLoginAt: string | null;
   lastBookingAt: string | null;
+  inactiveAt: string | null;
+  anonymizedAt: string | null;
+  erasureRequestedAt: string | null;
+  retentionHoldUntil: string | null;
+  retentionHoldReason: string | null;
+  purgeAfter: string | null;
   status: Exclude<CustomerStatus, "all">;
   notes: string | null;
   address: string | null;
@@ -120,6 +125,7 @@ export type CustomerListParams = {
   status: CustomerStatus;
   page: number;
   perPage: number;
+  includeInactive?: boolean;
 };
 
 export type CustomerListResult = {
@@ -184,6 +190,12 @@ type CustomerRow = {
   updated_at: string;
   last_login_at: string | null;
   last_booking_at: string | null;
+  inactive_at: string | null;
+  anonymized_at: string | null;
+  erasure_requested_at: string | null;
+  retention_hold_until: string | null;
+  retention_hold_reason: string | null;
+  purge_after: string | null;
 };
 
 type PgError = Error & {
@@ -200,6 +212,13 @@ export class DuplicateActiveCustomerEmailError extends Error {
   }
 }
 
+export class InvalidCustomerStatusError extends Error {
+  constructor(readonly status: string) {
+    super(`Unsupported customer status: ${status}. Only Active and Suspended are allowed.`);
+    this.name = "InvalidCustomerStatusError";
+  }
+}
+
 const PREFERRED_CONTACT_VALUES: PreferredContact[] = ["WhatsApp", "Email", "Phone", "Unknown"];
 
 function normalizePreferredContact(value: string | null | undefined): PreferredContact {
@@ -209,10 +228,17 @@ function normalizePreferredContact(value: string | null | undefined): PreferredC
 }
 
 function normalizeStatus(value: string | null | undefined): Exclude<CustomerStatus, "all"> {
-  const allowed = CUSTOMER_STATUS_OPTIONS.filter((status) => status !== "all");
-  return allowed.includes(value as Exclude<CustomerStatus, "all">)
-    ? (value as Exclude<CustomerStatus, "all">)
-    : "Pending";
+  if (value === "Active" || value === "Suspended") {
+    return value;
+  }
+  return "Suspended";
+}
+
+function validateStatus(value: string | null | undefined): Exclude<CustomerStatus, "all"> {
+  if (value === "Active" || value === "Suspended") {
+    return value;
+  }
+  throw new InvalidCustomerStatusError(String(value));
 }
 
 function trimOrNull(value: string | null | undefined): string | null {
@@ -256,6 +282,12 @@ function mapRow(row: CustomerRow, bookings: BookingRecord[]): CustomerRecord {
     updatedAt: row.updated_at,
     lastLoginAt: row.last_login_at,
     lastBookingAt: row.last_booking_at,
+    inactiveAt: row.inactive_at,
+    anonymizedAt: row.anonymized_at,
+    erasureRequestedAt: row.erasure_requested_at,
+    retentionHoldUntil: row.retention_hold_until,
+    retentionHoldReason: row.retention_hold_reason,
+    purgeAfter: row.purge_after,
     status: normalizeStatus(row.status),
     notes: row.notes,
     address: row.address,
@@ -385,6 +417,10 @@ function buildFilterClause(params: CustomerListParams): FilterClause {
   const conditions = ["deleted_at IS NULL"];
   const values: any[] = [];
 
+  if (!params.includeInactive) {
+    conditions.push("inactive_at IS NULL", "anonymized_at IS NULL", "erasure_requested_at IS NULL");
+  }
+
   if (params.status !== "all") {
     values.push(params.status);
     conditions.push(`status = $${values.length}`);
@@ -437,13 +473,14 @@ export async function createCustomer(
         house_name_number, address_line1, address_line2, address_line3,
         city_town, county, state, postcode,
         preferred_contact, notes, status, source, created_at, updated_at,
-        last_login_at, last_booking_at, deleted_at
+        last_login_at, last_booking_at, deleted_at,
+        inactive_at, anonymized_at, erasure_requested_at, retention_hold_until, retention_hold_reason, purge_after
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11, $12, $13,
         $14, $15, $16, $17,
         $18, $19, $20, $21, $22, $23,
-        NULL, NULL, NULL
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
       )`,
       [
         id,
@@ -465,7 +502,7 @@ export async function createCustomer(
         trimOrNull(input.postcode),
         normalizePreferredContact(input.preferredContact),
         trimOrNull(input.notes),
-        input.status || "Pending",
+        validateStatus(input.status || "Active"),
         input.source || "manual",
         now,
         now
@@ -550,7 +587,7 @@ export async function updateCustomer(
   }
 
   if (input.status !== undefined) {
-    values.push(normalizeStatus(input.status));
+    values.push(validateStatus(input.status));
     assignments.push(`status = $${values.length}`);
   }
 
@@ -586,7 +623,7 @@ export async function getCustomerByEmail(
 
   const runner = client || getPool();
   const res = await runner.query<CustomerRow>(
-    "SELECT * FROM customers WHERE email_normalized = $1 AND deleted_at IS NULL LIMIT 1",
+    "SELECT * FROM customers WHERE email_normalized = $1 AND deleted_at IS NULL AND inactive_at IS NULL AND anonymized_at IS NULL AND erasure_requested_at IS NULL LIMIT 1",
     [normalized]
   );
 
@@ -606,7 +643,10 @@ export async function updateCustomerLastBookingAt(
 ): Promise<CustomerRecord | undefined> {
   const runner = client || getPool();
   const result = await runner.query(
-    "UPDATE customers SET last_booking_at = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL",
+    `UPDATE customers SET last_booking_at = GREATEST(COALESCE(last_booking_at, $1), $1),
+      inactive_at = CASE WHEN erasure_requested_at IS NULL
+        AND (retention_hold_until IS NULL OR retention_hold_until <= $2) THEN NULL ELSE inactive_at END,
+      updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`,
     [bookingAt, new Date().toISOString(), id]
   );
 
@@ -678,6 +718,190 @@ export async function listCustomers(
   };
 }
 
+export function latestRelevantRideAt(values: Array<string | null | undefined>): string | null {
+  return values.filter((value): value is string => Boolean(value)).sort().at(-1) || null;
+}
+
+export function isRetentionHoldActive(
+  retentionHoldUntil: string | null | undefined,
+  now: Date = new Date()
+): boolean {
+  return Boolean(retentionHoldUntil && new Date(retentionHoldUntil).getTime() > now.getTime());
+}
+
+export function calculateInactiveAt(
+  latestRideAt: string | null,
+  createdAt: string,
+  now: Date = new Date(),
+  months = readCustomerRetentionPolicy().inactivityMonths
+): string | null {
+  const reference = latestRideAt || createdAt;
+  return new Date(reference).getTime() <= addCalendarMonths(now, -months).getTime()
+    ? addCalendarMonths(new Date(reference), months).toISOString()
+    : null;
+}
+
+export function calculatePurgeAfter(
+  latestRideAt: string | null,
+  createdAt: string,
+  months = readCustomerRetentionPolicy().retentionMonths
+): string {
+  return addCalendarMonths(new Date(latestRideAt || createdAt), months).toISOString();
+}
+
+export function isAnonymizationEligible(
+  customer: Pick<CustomerRecord, "purgeAfter" | "anonymizedAt" | "retentionHoldUntil">,
+  now: Date = new Date()
+): boolean {
+  return !customer.anonymizedAt &&
+    Boolean(customer.purgeAfter && new Date(customer.purgeAfter).getTime() <= now.getTime()) &&
+    !isRetentionHoldActive(customer.retentionHoldUntil, now);
+}
+
+export async function markInactiveCustomers(
+  client?: Queryable,
+  now: Date = new Date(),
+  months = readCustomerRetentionPolicy().inactivityMonths,
+  retentionMonths = readCustomerRetentionPolicy().retentionMonths
+): Promise<number> {
+  const runner = client || getPool();
+  const cutoff = addCalendarMonths(now, -months).toISOString();
+  const result = await runner.query(
+    `UPDATE customers c SET inactive_at = COALESCE(c.inactive_at, $1),
+       purge_after = COALESCE(c.purge_after,
+         (COALESCE(
+           c.last_booking_at,
+           (SELECT MAX(service_date) FROM customer_bookings WHERE customer_id = c.id),
+           (SELECT MAX(service_date_time) FROM imported_bookings WHERE customer_id = c.id),
+           c.created_at
+         )::timestamptz + ($4 || ' months')::interval)::text),
+       updated_at = $1
+     WHERE c.deleted_at IS NULL AND c.anonymized_at IS NULL AND c.erasure_requested_at IS NULL
+       AND (c.retention_hold_until IS NULL OR c.retention_hold_until <= $1)
+       AND COALESCE(
+         c.last_booking_at,
+         (SELECT MAX(service_date) FROM customer_bookings WHERE customer_id = c.id),
+         (SELECT MAX(service_date_time) FROM imported_bookings WHERE customer_id = c.id),
+         c.created_at
+       ) <= $3
+       AND c.inactive_at IS NULL`,
+    [now.toISOString(), addCalendarMonths(now, months).toISOString(), cutoff, retentionMonths]
+  );
+  return result.rowCount || 0;
+}
+
+export async function requestCustomerErasure(id: string, client?: Queryable): Promise<boolean> {
+  const runner = client || getPool();
+  const now = new Date().toISOString();
+  const result = await runner.query(
+    `UPDATE customers SET erasure_requested_at = COALESCE(erasure_requested_at, $1),
+      inactive_at = COALESCE(inactive_at, $1), updated_at = $1
+     WHERE id = $2 AND deleted_at IS NULL AND anonymized_at IS NULL`,
+    [now, id]
+  );
+  return (result.rowCount || 0) > 0;
+}
+
+export async function anonymizeCustomer(id: string, client?: Queryable): Promise<boolean> {
+  const runner = client || getPool();
+  const now = new Date().toISOString();
+  await runner.query("BEGIN");
+  try {
+    const eligible = await runner.query(
+      `SELECT id FROM customers
+       WHERE id = $1 AND deleted_at IS NULL AND anonymized_at IS NULL
+         AND purge_after IS NOT NULL AND purge_after <= $2
+         AND (retention_hold_until IS NULL OR retention_hold_until <= $2)
+       FOR UPDATE`,
+      [id, now]
+    );
+    if (!eligible.rows[0]) {
+      await runner.query("ROLLBACK");
+      return false;
+    }
+    await runner.query(
+      `UPDATE customers SET title = NULL, given_name = 'Anonymized', surname = 'Customer',
+        email = NULL, email_normalized = NULL, phone = NULL, company = NULL, address = NULL,
+        house_name_number = NULL, address_line1 = NULL, address_line2 = NULL, address_line3 = NULL,
+        city_town = NULL, county = NULL, state = NULL, postcode = NULL, notes = NULL,
+        latitude = NULL, longitude = NULL, geocoded_at = NULL, geocode_status = NULL,
+        anonymized_at = $2, updated_at = $2 WHERE id = $1`,
+      [id, now]
+    );
+    await runner.query(
+      `UPDATE customer_bookings SET pickup = '[anonymized]', dropoff = '[anonymized]' WHERE customer_id = $1`,
+      [id]
+    );
+    await runner.query(
+      `UPDATE imported_bookings SET customer_email = 'anonymized@invalid', customer_phone = NULL,
+        customer_name_raw = 'Anonymized Customer', customer_given_name = NULL, customer_surname = NULL,
+        pickup_text = '[anonymized]', dropoff_text = '[anonymized]' WHERE customer_id = $1`,
+      [id]
+    );
+    await runner.query(
+      `UPDATE imported_customers SET email = 'anonymized-' || id || '@invalid',
+        phone = NULL, full_name = 'Anonymized Customer', given_name = NULL, surname = NULL,
+        last_pickup_text = NULL, last_dropoff_text = NULL WHERE id = $1`,
+      [id]
+    );
+    await runner.query("COMMIT");
+    return true;
+  } catch (error) {
+    await runner.query("ROLLBACK");
+    throw error;
+  }
+}
+
+export async function purgeCustomer(id: string, client?: Queryable): Promise<boolean> {
+  const runner = client || getPool();
+  await runner.query("BEGIN");
+  try {
+    const eligible = await runner.query(
+      `SELECT id FROM customers WHERE id = $1 AND deleted_at IS NULL
+       AND purge_after IS NOT NULL AND purge_after <= $2
+       AND (retention_hold_until IS NULL OR retention_hold_until <= $2) FOR UPDATE`,
+      [id, new Date().toISOString()]
+    );
+    if (!eligible.rows[0]) {
+      await runner.query("ROLLBACK");
+      return false;
+    }
+    await runner.query("DELETE FROM customer_bookings WHERE customer_id = $1", [id]);
+    await runner.query("DELETE FROM imported_bookings WHERE customer_id = $1", [id]);
+    await runner.query("DELETE FROM imported_customers WHERE id = $1", [id]);
+    const result = await runner.query("DELETE FROM customers WHERE id = $1", [id]);
+    await runner.query("COMMIT");
+    return (result.rowCount || 0) > 0;
+  } catch (error) {
+    await runner.query("ROLLBACK");
+    throw error;
+  }
+}
+
+export async function processCustomerRetention(
+  policy = readCustomerRetentionPolicy(),
+  client?: Queryable
+): Promise<{ inactive: number; anonymized: number; purged: number }> {
+  const runner = client || getPool();
+  const inactive = await markInactiveCustomers(runner, new Date(), policy.inactivityMonths, policy.retentionMonths);
+  const candidates = await runner.query<{ id: string }>(
+    `SELECT id FROM customers WHERE deleted_at IS NULL AND purge_after <= $1
+      AND (retention_hold_until IS NULL OR retention_hold_until <= $1)
+      AND anonymized_at IS NULL ORDER BY purge_after LIMIT 500`,
+    [new Date().toISOString()]
+  );
+  let anonymized = 0;
+  let purged = 0;
+  for (const candidate of candidates.rows) {
+    if (policy.purgeMode === "delete") {
+      if (await purgeCustomer(candidate.id)) purged++;
+    } else if (await anonymizeCustomer(candidate.id)) {
+      anonymized++;
+    }
+  }
+  return { inactive, anonymized, purged };
+}
+
 export async function getCustomerById(
   id: string,
   client?: Queryable,
@@ -705,7 +929,7 @@ export async function getCustomerById(
 export async function getCustomerCount(client?: Queryable): Promise<number> {
   const runner = client || getPool();
   const res = await runner.query<{ total: string | number }>(
-    "SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL"
+    "SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL AND inactive_at IS NULL AND anonymized_at IS NULL AND erasure_requested_at IS NULL"
   );
 
   return Number(res.rows[0]?.total ?? 0);

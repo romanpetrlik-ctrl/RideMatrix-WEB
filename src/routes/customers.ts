@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { requireCsrfToken } from "../middleware/csrf";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
 import {
   MissingRequiredColumnsError,
@@ -401,6 +402,7 @@ function getCustomerMapView(customer: CustomerRecord): MapView | null {
 
 export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
   const upload = multer({ storage: multer.memoryStorage() });
   const loadSession = options.loadSession ?? getSessionAccount;
 
@@ -1121,10 +1123,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(formData.preferredContact)
           ? (formData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
           : "Unknown",
-        status: (["Active", "Suspended", "Pending", "Delete Pending"] as const).includes(
-          formData.status as "Active" | "Suspended" | "Pending" | "Delete Pending"
+        status: (["Active", "Suspended"] as const).includes(
+          formData.status as "Active" | "Suspended"
         )
-          ? (formData.status as "Active" | "Suspended" | "Pending" | "Delete Pending")
+          ? (formData.status as "Active" | "Suspended")
           : undefined
       });
 

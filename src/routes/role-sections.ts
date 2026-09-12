@@ -1,5 +1,6 @@
 import { Router, type Response } from "express";
 import { getSessionAccount } from "../services/api";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
@@ -35,6 +36,7 @@ function renderUnavailable(res: Response, appTitle: string) {
 
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
 
   for (const module of workspaceModules.filter((item) => item.key !== "administration" && item.key !== "staff")) {
     router.get(module.href, async (req, res, next) => {

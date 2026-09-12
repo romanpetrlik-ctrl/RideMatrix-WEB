@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getSessionAccount } from "../services/api";
 import { availableWorkspaceModules } from "./role-sections";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 
 type AccountRouterOptions = {
   appTitle: string;
@@ -72,6 +73,7 @@ function getWorkspaceRedirectHref(role: string): string {
 
 export function createAccountRouter(options: AccountRouterOptions): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
 
   router.get("/account", async (req, res, next) => {
     try {

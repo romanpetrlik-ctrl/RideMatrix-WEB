@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getSessionAccount } from "../services/api";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 
 type DashboardRouterOptions = {
   appTitle: string;
@@ -110,6 +111,7 @@ export function findSelectedOperationalAction(requestedTileKey: string): Selecte
 
 export function createDashboardRouter(options: DashboardRouterOptions): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
 
   router.get("/admin", async (req, res, next) => {
     try {

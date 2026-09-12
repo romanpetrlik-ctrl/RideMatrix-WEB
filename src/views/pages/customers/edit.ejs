@@ -15,8 +15,6 @@
       pageMeta: `Customer ID: ${customer.id}`,
       activeRoleLabel,
       hintsLabel: customer.status,
-      showRoleSwitch: true,
-      showExitLink: true,
       contextBarActions: [
         { label: "Back to customer list", href: backToCustomersHref, tone: "secondary" },
         { label: "Cancel", href: `/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>`, tone: "danger" },
@@ -123,7 +121,7 @@
           <div class="form-field">
             <label for="status">Status</label>
             <select id="status" name="status">
-              <% ["Active", "Pending", "Suspended", "Delete Pending"].forEach((option) => { %>
+              <% ["Active", "Suspended"].forEach((option) => { %>
                 <option value="<%= option %>" <%= formData.status === option ? 'selected' : '' %>><%= option %></option>
               <% }) %>
             </select>

@@ -43,7 +43,7 @@ type SeedCustomer = {
   createdAt: string;
   lastLoginAt: string | null;
   lastBookingAt: string | null;
-  status: "Active" | "Suspended" | "Pending" | "Delete Pending";
+  status: "Active" | "Suspended";
   notes: string | null;
   address: string | null;
   company: string | null;
@@ -119,7 +119,7 @@ export const SEED_CUSTOMERS: SeedCustomer[] = [
     createdAt: "2025-02-18T15:55:00Z",
     lastBookingAt: null,
     lastLoginAt: null,
-    status: "Pending",
+    status: "Active",
     notes: "Awaiting email confirmation.",
     address: null,
     company: null,
@@ -185,7 +185,7 @@ export const SEED_CUSTOMERS: SeedCustomer[] = [
     createdAt: "2024-08-20T08:40:00Z",
     lastBookingAt: null,
     lastLoginAt: "2026-07-17T12:05:00Z",
-    status: "Delete Pending",
+    status: "Suspended",
     notes: "Customer requested record removal after final invoice.",
     address: "102 High Street, Bristol",
     company: null,
@@ -284,7 +284,7 @@ export const SEED_CUSTOMERS: SeedCustomer[] = [
     createdAt: "2026-01-21T07:55:00Z",
     lastBookingAt: null,
     lastLoginAt: null,
-    status: "Pending",
+    status: "Active",
     notes: "Lead imported from concierge partner.",
     address: null,
     company: "North Concierge",
@@ -325,7 +325,7 @@ export const SEED_CUSTOMERS: SeedCustomer[] = [
     createdAt: "2023-12-11T10:22:00Z",
     lastBookingAt: null,
     lastLoginAt: "2026-07-11T08:22:00Z",
-    status: "Delete Pending",
+    status: "Suspended",
     notes: null,
     address: "9 Market Lane, Nottingham",
     company: null,
@@ -391,7 +391,7 @@ export const SEED_CUSTOMERS: SeedCustomer[] = [
     createdAt: "2025-09-14T11:50:00Z",
     lastBookingAt: null,
     lastLoginAt: null,
-    status: "Pending",
+    status: "Active",
     notes: "Signup incomplete after quote request.",
     address: "72 Seaside Road, Portsmouth",
     company: null,

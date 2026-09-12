@@ -49,7 +49,7 @@ export const MIGRATIONS: Migration[] = [
         postcode TEXT,
         preferred_contact TEXT NOT NULL DEFAULT 'Unknown',
         notes TEXT,
-        status TEXT NOT NULL DEFAULT 'Pending',
+        status TEXT NOT NULL DEFAULT 'Active',
         source TEXT NOT NULL DEFAULT 'manual',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -383,7 +383,7 @@ export const MIGRATIONS: Migration[] = [
     `
   },
   {
-    id: "0006_multi_licensing_authority",
+    id: "0007_multi_licensing_authority",
     sql: `
       CREATE TABLE IF NOT EXISTS licensing_authorities (
         id TEXT PRIMARY KEY,
@@ -480,6 +480,41 @@ export const MIGRATIONS: Migration[] = [
       );
       CREATE INDEX IF NOT EXISTS idx_booking_assignment_audit_booking
         ON booking_assignment_audit (booking_id, assigned_at);
+    `
+  },
+  {
+    id: "0006_customer_lifecycle_retention",
+    sql: `
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS inactive_at TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS anonymized_at TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS erasure_requested_at TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS retention_hold_until TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS retention_hold_reason TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS purge_after TEXT;
+
+      UPDATE customers
+      SET status = 'Active',
+          retention_hold_reason = COALESCE(retention_hold_reason, 'Legacy Pending status requires review'),
+          updated_at = COALESCE(updated_at, now()::text)
+      WHERE status = 'Pending';
+      UPDATE customers
+      SET status = 'Suspended',
+          retention_hold_reason = COALESCE(retention_hold_reason, 'Legacy Delete Pending status requires review'),
+          erasure_requested_at = COALESCE(erasure_requested_at, updated_at),
+          updated_at = COALESCE(updated_at, now()::text)
+      WHERE status = 'Delete Pending';
+
+      CREATE INDEX IF NOT EXISTS idx_customers_operational
+        ON customers (deleted_at, anonymized_at, inactive_at, erasure_requested_at);
+      CREATE INDEX IF NOT EXISTS idx_customers_inactivity_candidates
+        ON customers (last_booking_at, inactive_at)
+        WHERE deleted_at IS NULL AND anonymized_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_customers_purge_candidates
+        ON customers (purge_after, anonymized_at)
+        WHERE deleted_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_customers_retention_holds
+        ON customers (retention_hold_until)
+        WHERE retention_hold_until IS NOT NULL;
     `
   }
 ];

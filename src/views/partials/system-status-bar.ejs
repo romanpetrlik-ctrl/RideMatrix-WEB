@@ -3,15 +3,25 @@
     ? systemStatus.trim()
     : "System status: Healthy";
 
-  const currentUserLabel = typeof currentUserEmail === "string" && currentUserEmail.trim()
-    ? currentUserEmail.trim()
-    : "Guest";
-
   const userHref = typeof currentUserHref === "string" && currentUserHref.trim()
     ? currentUserHref.trim()
     : "/account";
 
-  const isAuthenticated = typeof currentUserEmail === "string" && currentUserEmail.trim();
+  const statusBarAccount = typeof systemStatusBar === "object" && systemStatusBar
+    ? systemStatusBar
+    : {
+        authenticated: typeof currentUserEmail === "string" && currentUserEmail.trim(),
+        currentUserEmail,
+        availableWorkspaceModuleCount: 0,
+        hideWorkspaceSwitch: false
+      };
+  const isAuthenticated = Boolean(statusBarAccount.authenticated);
+  const currentUserLabel = typeof statusBarAccount.currentUserEmail === "string" && statusBarAccount.currentUserEmail.trim()
+    ? statusBarAccount.currentUserEmail.trim()
+    : "Guest";
+  const showWorkspaceSwitch = isAuthenticated
+    && statusBarAccount.availableWorkspaceModuleCount > 1
+    && !statusBarAccount.hideWorkspaceSwitch;
 %>
 
 <div class="system-status-bar">
@@ -45,6 +55,17 @@
       <a class="system-status-bar__user-link" href="<%= userHref %>">
         <%= currentUserLabel %>
       </a>
+      <% if (isAuthenticated) { %>
+        <div class="system-status-bar__account-actions" aria-label="Account actions">
+          <% if (showWorkspaceSwitch) { %>
+            <a class="system-status-bar__account-action system-status-bar__account-action--secondary" href="/choose-role">Switch workspace</a>
+          <% } %>
+          <form class="system-status-bar__account-action-form" method="post" action="/exit">
+            <%- locals.csrfField || "" %>
+            <button class="system-status-bar__account-action system-status-bar__account-action--danger" type="submit">Exit</button>
+          </form>
+        </div>
+      <% } %>
     </div>
   </div>
 </div>
