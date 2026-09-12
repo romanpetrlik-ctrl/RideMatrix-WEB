@@ -615,6 +615,7 @@ input[type="submit"]:hover {
 
 button:focus,
 .button:focus,
+.system-status-bar__account-action:focus,
 input[type="submit"]:focus {
   outline: var(--rm-control-focus-outline);
   outline-offset: var(--rm-control-focus-offset);

@@ -6,6 +6,17 @@ function read(path: string): string {
   return fs.readFileSync(path, "utf8");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractRuleBody(source: string, selector: string): string {
+  const expression = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`);
+  const match = source.match(expression);
+  assert.ok(match, `Missing rule for selector: ${selector}`);
+  return match[1];
+}
+
 test("customer registration and edit actions are supplied by the dynamic bar", () => {
   const register = read("src/views/pages/customers/register.ejs");
   const edit = read("src/views/pages/customers/edit.ejs");
@@ -37,6 +48,8 @@ test("shared context action partial renders only supplied actions with semantic 
   const header = read("src/views/partials/header.ejs");
   const actions = read("src/views/partials/context-actions.ejs");
   const css = read("public/css/app.css");
+  const siteHeaderAction = extractRuleBody(css, ".site-header__action");
+  const contextBarDangerAction = extractRuleBody(css, ".context-bar__action--danger");
 
   assert.match(header, /headerContextActions\.length > 0/);
   assert.match(actions, /type="submit"/);
@@ -50,8 +63,10 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /--rm-control-font-size:\s*0\.95rem;/);
   assert.match(css, /--rm-control-border-width:\s*1px;/);
   assert.match(css, /--rm-control-focus-outline:\s*2px solid var\(--rm-dark-cyan\);/);
-  assert.match(css, /\.site-header__action \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*align-items: center;/);
-  assert.match(css, /\.context-bar__action--danger \{[\s\S]*border-color: var\(--rm-golden-orange\);/);
+  assert.match(css, /button:focus,\s*\.button:focus,\s*\.system-status-bar__account-action:focus,\s*input\[type="submit"\]:focus \{/);
+  assert.match(siteHeaderAction, /height: var\(--rm-control-height\);/);
+  assert.match(siteHeaderAction, /align-items: center;/);
+  assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
