@@ -806,9 +806,9 @@ async function syncCustomerRecord(
       await client.query(
         `UPDATE customers SET
           phone = COALESCE(phone, $1),
-          last_booking_at = CASE WHEN $2 IS NULL THEN last_booking_at ELSE GREATEST(COALESCE(last_booking_at, $2), $2) END,
-          inactive_at = CASE WHEN $2 IS NOT NULL AND erasure_requested_at IS NULL
-            AND (retention_hold_until IS NULL OR retention_hold_until <= $3) THEN NULL ELSE inactive_at END,
+          last_booking_at = CASE WHEN $2::text IS NULL THEN last_booking_at ELSE GREATEST(COALESCE(last_booking_at, $2::text), $2::text) END,
+          inactive_at = CASE WHEN $2::text IS NOT NULL AND erasure_requested_at IS NULL
+            AND (retention_hold_until IS NULL OR retention_hold_until <= $3::text) THEN NULL ELSE inactive_at END,
           updated_at = $3
         WHERE id = $4`,
         [
@@ -854,9 +854,9 @@ async function syncCustomerRecord(
   await client.query(
     `UPDATE customers SET
       phone = COALESCE(phone, $1),
-      last_booking_at = CASE WHEN $2 IS NULL THEN last_booking_at ELSE GREATEST(COALESCE(last_booking_at, $2), $2) END,
-      inactive_at = CASE WHEN $2 IS NOT NULL AND erasure_requested_at IS NULL
-        AND (retention_hold_until IS NULL OR retention_hold_until <= $3) THEN NULL ELSE inactive_at END,
+      last_booking_at = CASE WHEN $2::text IS NULL THEN last_booking_at ELSE GREATEST(COALESCE(last_booking_at, $2::text), $2::text) END,
+      inactive_at = CASE WHEN $2::text IS NOT NULL AND erasure_requested_at IS NULL
+        AND (retention_hold_until IS NULL OR retention_hold_until <= $3::text) THEN NULL ELSE inactive_at END,
       updated_at = $3
     WHERE id = $4`,
     [

@@ -52,7 +52,7 @@ export async function listRecentBookingsForCustomer(
          service_date_time,
          pickup_text,
          dropoff_text,
-         CASE WHEN service_date_time > NOW() THEN 'Scheduled' ELSE 'Completed' END
+         CASE WHEN service_date_time > NOW()::text THEN 'Scheduled' ELSE 'Completed' END
        FROM imported_bookings
        WHERE customer_id = $1
      ) AS customer_booking_history
@@ -604,7 +604,7 @@ export async function getCustomerByEmail(
 
   const runner = client || getPool();
   const res = await runner.query<CustomerRow>(
-    "SELECT * FROM customers WHERE email_normalized = $1 AND deleted_at IS NULL LIMIT 1",
+    "SELECT * FROM customers WHERE email_normalized = $1 AND deleted_at IS NULL AND inactive_at IS NULL AND anonymized_at IS NULL AND erasure_requested_at IS NULL LIMIT 1",
     [normalized]
   );
 
@@ -742,18 +742,31 @@ export function isAnonymizationEligible(
 export async function markInactiveCustomers(
   client?: Queryable,
   now: Date = new Date(),
-  months = readCustomerRetentionPolicy().inactivityMonths
+  months = readCustomerRetentionPolicy().inactivityMonths,
+  retentionMonths = readCustomerRetentionPolicy().retentionMonths
 ): Promise<number> {
   const runner = client || getPool();
   const cutoff = addCalendarMonths(now, -months).toISOString();
   const result = await runner.query(
-    `UPDATE customers c SET inactive_at = COALESCE(c.inactive_at, $1), purge_after = COALESCE(c.purge_after, $2),
+    `UPDATE customers c SET inactive_at = COALESCE(c.inactive_at, $1),
+       purge_after = COALESCE(c.purge_after,
+         (COALESCE(
+           c.last_booking_at,
+           (SELECT MAX(service_date) FROM customer_bookings WHERE customer_id = c.id),
+           (SELECT MAX(service_date_time) FROM imported_bookings WHERE customer_id = c.id),
+           c.created_at
+         )::timestamptz + ($4 || ' months')::interval)::text),
        updated_at = $1
      WHERE c.deleted_at IS NULL AND c.anonymized_at IS NULL AND c.erasure_requested_at IS NULL
        AND (c.retention_hold_until IS NULL OR c.retention_hold_until <= $1)
-       AND COALESCE(c.last_booking_at, c.created_at) <= $3
+       AND COALESCE(
+         c.last_booking_at,
+         (SELECT MAX(service_date) FROM customer_bookings WHERE customer_id = c.id),
+         (SELECT MAX(service_date_time) FROM imported_bookings WHERE customer_id = c.id),
+         c.created_at
+       ) <= $3
        AND c.inactive_at IS NULL`,
-    [now.toISOString(), addCalendarMonths(now, months).toISOString(), cutoff]
+    [now.toISOString(), addCalendarMonths(now, months).toISOString(), cutoff, retentionMonths]
   );
   return result.rowCount || 0;
 }
@@ -851,7 +864,7 @@ export async function processCustomerRetention(
   client?: Queryable
 ): Promise<{ inactive: number; anonymized: number; purged: number }> {
   const runner = client || getPool();
-  const inactive = await markInactiveCustomers(runner, new Date(), policy.inactivityMonths);
+  const inactive = await markInactiveCustomers(runner, new Date(), policy.inactivityMonths, policy.retentionMonths);
   const candidates = await runner.query<{ id: string }>(
     `SELECT id FROM customers WHERE deleted_at IS NULL AND purge_after <= $1
       AND (retention_hold_until IS NULL OR retention_hold_until <= $1)
@@ -897,7 +910,7 @@ export async function getCustomerById(
 export async function getCustomerCount(client?: Queryable): Promise<number> {
   const runner = client || getPool();
   const res = await runner.query<{ total: string | number }>(
-    "SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL"
+    "SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL AND inactive_at IS NULL AND anonymized_at IS NULL AND erasure_requested_at IS NULL"
   );
 
   return Number(res.rows[0]?.total ?? 0);
