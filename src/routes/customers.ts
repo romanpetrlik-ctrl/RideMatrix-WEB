@@ -1123,10 +1123,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(formData.preferredContact)
           ? (formData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
           : "Unknown",
-        status: (["Active", "Suspended", "Pending", "Delete Pending"] as const).includes(
-          formData.status as "Active" | "Suspended" | "Pending" | "Delete Pending"
+        status: (["Active", "Suspended"] as const).includes(
+          formData.status as "Active" | "Suspended"
         )
-          ? (formData.status as "Active" | "Suspended" | "Pending" | "Delete Pending")
+          ? (formData.status as "Active" | "Suspended")
           : undefined
       });
 

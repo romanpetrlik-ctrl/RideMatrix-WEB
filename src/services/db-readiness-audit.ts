@@ -101,7 +101,13 @@ const REQUIRED_CUSTOMER_COLUMNS: Record<string, string[]> = {
     "created_at",
     "updated_at",
     "last_booking_at",
-    "deleted_at"
+    "deleted_at",
+    "inactive_at",
+    "anonymized_at",
+    "erasure_requested_at",
+    "retention_hold_until",
+    "retention_hold_reason",
+    "purge_after"
   ],
   customer_bookings: ["id", "customer_id", "reference", "service_date", "status", "created_at"],
   import_batches: [
