@@ -180,6 +180,58 @@ a {
   justify-content: flex-end;
 }
 
+.system-status-bar__account-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.system-status-bar__account-action-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.system-status-bar__account-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  max-width: 100%;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  color: var(--rm-system-bar-text);
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.system-status-bar__account-action--secondary {
+  border-color: var(--rm-camel);
+}
+
+.system-status-bar__account-action--secondary:hover,
+.system-status-bar__account-action--secondary:focus {
+  background: rgba(255, 237, 216, 0.18);
+  color: var(--rm-system-bar-text);
+}
+
+.system-status-bar__account-action--danger {
+  border-color: var(--rm-golden-orange);
+  background: transparent;
+  cursor: pointer;
+}
+
+.system-status-bar__account-action--danger:hover,
+.system-status-bar__account-action--danger:focus {
+  background: var(--rm-oxidized-iron);
+  color: var(--rm-antique-white);
+}
+
 .site-header__context {
   padding-bottom: 0.6rem;
 }
@@ -1768,6 +1820,10 @@ button:visited,
   .system-status-bar__left,
   .system-status-bar__center,
   .system-status-bar__right {
+    justify-content: center;
+  }
+
+  .system-status-bar__account-actions {
     justify-content: center;
   }
 

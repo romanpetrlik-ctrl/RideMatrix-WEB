@@ -3,7 +3,7 @@
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
-    <%- include("../../partials/header", { appTitle, pageTitle: "Vehicles", pageMeta: "Fleet, compliance, and driver assignments.", breadcrumbs: [{ label: "Administration", href: "/dashboard" }, { label: "Vehicles" }], hintsLabel: `${total} vehicles`, showRoleSwitch: true, showExitLink: true }) %>
+    <%- include("../../partials/header", { appTitle, pageTitle: "Vehicles", pageMeta: "Fleet, compliance, and driver assignments.", breadcrumbs: [{ label: "Administration", href: "/dashboard" }, { label: "Vehicles" }], hintsLabel: `${total} vehicles` }) %>
     <main class="container vehicle-page">
       <header class="vehicle-page__header"><div><h1>Vehicles</h1><p>Manage the fleet and its operational status.</p></div><a class="button button--primary" href="/vehicles/new">Add vehicle</a></header>
       <form class="vehicle-toolbar" method="get" action="/vehicles"><label for="vehicle-search">Search</label><input id="vehicle-search" name="q" value="<%= search %>" placeholder="Registration, make, model"><button class="button button--secondary" type="submit">Search</button></form>

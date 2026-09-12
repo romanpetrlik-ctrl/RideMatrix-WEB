@@ -43,8 +43,8 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(actions, /form="<%= action\.formId %>"/);
   assert.match(actions, /href="<%= action\.href \|\| '#' %>"/);
   assert.match(actions, /site-header__action context-bar__action/);
-  assert.match(header, /site-header__action site-header__system-action.*Switch workspace/);
-  assert.match(header, /class="site-header__action site-header__system-action" type="submit">Exit/);
+  assert.doesNotMatch(header, /Switch workspace/);
+  assert.doesNotMatch(header, /action="\/exit"/);
   assert.match(css, /\.site-header__action \{[\s\S]*height: 2\.5rem;[\s\S]*align-items: center;/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
