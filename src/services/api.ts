@@ -75,7 +75,23 @@ export async function selectActiveRole(
   };
 }
 
-export async function logoutSession(cookieHeader?: string): Promise<{ setCookie: string[] }> {
+export type LogoutSessionResult = {
+  ok: boolean;
+  setCookie: string[];
+  status: number;
+};
+
+function getSetCookieHeaders(response: Response): string[] {
+  const headers = response.headers.getSetCookie?.();
+  if (headers && headers.length > 0) {
+    return headers;
+  }
+
+  const combinedHeader = response.headers.get("set-cookie");
+  return combinedHeader ? [combinedHeader] : [];
+}
+
+export async function logoutSession(cookieHeader?: string): Promise<LogoutSessionResult> {
   const response = await fetch(`${apiBaseUrl}/auth/logout`, {
     method: "POST",
     headers: cookieHeader
@@ -85,10 +101,9 @@ export async function logoutSession(cookieHeader?: string): Promise<{ setCookie:
       : undefined
   });
 
-  if (!response.ok) {
-    throw new Error(`Logout request failed with status ${response.status}`);
-  }
-
-  const setCookie = response.headers.getSetCookie?.() ?? [];
-  return { setCookie };
+  return {
+    ok: response.ok,
+    setCookie: getSetCookieHeaders(response),
+    status: response.status
+  };
 }

@@ -12,10 +12,21 @@ export function createExitRouter(): Router {
         res.append("Set-Cookie", cookie);
       }
 
+      if (!result.ok) {
+        console.warn(`Logout API returned HTTP ${result.status}; redirecting to access`);
+      }
+
       res.redirect("/access");
     } catch (error) {
-      next(error);
+      // Do not expose an upstream error, cookie, or session identifier to the
+      // client. The local response is deterministic even if the API is down.
+      console.warn("Logout API request failed; redirecting to access");
+      res.redirect("/access");
     }
+  });
+
+  router.get("/exit", (_req, res) => {
+    res.redirect("/access");
   });
 
   return router;

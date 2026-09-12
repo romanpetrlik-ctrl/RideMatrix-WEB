@@ -1,6 +1,7 @@
 import { Request, Response, Router } from "express";
 import { SessionAccount, getSessionAccount, submitAccessRequest } from "../services/api";
 import { canManageStaff, listStaffUsers } from "../services/staff";
+import { noStoreProtectedResponse } from "../middleware/no-store";
 import {
   AssignableRole,
   DuplicateStaffUserEmailError,
@@ -100,6 +101,7 @@ function formatDateTime(value: string | null): string {
 
 export function createStaffRouter(options: StaffRouterOptions): Router {
   const router = Router();
+  router.use(noStoreProtectedResponse);
   const loadSession = options.loadSession ?? getSessionAccount;
   const requestAccessCode = options.requestAccessCode ?? submitAccessRequest;
 
