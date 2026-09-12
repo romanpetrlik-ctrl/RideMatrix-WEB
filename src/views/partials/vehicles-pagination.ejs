@@ -1,5 +1,5 @@
 <nav class="pagination-bar" aria-label="Vehicle pagination"><span>Showing <%= startRecord %>–<%= endRecord %> of <%= total %></span><div class="pagination-bar__controls">
-  <% if (page > 1) { %><a href="/vehicles?q=<%= encodeURIComponent(search) %>&page=<%= page - 1 %>">Previous</a><% } %>
-  <% for (let n = 1; n <= totalPages; n += 1) { %><a class="<%= n === page ? 'is-active' : '' %>" href="/vehicles?q=<%= encodeURIComponent(search) %>&page=<%= n %>" aria-current="<%= n === page ? 'page' : 'false' %>"><%= n %></a><% } %>
-  <% if (page < totalPages) { %><a href="/vehicles?q=<%= encodeURIComponent(search) %>&page=<%= page + 1 %>">Next</a><% } %>
+  <% if (page > 1) { %><a class="pagination-bar__link" href="/vehicles?q=<%= encodeURIComponent(search) %>&page=<%= page - 1 %>">Previous</a><% } %>
+  <% for (let n = 1; n <= totalPages; n += 1) { %><a class="pagination-bar__link<%= n === page ? ' pagination-bar__link--active' : '' %>" href="/vehicles?q=<%= encodeURIComponent(search) %>&page=<%= n %>" aria-current="<%= n === page ? 'page' : 'false' %>"><%= n %></a><% } %>
+  <% if (page < totalPages) { %><a class="pagination-bar__link" href="/vehicles?q=<%= encodeURIComponent(search) %>&page=<%= page + 1 %>">Next</a><% } %>
 </div></nav>
