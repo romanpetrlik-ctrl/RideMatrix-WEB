@@ -143,7 +143,8 @@ async function activeLicenseIds(
        JOIN licensing_authorities a ON a.id = l.licensing_authority_id
       WHERE l.${column} = $1 AND a.active = TRUE AND l.active = TRUE
         AND l.revoked_at IS NULL AND l.valid_from <= $2
-        AND (l.valid_until IS NULL OR l.valid_until > $2)`,
+        AND (l.valid_until IS NULL OR l.valid_until > $2)
+      ORDER BY l.valid_from DESC, l.id`,
     [entityId, atTime]
   );
   return new Map(result.rows.map((row: any) => [row.licensing_authority_id, row.license_reference ?? null]));
@@ -191,8 +192,20 @@ export async function assignBookingWithLicensing(input: {
   reason?: string | null;
 }, client?: Queryable): Promise<CompatibleAuthority> {
   const work = async (runner: Queryable) => {
+    const booking = await runner.query<{ service_date: string }>(
+      "SELECT service_date FROM customer_bookings WHERE id = $1 FOR UPDATE",
+      [input.bookingId]
+    );
+    if (!booking.rows[0]) throw new Error("Booking was not found.");
+    const vehicle = await runner.query<{ status: string }>(
+      "SELECT status FROM vehicles WHERE id = $1",
+      [input.vehicleId]
+    );
+    if (!vehicle.rows[0] || vehicle.rows[0].status !== "active") {
+      throw new Error("Vehicle is not operationally available for assignment.");
+    }
     const authorities = await resolveCompatibleLicensingAuthorities(
-      input.operatorId, input.driverId, input.vehicleId, input.atTime || new Date(), runner
+      input.operatorId, input.driverId, input.vehicleId, input.atTime || booking.rows[0].service_date, runner
     );
     const selected = selectDeterministicAuthority(authorities);
     if (!selected) throw new Error("No common active licensing authority for operator, driver, and vehicle.");
