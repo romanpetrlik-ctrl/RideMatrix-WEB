@@ -3,11 +3,7 @@
     <section class="panel customer-detail-panel">
       <div class="customer-detail-panel__header">
         <div>
-          <% if (modal) { %>
-            <h3 id="customer-detail-modal-title"><%= customer.surname %>, <%= customer.givenName %></h3>
-          <% } else { %>
-            <h1><%= customer.surname %>, <%= customer.givenName %></h1>
-          <% } %>
+          <h1><%= customer.surname %>, <%= customer.givenName %></h1>
           <p>Customer ID: <strong><%= customer.id %></strong></p>
         </div>
         <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
