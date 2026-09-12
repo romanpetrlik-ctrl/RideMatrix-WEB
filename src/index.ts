@@ -14,6 +14,7 @@ import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
 import { errorHandler } from "./middleware/error-handler";
 import { createCsrfProtection } from "./middleware/csrf";
+import { createSystemStatusBarViewModelMiddleware } from "./middleware/system-status-bar";
 import { initializeDatabase } from "./database/connection";
 
 dotenv.config();
@@ -39,6 +40,7 @@ async function startServer() {
   // Issues a signed, cookie-bound CSRF token for every response and validates
   // it on every state-changing request (see docs/csrf-protection.md).
   app.use(createCsrfProtection({ appTitle }));
+  app.use(createSystemStatusBarViewModelMiddleware());
 
   app.get("/", (_req, res) => {
     res.redirect("/access");
