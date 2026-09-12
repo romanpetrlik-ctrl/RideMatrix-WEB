@@ -94,8 +94,8 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(paginationLink, /color: var\(--rm-walnut-3\);/);
   assert.match(paginationLink, /font: inherit;/);
   assert.match(paginationLink, /font-size: var\(--rm-control-font-size-compact\);/);
-  assert.match(css, /\.pagination-bar__link:visited \{[\s\S]*color: var\(--rm-walnut-3\);/);
-  assert.match(css, /\.pagination-bar__link:hover,\s*\.pagination-bar__link:focus \{[\s\S]*color: var\(--rm-walnut\);/);
+  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited \{[\s\S]*color: var\(--rm-walnut-3\);/);
+  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-walnut\);/);
   assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-bottom-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
@@ -120,4 +120,25 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);
   assert.match(header, /headerContextActions\.length > 0/);
   assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
+});
+
+test("customer context toolbar preserves controls and shared sizing", () => {
+  const template = read("src/views/partials/header-context/customers-list.ejs");
+  const css = read("public/css/app.css");
+  const toolbar = extractRuleBody(css, ".context-toolbar");
+  const toolbarField = extractRuleBody(css, ".context-toolbar__field");
+  const toolbarControls = css.match(/\.context-toolbar \.button:not\(\.button--small\),[\s\S]*?\.context-toolbar input\[type="submit"\]:not\(\.button--small\)\s*\{([^}]*)\}/)?.[1];
+
+  assert.ok(toolbarControls);
+  assert.match(template, /<nav class="context-tabs" aria-label="Customer status filters">/);
+  assert.match(template, /id="customers-search"/);
+  assert.match(template, /id="customers-per-page"/);
+  assert.match(template, /class="button button--primary" href="\/customers\/register">New customer/);
+  assert.match(css, /\.context-tab \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.context-toolbar \.button:not\(\.button--small\),[\s\S]*?\.context-toolbar input\[type="submit"\]:not\(\.button--small\) \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
+  assert.match(toolbarField, /display: grid;/);
+  assert.match(toolbarField, /align-items: center;/);
+  assert.match(toolbar, /flex-wrap: wrap;/);
+  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar__field label \{[\s\S]*margin-bottom: 0;/);
+  assert.doesNotMatch(toolbarControls, /min-height:\s*40px/);
 });

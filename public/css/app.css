@@ -255,7 +255,7 @@ a {
 }
 
 .site-header__context {
-  padding-bottom: 0.6rem;
+  padding-bottom: 0.45rem;
 }
 
 .site-header__context-actions {
@@ -406,12 +406,12 @@ a {
 }
 
 .site-header__inner {
-  min-height: 3.25rem;
+  min-height: 3rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.35rem 0;
+  padding: 0.2rem 0;
 }
 
 .site-header__left,
@@ -1390,6 +1390,10 @@ button:visited,
 .context-toolbar__field {
   flex: 1 1 20rem;
   min-width: min(20rem, 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .context-toolbar__field--compact {
@@ -1399,8 +1403,9 @@ button:visited,
 
 .context-toolbar input,
 .context-toolbar select {
+  height: var(--rm-control-height);
   margin-bottom: 0;
-  padding: 0.5rem 0.65rem;
+  padding: 0 var(--rm-control-padding-inline);
 }
 
 .context-toolbar .button:not(.button--small),
@@ -1432,7 +1437,9 @@ button:visited,
 .context-tab {
   display: inline-flex;
   align-items: center;
-  padding: 0.45rem 0.8rem;
+  height: var(--rm-control-height);
+  min-height: var(--rm-control-height);
+  padding: 0 var(--rm-control-padding-inline);
   border: 1px solid rgba(255, 237, 216, 0.45);
   color: var(--rm-context-bar-text);
   text-decoration: none;
@@ -1660,12 +1667,12 @@ button:visited,
   text-decoration: none;
 }
 
-.pagination-bar__link:visited {
+.pagination-bar__link:not(.pagination-bar__link--active):visited {
   color: var(--rm-walnut-3);
 }
 
-.pagination-bar__link:hover,
-.pagination-bar__link:focus {
+.pagination-bar__link:not(.pagination-bar__link--active):hover,
+.pagination-bar__link:not(.pagination-bar__link--active):focus {
   color: var(--rm-walnut);
 }
 
@@ -1938,6 +1945,12 @@ button:visited,
   .context-toolbar__field--compact {
     flex-basis: 100%;
     min-width: 0;
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .context-toolbar__field label {
+    margin-bottom: 0;
   }
 
   .context-toolbar .button,
