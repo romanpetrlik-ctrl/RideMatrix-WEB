@@ -807,9 +807,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         mapBrowserApiKey: readMapConfiguration().browserApiKey
       };
 
-      return res.render(req.query.fragment === "1"
-        ? "pages/customers/detail-fragment"
-        : "pages/customers/detail", detailViewModel);
+      return res.render("pages/customers/detail", detailViewModel);
     } catch (error) {
       if (error instanceof Error && error.message === "unauthenticated") {
         return res.redirect("/access");

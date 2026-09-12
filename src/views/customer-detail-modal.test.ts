@@ -6,16 +6,12 @@ function read(path: string): string {
   return fs.readFileSync(path, "utf8");
 }
 
-test("customer list progressively enhances View links with an accessible dialog", () => {
+test("customer list opens the normal detail page in a new tab", () => {
   const index = read("src/views/pages/customers/index.ejs");
-  const script = read("public/js/customer-detail-modal.js");
 
-  assert.match(index, /data-customer-detail-trigger/);
-  assert.match(index, /<dialog[^>]+data-customer-detail-modal/);
-  assert.match(index, /aria-labelledby="customer-detail-modal-title"/);
-  assert.match(script, /showModal\(\)/);
-  assert.match(script, /addEventListener\("cancel"/);
-  assert.match(script, /\.focus\(\)/);
+  assert.doesNotMatch(index, /data-customer-detail-modal|data-customer-detail-trigger/);
+  assert.match(index, /class="customer-table__identity" href="<%= customer\.detailHref %>" target="_blank" rel="noopener noreferrer"/);
+  assert.match(index, /href="<%= customer\.detailHref %>" target="_blank" rel="noopener noreferrer">View<\/a>/);
 });
 
 test("customer detail keeps a home address map area and readable context actions", () => {

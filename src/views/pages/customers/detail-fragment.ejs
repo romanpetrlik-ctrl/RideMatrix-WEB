@@ -1,8 +1,0 @@
-<article class="customer-detail-modal__panel" aria-labelledby="customer-detail-modal-title">
-  <div class="customer-detail-modal__header">
-    <h2>Customer detail</h2>
-    <button type="button" class="button button--secondary" data-customer-modal-close>Close</button>
-  </div>
-  <%- include("../../partials/header-context/customer-detail", { customer, backToCustomersHref }) %>
-  <%- include("../../partials/customer-detail-content", { customer, mapView, modal: true }) %>
-</article>

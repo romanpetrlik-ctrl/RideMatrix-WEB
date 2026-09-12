@@ -73,7 +73,7 @@
                 <% customers.forEach((customer) => { %>
                   <tr>
                     <td>
-                      <a class="customer-table__identity" href="<%= customer.detailHref %>">
+                      <a class="customer-table__identity" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">
                         <strong><%= customer.givenName %> <%= customer.surname %></strong>
                         <span><%= customer.company || customer.email || "No company or email" %></span>
                       </a>
@@ -91,7 +91,7 @@
                       <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
                     </td>
                     <td class="customers-table__actions">
-                      <a class="button button--secondary button--small" href="<%= customer.detailHref %>" data-customer-detail-trigger>View</a>
+                      <a class="button button--secondary button--small" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">View</a>
                       <a class="button button--secondary button--small" href="<%= customer.editHref %>">Edit</a>
                       <a class="button button--danger button--small" href="<%= customer.deleteHref %>">Delete</a>
                     </td>
@@ -117,11 +117,6 @@
       </section>
     </main>
 
-    <dialog class="customer-detail-modal" data-customer-detail-modal aria-labelledby="customer-detail-modal-title">
-      <div data-customer-detail-modal-content></div>
-    </dialog>
-
     <%- include("../../partials/footer") %>
-    <script src="/js/customer-detail-modal.js" defer></script>
   </body>
 </html>
