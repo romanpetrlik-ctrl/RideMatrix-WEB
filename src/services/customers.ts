@@ -25,6 +25,8 @@ export type BookingRecord = {
   pickup: string;
   dropoff: string;
   status: "Scheduled" | "Completed" | "Cancelled";
+  licensingAuthorityId: string | null;
+  licensingAuthorityName: string | null;
 };
 
 export async function listRecentBookingsForCustomer(
@@ -39,12 +41,17 @@ export async function listRecentBookingsForCustomer(
     pickup: string;
     dropoff: string;
     status: BookingRecord["status"];
+    licensing_authority_id: string | null;
+    licensing_authority_name: string | null;
   }>(
-    `SELECT id, reference, service_date, pickup, dropoff, status
+    `SELECT id, reference, service_date, pickup, dropoff, status,
+           licensing_authority_id, licensing_authority_name
      FROM (
-       SELECT id, reference, service_date, pickup, dropoff, status
-       FROM customer_bookings
-       WHERE customer_id = $1
+       SELECT b.id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
+              b.licensing_authority_id, a.name AS licensing_authority_name
+       FROM customer_bookings b
+       LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
+       WHERE b.customer_id = $1
        UNION ALL
        SELECT
          id,
@@ -52,7 +59,9 @@ export async function listRecentBookingsForCustomer(
          service_date_time,
          pickup_text,
          dropoff_text,
-         CASE WHEN service_date_time > NOW()::text THEN 'Scheduled' ELSE 'Completed' END
+         CASE WHEN service_date_time > NOW()::text THEN 'Scheduled' ELSE 'Completed' END,
+         NULL,
+         NULL
        FROM imported_bookings
        WHERE customer_id = $1
      ) AS customer_booking_history
@@ -68,6 +77,8 @@ export async function listRecentBookingsForCustomer(
     pickup: booking.pickup,
     dropoff: booking.dropoff,
     status: booking.status
+    ,licensingAuthorityId: booking.licensing_authority_id,
+    licensingAuthorityName: booking.licensing_authority_name
   }));
 }
 
@@ -317,10 +328,14 @@ async function loadBookings(
     pickup: string;
     dropoff: string;
     status: BookingRecord["status"];
+    licensing_authority_id: string | null;
+    licensing_authority_name: string | null;
   }>(
-    `SELECT id, customer_id, reference, service_date, pickup, dropoff, status
-     FROM customer_bookings
-     WHERE customer_id = ANY($1)
+    `SELECT b.id, b.customer_id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
+            b.licensing_authority_id, a.name AS licensing_authority_name
+     FROM customer_bookings b
+     LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
+     WHERE b.customer_id = ANY($1)
      ORDER BY service_date DESC`,
     [customerIds]
   );
@@ -333,7 +348,9 @@ async function loadBookings(
       serviceDate: booking.service_date,
       pickup: booking.pickup,
       dropoff: booking.dropoff,
-      status: booking.status
+      status: booking.status,
+      licensingAuthorityId: booking.licensing_authority_id,
+      licensingAuthorityName: booking.licensing_authority_name
     });
     grouped.set(booking.customer_id, list);
   }
@@ -365,7 +382,9 @@ async function loadBookings(
       dropoff: booking.dropoff_text,
       // The temporal status is derived on read so that imported bookings do not
       // stay "Scheduled" forever once their service date has passed.
-      status: booking.service_date_time > nowIso ? "Scheduled" : "Completed"
+      status: booking.service_date_time > nowIso ? "Scheduled" : "Completed",
+      licensingAuthorityId: null,
+      licensingAuthorityName: null
     });
     grouped.set(booking.customer_id, list);
   }

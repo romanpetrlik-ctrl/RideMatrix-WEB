@@ -383,6 +383,106 @@ export const MIGRATIONS: Migration[] = [
     `
   },
   {
+    id: "0007_multi_licensing_authority",
+    sql: `
+      CREATE TABLE IF NOT EXISTS licensing_authorities (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        authority_type TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        preference_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_licensing_authorities_name_unique
+        ON licensing_authorities (lower(name));
+
+      CREATE TABLE IF NOT EXISTS operator_licensing_authorities (
+        id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL,
+        licensing_authority_id TEXT NOT NULL REFERENCES licensing_authorities(id),
+        license_reference TEXT,
+        valid_from TEXT NOT NULL,
+        valid_until TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        revoked_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (valid_until IS NULL OR valid_until > valid_from)
+      );
+      CREATE INDEX IF NOT EXISTS idx_operator_licenses_lookup
+        ON operator_licensing_authorities (operator_id, licensing_authority_id);
+
+      CREATE TABLE IF NOT EXISTS vehicle_licensing_authorities (
+        id TEXT PRIMARY KEY,
+        vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        licensing_authority_id TEXT NOT NULL REFERENCES licensing_authorities(id),
+        license_reference TEXT,
+        valid_from TEXT NOT NULL,
+        valid_until TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        revoked_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (valid_until IS NULL OR valid_until > valid_from)
+      );
+      CREATE INDEX IF NOT EXISTS idx_vehicle_licenses_lookup
+        ON vehicle_licensing_authorities (vehicle_id, licensing_authority_id);
+
+      CREATE TABLE IF NOT EXISTS driver_licensing_authorities (
+        id TEXT PRIMARY KEY,
+        driver_id TEXT NOT NULL,
+        licensing_authority_id TEXT NOT NULL REFERENCES licensing_authorities(id),
+        license_reference TEXT,
+        valid_from TEXT NOT NULL,
+        valid_until TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        revoked_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (valid_until IS NULL OR valid_until > valid_from)
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_licenses_lookup
+        ON driver_licensing_authorities (driver_id, licensing_authority_id);
+
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS operator_id TEXT;
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS driver_id TEXT;
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS vehicle_id TEXT
+        REFERENCES vehicles(id);
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS licensing_authority_id TEXT
+        REFERENCES licensing_authorities(id);
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS assignment_status TEXT
+        NOT NULL DEFAULT 'unassigned';
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS assignment_review_required BOOLEAN
+        NOT NULL DEFAULT FALSE;
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS assigned_at TEXT;
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS assigned_by TEXT;
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS assignment_source TEXT;
+      ALTER TABLE customer_bookings ADD COLUMN IF NOT EXISTS assignment_reason TEXT;
+      CREATE INDEX IF NOT EXISTS idx_customer_bookings_authority
+        ON customer_bookings (licensing_authority_id, service_date);
+
+      CREATE TABLE IF NOT EXISTS booking_assignment_audit (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        operator_id TEXT,
+        driver_id TEXT,
+        vehicle_id TEXT,
+        licensing_authority_id TEXT REFERENCES licensing_authorities(id),
+        assigned_at TEXT NOT NULL,
+        actor_id TEXT,
+        source TEXT NOT NULL,
+        action TEXT NOT NULL,
+        reason TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_assignment_audit_booking
+        ON booking_assignment_audit (booking_id, assigned_at);
+    `
+  },
+  {
     id: "0006_customer_lifecycle_retention",
     sql: `
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS inactive_at TEXT;
