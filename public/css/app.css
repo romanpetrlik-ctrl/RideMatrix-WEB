@@ -27,6 +27,15 @@
 
   --rm-font-sans: "Open Sans", Arial, Helvetica, sans-serif;
 
+  --rm-control-height: 3rem;
+  --rm-control-height-compact: 2.25rem;
+  --rm-control-padding-inline: 1rem;
+  --rm-control-padding-block: 0.7rem;
+  --rm-control-font-size: 0.95rem;
+  --rm-control-border-width: 1px;
+  --rm-control-focus-outline: 2px solid var(--rm-dark-cyan);
+  --rm-control-focus-offset: 2px;
+
   --rm-menu-category-text: #5a320c;
   --rm-menu-action-text: #704b2a;
   --rm-menu-supporting-text: #7a6250;
@@ -52,6 +61,11 @@
   --rm-top-bar-edge-space: 50px;
   --rm-main-content-edge-space: clamp(1rem, 2vw, 1.5rem);
   --rm-panel-inline-space: 1.25rem;
+}
+
+.pagination-bar__link:focus {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
 }
 
 *,
@@ -197,10 +211,10 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2rem;
+  min-height: var(--rm-control-height-compact);
   max-width: 100%;
-  padding: 0.25rem 0.65rem;
-  border: 1px solid transparent;
+  padding: 0.25rem var(--rm-control-padding-inline);
+  border: var(--rm-control-border-width) solid transparent;
   border-radius: 0.25rem;
   color: var(--rm-system-bar-text);
   font: inherit;
@@ -251,11 +265,12 @@ a {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  padding: 0 1rem;
-  border-width: 1px;
+  height: var(--rm-control-height);
+  min-height: var(--rm-control-height);
+  padding: 0 var(--rm-control-padding-inline);
+  border-width: var(--rm-control-border-width);
   font: inherit;
+  font-size: var(--rm-control-font-size);
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -580,10 +595,12 @@ input[type="submit"] {
   justify-content: center;
   background: var(--rm-button-bg);
   color: var(--rm-antique-white);
-  border: 1px solid var(--rm-faded-copper);
-  padding: 0.7rem 1rem;
+  min-height: var(--rm-control-height);
+  border: var(--rm-control-border-width) solid var(--rm-faded-copper);
+  padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
   cursor: pointer;
   font: inherit;
+  font-size: var(--rm-control-font-size);
   font-weight: 700;
   text-decoration: none;
 }
@@ -599,8 +616,8 @@ input[type="submit"]:hover {
 button:focus,
 .button:focus,
 input[type="submit"]:focus {
-  outline: 2px solid var(--rm-dark-cyan);
-  outline-offset: 2px;
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
   text-decoration: none;
 }
 
@@ -630,7 +647,7 @@ button:visited,
 }
 
 .form-field label {
-  font-size: 0.9rem;
+  font-size: var(--rm-control-font-size);
   font-weight: bold;
   color: var(--rm-walnut);
 }
@@ -980,6 +997,7 @@ button:visited,
 }
 
 .button--small {
+  min-height: var(--rm-control-height-compact);
   padding: 0.45rem 0.7rem;
   font-size: 0.88rem;
 }
@@ -1201,13 +1219,14 @@ button:visited,
   box-sizing: border-box;
   flex: 0 0 190px;
   width: 190px;
-  height: 2.5rem;
-  padding: 0.35rem 0.65rem;
-  border: 1px solid var(--rm-border);
+  height: var(--rm-control-height);
+  min-height: var(--rm-control-height);
+  padding: 0.35rem var(--rm-control-padding-inline);
+  border: var(--rm-control-border-width) solid var(--rm-border);
   border-bottom-width: 3px;
   background: #fdf8f2;
   color: var(--rm-menu-action-text);
-  font-size: 0.9rem;
+  font-size: var(--rm-control-font-size);
   font-weight: 700;
   line-height: 1.2;
   text-decoration: none;
@@ -1234,8 +1253,8 @@ button:visited,
 
 .operations-menu-prototype__action:focus {
   color: var(--rm-menu-category-text);
-  outline: 2px solid var(--rm-walnut);
-  outline-offset: 2px;
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
   text-decoration: none;
 }
 
@@ -1584,8 +1603,9 @@ button:visited,
   align-items: center;
   justify-content: center;
   min-width: 2.25rem;
+  min-height: var(--rm-control-height-compact);
   padding: 0.45rem 0.7rem;
-  border: 1px solid var(--rm-light-bronze);
+  border: var(--rm-control-border-width) solid var(--rm-light-bronze);
   background: rgba(255, 255, 255, 0.55);
   text-decoration: none;
 }
