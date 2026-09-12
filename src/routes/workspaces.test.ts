@@ -135,6 +135,7 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   const customerDetailLayoutChildren = extractRuleBody(css, ".customer-detail-layout > *");
   const customerDetailMap = extractRuleBody(css, ".customer-detail-layout__map");
   const customerToolbarButtons = extractRuleBody(css, ".site-header .context-toolbar .button:focus");
+  const operationalAction = extractRuleBody(css, ".operations-menu-prototype__action");
 
   assert.match(workspaceGrid, /grid-template-columns: repeat\(auto-fit, minmax\(220px, 1fr\)\);/);
   assert.match(workspaceGrid, /gap: 0\.85rem;/);
@@ -145,6 +146,13 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   assert.match(workspaceTileTitle, /font-weight: 700;/);
   assert.match(workspaceTileDescription, /line-height: 1\.4;/);
   assert.match(workspaceTileAction, /opacity: 0\.75;/);
+  assert.match(operationalAction, /height: var\(--rm-control-height\);/);
+  assert.match(operationalAction, /min-height: var\(--rm-control-height\);/);
+  assert.match(operationalAction, /font-size: var\(--rm-control-font-size\);/);
+  assert.match(operationalAction, /padding: 0\.35rem var\(--rm-control-padding-inline\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-bottom-color: var\(--rm-golden-orange\);/);
+  assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
+  assert.match(css, /\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
   assert.match(mobile820, /\.dashboard-tile-grid,\s*\.workspace-tile-grid\s*\{[^}]*grid-template-columns: 1fr;/);
 
   assert.match(customerDetailLayout, /grid-template-columns: minmax\(0, 3fr\) minmax\(16rem, 1fr\);/);

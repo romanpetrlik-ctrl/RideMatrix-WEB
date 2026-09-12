@@ -45,7 +45,13 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(actions, /site-header__action context-bar__action/);
   assert.doesNotMatch(header, /Switch workspace/);
   assert.doesNotMatch(header, /action="\/exit"/);
-  assert.match(css, /\.site-header__action \{[\s\S]*height: 2\.5rem;[\s\S]*align-items: center;/);
+  assert.match(css, /--rm-control-height:\s*3rem;/);
+  assert.match(css, /--rm-control-padding-inline:\s*1rem;/);
+  assert.match(css, /--rm-control-font-size:\s*0\.95rem;/);
+  assert.match(css, /--rm-control-border-width:\s*1px;/);
+  assert.match(css, /--rm-control-focus-outline:\s*2px solid var\(--rm-dark-cyan\);/);
+  assert.match(css, /\.site-header__action \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*align-items: center;/);
+  assert.match(css, /\.context-bar__action--danger \{[\s\S]*border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
