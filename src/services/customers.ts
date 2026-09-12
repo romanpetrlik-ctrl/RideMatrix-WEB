@@ -26,6 +26,8 @@ export type BookingRecord = {
   pickup: string;
   dropoff: string;
   status: "Scheduled" | "Completed" | "Cancelled";
+  licensingAuthorityId: string | null;
+  licensingAuthorityName: string | null;
 };
 
 export async function listRecentBookingsForCustomer(
@@ -40,11 +42,16 @@ export async function listRecentBookingsForCustomer(
     pickup: string;
     dropoff: string;
     status: BookingRecord["status"];
+    licensing_authority_id: string | null;
+    licensing_authority_name: string | null;
   }>(
-    `SELECT id, reference, service_date, pickup, dropoff, status
+    `SELECT id, reference, service_date, pickup, dropoff, status,
+           licensing_authority_id, licensing_authority_name
      FROM (
-       SELECT id, reference, service_date, pickup, dropoff, status
-       FROM customer_bookings
+       SELECT b.id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
+              b.licensing_authority_id, a.name AS licensing_authority_name
+       FROM customer_bookings b
+       LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
        WHERE customer_id = $1
        UNION ALL
        SELECT
@@ -53,7 +60,9 @@ export async function listRecentBookingsForCustomer(
          service_date_time,
          pickup_text,
          dropoff_text,
-         CASE WHEN service_date_time > NOW() THEN 'Scheduled' ELSE 'Completed' END
+         CASE WHEN service_date_time > NOW() THEN 'Scheduled' ELSE 'Completed' END,
+         NULL,
+         NULL
        FROM imported_bookings
        WHERE customer_id = $1
      ) AS customer_booking_history
@@ -69,6 +78,8 @@ export async function listRecentBookingsForCustomer(
     pickup: booking.pickup,
     dropoff: booking.dropoff,
     status: booking.status
+    ,licensingAuthorityId: booking.licensing_authority_id,
+    licensingAuthorityName: booking.licensing_authority_name
   }));
 }
 

@@ -44,6 +44,7 @@
                   <th scope="col">Service Date</th>
                   <th scope="col">Pickup</th>
                   <th scope="col">Dropoff</th>
+                  <th scope="col">Licensing authority</th>
                   <th scope="col">Status</th>
                 </tr>
               </thead>
@@ -54,6 +55,7 @@
                     <td><%= booking.formattedServiceDate %></td>
                     <td><%= booking.pickup %></td>
                     <td><%= booking.dropoff %></td>
+                    <td><%= booking.licensingAuthorityName || "Unassigned / unresolved" %></td>
                     <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
                   </tr>
                 <% }) %>
