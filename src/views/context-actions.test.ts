@@ -135,6 +135,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /id="customers-per-page"/);
   assert.match(template, /class="button button--primary" href="\/customers\/register">New customer/);
   assert.match(css, /\.context-tab \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: 0 var\(--rm-control-padding-inline\);/);
   assert.match(css, /\.context-toolbar \.button:not\(\.button--small\),[\s\S]*?\.context-toolbar input\[type="submit"\]:not\(\.button--small\) \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);

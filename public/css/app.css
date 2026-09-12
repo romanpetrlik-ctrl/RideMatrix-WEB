@@ -1403,7 +1403,7 @@ button:visited,
 
 .context-toolbar input,
 .context-toolbar select {
-  height: var(--rm-control-height);
+  min-height: var(--rm-control-height);
   margin-bottom: 0;
   padding: 0 var(--rm-control-padding-inline);
 }
