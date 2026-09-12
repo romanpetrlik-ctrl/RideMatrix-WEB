@@ -91,6 +91,45 @@ export async function createLicensingAuthority(
   return authorityFromRow(result.rows[0]);
 }
 
+const LICENSE_TABLES = {
+  operator: ["operator_licensing_authorities", "operator_id"],
+  driver: ["driver_licensing_authorities", "driver_id"],
+  vehicle: ["vehicle_licensing_authorities", "vehicle_id"]
+} as const;
+
+export async function addLicense(
+  subject: keyof typeof LICENSE_TABLES,
+  subjectId: string,
+  input: LicenseInput,
+  client?: Queryable
+): Promise<string> {
+  const [table, column] = LICENSE_TABLES[subject];
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  await db(client).query(
+    `INSERT INTO ${table}
+      (id, ${column}, licensing_authority_id, license_reference, valid_from, valid_until,
+       active, notes, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8, $8)`,
+    [id, subjectId, input.licensingAuthorityId, input.licenseReference || null,
+      input.validFrom, input.validUntil || null, input.notes || null, now]
+  );
+  return id;
+}
+
+export async function revokeLicense(
+  subject: keyof typeof LICENSE_TABLES,
+  licenseId: string,
+  client?: Queryable
+): Promise<void> {
+  const [table] = LICENSE_TABLES[subject];
+  const now = new Date().toISOString();
+  await db(client).query(
+    `UPDATE ${table} SET active = FALSE, revoked_at = $2, updated_at = $2 WHERE id = $1`,
+    [licenseId, now]
+  );
+}
+
 async function activeLicenseIds(
   table: "operator_licensing_authorities" | "driver_licensing_authorities" | "vehicle_licensing_authorities",
   column: string,
