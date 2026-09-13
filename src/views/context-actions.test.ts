@@ -107,11 +107,11 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-walnut\);/);
   assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \.operations-menu-prototype__status-icon \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
+  assert.match(css, /\.operations-menu-prototype__warning-icon--warning \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);/);
   assert.match(css, /\.operations-menu-prototype__warning-icon--critical \{[\s\S]*color: var\(--rm-admin-critical-icon\);/);
   assert.match(css, /\.operations-menu-prototype__status-icon,[\s\S]*width: var\(--rm-admin-warning-icon-size\);/);
-  assert.match(css, /\.operations-menu-prototype__action:hover \{[\s\S]*background: var\(--rm-admin-action-bg-hover\);/);
+  assert.match(css, /\.operations-menu-prototype__action:hover \{[\s\S]*background: var\(--rm-admin-cta-bg-hover\);/);
   assert.match(css, /\.operations-menu-prototype__action:focus \{[\s\S]*color: var\(--rm-admin-action-text\);/);
   assert.match(css, /--rm-cta-execute-bg:\s*var\(--rm-dark-teal\);/);
   assert.match(css, /--rm-cta-negative-bg:\s*#c1121f;/);
