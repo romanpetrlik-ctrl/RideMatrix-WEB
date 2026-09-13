@@ -50,6 +50,15 @@
   --rm-menu-action-text: #704b2a;
   --rm-menu-supporting-text: #7a6250;
   --rm-menu-separator: rgba(90, 50, 12, 0.3);
+  --rm-admin-action-bg: #fdf8f2;
+  --rm-admin-action-bg-hover: var(--rm-antique-white);
+  --rm-admin-action-border: var(--rm-border);
+  --rm-admin-action-border-hover: var(--rm-light-bronze);
+  --rm-admin-action-text: var(--rm-menu-action-text);
+  --rm-admin-warning-bg: #fff8e8;
+  --rm-admin-warning-border: var(--rm-golden-orange);
+  --rm-admin-warning-icon: var(--rm-golden-orange);
+  --rm-admin-warning-text: var(--rm-menu-action-text);
 
   --rm-page-bg: #fffdf9;
   --rm-text: #24313a;
@@ -640,7 +649,7 @@ input[type="submit"] {
   background: var(--rm-cta-helper-bg);
   color: var(--rm-cta-helper-text);
   min-height: var(--rm-control-height);
-  border: var(--rm-control-border-width) solid var(--rm-cta-helper-border);
+  border: var(--rm-control-border-width) solid var(--rm-admin-action-border);
   border-radius: var(--rm-control-border-radius);
   padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
   cursor: pointer;
@@ -1312,8 +1321,8 @@ button:visited,
   border: var(--rm-control-border-width) solid var(--rm-cta-helper-border);
   border-radius: var(--rm-control-border-radius);
   border-bottom-width: 3px;
-  background: var(--rm-cta-helper-bg);
-  color: var(--rm-cta-helper-text);
+  background: var(--rm-admin-action-bg);
+  color: var(--rm-admin-action-text);
   font-size: var(--rm-control-font-size);
   font-weight: var(--rm-control-font-weight);
   line-height: var(--rm-control-line-height);
@@ -1329,28 +1338,30 @@ button:visited,
 }
 
 .operations-menu-prototype__action:visited {
-  color: var(--rm-cta-helper-text);
+  color: var(--rm-admin-action-text);
 }
 
 .operations-menu-prototype__action:hover {
-  background: var(--rm-cta-helper-bg-hover);
-  border-color: var(--rm-cta-helper-border-hover);
-  color: var(--rm-cta-helper-text-hover);
+  background: var(--rm-admin-action-bg-hover);
+  border-color: var(--rm-admin-action-border-hover);
+  color: var(--rm-admin-action-text);
   text-decoration: none;
 }
 
 .operations-menu-prototype__action:focus {
-  color: var(--rm-cta-helper-text-hover);
+  color: var(--rm-admin-action-text);
   text-decoration: none;
 }
 
 .operations-menu-prototype__action:active {
-  color: var(--rm-cta-helper-text-hover);
+  color: var(--rm-admin-action-text);
 }
 
 .operations-menu-prototype__action--amber {
-  border-bottom-color: var(--rm-golden-orange);
-  background: rgba(238, 155, 0, 0.07);
+  border-color: var(--rm-admin-warning-border);
+  border-bottom-color: var(--rm-admin-warning-border);
+  background: var(--rm-admin-warning-bg);
+  color: var(--rm-admin-warning-text);
 }
 
 .operations-menu-prototype__action--red {
@@ -1387,7 +1398,7 @@ button:visited,
 }
 
 .operations-menu-prototype__action--amber .operations-menu-prototype__status-icon {
-  color: var(--rm-burnt-caramel);
+  color: var(--rm-admin-warning-icon);
 }
 
 .operations-menu-prototype__action--red .operations-menu-prototype__status-icon {

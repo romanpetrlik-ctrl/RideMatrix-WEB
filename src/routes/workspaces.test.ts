@@ -97,6 +97,10 @@ test("dashboard template renders only the canonical operational menu", () => {
   const template = readFileSync(path.join(process.cwd(), "src/views/pages/dashboard.ejs"), "utf8");
   assert.match(template, /Operational shortcuts/);
   assert.doesNotMatch(template, /dashboard-layout|Management|Platform/);
+  assert.match(template, /class="operations-menu-prototype__action\$\{statusClass\}"/);
+  assert.match(template, /aria-label="\$\{action\.label\}\.\$\{externalText\}\$\{statusText\}"/);
+  assert.match(template, /class="operations-menu-prototype__status-icon"[^>]*focusable="false" aria-hidden="true"/);
+  assert.match(template, /class="visually-hidden">\$\{action\.status\.message\}<\/span>/);
 });
 
 test("dashboard keeps the admin redirect and authorization guard", () => {
@@ -149,7 +153,8 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   assert.match(operationalAction, /min-height: var\(--rm-control-height\);/);
   assert.match(operationalAction, /font-size: var\(--rm-control-font-size\);/);
   assert.match(operationalAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-bottom-color: var\(--rm-golden-orange\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-warning-bg\);[\s\S]*border-bottom-color: var\(--rm-admin-warning-border\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \.operations-menu-prototype__status-icon \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
   assert.match(css, /\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
   assert.match(mobile820, /\.dashboard-tile-grid,\s*\.workspace-tile-grid\s*\{[^}]*grid-template-columns: 1fr;/);

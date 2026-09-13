@@ -74,6 +74,11 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /--rm-control-border-radius:\s*0\.25rem;/);
   assert.match(css, /--rm-control-focus-color:\s*var\(--rm-dark-cyan\);/);
   assert.match(css, /--rm-dashboard-action-width:\s*190px;/);
+  assert.match(css, /--rm-admin-action-bg:\s*#fdf8f2;/);
+  assert.match(css, /--rm-admin-action-bg-hover:\s*var\(--rm-antique-white\);/);
+  assert.match(css, /--rm-admin-warning-bg:\s*#fff8e8;/);
+  assert.match(css, /--rm-admin-warning-border:\s*var\(--rm-golden-orange\);/);
+  assert.match(css, /--rm-admin-warning-icon:\s*var\(--rm-golden-orange\);/);
   assert.match(css, /--rm-control-border-width:\s*1px;/);
   assert.match(css, /--rm-control-focus-outline:\s*2px solid var\(--rm-control-focus-color\);/);
   assert.match(css, /--rm-control-focus-shadow:\s*0 0 0 3px rgba\(10, 147, 150, 0\.22\);/);
@@ -87,6 +92,9 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(operationsAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(operationsAction, /flex: 0 0 var\(--rm-dashboard-action-width\);/);
   assert.match(operationsAction, /width: var\(--rm-dashboard-action-width\);/);
+  assert.match(operationsAction, /background: var\(--rm-admin-action-bg\);/);
+  assert.match(operationsAction, /color: var\(--rm-admin-action-text\);/);
+  assert.doesNotMatch(operationsAction, /background: var\(--rm-cta-helper-bg\);/);
   assert.match(compactButton, /min-height: var\(--rm-control-height-compact\);/);
   assert.match(compactButton, /font-size: var\(--rm-control-font-size-compact\);/);
   assert.match(paginationLink, /min-width: var\(--rm-control-height-compact\);/);
@@ -97,8 +105,12 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited \{[\s\S]*color: var\(--rm-walnut-3\);/);
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-walnut\);/);
   assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-bottom-color: var\(--rm-golden-orange\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-warning-bg\);[\s\S]*border-bottom-color: var\(--rm-admin-warning-border\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*color: var\(--rm-admin-warning-text\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \.operations-menu-prototype__status-icon \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
+  assert.match(css, /\.operations-menu-prototype__action:hover \{[\s\S]*background: var\(--rm-admin-action-bg-hover\);/);
+  assert.match(css, /\.operations-menu-prototype__action:focus \{[\s\S]*color: var\(--rm-admin-action-text\);/);
   assert.match(css, /--rm-cta-execute-bg:\s*var\(--rm-dark-teal\);/);
   assert.match(css, /--rm-cta-negative-bg:\s*#c1121f;/);
   assert.match(css, /--rm-cta-negative-text:\s*#ffe66d;/);
