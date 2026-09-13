@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { ApiRequestError, getSessionAccount, submitAccessRequest } from "../services/api";
 import { logStaffLogin, STAFF_LOGIN_FAILED } from "../services/staff-audit";
 import { getLandingRoute } from "./auth-callback";
@@ -11,6 +12,12 @@ type AccessRouterOptions = {
 export function createAccessRouter(options: AccessRouterOptions): Router {
   const router = Router();
   const auditLogin = options.logLogin ?? logStaffLogin;
+  const loginRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
 
   router.get("/access", async (req, res, next) => {
     try {
@@ -47,7 +54,7 @@ export function createAccessRouter(options: AccessRouterOptions): Router {
     }
   });
 
-  router.post("/access", async (req, res, next) => {
+  router.post("/access", loginRateLimit, async (req, res, next) => {
     try {
       const email = String(req.body.email || "").trim();
       await submitAccessRequest(email);

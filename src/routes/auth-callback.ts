@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { getSessionAccount } from "../services/api";
 import { logStaffLogin, STAFF_LOGIN_FAILED, STAFF_LOGIN_SUCCEEDED } from "../services/staff-audit";
 import { availableWorkspaceModules } from "./role-sections";
@@ -12,8 +13,14 @@ export function getLandingRoute(roles: string[]): string {
 export function createAuthCallbackRouter(options: { logLogin?: typeof logStaffLogin } = {}): Router {
   const router = Router();
   const auditLogin = options.logLogin ?? logStaffLogin;
+  const callbackRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
 
-  router.get("/auth/callback", async (req, res, next) => {
+  router.get("/auth/callback", callbackRateLimit, async (req, res, next) => {
     try {
       const session = await getSessionAccount(req.headers.cookie);
 
