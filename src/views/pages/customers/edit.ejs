@@ -16,9 +16,9 @@
       activeRoleLabel,
       hintsLabel: customer.status,
       contextBarActions: [
-        { label: "Back to customer list", href: backToCustomersHref, tone: "secondary" },
-        { label: "Cancel", href: `/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>`, tone: "danger" },
-        { label: "Save Changes", type: "submit", formId: "edit-customer-form", tone: "primary" }
+        { label: "Back to customer list", href: backToCustomersHref, tone: "execute-helper" },
+        { label: "Cancel", href: `/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>`, tone: "execute-helper" },
+        { label: "Save Changes", type: "submit", formId: "edit-customer-form", tone: "execute" }
       ]
     }) %>
 

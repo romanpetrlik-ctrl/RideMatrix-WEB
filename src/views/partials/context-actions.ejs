@@ -1,8 +1,9 @@
 <% if (Array.isArray(actions) && actions.length > 0) { %>
   <nav class="context-bar__actions" aria-label="Page actions">
     <% actions.forEach((action) => {
-      const tone = action.tone || (action.type === "submit" ? "primary" : "secondary");
-      const actionClass = `button site-header__action context-bar__action context-bar__action--${tone}`;
+      const tone = action.tone || (action.type === "submit" ? "execute" : "execute-helper");
+      const semanticTone = tone === "primary" ? "execute" : tone === "secondary" ? "execute-helper" : tone === "danger" ? "execute-negative" : tone;
+      const actionClass = `button button--${semanticTone} site-header__action context-bar__action context-bar__action--${tone}`;
     %>
       <% if (action.type === "submit") { %>
         <button
