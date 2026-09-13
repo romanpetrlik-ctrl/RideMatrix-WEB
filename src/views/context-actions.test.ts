@@ -134,12 +134,17 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /id="customers-search"/);
   assert.match(template, /id="customers-per-page"/);
   assert.match(template, /class="button button--primary" href="\/customers\/register">New customer/);
+  assert.match(template, /context-toolbar context-toolbar--customers/);
   assert.match(css, /\.context-tab \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*min-height: var\(--rm-control-height\);/);
   assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: 0 var\(--rm-control-padding-inline\);/);
   assert.match(css, /\.context-toolbar \.button:not\(\.button--small\),[\s\S]*?\.context-toolbar input\[type="submit"\]:not\(\.button--small\) \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);
   assert.match(toolbar, /flex-wrap: wrap;/);
+  assert.match(css, /\.context-toolbar--customers \.context-tabs \{[\s\S]*flex: 0 0 auto;/);
+  assert.match(css, /\.context-toolbar--customers \.context-toolbar__form \{[\s\S]*flex: 1 1 auto;[\s\S]*min-width: 0;/);
+  assert.match(css, /\.context-toolbar--customers \.context-toolbar__field \{[\s\S]*flex-basis: 18rem;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar__field label \{[\s\S]*margin-bottom: 0;/);
+  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-toolbar__form \{[\s\S]*flex-basis: 100%;/);
   assert.doesNotMatch(toolbarControls, /min-height:\s*40px/);
 });

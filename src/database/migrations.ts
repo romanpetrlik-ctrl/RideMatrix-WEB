@@ -516,6 +516,26 @@ export const MIGRATIONS: Migration[] = [
         ON customers (retention_hold_until)
         WHERE retention_hold_until IS NOT NULL;
     `
+  },
+  {
+    id: "0007_staff_login_audit",
+    sql: `
+      CREATE TABLE IF NOT EXISTS staff_login_audit (
+        id TEXT PRIMARY KEY,
+        occurred_at TEXT NOT NULL,
+        event_name TEXT NOT NULL,
+        account_id TEXT,
+        login_identifier TEXT,
+        success BOOLEAN NOT NULL,
+        failure_category TEXT,
+        ip_address TEXT,
+        user_agent TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_staff_login_audit_occurred_at
+        ON staff_login_audit (occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_staff_login_audit_account
+        ON staff_login_audit (account_id, occurred_at DESC);
+    `
   }
 ];
 
