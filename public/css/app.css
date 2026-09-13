@@ -1374,28 +1374,6 @@ button:visited,
   gap: var(--rm-control-gap);
 }
 
-.context-toolbar--customers {
-  align-items: center;
-}
-
-.context-toolbar--customers .context-tabs {
-  flex: 0 0 auto;
-}
-
-.context-toolbar--customers .context-toolbar__form {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.context-toolbar--customers .context-toolbar__field {
-  flex-basis: 18rem;
-  min-width: 0;
-}
-
-.context-toolbar--customers .context-toolbar__field--compact {
-  flex: 0 1 10rem;
-}
-
 .context-toolbar__form,
 .context-toolbar__actions {
   display: flex;
@@ -1421,6 +1399,28 @@ button:visited,
 .context-toolbar__field--compact {
   flex: 0 1 10rem;
   min-width: 10rem;
+}
+
+.context-toolbar--customers {
+  align-items: center;
+}
+
+.context-toolbar--customers .context-tabs {
+  flex: 0 0 auto;
+}
+
+.context-toolbar--customers .context-toolbar__form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.context-toolbar--customers .context-toolbar__field {
+  flex-basis: 18rem;
+  min-width: 0;
+}
+
+.context-toolbar--customers .context-toolbar__field--compact {
+  flex: 0 1 10rem;
 }
 
 .context-toolbar input,

@@ -6,14 +6,14 @@ export type SessionAccount = {
     roles: string[];
     active_role?: string;
   };
-
-  export class ApiRequestError extends Error {
-    constructor(message: string, public readonly status: number) {
-      super(message);
-      this.name = "ApiRequestError";
-    }
-  }
 };
+
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
 
 const apiBaseUrl = process.env.API_BASE_URL || "http://127.0.0.1:4000";
 
