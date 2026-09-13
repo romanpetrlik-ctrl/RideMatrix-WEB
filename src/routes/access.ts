@@ -19,7 +19,7 @@ export function createAccessRouter(options: AccessRouterOptions): Router {
     legacyHeaders: false
   });
 
-  router.get("/access", async (req, res, next) => {
+  router.get("/access", loginRateLimit, async (req, res, next) => {
     try {
       const session = await getSessionAccount(req.headers.cookie);
 
