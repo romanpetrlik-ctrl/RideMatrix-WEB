@@ -1309,11 +1309,11 @@ button:visited,
   width: var(--rm-dashboard-action-width);
   min-height: var(--rm-control-height);
   padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
-  border: var(--rm-control-border-width) solid var(--rm-border);
+  border: var(--rm-control-border-width) solid var(--rm-cta-helper-border);
   border-radius: var(--rm-control-border-radius);
   border-bottom-width: 3px;
-  background: #fdf8f2;
-  color: var(--rm-menu-action-text);
+  background: var(--rm-cta-helper-bg);
+  color: var(--rm-cta-helper-text);
   font-size: var(--rm-control-font-size);
   font-weight: var(--rm-control-font-weight);
   line-height: var(--rm-control-line-height);
@@ -1329,23 +1329,23 @@ button:visited,
 }
 
 .operations-menu-prototype__action:visited {
-  color: var(--rm-menu-action-text);
+  color: var(--rm-cta-helper-text);
 }
 
 .operations-menu-prototype__action:hover {
-  background: #fff;
-  border-color: var(--rm-camel);
-  color: var(--rm-menu-category-text);
+  background: var(--rm-cta-helper-bg-hover);
+  border-color: var(--rm-cta-helper-border-hover);
+  color: var(--rm-cta-helper-text-hover);
   text-decoration: none;
 }
 
 .operations-menu-prototype__action:focus {
-  color: var(--rm-menu-category-text);
+  color: var(--rm-cta-helper-text-hover);
   text-decoration: none;
 }
 
 .operations-menu-prototype__action:active {
-  color: var(--rm-menu-category-text);
+  color: var(--rm-cta-helper-text-hover);
 }
 
 .operations-menu-prototype__action--amber {
@@ -1901,6 +1901,17 @@ button:visited,
 .site-header .context-toolbar .button:hover,
 .site-header .context-toolbar .button:focus {
   color: var(--rm-antique-white);
+}
+
+.site-header .context-bar__action.button--execute-negative,
+.site-header .context-bar__action.button--danger,
+.site-header .context-bar__action.button--execute-negative:visited,
+.site-header .context-bar__action.button--danger:visited,
+.site-header .context-bar__action.button--execute-negative:hover,
+.site-header .context-bar__action.button--danger:hover,
+.site-header .context-bar__action.button--execute-negative:focus,
+.site-header .context-bar__action.button--danger:focus {
+  color: var(--rm-cta-negative-text);
 }
 
 .customer-detail-panel__header,
