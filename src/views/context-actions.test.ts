@@ -105,7 +105,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited \{[\s\S]*color: var\(--rm-walnut-3\);/);
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-walnut\);/);
   assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-warning-bg\);[\s\S]*border-bottom-color: var\(--rm-admin-warning-border\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-color: var\(--rm-admin-warning-border\);[\s\S]*background: var\(--rm-admin-warning-bg\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*color: var\(--rm-admin-warning-text\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \.operations-menu-prototype__status-icon \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);

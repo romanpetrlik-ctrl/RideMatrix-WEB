@@ -153,7 +153,7 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   assert.match(operationalAction, /min-height: var\(--rm-control-height\);/);
   assert.match(operationalAction, /font-size: var\(--rm-control-font-size\);/);
   assert.match(operationalAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-warning-bg\);[\s\S]*border-bottom-color: var\(--rm-admin-warning-border\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-color: var\(--rm-admin-warning-border\);[\s\S]*background: var\(--rm-admin-warning-bg\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \.operations-menu-prototype__status-icon \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
   assert.match(css, /\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
