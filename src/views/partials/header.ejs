@@ -32,24 +32,7 @@
     <div class="site-header__left">
       <div class="site-header__title"><%= headerTitle %></div>
       <div class="site-header__meta"><%= headerMeta %></div>
-      <% if (headerBreadcrumbs.length > 0) { %>
-        <nav class="site-header__breadcrumbs" aria-label="Breadcrumbs">
-          <ol class="site-header__breadcrumb-list">
-            <% headerBreadcrumbs.forEach((crumb, index) => { %>
-              <li class="site-header__breadcrumb-item">
-                <% if (crumb.href && index < headerBreadcrumbs.length - 1) { %>
-                  <a class="site-header__breadcrumb-link" href="<%= crumb.href %>"><%= crumb.label %></a>
-                <% } else { %>
-                  <span class="site-header__breadcrumb-current" aria-current="<%= index === headerBreadcrumbs.length - 1 ? 'page' : 'false' %>"><%= crumb.label %></span>
-                <% } %>
-                <% if (index < headerBreadcrumbs.length - 1) { %>
-                  <span class="site-header__breadcrumb-separator" aria-hidden="true">/</span>
-                <% } %>
-              </li>
-            <% }) %>
-          </ol>
-        </nav>
-      <% } else if (headerRole) { %>
+      <% if (headerRole) { %>
         <div class="site-header__role">Module: <strong><%= headerRole %></strong></div>
       <% } %>
     </div>
@@ -67,6 +50,29 @@
       <% } %>
     </div>
   </div>
+
+  <% if (headerBreadcrumbs.length > 0) { %>
+    <div class="site-header__breadcrumbs-row">
+      <div class="container">
+        <nav class="site-header__breadcrumbs" aria-label="Breadcrumbs">
+          <ol class="site-header__breadcrumb-list">
+            <% headerBreadcrumbs.forEach((crumb, index) => { %>
+              <li class="site-header__breadcrumb-item">
+                <% if (crumb.href && index < headerBreadcrumbs.length - 1) { %>
+                  <a class="site-header__breadcrumb-link" href="<%= crumb.href %>"><%= crumb.label %></a>
+                <% } else { %>
+                  <span class="site-header__breadcrumb-current" aria-current="<%= index === headerBreadcrumbs.length - 1 ? 'page' : 'false' %>"><%= crumb.label %></span>
+                <% } %>
+                <% if (index < headerBreadcrumbs.length - 1) { %>
+                  <span class="site-header__breadcrumb-separator" aria-hidden="true">/</span>
+                <% } %>
+              </li>
+            <% }) %>
+          </ol>
+        </nav>
+      </div>
+    </div>
+  <% } %>
 
   <% if (headerContextBarPartial) { %>
     <div class="container site-header__context">
