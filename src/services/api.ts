@@ -8,6 +8,13 @@ export type SessionAccount = {
   };
 };
 
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 const apiBaseUrl = process.env.API_BASE_URL || "http://127.0.0.1:4000";
 
 export function getApiBaseUrl(): string {
@@ -24,7 +31,7 @@ export async function submitAccessRequest(email: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error(`Access request failed with status ${response.status}`);
+    throw new ApiRequestError(`Access request failed with status ${response.status}`, response.status);
   }
 }
 
@@ -39,7 +46,7 @@ export async function getSessionAccount(cookieHeader?: string): Promise<SessionA
   });
 
   if (!response.ok) {
-    throw new Error(`Session request failed with status ${response.status}`);
+    throw new ApiRequestError(`Session request failed with status ${response.status}`, response.status);
   }
 
   return (await response.json()) as SessionAccount;

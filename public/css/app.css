@@ -1401,6 +1401,28 @@ button:visited,
   min-width: 10rem;
 }
 
+.context-toolbar--customers {
+  align-items: center;
+}
+
+.context-toolbar--customers .context-tabs {
+  flex: 0 0 auto;
+}
+
+.context-toolbar--customers .context-toolbar__form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.context-toolbar--customers .context-toolbar__field {
+  flex-basis: 18rem;
+  min-width: 0;
+}
+
+.context-toolbar--customers .context-toolbar__field--compact {
+  flex: 0 1 10rem;
+}
+
 .context-toolbar input,
 .context-toolbar select {
   min-height: var(--rm-control-height);
@@ -1939,6 +1961,10 @@ button:visited,
   .context-toolbar__form,
   .context-toolbar__actions {
     align-items: stretch;
+  }
+
+  .context-toolbar--customers .context-toolbar__form {
+    flex-basis: 100%;
   }
 
   .context-toolbar__field,
