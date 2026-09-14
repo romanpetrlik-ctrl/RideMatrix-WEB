@@ -1,11 +1,12 @@
 (function () {
   "use strict";
 
-  var rendered = typeof WeakSet === "function" ? new WeakSet() : [];
+  var canUseWeakSet = typeof WeakSet === "function";
+  var rendered = canUseWeakSet ? new WeakSet() : [];
   var loading;
 
   function render(element, googleMaps) {
-      if (!element || (rendered instanceof WeakSet ? rendered.has(element) : rendered.indexOf(element) !== -1)) return true;
+      if (!element || (canUseWeakSet ? rendered.has(element) : rendered.indexOf(element) !== -1)) return true;
       var position = {
         lat: Number(element.dataset.mapLatitude),
         lng: Number(element.dataset.mapLongitude)
@@ -18,7 +19,7 @@
         mapId: element.dataset.mapId || undefined,
         disableDefaultUI: true
       });
-      if (rendered instanceof WeakSet) rendered.add(element);
+      if (canUseWeakSet) rendered.add(element);
       else rendered.push(element);
       return true;
   }

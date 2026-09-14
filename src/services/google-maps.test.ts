@@ -36,6 +36,26 @@ test("maps a precise UK Google result and caches unchanged addresses", async () 
   assert.equal(first?.postcode, "SW1A 2AA");
 });
 
+test("deduplicates concurrent requests and caches rate-limit failures", async () => {
+  let calls = 0;
+  const provider = createGoogleMapsProvider("key", {
+    fetch: async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return response({ status: "OVER_QUERY_LIMIT" });
+    }
+  });
+
+  const results = await Promise.all([
+    provider.geocodeAddress("same address"),
+    provider.geocodeAddress("  SAME   ADDRESS ")
+  ]);
+  assert.deepEqual(results, [null, null]);
+  assert.equal(calls, 1);
+  assert.equal(await provider.geocodeAddress("same address"), null);
+  assert.equal(calls, 1);
+});
+
 test("distinguishes partial, ambiguous, no-result, malformed, timeout, and rate-limit responses", async () => {
   const partial = createGoogleMapsProvider("key", {
     fetch: async () => response({

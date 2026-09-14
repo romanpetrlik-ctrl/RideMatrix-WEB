@@ -57,7 +57,7 @@ export function createGoogleMapsProvider(
   options: { fetch?: typeof fetch; timeoutMs?: number; logger?: (message: string) => void } = {}
 ): MapProvider {
   const request = options.fetch || fetch;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(1, options.timeoutMs as number) : DEFAULT_TIMEOUT_MS;
   const logger = options.logger || ((message) => console.warn(`[maps] ${message}`));
   const cache = new Map<string, GeocodedAddress | null>();
   const pending = new Map<string, Promise<GeocodedAddress | null>>();

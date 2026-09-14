@@ -1,3 +1,5 @@
+import { createGoogleMapsProvider } from "./google-maps";
+
 export type GeoPoint = {
   latitude: number;
   longitude: number;
@@ -158,4 +160,3 @@ export function getMapService(): MapService {
     : new DisabledMapProvider();
   return createMapService(provider, configuration);
 }
-import { createGoogleMapsProvider } from "./google-maps";
