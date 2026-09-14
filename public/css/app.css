@@ -45,6 +45,18 @@
   --rm-control-focus-outline: 2px solid var(--rm-control-focus-color);
   --rm-control-focus-offset: 2px;
   --rm-control-focus-shadow: 0 0 0 3px rgba(10, 147, 150, 0.22);
+  --rm-cta-admin-height: var(--rm-control-height);
+  --rm-cta-admin-padding-block: var(--rm-control-padding-block);
+  --rm-cta-admin-padding-inline: var(--rm-control-padding-inline);
+  --rm-cta-admin-font-size: var(--rm-control-font-size);
+  --rm-cta-dynamic-height: var(--rm-control-height-compact);
+  --rm-cta-dynamic-padding-block: var(--rm-control-padding-block-compact);
+  --rm-cta-dynamic-padding-inline: var(--rm-control-padding-inline-compact);
+  --rm-cta-dynamic-font-size: var(--rm-control-font-size-compact);
+  --rm-cta-system-height: 2.25rem;
+  --rm-cta-system-padding-block: 0.35rem;
+  --rm-cta-system-padding-inline: 0.65rem;
+  --rm-cta-system-font-size: 0.82rem;
   --rm-dashboard-action-width: 190px;
 
   --rm-menu-category-text: #5a320c;
@@ -280,14 +292,6 @@ a {
   justify-content: center;
   gap: var(--rm-control-gap);
   box-sizing: border-box;
-  min-height: var(--rm-control-height);
-  padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
-  border-width: var(--rm-control-border-width);
-  border-radius: var(--rm-control-border-radius);
-  font: inherit;
-  font-size: var(--rm-control-font-size);
-  font-weight: var(--rm-control-font-weight);
-  line-height: var(--rm-control-line-height);
   white-space: nowrap;
 }
 
@@ -1018,13 +1022,13 @@ button:visited,
 }
 
 .button--admin-cta {
-  min-height: var(--rm-control-height);
-  padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
+  min-height: var(--rm-cta-admin-height);
+  padding: var(--rm-cta-admin-padding-block) var(--rm-cta-admin-padding-inline);
   border: var(--rm-control-border-width) solid var(--rm-admin-cta-border);
   border-radius: var(--rm-control-border-radius);
   background: var(--rm-admin-cta-bg);
   color: var(--rm-admin-cta-text);
-  font-size: var(--rm-control-font-size);
+  font-size: var(--rm-cta-admin-font-size);
   font-weight: var(--rm-control-font-weight);
   line-height: var(--rm-control-line-height);
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
@@ -1060,6 +1064,18 @@ button:visited,
   min-height: var(--rm-control-height-compact);
   padding: var(--rm-control-padding-block-compact) var(--rm-control-padding-inline-compact);
   font-size: var(--rm-control-font-size-compact);
+}
+
+.button--admin-cta.button--admin-cta--dynamic {
+  min-height: var(--rm-cta-dynamic-height);
+  padding: var(--rm-cta-dynamic-padding-block) var(--rm-cta-dynamic-padding-inline);
+  font-size: var(--rm-cta-dynamic-font-size);
+}
+
+.button--admin-cta.button--admin-cta--system {
+  min-height: var(--rm-cta-system-height);
+  padding: var(--rm-cta-system-padding-block) var(--rm-cta-system-padding-inline);
+  font-size: var(--rm-cta-system-font-size);
 }
 
 .button--admin-cta:focus-visible {
@@ -1550,14 +1566,14 @@ button:visited,
 
 .context-toolbar input,
 .context-toolbar select {
-  min-height: var(--rm-control-height);
+  min-height: var(--rm-cta-dynamic-height);
   margin-bottom: 0;
-  padding: 0 var(--rm-control-padding-inline);
+  padding: 0 var(--rm-cta-dynamic-padding-inline);
   border-radius: var(--rm-control-border-radius);
   background: var(--rm-admin-cta-bg);
   border-color: var(--rm-admin-cta-border);
   color: var(--rm-admin-cta-text);
-  font-size: var(--rm-control-font-size);
+  font-size: var(--rm-cta-dynamic-font-size);
   font-weight: var(--rm-control-font-weight);
   line-height: var(--rm-control-line-height);
 }
@@ -1575,23 +1591,7 @@ button:visited,
   box-shadow: var(--rm-control-focus-shadow);
 }
 
-.context-toolbar .button:not(.button--small),
-.context-toolbar a.button:not(.button--small),
-.context-toolbar button:not(.button--small),
-.context-toolbar input[type="submit"]:not(.button--small) {
-  min-height: var(--rm-control-height);
-  padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
-  font-size: var(--rm-control-font-size);
-  line-height: var(--rm-control-line-height);
-}
-
-.context-toolbar .button--small,
-.context-toolbar a.button.button--small,
-.context-toolbar button.button--small,
-.context-toolbar input[type="submit"].button--small {
-  min-height: var(--rm-control-height-compact);
-  padding: var(--rm-control-padding-block-compact) var(--rm-control-padding-inline-compact);
-  font-size: var(--rm-control-font-size-compact);
+.context-toolbar .button--admin-cta--dynamic {
   line-height: var(--rm-control-line-height);
 }
 
