@@ -183,5 +183,5 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   assert.match(customerDetailMap, /display: flex;/);
   assert.match(customerDetailMap, /flex-direction: column;/);
   assert.match(css, /@media \(max-width: 900px\)\s*\{[\s\S]*?\.customer-detail-layout\s*\{[^}]*grid-template-columns: 1fr;/);
-  assert.match(customerToolbarButtons, /color: var\(--rm-antique-white\);/);
+  assert.match(customerToolbarButtons, /color: var\(--rm-admin-cta-text\);/);
 });

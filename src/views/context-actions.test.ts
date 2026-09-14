@@ -117,10 +117,10 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.operations-menu-prototype__status-icon,[\s\S]*width: var\(--rm-admin-warning-icon-size\);/);
   assert.match(css, /\.operations-menu-prototype__action:hover \{[\s\S]*background: var\(--rm-admin-cta-bg-hover\);/);
   assert.match(css, /\.operations-menu-prototype__action:focus \{[\s\S]*color: var\(--rm-admin-action-text\);/);
-  assert.match(css, /--rm-cta-execute-bg:\s*var\(--rm-dark-teal\);/);
+  assert.match(css, /--rm-cta-execute-bg:\s*var\(--rm-admin-cta-bg\);/);
   assert.match(css, /--rm-cta-negative-bg:\s*#c1121f;/);
   assert.match(css, /--rm-cta-negative-text:\s*#ffe66d;/);
-  assert.match(css, /--rm-cta-helper-bg:\s*var\(--rm-context-bar-bg\);/);
+  assert.match(css, /--rm-cta-helper-bg:\s*var\(--rm-admin-cta-bg\);/);
   assert.match(css, /--rm-admin-cta-negative-bg:\s*#fff4f2;/);
   assert.match(css, /\.button--execute,\s*\.button--primary \{[\s\S]*background: var\(--rm-cta-execute-bg\);/);
   assert.match(css, /\.button--execute-negative,\s*\.button--danger \{[\s\S]*background: var\(--rm-cta-negative-bg\);/);
@@ -171,7 +171,10 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.equal((customersIndex.match(/Administration/g) || []).length, 1);
   assert.doesNotMatch(customersIndex, /context-toolbar[\s\S]*Administration[\s\S]*Customer management/);
   assert.match(css, /\.context-tab \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.context-tab \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-radius: var\(--rm-control-border-radius\);/);
+  assert.match(css, /\.context-tab--active \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);[\s\S]*box-shadow: inset 0 -3px 0 var\(--rm-light-bronze\);/);
   assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: 0 var\(--rm-control-padding-inline\);/);
+  assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-color: var\(--rm-admin-cta-border\);/);
   assert.match(css, /\.context-toolbar \.button:not\(\.button--small\),[\s\S]*?\.context-toolbar input\[type="submit"\]:not\(\.button--small\) \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);
@@ -181,6 +184,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /\.context-toolbar--customers \.context-tabs \{[\s\S]*flex: 0 0 auto;/);
   assert.match(css, /\.context-toolbar--customers \.context-toolbar__left \{[\s\S]*flex-wrap: nowrap;/);
   assert.match(css, /\.context-toolbar--customers \.context-toolbar__field \{[\s\S]*flex: 1 1 18rem;/);
+  assert.match(css, /\.context-toolbar--customers \.context-toolbar__right > \.button \{[\s\S]*flex: 0 0 auto;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar__field label \{[\s\S]*margin-bottom: 0;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-toolbar__form \{[\s\S]*grid-template-columns: 1fr;/);
   assert.doesNotMatch(toolbarControls, /min-height:\s*40px/);
