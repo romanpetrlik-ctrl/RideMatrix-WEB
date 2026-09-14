@@ -300,3 +300,116 @@ test("customer edit exposes structured address inputs and only the browser maps 
     });
   }
 });
+
+test("customers list keeps View unchanged and sends Edit to the real edit route with preserved returnTo state", async () => {
+  const server = createTestServer(adminSession, {
+    listCustomers: async () => ({
+      customers: [createTestCustomer()],
+      totalRecords: 1,
+      totalPages: 3,
+      page: 2,
+      perPage: 25
+    }),
+    getCustomerCount: async () => 1
+  });
+
+  try {
+    const address = server.address() as { port: number };
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/customers?q=ada&status=Active&page=2&perPage=25`
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(
+      body,
+      /href="\/customers\/cust-test-1\?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25&amp;layout=child"/
+    );
+    assert.match(
+      body,
+      /href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25"/
+    );
+    assert.doesNotMatch(body, /notice=edit-customer/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("customer detail keeps New Booking unchanged and points Edit Customer to the real edit route", async () => {
+  const server = createTestServer(adminSession, {
+    getCustomerById: async () => createTestCustomer(),
+    listRecentBookingsForCustomer: async () => []
+  });
+
+  try {
+    const address = server.address() as { port: number };
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/customers/cust-test-1?returnTo=${encodeURIComponent("/customers?q=ada&status=Active&page=2&perPage=25")}&layout=child`
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(
+      body,
+      /href="\/customers\/cust-test-1\?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25&amp;notice=new-booking&amp;layout=child">New Booking<\/a>/
+    );
+    assert.match(
+      body,
+      /href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25&amp;layout=child">Edit Customer<\/a>/
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("customer edit page no longer shows the obsolete edit placeholder notice", async () => {
+  const server = createTestServer(adminSession, {
+    getCustomerById: async () => createTestCustomer(),
+    listRecentBookingsForCustomer: async () => []
+  });
+
+  try {
+    const address = server.address() as { port: number };
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/customers/cust-test-1/edit?returnTo=${encodeURIComponent("/customers?q=ada&status=Active&page=2&perPage=25")}`
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /id="edit-customer-form"/);
+    assert.doesNotMatch(body, /edit workflow is still a placeholder/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("legacy detail notice redirects to the real customer edit route", async () => {
+  const server = createTestServer(adminSession, {
+    getCustomerById: async () => createTestCustomer(),
+    listRecentBookingsForCustomer: async () => []
+  });
+
+  try {
+    const address = server.address() as { port: number };
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/customers/cust-test-1?notice=edit-customer&returnTo=${encodeURIComponent("/customers?q=ada&status=Active&page=2&perPage=25")}&layout=child`,
+      { redirect: "manual" }
+    );
+
+    assert.equal(response.status, 302);
+    assert.equal(
+      response.headers.get("location"),
+      "/customers/cust-test-1/edit?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25&layout=child"
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
