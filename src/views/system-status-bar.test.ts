@@ -10,13 +10,15 @@ function render(account: {
   currentUserEmail: string | null;
   availableWorkspaceModuleCount: number;
   hideWorkspaceSwitch: boolean;
+  isChildWindow?: boolean;
 }) {
   return renderFile(partialPath, {
     appTitle: "RideMatrix",
     currentUserEmail: account.currentUserEmail,
     currentUserHref: "/account",
     systemStatusBar: account,
-    csrfField: '<input type="hidden" name="_csrf" value="test-token">'
+    csrfField: '<input type="hidden" name="_csrf" value="test-token">',
+    isChildWindow: account.isChildWindow
   });
 }
 
@@ -63,4 +65,16 @@ test("system status bar hides all account actions for public access", async () =
   });
 
   assert.doesNotMatch(html, /Switch workspace|action="\/exit"/);
+});
+
+test("system status bar is not rendered in the explicit child-window layout", async () => {
+  const html = await render({
+    authenticated: true,
+    currentUserEmail: "admin@example.com",
+    availableWorkspaceModuleCount: 2,
+    hideWorkspaceSwitch: false,
+    isChildWindow: true
+  });
+
+  assert.equal(html.trim(), "");
 });

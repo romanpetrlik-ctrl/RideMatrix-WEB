@@ -31,6 +31,7 @@ import {
   normalizePhoneToE164
 } from "../services/phone-numbers";
 import { isValidGeoPoint, readMapConfiguration, toMapView, type MapView } from "../services/maps";
+import { isChildWindowLayout } from "../middleware/layout-context";
 
 type CustomersRouterOptions = {
   appTitle: string;
@@ -203,7 +204,7 @@ function buildCustomersListHref(params: {
   return query ? `/customers?${query}` : "/customers";
 }
 
-function buildCustomerHref(customerId: string, params: { returnTo?: string; notice?: string }): string {
+function buildCustomerHref(customerId: string, params: { returnTo?: string; notice?: string; layout?: "child" }): string {
   const searchParams = new URLSearchParams();
 
   if (params.returnTo) {
@@ -214,11 +215,15 @@ function buildCustomerHref(customerId: string, params: { returnTo?: string; noti
     searchParams.set("notice", params.notice);
   }
 
+  if (params.layout) {
+    searchParams.set("layout", params.layout);
+  }
+
   const query = searchParams.toString();
   return query ? `/customers/${customerId}?${query}` : `/customers/${customerId}`;
 }
 
-function buildCustomerBookingsHref(customerId: string, returnTo?: string, notice?: string): string {
+function buildCustomerBookingsHref(customerId: string, returnTo?: string, notice?: string, layout?: "child"): string {
   const searchParams = new URLSearchParams();
 
   if (returnTo) {
@@ -227,6 +232,10 @@ function buildCustomerBookingsHref(customerId: string, returnTo?: string, notice
 
   if (notice) {
     searchParams.set("notice", notice);
+  }
+
+  if (layout) {
+    searchParams.set("layout", layout);
   }
 
   const query = searchParams.toString();
@@ -468,7 +477,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
               status,
               page: result.page,
               perPage: result.perPage
-            })
+            }),
+            layout: "child"
           }),
           editHref: buildCustomerHref(customer.id, {
             returnTo: buildCustomersListHref({
@@ -775,6 +785,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+      const isChildWindow = isChildWindowLayout(req.query.layout);
 
       const detailViewModel = {
         title: `${customer.surname}, ${customer.givenName}`,
@@ -795,15 +806,17 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           telHref: customer.phone ? getPhoneTelHref(customer.phone) : null,
           whatsappHref: customer.phone ? getWhatsAppHref(customer.phone) : null,
           emailHref: customer.email ? `mailto:${customer.email}` : null,
-          deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(backToCustomersHref)}`,
-          bookingsHref: buildCustomerBookingsHref(customer.id, backToCustomersHref),
+          deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`,
+          bookingsHref: buildCustomerBookingsHref(customer.id, backToCustomersHref, undefined, isChildWindow ? "child" : undefined),
           newBookingHref: buildCustomerHref(customer.id, {
             returnTo: backToCustomersHref,
-            notice: "new-booking"
+            notice: "new-booking",
+            layout: isChildWindow ? "child" : undefined
           }),
-          editHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}`
+          editHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`
         },
         backToCustomersHref,
+        isChildWindow,
         notice: getNotice(req.query.notice, customer),
         mapView: getCustomerMapView(customer),
         mapBrowserApiKey: readMapConfiguration().browserApiKey

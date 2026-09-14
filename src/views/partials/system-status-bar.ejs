@@ -1,3 +1,4 @@
+<% if (!Boolean(locals.isChildWindow)) { %>
 <%
   const systemStatusText = typeof systemStatus === "string" && systemStatus.trim()
     ? systemStatus.trim()
@@ -94,3 +95,4 @@
     setInterval(updateClock, 1000);
   })();
 </script>
+<% } %>

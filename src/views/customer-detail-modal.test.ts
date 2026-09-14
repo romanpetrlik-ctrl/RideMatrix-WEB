@@ -14,6 +14,15 @@ test("customer list opens the normal detail page in a new tab", () => {
   assert.match(index, /href="<%= customer\.detailHref %>" target="_blank" rel="noopener noreferrer">View<\/a>/);
 });
 
+test("customer detail links explicitly request the child-window layout", () => {
+  const customersRoute = read("src/routes/customers.ts");
+  const systemBar = read("src/views/partials/system-status-bar.ejs");
+
+  assert.match(customersRoute, /layout: "child"/);
+  assert.match(systemBar, /if \(!Boolean\(locals\.isChildWindow\)\)/);
+  assert.doesNotMatch(systemBar, /display:\s*none/);
+});
+
 test("customer detail keeps a home address map area and readable context actions", () => {
   const detail = read("src/views/pages/customers/detail.ejs");
   const content = read("src/views/partials/customer-detail-content.ejs");
