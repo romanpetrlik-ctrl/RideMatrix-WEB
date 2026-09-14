@@ -60,20 +60,30 @@ export function createGoogleMapsProvider(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const logger = options.logger || ((message) => console.warn(`[maps] ${message}`));
   const cache = new Map<string, GeocodedAddress | null>();
+  const pending = new Map<string, Promise<GeocodedAddress | null>>();
 
-  async function requestGoogle(params: URLSearchParams): Promise<GeocodedAddress | null> {
+  async function requestGoogle(params: URLSearchParams, operation: "forward" | "reverse"): Promise<GeocodedAddress | null> {
+    if (!apiKey.trim()) {
+      logger(`provider=google operation=${operation} category=configuration`);
+      return null;
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const startedAt = Date.now();
     try {
       const response = await request(`${GEOCODING_ENDPOINT}?${params.toString()}`, { signal: controller.signal });
       if (!response.ok) {
-        logger(`Google geocoding request failed with HTTP ${response.status}.`);
+        logger(`provider=google operation=${operation} category=http status=${response.status}`);
         return null;
       }
       const body = (await response.json()) as GoogleResponse;
       if (body.status === "ZERO_RESULTS") return null;
+      if (body.status === "OVER_QUERY_LIMIT" || body.status === "REQUEST_DENIED") {
+        logger(`provider=google operation=${operation} category=${body.status === "OVER_QUERY_LIMIT" ? "rate-limit" : "authorization"}`);
+        return null;
+      }
       if (body.status !== "OK") {
-        logger(`Google geocoding request returned ${body.status || "an invalid status"}.`);
+        logger(`provider=google operation=${operation} category=provider status=${body.status || "invalid"}`);
         return null;
       }
       const results = Array.isArray(body.results) ? body.results : [];
@@ -83,7 +93,8 @@ export function createGoogleMapsProvider(
       if (exactResults.length > 1) return { ...exactResults[0], matchQuality: "ambiguous" };
       return exactResults[0] || parsed[0];
     } catch (error) {
-      logger(error instanceof Error && error.name === "AbortError" ? "Google geocoding request timed out." : "Google geocoding request failed.");
+      const category = error instanceof Error && error.name === "AbortError" ? "timeout" : "network";
+      logger(`provider=google operation=${operation} category=${category} durationMs=${Date.now() - startedAt}`);
       return null;
     } finally {
       clearTimeout(timeout);
@@ -96,17 +107,33 @@ export function createGoogleMapsProvider(
       if (!normalized) return null;
       const key = `address:${normalized.toLowerCase()}`;
       if (cache.has(key)) return cache.get(key) || null;
-      const result = await requestGoogle(new URLSearchParams({ address: normalized, key: apiKey, region: "uk" }));
-      cache.set(key, result);
-      return result;
+      const existing = pending.get(key);
+      if (existing) return existing;
+      const requestPromise = requestGoogle(new URLSearchParams({ address: normalized, key: apiKey, region: "uk" }), "forward");
+      pending.set(key, requestPromise);
+      try {
+        const result = await requestPromise;
+        cache.set(key, result);
+        return result;
+      } finally {
+        pending.delete(key);
+      }
     },
     async reverseGeocode(point: GeoPoint) {
       if (!isValidGeoPoint(point)) return null;
       const key = `point:${point.latitude},${point.longitude}`;
       if (cache.has(key)) return cache.get(key) || null;
-      const result = await requestGoogle(new URLSearchParams({ latlng: `${point.latitude},${point.longitude}`, key: apiKey }));
-      cache.set(key, result);
-      return result;
+      const existing = pending.get(key);
+      if (existing) return existing;
+      const requestPromise = requestGoogle(new URLSearchParams({ latlng: `${point.latitude},${point.longitude}`, key: apiKey }), "reverse");
+      pending.set(key, requestPromise);
+      try {
+        const result = await requestPromise;
+        cache.set(key, result);
+        return result;
+      } finally {
+        pending.delete(key);
+      }
     }
   };
 }
