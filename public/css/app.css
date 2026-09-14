@@ -1551,9 +1551,9 @@ button:visited,
   min-height: var(--rm-control-height);
   margin-bottom: 0;
   padding: 0 var(--rm-control-padding-inline);
-  border-color: var(--rm-admin-cta-border);
   border-radius: var(--rm-control-border-radius);
   background: var(--rm-admin-cta-bg);
+  border-color: var(--rm-admin-cta-border);
   color: var(--rm-admin-cta-text);
   font-size: var(--rm-control-font-size);
   font-weight: var(--rm-control-font-weight);
@@ -1982,6 +1982,13 @@ button:visited,
 .site-header .context-bar__action.button--execute-negative:focus,
 .site-header .context-bar__action.button--danger:focus {
   color: var(--rm-cta-negative-text);
+}
+
+.site-header .context-toolbar .button,
+.site-header .context-toolbar .button:visited,
+.site-header .context-toolbar .button:hover,
+.site-header .context-toolbar .button:focus {
+  color: var(--rm-admin-cta-text);
 }
 
 .customer-detail-panel__header,
