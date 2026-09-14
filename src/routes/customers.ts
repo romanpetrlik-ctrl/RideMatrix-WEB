@@ -9,6 +9,13 @@ import {
   listImportBatches
 } from "../services/cabcher-import";
 import {
+  buildCustomerAddress,
+  buildCustomerAddressFormData,
+  hasStructuredCustomerAddress,
+  normalizeCustomerAddressFallback,
+  parseCustomerCoordinate
+} from "../services/customer-addresses";
+import {
   CUSTOMER_DEFAULT_PER_PAGE,
   CUSTOMER_PER_PAGE_OPTIONS,
   CUSTOMER_STATUS_OPTIONS,
@@ -30,7 +37,7 @@ import {
   getWhatsAppHref,
   normalizePhoneToE164
 } from "../services/phone-numbers";
-import { isValidGeoPoint, readMapConfiguration, toMapView, type MapView } from "../services/maps";
+import { getMapService, isValidGeoPoint, readMapConfiguration, toMapView, type MapView } from "../services/maps";
 import { isChildWindowLayout } from "../middleware/layout-context";
 
 type CustomersRouterOptions = {
@@ -370,7 +377,46 @@ function isValidEmail(email: string): boolean {
   return dot > 0 && dot < domain.length - 1;
 }
 
-function buildAddressFromParts(parts: {
+function shouldValidateStructuredAddress(
+  formData: {
+    houseNameNumber: string;
+    addressLine1: string;
+    addressLine2: string;
+    addressLine3: string;
+    cityTown: string;
+    postcode: string;
+  },
+  requireStructuredAddress: boolean
+): boolean {
+  return requireStructuredAddress || hasStructuredCustomerAddress(formData);
+}
+
+function collectStructuredAddressErrors(
+  formData: {
+    houseNameNumber: string;
+    addressLine1: string;
+    addressLine2: string;
+    addressLine3: string;
+    cityTown: string;
+    postcode: string;
+  },
+  requireStructuredAddress: boolean
+): string[] {
+  if (!shouldValidateStructuredAddress(formData, requireStructuredAddress)) {
+    return [];
+  }
+
+  const errors: string[] = [];
+  if (!formData.houseNameNumber) errors.push("House name / number is required.");
+  if (!formData.addressLine1) errors.push("Address line 1 is required.");
+  if (!formData.cityTown) errors.push("City / Town is required.");
+  if (!formData.postcode) errors.push("Postcode is required.");
+  return errors;
+}
+
+async function resolveCustomerAddressPersistence(formData: {
+  address: string;
+  addressSearch: string;
   houseNameNumber: string;
   addressLine1: string;
   addressLine2: string;
@@ -379,17 +425,64 @@ function buildAddressFromParts(parts: {
   county: string;
   state: string;
   postcode: string;
-}): string {
-  return [
-    parts.houseNameNumber,
-    parts.addressLine1,
-    parts.addressLine2,
-    parts.addressLine3,
-    parts.cityTown,
-    parts.county,
-    parts.state,
-    parts.postcode
-  ].filter(Boolean).join(", ");
+  latitude: string;
+  longitude: string;
+}): Promise<{
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocodedAt: string | null;
+  geocodeStatus: string | null;
+}> {
+  const canonicalAddress = buildCustomerAddress(formData);
+  const fallbackAddress = normalizeCustomerAddressFallback(formData.addressSearch || formData.address);
+  const address = canonicalAddress || fallbackAddress || null;
+
+  if (!address) {
+    return {
+      address: null,
+      latitude: null,
+      longitude: null,
+      geocodedAt: null,
+      geocodeStatus: null
+    };
+  }
+
+  const mapService = getMapService();
+  const geocodedAt = new Date().toISOString();
+  const browserPoint = {
+    latitude: parseCustomerCoordinate(formData.latitude),
+    longitude: parseCustomerCoordinate(formData.longitude)
+  };
+
+  const geocoded = await mapService.geocodeAddress(address);
+  if (geocoded) {
+    return {
+      address,
+      latitude: geocoded.point.latitude,
+      longitude: geocoded.point.longitude,
+      geocodedAt,
+      geocodeStatus: geocoded.matchQuality || "exact"
+    };
+  }
+
+  if (isValidGeoPoint(browserPoint)) {
+    return {
+      address,
+      latitude: browserPoint.latitude,
+      longitude: browserPoint.longitude,
+      geocodedAt,
+      geocodeStatus: "client-place"
+    };
+  }
+
+  return {
+    address,
+    latitude: null,
+    longitude: null,
+    geocodedAt,
+    geocodeStatus: mapService.enabled ? "no-result" : "disabled"
+  };
 }
 
 function getCustomerMapView(customer: CustomerRecord): MapView | null {
@@ -639,7 +732,9 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: session.activeRoleLabel,
         customerType,
         formData: {},
-        errors: []
+        errors: [],
+        mapBrowserApiKey: readMapConfiguration().browserApiKey,
+        mapId: readMapConfiguration().mapId
       });
 
     } catch (error) {
@@ -685,6 +780,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       email: String(req.body.email || "").trim(),
       phone: String(req.body.phone || "").trim(),
       company: String(req.body.company || "").trim(),
+      addressSearch: String(req.body.addressSearch || req.body.address || "").trim(),
       houseNameNumber: String(req.body.houseNameNumber || "").trim(),
       addressLine1: String(req.body.addressLine1 || "").trim(),
       addressLine2: String(req.body.addressLine2 || "").trim(),
@@ -694,19 +790,17 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       state: String(req.body.state || "").trim(),
       postcode: String(req.body.postcode || "").trim(),
       address: String(req.body.address || "").trim(),
+      latitude: String(req.body.latitude || "").trim(),
+      longitude: String(req.body.longitude || "").trim(),
       notes: String(req.body.notes || "").trim(),
       preferredContact: String(req.body.preferredContact || "Unknown")
     };
-    const address = buildAddressFromParts(registerFormData) || registerFormData.address;
 
     const registerErrors: string[] = [];
 
     if (!registerFormData.givenName) registerErrors.push("First name is required.");
     if (!registerFormData.surname) registerErrors.push("Surname is required.");
-    if (!registerFormData.houseNameNumber) registerErrors.push("House name / number is required.");
-    if (!registerFormData.addressLine1) registerErrors.push("Address line 1 is required.");
-    if (!registerFormData.cityTown) registerErrors.push("City / Town is required.");
-    if (!registerFormData.postcode) registerErrors.push("Postcode is required.");
+    registerErrors.push(...collectStructuredAddressErrors(registerFormData, true));
     if (registerFormData.email && !isValidEmail(registerFormData.email)) {
       registerErrors.push("Email address is not valid.");
     }
@@ -725,11 +819,14 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: sessionContext.activeRoleLabel,
         customerType: "private",
         formData: registerFormData,
-        errors: registerErrors
+        errors: registerErrors,
+        mapBrowserApiKey: readMapConfiguration().browserApiKey,
+        mapId: readMapConfiguration().mapId
       });
     }
 
     try {
+      const addressData = await resolveCustomerAddressPersistence(registerFormData);
       const newCustomer = await createCustomer({
         title: registerFormData.title || null,
         givenName: registerFormData.givenName,
@@ -737,7 +834,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         email: registerFormData.email || null,
         phone: normalizedPhone,
         company: registerFormData.company || null,
-        address: address || null,
+        address: addressData.address,
         houseNameNumber: registerFormData.houseNameNumber || null,
         addressLine1: registerFormData.addressLine1 || null,
         addressLine2: registerFormData.addressLine2 || null,
@@ -746,6 +843,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         county: registerFormData.county || null,
         state: registerFormData.state || null,
         postcode: registerFormData.postcode || null,
+        latitude: addressData.latitude,
+        longitude: addressData.longitude,
+        geocodedAt: addressData.geocodedAt,
+        geocodeStatus: addressData.geocodeStatus,
         notes: registerFormData.notes || null,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(registerFormData.preferredContact)
           ? (registerFormData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
@@ -764,7 +865,9 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           activeRoleLabel: sessionContext.activeRoleLabel,
           customerType: "private",
           formData: registerFormData,
-          errors: ["An active customer with this email address already exists."]
+          errors: ["An active customer with this email address already exists."],
+          mapBrowserApiKey: readMapConfiguration().browserApiKey,
+          mapId: readMapConfiguration().mapId
         });
       }
 
@@ -1018,6 +1121,17 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         returnTo: backToCustomersHref,
         layout: isChildWindow ? "child" : undefined
       });
+      const formData = {
+        givenName: customer.givenName,
+        surname: customer.surname,
+        email: customer.email || "",
+        phone: customer.phone ? getPhoneDisplayValue(customer.phone) || customer.phone : "",
+        company: customer.company || "",
+        ...buildCustomerAddressFormData(customer),
+        notes: customer.notes || "",
+        preferredContact: customer.preferredContact,
+        status: customer.status
+      };
 
       return res.render("pages/customers/edit", {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
@@ -1034,17 +1148,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         isChildWindow,
         recentBookings: recentBookings.bookings,
         recentBookingsError: recentBookings.error,
-        formData: {
-          givenName: customer.givenName,
-          surname: customer.surname,
-          email: customer.email || "",
-          phone: customer.phone ? getPhoneDisplayValue(customer.phone) || customer.phone : "",
-          company: customer.company || "",
-          address: customer.address || "",
-          notes: customer.notes || "",
-          preferredContact: customer.preferredContact,
-          status: customer.status
-        },
+        formData,
         errors: []
       });
     } catch (error) {
@@ -1101,7 +1205,18 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       email: String(req.body.email || "").trim(),
       phone: String(req.body.phone || "").trim(),
       company: String(req.body.company || "").trim(),
+      addressSearch: String(req.body.addressSearch || req.body.address || "").trim(),
       address: String(req.body.address || "").trim(),
+      houseNameNumber: String(req.body.houseNameNumber || "").trim(),
+      addressLine1: String(req.body.addressLine1 || "").trim(),
+      addressLine2: String(req.body.addressLine2 || "").trim(),
+      addressLine3: String(req.body.addressLine3 || "").trim(),
+      cityTown: String(req.body.cityTown || "").trim(),
+      county: String(req.body.county || "").trim(),
+      state: String(req.body.state || "").trim(),
+      postcode: String(req.body.postcode || "").trim(),
+      latitude: String(req.body.latitude || "").trim(),
+      longitude: String(req.body.longitude || "").trim(),
       notes: String(req.body.notes || "").trim(),
       preferredContact: String(req.body.preferredContact || "Unknown"),
       status: String(req.body.status || "Active")
@@ -1111,6 +1226,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     if (!formData.givenName) errors.push("First name is required.");
     if (!formData.surname) errors.push("Surname is required.");
+    errors.push(...collectStructuredAddressErrors(formData, false));
     if (formData.email && !isValidEmail(formData.email)) {
       errors.push("Email address is not valid.");
     }
@@ -1147,13 +1263,26 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     try {
+      const addressData = await resolveCustomerAddressPersistence(formData);
       const updated = await updateCustomer(customer.id, {
         givenName: formData.givenName,
         surname: formData.surname,
         email: formData.email || null,
         phone: normalizedPhone,
         company: formData.company || null,
-        address: formData.address || null,
+        address: addressData.address,
+        houseNameNumber: formData.houseNameNumber || null,
+        addressLine1: formData.addressLine1 || null,
+        addressLine2: formData.addressLine2 || null,
+        addressLine3: formData.addressLine3 || null,
+        cityTown: formData.cityTown || null,
+        county: formData.county || null,
+        state: formData.state || null,
+        postcode: formData.postcode || null,
+        latitude: addressData.latitude,
+        longitude: addressData.longitude,
+        geocodedAt: addressData.geocodedAt,
+        geocodeStatus: addressData.geocodeStatus,
         notes: formData.notes || null,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(formData.preferredContact)
           ? (formData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
@@ -1181,6 +1310,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       );
     } catch (error) {
       if (error instanceof DuplicateActiveCustomerEmailError) {
+        const recentBookings = await loadRecentBookings(customer.id);
         return res.status(409).render("pages/customers/edit", {
           title: `Edit ${customer.surname}, ${customer.givenName}`,
           appTitle: options.appTitle,
@@ -1197,6 +1327,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           }),
           editActionHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindowLayout(req.query.layout) ? "&layout=child" : ""}`,
           isChildWindow: isChildWindowLayout(req.query.layout),
+          recentBookings: recentBookings.bookings,
+          recentBookingsError: recentBookings.error,
           formData,
           errors: ["An active customer with this email address already exists."]
         });

@@ -5,7 +5,9 @@
     <p><%= mapView.latitude.toFixed(5) %>, <%= mapView.longitude.toFixed(5) %></p>
     <p class="address-map-preview__error" data-map-error hidden>Map preview is temporarily unavailable.</p>
   </div>
-  <script src="/js/google-map-preview.js" defer></script>
+  <% if (locals.includeScript !== false) { %>
+    <script src="/js/google-map-preview.js" defer></script>
+  <% } %>
 <% } else { %>
   <div class="address-map-placeholder" role="status">
     <strong><%= emptyTitle %></strong>

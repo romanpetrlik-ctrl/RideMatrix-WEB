@@ -142,6 +142,42 @@ test("customer register GET ignores the obsolete fontPreview query parameter", a
   }
 });
 
+test("customer register exposes structured address inputs and only the browser maps key", async () => {
+  const previousEnv = {
+    GOOGLE_MAPS_ENABLED: process.env.GOOGLE_MAPS_ENABLED,
+    GOOGLE_MAPS_SERVER_API_KEY: process.env.GOOGLE_MAPS_SERVER_API_KEY,
+    GOOGLE_MAPS_BROWSER_API_KEY: process.env.GOOGLE_MAPS_BROWSER_API_KEY
+  };
+  process.env.GOOGLE_MAPS_ENABLED = "true";
+  process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
+  process.env.GOOGLE_MAPS_BROWSER_API_KEY = "browser-key";
+
+  const server = createTestServer(adminSession);
+  try {
+    const address = server.address() as { port: number };
+    const response = await fetch(`http://127.0.0.1:${address.port}/customers/register?type=private`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /id="addressSearch"/);
+    assert.match(body, /id="houseNameNumber"[^>]*required/);
+    assert.match(body, /id="addressLine1"[^>]*required/);
+    assert.match(body, /id="addressLine2"/);
+    assert.match(body, /id="addressLine3"/);
+    assert.match(body, /id="cityTown"[^>]*required/);
+    assert.match(body, /id="postcode"[^>]*required/);
+    assert.match(body, /data-address-autocomplete-browser-key="browser-key"/);
+    assert.doesNotMatch(body, /server-key/);
+  } finally {
+    process.env.GOOGLE_MAPS_ENABLED = previousEnv.GOOGLE_MAPS_ENABLED;
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = previousEnv.GOOGLE_MAPS_SERVER_API_KEY;
+    process.env.GOOGLE_MAPS_BROWSER_API_KEY = previousEnv.GOOGLE_MAPS_BROWSER_API_KEY;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("customer register validation errors still render without fontPreview in the view model", async () => {
   const server = createTestServer(adminSession);
   try {

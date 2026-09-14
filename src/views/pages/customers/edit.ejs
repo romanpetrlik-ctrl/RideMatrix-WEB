@@ -35,149 +35,247 @@
         </section>
       <% } %>
 
-      <section class="panel panel--compact customer-form-panel">
+      <section class="panel panel--compact customer-form-panel customer-form-panel--centered">
         <h1>Edit <%= customer.surname %>, <%= customer.givenName %></h1>
         <p>Update the customer's details below. Fields marked with * are required.</p>
 
-        <form id="edit-customer-form" class="inline-form private-customer-form" method="post" action="<%= editActionHref %>">
+        <form
+          id="edit-customer-form"
+          class="inline-form private-customer-form"
+          method="post"
+          action="<%= editActionHref %>"
+          data-address-autocomplete-browser-key="<%= locals.mapBrowserApiKey || '' %>"
+        >
           <%- locals.csrfField || "" %>
-          <div class="form-field">
-            <label for="givenName">First name *</label>
-            <input
-              type="text"
-              id="givenName"
-              name="givenName"
-              value="<%= formData.givenName %>"
-              required
-              autocomplete="given-name"
-            />
-          </div>
+          <div class="private-customer-form__grid">
+            <section class="private-customer-form__column" aria-labelledby="edit-contact-heading">
+              <h2 id="edit-contact-heading">Personal and contact data</h2>
 
-          <div class="form-field">
-            <label for="surname">Surname *</label>
-            <input
-              type="text"
-              id="surname"
-              name="surname"
-              value="<%= formData.surname %>"
-              required
-              autocomplete="family-name"
-            />
-          </div>
+              <div class="form-row form-row--two">
+                <div class="form-field">
+                  <label for="givenName">First name *</label>
+                  <input
+                    type="text"
+                    id="givenName"
+                    name="givenName"
+                    value="<%= formData.givenName %>"
+                    required
+                    autocomplete="given-name"
+                  />
+                </div>
 
-          <div class="form-row form-row--contact">
-            <div class="form-field">
-              <label for="email">Email address</label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value="<%= formData.email %>"
-                autocomplete="email"
-              />
-            </div>
+                <div class="form-field">
+                  <label for="surname">Surname *</label>
+                  <input
+                    type="text"
+                    id="surname"
+                    name="surname"
+                    value="<%= formData.surname %>"
+                    required
+                    autocomplete="family-name"
+                  />
+                </div>
+              </div>
 
-            <div class="form-field">
-              <%- include("../../partials/phone-number", {
-                phoneId: "phone",
-                phoneValue: formData.phone,
-                phoneRequired: true
+              <div class="form-row form-row--contact">
+                <div class="form-field">
+                  <label for="email">Email address</label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value="<%= formData.email %>"
+                    autocomplete="email"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <%- include("../../partials/phone-number", {
+                    phoneId: "phone",
+                    phoneValue: formData.phone,
+                    phoneRequired: true
+                  }) %>
+                </div>
+              </div>
+
+              <%- include("../../partials/customer-contact-actions") %>
+
+              <div class="form-field">
+                <label for="company">Company</label>
+                <input
+                  type="text"
+                  id="company"
+                  name="company"
+                  value="<%= formData.company %>"
+                  autocomplete="organization"
+                />
+              </div>
+
+              <div class="form-row form-row--two">
+                <div class="form-field">
+                  <label for="preferredContact">Preferred contact method</label>
+                  <select id="preferredContact" name="preferredContact">
+                    <% ["Unknown", "Email", "Phone", "WhatsApp"].forEach((option) => { %>
+                      <option value="<%= option %>" <%= formData.preferredContact === option ? 'selected' : '' %>><%= option %></option>
+                    <% }) %>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="status">Status</label>
+                  <select id="status" name="status">
+                    <% ["Active", "Suspended"].forEach((option) => { %>
+                      <option value="<%= option %>" <%= formData.status === option ? 'selected' : '' %>><%= option %></option>
+                    <% }) %>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section class="private-customer-form__column" aria-labelledby="customer-address-heading">
+              <h2 id="customer-address-heading">Address data</h2>
+              <p class="private-customer-form__section-intro">Search the address first, then refine the saved fields manually if needed.</p>
+
+              <div class="form-field">
+                <label for="addressSearch">Search address</label>
+                <input
+                  type="search"
+                  id="addressSearch"
+                  name="addressSearch"
+                  value="<%= formData.addressSearch || formData.address %>"
+                  autocomplete="street-address"
+                />
+              </div>
+
+              <input type="hidden" id="address" name="address" value="<%= formData.address %>" />
+              <input type="hidden" id="county" name="county" value="<%= formData.county %>" />
+              <input type="hidden" id="state" name="state" value="<%= formData.state %>" />
+              <input type="hidden" id="latitude" name="latitude" value="<%= formData.latitude %>" />
+              <input type="hidden" id="longitude" name="longitude" value="<%= formData.longitude %>" />
+
+              <div class="form-row form-row--two">
+                <div class="form-field">
+                  <label for="houseNameNumber">House number / name</label>
+                  <input
+                    type="text"
+                    id="houseNameNumber"
+                    name="houseNameNumber"
+                    value="<%= formData.houseNameNumber %>"
+                    autocomplete="address-line1"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="addressLine1">Address line 1</label>
+                  <input
+                    type="text"
+                    id="addressLine1"
+                    name="addressLine1"
+                    value="<%= formData.addressLine1 %>"
+                    autocomplete="address-line1"
+                  />
+                </div>
+              </div>
+
+              <div class="form-row form-row--two">
+                <div class="form-field">
+                  <label for="addressLine2">Address line 2</label>
+                  <input
+                    type="text"
+                    id="addressLine2"
+                    name="addressLine2"
+                    value="<%= formData.addressLine2 %>"
+                    autocomplete="address-line2"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="addressLine3">Address line 3</label>
+                  <input
+                    type="text"
+                    id="addressLine3"
+                    name="addressLine3"
+                    value="<%= formData.addressLine3 %>"
+                  />
+                </div>
+              </div>
+
+              <div class="form-row form-row--two">
+                <div class="form-field">
+                  <label for="cityTown">City / Town</label>
+                  <input
+                    type="text"
+                    id="cityTown"
+                    name="cityTown"
+                    value="<%= formData.cityTown %>"
+                    autocomplete="address-level2"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="postcode">Postcode</label>
+                  <input
+                    type="text"
+                    id="postcode"
+                    name="postcode"
+                    value="<%= formData.postcode %>"
+                    autocomplete="postal-code"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section class="private-customer-form__column private-customer-form__column--map" aria-labelledby="customer-map-heading">
+              <h2 id="customer-map-heading">Address map</h2>
+              <%- include("../../partials/map-preview", {
+                mapView,
+                mapBrowserApiKey,
+                mapId,
+                includeScript: false,
+                emptyTitle: customer.address ? "Map preview unavailable." : "Address has not been geocoded.",
+                emptyMessage: customer.address
+                  ? "Address has not been geocoded."
+                  : "No customer address is available for a map preview."
               }) %>
-            </div>
-          </div>
 
-          <%- include("../../partials/customer-contact-actions") %>
-
-          <div class="form-field">
-            <label for="company">Company</label>
-            <input
-              type="text"
-              id="company"
-              name="company"
-              value="<%= formData.company %>"
-              autocomplete="organization"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="address">Address</label>
-            <input
-              type="text"
-              id="address"
-              name="address"
-              value="<%= formData.address %>"
-              autocomplete="street-address"
-            />
-          </div>
-
-          <div class="form-field">
-            <label for="preferredContact">Preferred contact method</label>
-            <select id="preferredContact" name="preferredContact">
-              <% ["Unknown", "Email", "Phone", "WhatsApp"].forEach((option) => { %>
-                <option value="<%= option %>" <%= formData.preferredContact === option ? 'selected' : '' %>><%= option %></option>
-              <% }) %>
-            </select>
-          </div>
-
-          <div class="form-field">
-            <label for="status">Status</label>
-            <select id="status" name="status">
-              <% ["Active", "Suspended"].forEach((option) => { %>
-                <option value="<%= option %>" <%= formData.status === option ? 'selected' : '' %>><%= option %></option>
-              <% }) %>
-            </select>
-          </div>
-
-          <div class="private-customer-form__notes-layout">
-            <div class="form-field private-customer-form__notes">
-              <label for="notes">Internal notes</label>
-              <textarea
-                id="notes"
-                name="notes"
-                rows="5"
-              ><%= formData.notes %></textarea>
-            </div>
-
-            <section class="customer-bookings-panel" aria-labelledby="customer-bookings-title">
-              <h2 id="customer-bookings-title">Last 5 bookings</h2>
-              <% if (recentBookingsError) { %>
-                <p class="customer-bookings-panel__message">Recent bookings could not be loaded.</p>
-              <% } else if (recentBookings.length === 0) { %>
-                <p class="customer-bookings-panel__message">No bookings found.</p>
-              <% } else { %>
-                <ol class="customer-bookings-panel__list">
-                  <% recentBookings.forEach((booking) => { %>
-                    <li class="customer-bookings-panel__booking">
-                      <div class="customer-bookings-panel__booking-header">
-                        <strong><%= booking.formattedServiceDate %></strong>
-                        <span class="status-pill status-pill--booking"><%= booking.status %></span>
-                      </div>
-                      <span class="customer-bookings-panel__reference"><%= booking.reference %></span>
-                      <span class="customer-bookings-panel__route"><%= booking.pickup %> → <%= booking.dropoff %></span>
-                    </li>
-                  <% }) %>
-                </ol>
-              <% } %>
+              <section class="customer-bookings-panel customer-bookings-panel--inline" aria-labelledby="customer-bookings-title">
+                <h2 id="customer-bookings-title">Last 5 bookings</h2>
+                <% if (recentBookingsError) { %>
+                  <p class="customer-bookings-panel__message">Recent bookings could not be loaded.</p>
+                <% } else if (recentBookings.length === 0) { %>
+                  <p class="customer-bookings-panel__message">No bookings found.</p>
+                <% } else { %>
+                  <ol class="customer-bookings-panel__list">
+                    <% recentBookings.forEach((booking) => { %>
+                      <li class="customer-bookings-panel__booking">
+                        <div class="customer-bookings-panel__booking-header">
+                          <strong><%= booking.formattedServiceDate %></strong>
+                          <span class="status-pill status-pill--booking"><%= booking.status %></span>
+                        </div>
+                        <span class="customer-bookings-panel__reference"><%= booking.reference %></span>
+                        <span class="customer-bookings-panel__route"><%= booking.pickup %> → <%= booking.dropoff %></span>
+                      </li>
+                    <% }) %>
+                  </ol>
+                <% } %>
+              </section>
             </section>
           </div>
 
-          <section class="customer-map-card" aria-labelledby="customer-map-heading">
-            <h2 id="customer-map-heading">Address map</h2>
-            <%- include("../../partials/map-preview", {
-              mapView,
-              mapBrowserApiKey,
-              mapId,
-              emptyTitle: customer.address ? "Map preview unavailable." : "Address has not been geocoded.",
-              emptyMessage: customer.address
-                ? "Address has not been geocoded."
-                : "No customer address is available for a map preview."
-            }) %>
-          </section>
-
+          <div class="form-field private-customer-form__notes">
+            <label for="notes">Internal notes</label>
+            <textarea
+              id="notes"
+              name="notes"
+              rows="5"
+            ><%= formData.notes %></textarea>
+          </div>
         </form>
       </section>
     </main>
 
     <%- include("../../partials/footer") %>
+    <script src="/js/google-map-preview.js" defer></script>
+    <script src="/js/customer-address-autocomplete.js" defer></script>
   </body>
 </html>

@@ -21,8 +21,9 @@ pay-as-you-go.
 
 ## Behaviour and storage
 
-Geocoding is explicit and must be triggered by a future form action, job, or
-administrator action; it never runs on page load or every keystroke. Normalized
+Customer register/edit forms use the browser key for Google Places address
+autocomplete and keep the server key on the server for canonical-address
+geocoding on save. Geocoding never runs on page load or every keystroke. Normalized
 addresses and coordinate pairs are cached in-process, successful and negative
 results are reused, and concurrent equivalent requests share one in-flight
 provider request. The adapter does not retry rate-limited or timed-out requests;

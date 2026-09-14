@@ -45,10 +45,15 @@ test("persists created customers across a restart", async () => {
     surname: "Novak",
     email: "Petra.Novak@Example.com",
     phone: "+44 7700 900200",
+    address: "12A, Mill Lane, Manchester, M1 2AB",
     houseNameNumber: "12A",
     addressLine1: "Mill Lane",
     cityTown: "Manchester",
     postcode: "M1 2AB",
+    latitude: 53.4808,
+    longitude: -2.2426,
+    geocodedAt: "2026-09-14T00:00:00.000Z",
+    geocodeStatus: "exact",
     status: "Active"
   });
 
@@ -58,9 +63,13 @@ test("persists created customers across a restart", async () => {
 
   assert.ok(reloaded);
   assert.equal(reloaded.surname, "Novak");
+   assert.equal(reloaded.address, "12A, Mill Lane, Manchester, M1 2AB");
   assert.equal(reloaded.houseNameNumber, "12A");
   assert.equal(reloaded.cityTown, "Manchester");
   assert.equal(reloaded.postcode, "M1 2AB");
+  assert.equal(reloaded.latitude, 53.4808);
+  assert.equal(reloaded.longitude, -2.2426);
+  assert.equal(reloaded.geocodeStatus, "exact");
   assert.equal(reloaded.status, "Active");
 });
 
@@ -75,7 +84,16 @@ test("persists updates and status changes", async () => {
   const customer = await getCustomerByEmail("petra.novak@example.com");
   assert.ok(customer);
 
-  await updateCustomer(customer.id, { status: "Suspended", notes: "On hold." });
+  await updateCustomer(customer.id, {
+    status: "Suspended",
+    notes: "On hold.",
+    address: "Flat 2, 12A, Mill Lane, Manchester, M1 2AB",
+    addressLine2: "Flat 2",
+    latitude: 53.481,
+    longitude: -2.243,
+    geocodedAt: "2026-09-14T01:00:00.000Z",
+    geocodeStatus: "client-place"
+  });
 
   await restart();
 
@@ -83,6 +101,10 @@ test("persists updates and status changes", async () => {
   assert.ok(reloaded);
   assert.equal(reloaded.status, "Suspended");
   assert.equal(reloaded.notes, "On hold.");
+  assert.equal(reloaded.addressLine2, "Flat 2");
+  assert.equal(reloaded.latitude, 53.481);
+  assert.equal(reloaded.longitude, -2.243);
+  assert.equal(reloaded.geocodeStatus, "client-place");
 });
 
 test("lists at most five recent bookings for the requested customer", async () => {
