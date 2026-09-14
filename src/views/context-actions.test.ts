@@ -34,7 +34,7 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
   assert.match(register, /class="inline-form private-customer-form"/);
   assert.match(register, /id="private-customer-form"/);
   assert.match(register, /formId: "private-customer-form"/);
-  assert.match(register, /data-address-autocomplete-browser-key="<%= locals\.mapBrowserApiKey \|\| '' %>"/);
+  assert.match(register, /data-address-autocomplete-browser-key="<%= typeof mapBrowserApiKey === 'string' \? mapBrowserApiKey : '' %>"/);
   assert.match(register, /id="addressSearch"/);
   assert.doesNotMatch(register, /<div class="action-row">[\s\S]*Create Customer/);
 
@@ -44,7 +44,7 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
   assert.match(edit, /id="edit-customer-form"/);
   assert.match(edit, /formId: "edit-customer-form"/);
   assert.match(edit, /customer-form-panel customer-form-panel--centered/);
-  assert.match(edit, /data-address-autocomplete-browser-key="<%= locals\.mapBrowserApiKey \|\| '' %>"/);
+  assert.match(edit, /data-address-autocomplete-browser-key="<%= typeof mapBrowserApiKey === 'string' \? mapBrowserApiKey : '' %>"/);
   assert.match(edit, /id="addressSearch"/);
   assert.match(edit, /id="houseNameNumber"/);
   assert.match(edit, /id="addressLine1"/);
@@ -60,7 +60,6 @@ test("shared context action partial renders only supplied actions with semantic 
   const customersIndex = read("src/views/pages/customers/index.ejs");
   const css = read("public/css/app.css");
   const siteHeaderAction = extractRuleBody(css, ".site-header__action");
-  const contextBarDangerAction = extractRuleBody(css, ".context-bar__action--danger");
   const systemBarAccountAction = extractRuleBody(css, ".system-status-bar__account-action");
   const operationsAction = extractRuleBody(css, ".operations-menu-prototype__action");
   const compactButton = extractRuleBody(css, ".button--small");
@@ -75,7 +74,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(customersIndex, /customers-table__actions-list"/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>View/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>Edit/);
-  assert.match(customersIndex, /button--danger button--admin-cta button--admin-cta--negative button--small.*>Delete/);
+  assert.match(customersIndex, /button--admin-cta button--admin-cta--negative button--small.*>Delete/);
   assert.doesNotMatch(customersIndex, /customers-table__actions-list[\s\S]*button--secondary/);
   assert.doesNotMatch(header, /Switch workspace/);
   assert.doesNotMatch(header, /action="\/exit"/);
@@ -101,8 +100,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(siteHeaderAction, /min-height: var\(--rm-control-height\);/);
   assert.match(siteHeaderAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(siteHeaderAction, /align-items: center;/);
-  assert.match(systemBarAccountAction, /min-height: var\(--rm-control-height\);/);
-  assert.match(systemBarAccountAction, /font-size: var\(--rm-control-font-size\);/);
+  assert.match(systemBarAccountAction, /flex: 0 0 auto;/);
   assert.match(operationsAction, /min-height: var\(--rm-control-height\);/);
   assert.match(operationsAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(operationsAction, /flex: 0 0 var\(--rm-dashboard-action-width\);/);
@@ -119,7 +117,6 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(paginationLink, /font-size: var\(--rm-control-font-size-compact\);/);
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited \{[\s\S]*color: var\(--rm-admin-cta-text\);/);
   assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-admin-cta-text\);/);
-  assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
   assert.match(css, /\.operations-menu-prototype__warning-icon--warning \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
   assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);/);
@@ -149,7 +146,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.context-toolbar input\[type="submit"\]\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
-  assert.match(css, /\.customer-form-panel--centered \{[\s\S]*width: min\(100%, 1180px\);[\s\S]*margin-inline: auto;/);
+  assert.match(css, /\.customer-form-panel--centered \{[\s\S]*width: min\(100%, 1040px\);[\s\S]*margin-inline: auto;/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
   assert.match(css, /\.private-customer-form__section-intro \{[\s\S]*color: var\(--rm-text-soft\);/);
   assert.match(css, /\.system-status-bar__account-actions \{[\s\S]*flex-wrap: wrap;[\s\S]*min-width: 0;/);
@@ -161,6 +158,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.doesNotMatch(css, /\.customer-form-page--private \.customer-form-panel > h1 \{[\s\S]*font-size: clamp\(1\.75rem, 2\.4vw, 2rem\);/);
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);
   assert.match(header, /headerContextActions\.length > 0/);
+  assert.match(header, /const normalizedBreadcrumbs = headerBreadcrumbs\.reduce/);
   assert.match(header, /site-header__breadcrumbs-row/);
   assert.match(header, /<nav class="site-header__breadcrumbs" aria-label="Breadcrumbs">/);
   assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
@@ -180,7 +178,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /id="customers-per-page"/);
   assert.match(template, /context-toolbar__right[\s\S]*Records per page[\s\S]*customers-per-page[\s\S]*New customer/);
   assert.match(template, /customers-per-page[\s\S]*New customer/);
-  assert.match(template, /class="button button--execute" href="\/customers\/register">New customer/);
+  assert.match(template, /class="button button--admin-cta" href="\/customers\/register">New customer/);
   assert.match(template, /context-toolbar context-toolbar--customers/);
   assert.equal((customersIndex.match(/Administration/g) || []).length, 1);
   assert.doesNotMatch(customersIndex, /context-toolbar[\s\S]*Administration[\s\S]*Customer management/);

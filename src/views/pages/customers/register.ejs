@@ -77,7 +77,7 @@
             class="inline-form private-customer-form"
             method="post"
             action="/customers/register"
-            data-address-autocomplete-browser-key="<%= locals.mapBrowserApiKey || '' %>"
+            data-address-autocomplete-browser-key="<%= typeof mapBrowserApiKey === 'string' ? mapBrowserApiKey : '' %>"
           >
             <%- locals.csrfField || "" %>
             <div class="private-customer-form__grid">

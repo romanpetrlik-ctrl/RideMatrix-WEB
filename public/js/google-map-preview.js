@@ -37,21 +37,32 @@
       return true;
   }
 
+  function normalizeLibraries(libraries) {
+    var normalized = Array.isArray(libraries)
+      ? libraries.filter(Boolean).map(function (library) { return String(library).trim(); }).filter(Boolean)
+      : [];
+    return normalized.filter(function (library, index) {
+      return normalized.indexOf(library) === index;
+    });
+  }
+
   window.RideMatrixMaps = {
     render: render,
     load: function (browserKey, elements, options) {
       var previewElements = Array.isArray(elements) ? elements : [];
-      var libraries = options && Array.isArray(options.libraries) ? options.libraries.filter(Boolean) : [];
+      var libraries = normalizeLibraries(options && options.libraries);
       if (!browserKey) return Promise.resolve(false);
       if (window.google && window.google.maps) {
-        return ensureLibraries(libraries).then(function () {
+        return ensureLibraries(libraries).then(function (loaded) {
+          if (!loaded) throw new Error("Google Maps libraries unavailable");
           previewElements.forEach(function (element) { render(element, window.google.maps); });
           return true;
         });
       }
       if (loadingByKey[browserKey]) {
         return loadingByKey[browserKey].then(function () {
-          return ensureLibraries(libraries).then(function () {
+          return ensureLibraries(libraries).then(function (loaded) {
+            if (!loaded) throw new Error("Google Maps libraries unavailable");
             previewElements.forEach(function (element) { render(element, window.google.maps); });
             return true;
           });
@@ -66,16 +77,21 @@
           delete window[callback];
         };
         var script = document.createElement("script");
-        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey) + "&callback=" + callback + "&loading=async";
+        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey)
+          + "&callback=" + callback
+          + "&loading=async"
+          + "&libraries=places";
         script.async = true;
         script.onerror = function () {
           delete loadingByKey[browserKey];
+          delete window[callback];
           reject(new Error("Google Maps preview unavailable"));
         };
         document.head.appendChild(script);
       });
       return loadingByKey[browserKey].then(function () {
-        return ensureLibraries(libraries).then(function () {
+        return ensureLibraries(libraries).then(function (loaded) {
+          if (!loaded) throw new Error("Google Maps libraries unavailable");
           previewElements.forEach(function (element) { render(element, window.google.maps); });
           return true;
         });
@@ -83,12 +99,11 @@
     }
   };
 
-  if (typeof document === "undefined") return;
   function showUnavailable(elements) {
-  elements.forEach(function (element) {
-    var message = element.querySelector("[data-map-error]");
-    if (message) message.hidden = false;
-  });
+    elements.forEach(function (element) {
+      var message = element.querySelector("[data-map-error]");
+      if (message) message.hidden = false;
+    });
   }
 
   if (typeof document === "undefined") return;

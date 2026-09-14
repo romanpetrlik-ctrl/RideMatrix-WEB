@@ -255,56 +255,9 @@ a {
 }
 
 .system-status-bar__account-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--rm-control-gap);
-  box-sizing: border-box;
-  min-height: var(--rm-control-height);
+  flex: 0 0 auto;
   max-width: 100%;
-  padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
-  border: var(--rm-control-border-width) solid var(--rm-admin-cta-border);
-  border-bottom-width: 3px;
-  border-radius: var(--rm-control-border-radius);
-  background: var(--rm-admin-cta-bg);
-  color: var(--rm-admin-cta-text);
-  font: inherit;
-  font-size: var(--rm-control-font-size);
-  font-weight: var(--rm-control-font-weight);
-  line-height: var(--rm-control-line-height);
-  text-decoration: none;
   white-space: nowrap;
-}
-
-.system-status-bar__account-action--secondary {
-  border-bottom-color: var(--rm-admin-cta-border);
-}
-
-.system-status-bar__account-action--secondary:hover,
-.system-status-bar__account-action--secondary:focus {
-  background: var(--rm-admin-cta-bg-hover);
-  border-color: var(--rm-admin-cta-border-hover);
-  color: var(--rm-admin-cta-text);
-}
-
-.system-status-bar__account-action--negative {
-  border-bottom-color: var(--rm-cta-negative-accent);
-  color: var(--rm-cta-negative-accent);
-  cursor: pointer;
-}
-
-.system-status-bar__account-action--negative:hover,
-.system-status-bar__account-action--negative:focus {
-  background: var(--rm-admin-cta-bg-hover);
-  border-color: var(--rm-admin-cta-border-hover);
-  border-bottom-color: var(--rm-cta-negative-accent);
-  color: var(--rm-cta-negative-accent);
-}
-
-.system-status-bar__account-action:focus-visible {
-  outline: var(--rm-control-focus-outline);
-  outline-offset: var(--rm-control-focus-offset);
-  box-shadow: var(--rm-control-focus-shadow);
 }
 
 .site-header__context {
@@ -364,43 +317,6 @@ a {
   max-width: 100%;
 }
 
-.context-bar__action--primary {
-  background: var(--rm-soft-apricot);
-  border-color: var(--rm-soft-apricot);
-  color: var(--rm-walnut-3);
-}
-
-.context-bar__action--primary:hover,
-.context-bar__action--primary:focus {
-  background: var(--rm-antique-white);
-  border-color: var(--rm-antique-white);
-  color: var(--rm-walnut-3);
-}
-
-.context-bar__action--secondary {
-  background: transparent;
-  border-color: var(--rm-camel);
-  color: var(--rm-antique-white);
-}
-
-.context-bar__action--secondary:hover,
-.context-bar__action--secondary:focus {
-  background: rgba(255, 237, 216, 0.18);
-  color: var(--rm-antique-white);
-}
-
-.context-bar__action--danger {
-  background: transparent;
-  border-color: var(--rm-golden-orange);
-  color: var(--rm-antique-white);
-}
-
-.context-bar__action--danger:hover,
-.context-bar__action--danger:focus {
-  background: var(--rm-oxidized-iron);
-  border-color: var(--rm-oxidized-iron);
-  color: var(--rm-antique-white);
-}
 
 .system-status-bar__brand {
   display: inline-flex;
@@ -638,7 +554,8 @@ h3 {
 }
 
 .customer-form-panel--centered {
-  width: min(100%, 1180px);
+  /* Keep private customer register/edit forms centered and readable instead of spanning the full viewport width. */
+  width: min(100%, 1040px);
   margin-inline: auto;
   box-sizing: border-box;
 }
@@ -2055,22 +1972,18 @@ button:visited,
   }
 }
 
-.site-header .context-bar__action,
-.site-header .context-bar__action:visited,
-.site-header .context-bar__action:hover,
-.site-header .context-bar__action:focus {
-  color: var(--rm-antique-white);
+.site-header .context-bar__action.button--admin-cta,
+.site-header .context-bar__action.button--admin-cta:visited,
+.site-header .context-bar__action.button--admin-cta:hover,
+.site-header .context-bar__action.button--admin-cta:focus {
+  color: var(--rm-admin-cta-text);
 }
 
-.site-header .context-bar__action.button--execute-negative,
-.site-header .context-bar__action.button--danger,
-.site-header .context-bar__action.button--execute-negative:visited,
-.site-header .context-bar__action.button--danger:visited,
-.site-header .context-bar__action.button--execute-negative:hover,
-.site-header .context-bar__action.button--danger:hover,
-.site-header .context-bar__action.button--execute-negative:focus,
-.site-header .context-bar__action.button--danger:focus {
-  color: var(--rm-cta-negative-text);
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative,
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative:visited,
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative:hover,
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative:focus {
+  color: var(--rm-admin-cta-negative-text);
 }
 
 .site-header .context-toolbar .button,

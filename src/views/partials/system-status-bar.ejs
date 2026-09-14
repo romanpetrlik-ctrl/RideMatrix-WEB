@@ -59,11 +59,11 @@
       <% if (isAuthenticated) { %>
         <div class="system-status-bar__account-actions" aria-label="Account actions">
           <% if (showWorkspaceSwitch) { %>
-            <a class="system-status-bar__account-action system-status-bar__account-action--secondary" href="/choose-role">Switch workspace</a>
+            <a class="button button--admin-cta system-status-bar__account-action" href="/choose-role">Switch workspace</a>
           <% } %>
           <form class="system-status-bar__account-action-form" method="post" action="/exit">
             <%- locals.csrfField || "" %>
-            <button class="system-status-bar__account-action system-status-bar__account-action--negative" type="submit">Exit</button>
+            <button class="button button--admin-cta button--admin-cta--negative system-status-bar__account-action" type="submit">Exit</button>
           </form>
         </div>
       <% } %>
