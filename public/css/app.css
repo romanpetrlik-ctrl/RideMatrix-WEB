@@ -2097,6 +2097,8 @@ button:visited,
 
   .context-toolbar--customers .context-toolbar__right {
     justify-content: flex-start;
+    width: 100%;
+    white-space: normal;
   }
 
   .context-toolbar__field,
