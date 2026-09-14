@@ -44,6 +44,8 @@ type CustomersRouterOptions = {
   appTitle: string;
   loadSession?: (cookieHeader?: string) => Promise<SessionAccount>;
   getCustomerById?: typeof getCustomerById;
+  listCustomers?: typeof listCustomers;
+  getCustomerCount?: typeof getCustomerCount;
   listRecentBookingsForCustomer?: typeof listRecentBookingsForCustomer;
 };
 
@@ -254,6 +256,21 @@ function buildCustomerBookingsHref(customerId: string, returnTo?: string, notice
   return query ? `/customers/${customerId}/bookings?${query}` : `/customers/${customerId}/bookings`;
 }
 
+function buildCustomerEditHref(customerId: string, returnTo?: string, layout?: "child"): string {
+  const searchParams = new URLSearchParams();
+
+  if (returnTo) {
+    searchParams.set("returnTo", returnTo);
+  }
+
+  if (layout) {
+    searchParams.set("layout", layout);
+  }
+
+  const query = searchParams.toString();
+  return query ? `/customers/${customerId}/edit?${query}` : `/customers/${customerId}/edit`;
+}
+
 function getStatusTabs(search: string, page: number, perPage: number, activeStatus: CustomerStatus): CustomerStatusTab[] {
   return CUSTOMER_STATUS_OPTIONS.map((status) => ({
     label: status === "all" ? "All" : status,
@@ -316,11 +333,6 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
       return {
         tone: "warning",
         message: "New Customer is visible in the workflow, but the creation form is not connected to backend persistence yet."
-      };
-    case "edit-customer":
-      return {
-        tone: "warning",
-        message: `${name} can be reviewed here, but the edit workflow is still a placeholder until the backend editor is available.`
       };
     case "new-booking":
       return {
@@ -579,6 +591,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const upload = multer({ storage: multer.memoryStorage() });
   const loadSession = options.loadSession ?? getSessionAccount;
   const loadCustomerById = options.getCustomerById ?? getCustomerById;
+  const loadCustomersList = options.listCustomers ?? listCustomers;
+  const loadCustomerCount = options.getCustomerCount ?? getCustomerCount;
   const loadRecentBookingsForCustomerList = options.listRecentBookingsForCustomer ?? listRecentBookingsForCustomer;
 
   router.get("/customers/phone-preview", async (req, res, next) => {
@@ -617,13 +631,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         : "all";
       const requestedPage = Number.parseInt(String(req.query.page || "1"), 10);
       const requestedPerPage = Number.parseInt(String(req.query.perPage || CUSTOMER_DEFAULT_PER_PAGE), 10);
-      const result = await listCustomers({
+      const result = await loadCustomersList({
         search,
         status,
         page: Number.isFinite(requestedPage) ? requestedPage : 1,
         perPage: Number.isFinite(requestedPerPage) ? requestedPerPage : CUSTOMER_DEFAULT_PER_PAGE
       });
-      const customerCount = await getCustomerCount();
+      const customerCount = await loadCustomerCount();
 
       const pagination = getPagination(search, status, result.page, result.totalPages, result.perPage, result.totalRecords);
 
@@ -646,15 +660,15 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
             }),
             layout: "child"
           }),
-          editHref: buildCustomerHref(customer.id, {
-            returnTo: buildCustomersListHref({
+          editHref: buildCustomerEditHref(
+            customer.id,
+            buildCustomersListHref({
               search,
               status,
               page: result.page,
               perPage: result.perPage
-            }),
-            notice: "edit-customer"
-          }),
+            })
+          ),
           deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(
             buildCustomersListHref({
               search,
@@ -957,6 +971,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
       const isChildWindow = isChildWindowLayout(req.query.layout);
 
+      if (String(req.query.notice || "") === "edit-customer") {
+        return res.redirect(
+          buildCustomerEditHref(customer.id, backToCustomersHref, isChildWindow ? "child" : undefined)
+        );
+      }
+
       const detailViewModel = {
         title: `${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
@@ -983,7 +1003,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
             notice: "new-booking",
             layout: isChildWindow ? "child" : undefined
           }),
-          editHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`
+          editHref: buildCustomerEditHref(customer.id, backToCustomersHref, isChildWindow ? "child" : undefined)
         },
         backToCustomersHref,
         isChildWindow,
@@ -1183,7 +1203,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
       const recentBookings = await loadRecentBookings(customer.id, loadRecentBookingsForCustomerList);
       const isChildWindow = isChildWindowLayout(req.query.layout);
-      const editActionHref = `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`;
+      const editActionHref = buildCustomerEditHref(customer.id, backToCustomersHref, isChildWindow ? "child" : undefined);
       const cancelHref = buildCustomerHref(customer.id, {
         returnTo: backToCustomersHref,
         layout: isChildWindow ? "child" : undefined
@@ -1320,7 +1340,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           returnTo: backToCustomersHref,
           layout: isChildWindow ? "child" : undefined
         }),
-        editActionHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`,
+        editActionHref: buildCustomerEditHref(customer.id, backToCustomersHref, isChildWindow ? "child" : undefined),
         isChildWindow,
         recentBookings: recentBookings.bookings,
         recentBookingsError: recentBookings.error,
@@ -1386,7 +1406,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
             returnTo: backToCustomersHref,
             layout: isChildWindowLayout(req.query.layout) ? "child" : undefined
           }),
-          editActionHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindowLayout(req.query.layout) ? "&layout=child" : ""}`,
+          editActionHref: buildCustomerEditHref(
+            customer.id,
+            backToCustomersHref,
+            isChildWindowLayout(req.query.layout) ? "child" : undefined
+          ),
           isChildWindow: isChildWindowLayout(req.query.layout),
           recentBookings: recentBookings.bookings,
           recentBookingsError: recentBookings.error,
