@@ -72,6 +72,8 @@ test("dashboard operational menu is the canonical navigation", () => {
     "Bookings",
     "Dispatch",
     "Customers",
+    "Drivers",
+    "Vehicles",
     "Staff",
     "Pricing",
     "Settings"
@@ -81,6 +83,22 @@ test("dashboard operational menu is the canonical navigation", () => {
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "All staff")?.href, "/staff");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Live board")?.href, "/dashboard?tile=dispatch-live-board");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Live Map")?.href, "/dashboard?tile=dispatch-live-map");
+});
+
+test("drivers and vehicles operational actions use existing destinations or dashboard placeholders", () => {
+  const rows = new Map(operationalMenuRows.map((row) => [row.category, row.actions]));
+  assert.deepEqual(rows.get("Drivers"), [{ label: "All drivers", href: "/dashboard?tile=drivers-all" }]);
+  assert.deepEqual(rows.get("Vehicles"), [
+    { label: "Active vehicles", href: "/dashboard?tile=vehicles-active" },
+    { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },
+    { label: "All vehicles", href: "/vehicles" },
+    { label: "Settings", href: "/settings" }
+  ]);
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "All drivers").length, 1);
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "Active vehicles").length, 1);
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "Live map").length, 1);
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "All vehicles").length, 1);
+  assert.equal(rows.get("Vehicles")?.filter((action) => action.label === "Settings").length, 1);
 });
 
 test("operational dashboard links resolve to their selected-action notices", () => {
