@@ -1087,17 +1087,17 @@ button:visited,
   color: var(--rm-admin-cta-text);
 }
 
-.button--admin-cta--negative {
+.button--admin-cta.button--admin-cta--negative {
   background: var(--rm-admin-cta-negative-bg);
   border-color: var(--rm-admin-cta-negative-border);
   color: var(--rm-admin-cta-negative-text);
 }
 
-.button--admin-cta--negative:visited {
+.button--admin-cta.button--admin-cta--negative:visited {
   color: var(--rm-admin-cta-negative-text);
 }
 
-.button--admin-cta--negative:hover {
+.button--admin-cta.button--admin-cta--negative:hover {
   background: var(--rm-admin-cta-negative-bg-hover);
   border-color: var(--rm-admin-cta-negative-border-hover);
   color: var(--rm-admin-cta-negative-text);
@@ -1107,6 +1107,12 @@ button:visited,
   min-height: var(--rm-control-height-compact);
   padding: var(--rm-control-padding-block-compact) var(--rm-control-padding-inline-compact);
   font-size: var(--rm-control-font-size-compact);
+}
+
+.button--admin-cta:focus-visible {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+  box-shadow: var(--rm-control-focus-shadow);
 }
 
 .button--execute-negative,

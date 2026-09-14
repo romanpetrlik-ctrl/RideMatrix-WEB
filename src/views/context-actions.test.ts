@@ -126,7 +126,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.button--execute-negative,\s*\.button--danger \{[\s\S]*background: var\(--rm-cta-negative-bg\);/);
   assert.match(css, /\.button--execute-helper,\s*\.button--secondary \{[\s\S]*background: var\(--rm-cta-helper-bg\);/);
   assert.match(css, /\.button--admin-cta \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
-  assert.match(css, /\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);[\s\S]*border-color: var\(--rm-admin-cta-negative-border\);/);
+  assert.match(css, /\.button--admin-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);[\s\S]*border-color: var\(--rm-admin-cta-negative-border\);/);
   assert.match(css, /\.button--admin-cta\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);[\s\S]*font-size: var\(--rm-control-font-size-compact\);/);
   assert.match(workspaceTile, /min-height: 118px;/);
   assert.doesNotMatch(workspaceTile, /min-height: var\(--rm-control-height-compact\);/);
