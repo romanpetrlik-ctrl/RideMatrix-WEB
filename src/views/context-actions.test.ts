@@ -63,6 +63,10 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(actions, /href="<%= action\.href \|\| '#' %>"/);
   assert.match(actions, /site-header__action context-bar__action/);
   assert.match(customersIndex, /customers-table__actions-list"/);
+  assert.match(customersIndex, /button button--admin-cta button--small.*>View/);
+  assert.match(customersIndex, /button button--admin-cta button--small.*>Edit/);
+  assert.match(customersIndex, /button--danger button--admin-cta button--admin-cta--negative button--small.*>Delete/);
+  assert.doesNotMatch(customersIndex, /customers-table__actions-list[\s\S]*button--secondary/);
   assert.doesNotMatch(header, /Switch workspace/);
   assert.doesNotMatch(header, /action="\/exit"/);
   assert.match(css, /--rm-control-height:\s*3rem;/);
@@ -117,9 +121,13 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /--rm-cta-negative-bg:\s*#c1121f;/);
   assert.match(css, /--rm-cta-negative-text:\s*#ffe66d;/);
   assert.match(css, /--rm-cta-helper-bg:\s*var\(--rm-context-bar-bg\);/);
+  assert.match(css, /--rm-admin-cta-negative-bg:\s*#fff4f2;/);
   assert.match(css, /\.button--execute,\s*\.button--primary \{[\s\S]*background: var\(--rm-cta-execute-bg\);/);
   assert.match(css, /\.button--execute-negative,\s*\.button--danger \{[\s\S]*background: var\(--rm-cta-negative-bg\);/);
   assert.match(css, /\.button--execute-helper,\s*\.button--secondary \{[\s\S]*background: var\(--rm-cta-helper-bg\);/);
+  assert.match(css, /\.button--admin-cta \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
+  assert.match(css, /\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);[\s\S]*border-color: var\(--rm-admin-cta-negative-border\);/);
+  assert.match(css, /\.button--admin-cta\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);[\s\S]*font-size: var\(--rm-control-font-size-compact\);/);
   assert.match(workspaceTile, /min-height: 118px;/);
   assert.doesNotMatch(workspaceTile, /min-height: var\(--rm-control-height-compact\);/);
   assert.match(css, /\.customers-table__actions-list \{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;[\s\S]*gap: var\(--rm-control-gap\);[\s\S]*white-space: normal;/);
