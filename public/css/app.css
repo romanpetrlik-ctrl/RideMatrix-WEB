@@ -58,6 +58,7 @@
   --rm-admin-cta-text: var(--rm-menu-action-text);
   --rm-admin-cta-attention-bg: #fff8e8;
   --rm-admin-cta-attention-bg-hover: #fff3d6;
+  --rm-cta-negative-accent: var(--rm-brown-red);
   --rm-admin-warning-icon: var(--rm-golden-orange);
   --rm-admin-critical-icon: var(--rm-warning-red);
   --rm-admin-warning-icon-size: 1.2rem;
@@ -208,7 +209,7 @@ a {
   margin: 0 auto;
   min-height: 2.25rem;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 0.75rem;
   align-items: center;
   padding-block: 0.25rem;
@@ -257,9 +258,11 @@ a {
   min-height: var(--rm-control-height);
   max-width: 100%;
   padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
-  border: var(--rm-control-border-width) solid transparent;
+  border: var(--rm-control-border-width) solid var(--rm-admin-cta-border);
+  border-bottom-width: 3px;
   border-radius: var(--rm-control-border-radius);
-  color: var(--rm-system-bar-text);
+  background: var(--rm-admin-cta-bg);
+  color: var(--rm-admin-cta-text);
   font: inherit;
   font-size: var(--rm-control-font-size);
   font-weight: var(--rm-control-font-weight);
@@ -269,30 +272,34 @@ a {
 }
 
 .system-status-bar__account-action--secondary {
-  background: var(--rm-cta-helper-bg);
-  border-color: var(--rm-cta-helper-border);
-  color: var(--rm-cta-helper-text);
+  border-bottom-color: var(--rm-admin-cta-border);
 }
 
 .system-status-bar__account-action--secondary:hover,
 .system-status-bar__account-action--secondary:focus {
-  background: var(--rm-cta-helper-bg-hover);
-  border-color: var(--rm-cta-helper-border-hover);
-  color: var(--rm-cta-helper-text-hover);
+  background: var(--rm-admin-cta-bg-hover);
+  border-color: var(--rm-admin-cta-border-hover);
+  color: var(--rm-admin-cta-text);
 }
 
-.system-status-bar__account-action--danger {
-  background: var(--rm-cta-negative-bg);
-  border-color: var(--rm-cta-negative-border);
-  color: var(--rm-cta-negative-text);
+.system-status-bar__account-action--negative {
+  border-bottom-color: var(--rm-cta-negative-accent);
+  color: var(--rm-cta-negative-accent);
   cursor: pointer;
 }
 
-.system-status-bar__account-action--danger:hover,
-.system-status-bar__account-action--danger:focus {
-  background: var(--rm-cta-negative-bg-hover);
-  border-color: var(--rm-cta-negative-border-hover);
-  color: var(--rm-cta-negative-text);
+.system-status-bar__account-action--negative:hover,
+.system-status-bar__account-action--negative:focus {
+  background: var(--rm-admin-cta-bg-hover);
+  border-color: var(--rm-admin-cta-border-hover);
+  border-bottom-color: var(--rm-cta-negative-accent);
+  color: var(--rm-cta-negative-accent);
+}
+
+.system-status-bar__account-action:focus-visible {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+  box-shadow: var(--rm-control-focus-shadow);
 }
 
 .site-header__context {
