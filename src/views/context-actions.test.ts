@@ -180,11 +180,14 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /customers-per-page[\s\S]*New customer/);
   assert.match(template, /class="button button--admin-cta button--admin-cta--dynamic" href="\/customers\/register">New customer/);
   assert.match(template, /context-toolbar context-toolbar--customers/);
+  assert.match(template, /class="context-tab context-tab--dynamic<%= tab\.isActive \? " context-tab--active" : "" %>"/);
   assert.equal((customersIndex.match(/Administration/g) || []).length, 1);
   assert.doesNotMatch(customersIndex, /context-toolbar[\s\S]*Administration[\s\S]*Customer management/);
-  assert.match(css, /\.context-tab \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*height: var\(--rm-cta-dynamic-height\);[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
+  assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);[\s\S]*font-size: var\(--rm-cta-dynamic-font-size\);/);
   assert.match(css, /\.context-tab \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-radius: var\(--rm-control-border-radius\);/);
   assert.match(css, /\.context-tab--active \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);[\s\S]*box-shadow: inset 0 -3px 0 var\(--rm-light-bronze\);/);
+  assert.match(css, /\.context-tab:focus-visible \{[\s\S]*outline: var\(--rm-control-focus-outline\);/);
   assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);/);
   assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-color: var\(--rm-admin-cta-border\);/);
   assert.match(css, /\.context-toolbar \.button--admin-cta--dynamic \{[\s\S]*line-height: var\(--rm-control-line-height\);/);

@@ -62,6 +62,10 @@ function createTestServer(
   return app.listen(0);
 }
 
+function countMatches(source: string, expression: RegExp): number {
+  return source.match(expression)?.length ?? 0;
+}
+
 async function requestPreview(session: SessionAccount, value: string) {
   const server = createTestServer(session);
   try {
@@ -359,6 +363,55 @@ test("customer detail keeps New Booking unchanged and points Edit Customer to th
       body,
       /href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25&amp;layout=child">Edit Customer<\/a>/
     );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("customer pages render one canonical breadcrumb trail with customer dynamic controls", async () => {
+  const server = createTestServer(adminSession, {
+    getCustomerById: async () => createTestCustomer(),
+    listRecentBookingsForCustomer: async () => [],
+    listCustomers: async () => ({
+      customers: [createTestCustomer()],
+      totalRecords: 1,
+      totalPages: 1,
+      page: 1,
+      perPage: 25
+    }),
+    getCustomerCount: async () => 1
+  });
+
+  try {
+    const address = server.address() as { port: number };
+    const [listBody, detailBody, detailChildBody, editBody, editChildBody, registerBody] = await Promise.all([
+      fetch(`http://127.0.0.1:${address.port}/customers`).then((response) => response.text()),
+      fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1?returnTo=${encodeURIComponent("/customers")}`).then((response) => response.text()),
+      fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1?returnTo=${encodeURIComponent("/customers")}&layout=child`).then((response) => response.text()),
+      fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1/edit?returnTo=${encodeURIComponent("/customers")}`).then((response) => response.text()),
+      fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1/edit?returnTo=${encodeURIComponent("/customers")}&layout=child`).then((response) => response.text()),
+      fetch(`http://127.0.0.1:${address.port}/customers/register?type=private`).then((response) => response.text())
+    ]);
+
+    for (const body of [listBody, detailBody, detailChildBody, editBody, editChildBody, registerBody]) {
+      assert.equal(countMatches(body, /aria-label="Breadcrumbs"/g), 1);
+    }
+
+    assert.match(listBody, /site-header__breadcrumb-current" aria-current="page">Customer management</);
+    assert.match(detailBody, /site-header__breadcrumb-link" href="\/customers">Customer management</);
+    assert.match(detailBody, /site-header__breadcrumb-current" aria-current="page">Lovelace, Ada</);
+    assert.match(editBody, /site-header__breadcrumb-link" href="\/customers">Customer management</);
+    assert.match(editBody, /site-header__breadcrumb-link" href="\/customers\/cust-test-1\?returnTo=%2Fcustomers">Lovelace, Ada</);
+    assert.match(editBody, /site-header__breadcrumb-current" aria-current="page">Edit customer</);
+    assert.match(registerBody, /site-header__breadcrumb-current" aria-current="page">Private customer</);
+    assert.match(listBody, /class="context-tab context-tab--dynamic(?: context-tab--active)?"/);
+    assert.match(listBody, /button button--admin-cta button--admin-cta--dynamic" href="\/customers\/register">New customer/);
+    assert.match(detailBody, /button button--admin-cta button--admin-cta--dynamic" href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers">Edit Customer/);
+    assert.match(editBody, /button button--admin-cta button--admin-cta--dynamic button--execute site-header__action context-bar__action context-bar__action--execute"/);
+    assert.doesNotMatch(detailChildBody, /class="system-status-bar"/);
+    assert.doesNotMatch(editChildBody, /class="system-status-bar"/);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());

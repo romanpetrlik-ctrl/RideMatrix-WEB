@@ -11,9 +11,7 @@
     ? activeRoleLabel.trim()
     : "";
 
-  const headerBreadcrumbs = typeof breadcrumbs !== "undefined" && Array.isArray(breadcrumbs)
-    ? breadcrumbs
-    : (typeof locals !== "undefined" && Array.isArray(locals.breadcrumbs) ? locals.breadcrumbs : []);
+  const headerBreadcrumbs = Array.isArray(breadcrumbs) ? breadcrumbs : [];
   let previousBreadcrumbLabel = "";
   let previousBreadcrumbHref = "";
   let hasPreviousBreadcrumb = false;
