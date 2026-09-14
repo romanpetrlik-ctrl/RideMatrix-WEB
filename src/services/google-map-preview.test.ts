@@ -78,3 +78,21 @@ test("map preview loader rejects when requested libraries are unavailable", asyn
     /Google Maps libraries unavailable/
   );
 });
+
+test("map preview loader shares one script load across concurrent library requests", async () => {
+  const loaded = loadMapsBundle();
+  const first = loaded.maps.load("browser-key", [], { libraries: [] });
+  const second = loaded.maps.load("browser-key", [], { libraries: ["places"] });
+
+  assert.equal(loaded.scripts.length, 1);
+  const callbackParam = new URL(loaded.scripts[0].src).searchParams.get("callback");
+  assert.ok(callbackParam);
+  loaded.window.google = {
+    maps: {
+      importLibrary: async () => ({})
+    }
+  };
+  loaded.window[callbackParam]();
+
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+});

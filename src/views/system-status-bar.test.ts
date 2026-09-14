@@ -44,7 +44,7 @@ test("system status bar actions use the Administration CTA system", () => {
   const partial = fs.readFileSync("src/views/partials/system-status-bar.ejs", "utf8");
 
   assert.match(partial, /class="button button--admin-cta system-status-bar__account-action"/);
-  assert.match(partial, /class="button button--admin-cta button--admin-cta--negative button--danger system-status-bar__account-action"/);
+  assert.match(partial, /class="button button--admin-cta button--admin-cta--negative system-status-bar__account-action"/);
   assert.match(accountAction, /flex: 0 0 auto;/);
   assert.match(accountAction, /max-width: 100%;/);
   assert.match(accountAction, /white-space: nowrap;/);

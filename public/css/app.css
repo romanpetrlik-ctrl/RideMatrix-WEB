@@ -554,6 +554,7 @@ h3 {
 }
 
 .customer-form-panel--centered {
+  /* Keep private customer register/edit forms centered and readable instead of spanning the full viewport width. */
   width: min(100%, 1040px);
   margin-inline: auto;
   box-sizing: border-box;
@@ -1969,6 +1970,20 @@ button:visited,
   .customer-detail-layout > * {
     height: auto;
   }
+}
+
+.site-header .context-bar__action.button--admin-cta,
+.site-header .context-bar__action.button--admin-cta:visited,
+.site-header .context-bar__action.button--admin-cta:hover,
+.site-header .context-bar__action.button--admin-cta:focus {
+  color: var(--rm-admin-cta-text);
+}
+
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative,
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative:visited,
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative:hover,
+.site-header .context-bar__action.button--admin-cta.button--admin-cta--negative:focus {
+  color: var(--rm-admin-cta-negative-text);
 }
 
 .site-header .context-toolbar .button,

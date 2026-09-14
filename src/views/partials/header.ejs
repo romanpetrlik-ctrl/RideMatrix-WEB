@@ -14,14 +14,19 @@
   const headerBreadcrumbs = typeof breadcrumbs !== "undefined" && Array.isArray(breadcrumbs)
     ? breadcrumbs
     : (typeof locals !== "undefined" && Array.isArray(locals.breadcrumbs) ? locals.breadcrumbs : []);
+  let previousBreadcrumbLabel = "";
+  let previousBreadcrumbHref = "";
+  let hasPreviousBreadcrumb = false;
   const normalizedBreadcrumbs = headerBreadcrumbs.reduce((items, crumb) => {
     if (!crumb || typeof crumb.label !== "string") return items;
     const label = crumb.label.trim();
     if (!label) return items;
     const href = typeof crumb.href === "string" && crumb.href.trim() ? crumb.href.trim() : "";
-    const key = `${label}@@${href}`;
-    if (items.some((entry) => entry.key === key)) return items;
-    items.push({ label, href, key });
+    if (hasPreviousBreadcrumb && label === previousBreadcrumbLabel && href === previousBreadcrumbHref) return items;
+    previousBreadcrumbLabel = label;
+    previousBreadcrumbHref = href;
+    hasPreviousBreadcrumb = true;
+    items.push({ label, href });
     return items;
   }, []);
 
@@ -71,7 +76,7 @@
                 <% if (crumb.href && index < normalizedBreadcrumbs.length - 1) { %>
                   <a class="site-header__breadcrumb-link" href="<%= crumb.href %>"><%= crumb.label %></a>
                 <% } else { %>
-                  <span class="site-header__breadcrumb-current" aria-current="<%= index === normalizedBreadcrumbs.length - 1 ? 'page' : 'false' %>"><%= crumb.label %></span>
+                  <span class="site-header__breadcrumb-current"<% if (index === normalizedBreadcrumbs.length - 1) { %> aria-current="page"<% } %>><%= crumb.label %></span>
                 <% } %>
                 <% if (index < normalizedBreadcrumbs.length - 1) { %>
                   <span class="site-header__breadcrumb-separator" aria-hidden="true">/</span>

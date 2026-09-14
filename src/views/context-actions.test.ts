@@ -74,7 +74,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(customersIndex, /customers-table__actions-list"/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>View/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>Edit/);
-  assert.match(customersIndex, /button--danger button--admin-cta button--admin-cta--negative button--small.*>Delete/);
+  assert.match(customersIndex, /button--admin-cta button--admin-cta--negative button--small.*>Delete/);
   assert.doesNotMatch(customersIndex, /customers-table__actions-list[\s\S]*button--secondary/);
   assert.doesNotMatch(header, /Switch workspace/);
   assert.doesNotMatch(header, /action="\/exit"/);

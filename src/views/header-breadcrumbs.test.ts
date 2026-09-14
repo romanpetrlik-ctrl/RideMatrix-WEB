@@ -14,8 +14,9 @@ test("header renders one canonical breadcrumb trail when duplicate breadcrumbs a
     breadcrumbs: [
       { label: "Administration", href: "/dashboard" },
       { label: "Administration", href: "/dashboard" },
+      { label: " Administration ", href: " /dashboard " },
       { label: "Customers" },
-      { label: "Customers" }
+      { label: " Customers " }
     ],
     contextBarActions: []
   });
