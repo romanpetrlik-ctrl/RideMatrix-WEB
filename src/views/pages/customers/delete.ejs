@@ -1,5 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+  <%
+    const customerBreadcrumbs = [
+      { label: "Administration", href: "/dashboard" },
+      { label: "Customer management", href: backToCustomersHref },
+      { label: `${customer.surname}, ${customer.givenName}`, href: `/customers/${customer.id}` },
+      { label: "Delete record" }
+    ];
+  %>
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", {
@@ -15,6 +23,7 @@
       pageMeta: "Explicit destructive confirmation",
       activeRoleLabel,
       hintsLabel: customer.status,
+      breadcrumbs: customerBreadcrumbs,
     }) %>
 
     <main class="container">

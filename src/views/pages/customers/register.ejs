@@ -2,6 +2,17 @@
 <html lang="en">
   <%
     const selectedCustomerType = typeof customerType === "string" ? customerType : "";
+    const customerBreadcrumbs = [
+      { label: "Administration", href: "/dashboard" },
+      { label: "Customer management", href: "/customers" },
+      {
+        label: selectedCustomerType === "private"
+          ? "Private customer"
+          : selectedCustomerType === "business"
+            ? "Business customer"
+            : "New customer"
+      }
+    ];
   %>
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
@@ -17,6 +28,7 @@
       pageTitle: "New Customer",
       pageMeta: "Create a new customer record",
       activeRoleLabel,
+      breadcrumbs: customerBreadcrumbs,
       contextBarActions: [
         { label: "Back to customer type", href: "/customers/register", tone: "secondary" },
         { label: "Cancel", href: "/customers", tone: "danger" },

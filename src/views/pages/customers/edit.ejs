@@ -1,5 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+  <%
+    const customerBreadcrumbs = [
+      { label: "Administration", href: "/dashboard" },
+      { label: "Customer management", href: backToCustomersHref },
+      { label: `${customer.surname}, ${customer.givenName}`, href: cancelHref },
+      { label: "Edit customer" }
+    ];
+  %>
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", {
@@ -16,6 +24,7 @@
       pageMeta: `Customer ID: ${customer.id}`,
       activeRoleLabel,
       hintsLabel: customer.status,
+      breadcrumbs: customerBreadcrumbs,
       contextBarActions: [
         { label: "Back to customer list", href: backToCustomersHref, tone: "execute-helper" },
         { label: "Cancel", href: cancelHref, tone: "execute-helper" },

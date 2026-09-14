@@ -1604,25 +1604,37 @@ button:visited,
 .context-tab {
   display: inline-flex;
   align-items: center;
-  height: var(--rm-control-height);
-  min-height: var(--rm-control-height);
-  padding: 0 var(--rm-control-padding-inline);
   border: var(--rm-control-border-width) solid var(--rm-admin-cta-border);
   border-radius: var(--rm-control-border-radius);
   color: var(--rm-admin-cta-text);
   text-decoration: none;
   background: var(--rm-admin-cta-bg);
-  font-size: var(--rm-control-font-size);
   font-weight: var(--rm-control-font-weight);
+}
+
+.context-tab.context-tab--dynamic {
+  height: var(--rm-cta-dynamic-height);
+  min-height: var(--rm-cta-dynamic-height);
+  padding: 0 var(--rm-cta-dynamic-padding-inline);
+  font-size: var(--rm-cta-dynamic-font-size);
   line-height: var(--rm-control-line-height);
 }
 
-.context-tab:hover,
-.context-tab:focus {
+.context-tab:hover {
   background: var(--rm-admin-cta-bg-hover);
   border-color: var(--rm-admin-cta-border-hover);
   color: var(--rm-admin-cta-text);
   text-decoration: none;
+}
+
+.context-tab:focus-visible {
+  background: var(--rm-admin-cta-bg-hover);
+  border-color: var(--rm-admin-cta-border-hover);
+  color: var(--rm-admin-cta-text);
+  text-decoration: none;
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+  box-shadow: var(--rm-control-focus-shadow);
 }
 
 .context-tab--active {

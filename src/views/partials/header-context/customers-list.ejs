@@ -7,7 +7,7 @@
     <div class="context-toolbar__left">
       <nav class="context-tabs" aria-label="Customer status filters">
         <% statusTabs.forEach((tab) => { %>
-          <a class="context-tab<%= tab.isActive ? " context-tab--active" : "" %>" href="<%= tab.href %>"><%= tab.label %></a>
+          <a class="context-tab context-tab--dynamic<%= tab.isActive ? " context-tab--active" : "" %>" href="<%= tab.href %>"><%= tab.label %></a>
         <% }) %>
       </nav>
 
