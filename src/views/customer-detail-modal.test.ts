@@ -75,7 +75,7 @@ test("customer edit uses server-rendered customer-specific action URLs and prese
   const edit = read("src/views/pages/customers/edit.ejs");
   const route = read("src/routes/customers.ts");
 
-  assert.match(edit, /href="<%= cancelHref %>"/);
+  assert.match(edit, /href: cancelHref/);
   assert.match(edit, /action="<%= editActionHref %>"/);
   assert.doesNotMatch(edit, /<%= customer\.id %>\/edit\?returnTo=/);
   assert.match(route, /editActionHref/);
