@@ -82,22 +82,22 @@
   --rm-context-bar-bg: var(--rm-walnut);
   --rm-context-bar-text: var(--rm-antique-white);
 
-  --rm-cta-execute-bg: var(--rm-dark-teal);
-  --rm-cta-execute-border: var(--rm-dark-teal);
-  --rm-cta-execute-text: var(--rm-antique-white);
-  --rm-cta-execute-bg-hover: var(--rm-dark-cyan);
-  --rm-cta-execute-border-hover: var(--rm-dark-cyan);
+  --rm-cta-execute-bg: var(--rm-admin-cta-bg);
+  --rm-cta-execute-border: var(--rm-admin-cta-border);
+  --rm-cta-execute-text: var(--rm-admin-cta-text);
+  --rm-cta-execute-bg-hover: var(--rm-admin-cta-bg-hover);
+  --rm-cta-execute-border-hover: var(--rm-admin-cta-border-hover);
   --rm-cta-negative-bg: #c1121f;
   --rm-cta-negative-border: #c1121f;
   --rm-cta-negative-text: #ffe66d;
   --rm-cta-negative-bg-hover: #8f0d18;
   --rm-cta-negative-border-hover: #8f0d18;
-  --rm-cta-helper-bg: var(--rm-context-bar-bg);
-  --rm-cta-helper-border: var(--rm-context-bar-bg);
-  --rm-cta-helper-text: var(--rm-antique-white);
-  --rm-cta-helper-bg-hover: var(--rm-faded-copper);
-  --rm-cta-helper-border-hover: var(--rm-faded-copper);
-  --rm-cta-helper-text-hover: var(--rm-antique-white);
+  --rm-cta-helper-bg: var(--rm-admin-cta-bg);
+  --rm-cta-helper-border: var(--rm-admin-cta-border);
+  --rm-cta-helper-text: var(--rm-admin-cta-text);
+  --rm-cta-helper-bg-hover: var(--rm-admin-cta-bg-hover);
+  --rm-cta-helper-border-hover: var(--rm-admin-cta-border-hover);
+  --rm-cta-helper-text-hover: var(--rm-admin-cta-text);
 
   --rm-button-bg: var(--rm-camel);
   --rm-button-text: var(--rm-walnut-3);
@@ -1494,7 +1494,7 @@ button:visited,
 
 .context-toolbar__right {
   justify-content: flex-end;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .context-toolbar__field {
@@ -1538,7 +1538,12 @@ button:visited,
 }
 
 .context-toolbar--customers .context-toolbar__field--compact {
-  flex: 0 1 10rem;
+  flex: 0 1 11rem;
+  min-width: min(11rem, 100%);
+}
+
+.context-toolbar--customers .context-toolbar__right > .button {
+  flex: 0 0 auto;
 }
 
 .context-toolbar input,
@@ -1546,6 +1551,26 @@ button:visited,
   min-height: var(--rm-control-height);
   margin-bottom: 0;
   padding: 0 var(--rm-control-padding-inline);
+  border-color: var(--rm-admin-cta-border);
+  border-radius: var(--rm-control-border-radius);
+  background: var(--rm-admin-cta-bg);
+  color: var(--rm-admin-cta-text);
+  font-size: var(--rm-control-font-size);
+  font-weight: var(--rm-control-font-weight);
+  line-height: var(--rm-control-line-height);
+}
+
+.context-toolbar input:hover,
+.context-toolbar select:hover {
+  border-color: var(--rm-admin-cta-border-hover);
+  background: var(--rm-admin-cta-bg-hover);
+}
+
+.context-toolbar input:focus-visible,
+.context-toolbar select:focus-visible {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+  box-shadow: var(--rm-control-focus-shadow);
 }
 
 .context-toolbar .button:not(.button--small),
@@ -1580,22 +1605,29 @@ button:visited,
   height: var(--rm-control-height);
   min-height: var(--rm-control-height);
   padding: 0 var(--rm-control-padding-inline);
-  border: 1px solid rgba(255, 237, 216, 0.45);
-  color: var(--rm-context-bar-text);
+  border: var(--rm-control-border-width) solid var(--rm-admin-cta-border);
+  border-radius: var(--rm-control-border-radius);
+  color: var(--rm-admin-cta-text);
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--rm-admin-cta-bg);
+  font-size: var(--rm-control-font-size);
+  font-weight: var(--rm-control-font-weight);
+  line-height: var(--rm-control-line-height);
 }
 
 .context-tab:hover,
 .context-tab:focus {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--rm-admin-cta-bg-hover);
+  border-color: var(--rm-admin-cta-border-hover);
+  color: var(--rm-admin-cta-text);
   text-decoration: none;
 }
 
 .context-tab--active {
-  background: var(--rm-soft-apricot);
-  color: var(--rm-walnut-3);
-  border-color: var(--rm-soft-apricot);
+  background: var(--rm-admin-cta-attention-bg);
+  color: var(--rm-admin-cta-text);
+  border-color: var(--rm-light-bronze);
+  box-shadow: inset 0 -3px 0 var(--rm-light-bronze);
 }
 
 .customers-panel__header {
@@ -1938,13 +1970,6 @@ button:visited,
 .site-header .context-bar__action:visited,
 .site-header .context-bar__action:hover,
 .site-header .context-bar__action:focus {
-  color: var(--rm-antique-white);
-}
-
-.site-header .context-toolbar .button,
-.site-header .context-toolbar .button:visited,
-.site-header .context-toolbar .button:hover,
-.site-header .context-toolbar .button:focus {
   color: var(--rm-antique-white);
 }
 
