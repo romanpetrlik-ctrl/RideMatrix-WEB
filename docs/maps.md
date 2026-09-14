@@ -23,9 +23,11 @@ pay-as-you-go.
 
 Geocoding is explicit and must be triggered by a future form action, job, or
 administrator action; it never runs on page load or every keystroke. Normalized
-addresses are cached in-process, successful results are reused, and no
-uncontrolled retries occur. A future persistent cache should use the existing
-database migration conventions.
+addresses and coordinate pairs are cached in-process, successful and negative
+results are reused, and concurrent equivalent requests share one in-flight
+provider request. The adapter does not retry rate-limited or timed-out requests;
+callers receive a safe unavailable result instead. A future persistent cache
+should use the existing database migration conventions.
 
 The `customers` table stores nullable `latitude`, `longitude`, `geocoded_at`,
 and `geocode_status` fields. Provider timeouts, rate limits, malformed responses, and no-result responses

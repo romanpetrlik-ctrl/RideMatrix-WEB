@@ -1,18 +1,26 @@
 (function () {
   "use strict";
 
+  var canUseWeakSet = typeof WeakSet === "function";
+  var rendered = canUseWeakSet ? new WeakSet() : [];
+  var loading;
+
   function render(element, googleMaps) {
+      if (!element || (canUseWeakSet ? rendered.has(element) : rendered.indexOf(element) !== -1)) return true;
       var position = {
         lat: Number(element.dataset.mapLatitude),
         lng: Number(element.dataset.mapLongitude)
       };
-      if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng) || !googleMaps) return false;
-      new googleMaps.Map(element.querySelector(".address-map-preview__canvas"), {
+      var canvas = element.querySelector(".address-map-preview__canvas");
+      if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng) || !googleMaps || !canvas) return false;
+      new googleMaps.Map(canvas, {
         center: position,
         zoom: Number(element.dataset.mapZoom) || 14,
         mapId: element.dataset.mapId || undefined,
         disableDefaultUI: true
       });
+      if (canUseWeakSet) rendered.add(element);
+      else rendered.push(element);
       return true;
   }
 
@@ -24,19 +32,30 @@
         elements.forEach(function (element) { render(element, window.google.maps); });
         return Promise.resolve(true);
       }
+      if (loading) {
+        return loading.then(function () {
+          elements.forEach(function (element) { render(element, window.google.maps); });
+          return true;
+        });
+      }
 
-      return new Promise(function (resolve, reject) {
+      loading = new Promise(function (resolve, reject) {
         var callback = "rideMatrixMapsLoaded";
         window[callback] = function () {
           elements.forEach(function (element) { render(element, window.google.maps); });
+          loading = null;
           resolve(true);
           delete window[callback];
         };
         var script = document.createElement("script");
         script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey) + "&callback=" + callback;
         script.async = true;
-        script.onerror = function () { reject(new Error("Google Maps preview unavailable")); };
+        script.onerror = function () { loading = null; reject(new Error("Google Maps preview unavailable")); };
         document.head.appendChild(script);
+      });
+      return loading.then(function () {
+        elements.forEach(function (element) { render(element, window.google.maps); });
+        return true;
       });
     }
   };
