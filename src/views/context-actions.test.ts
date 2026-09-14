@@ -104,11 +104,11 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(compactButton, /font-size: var\(--rm-control-font-size-compact\);/);
   assert.match(paginationLink, /min-width: var\(--rm-control-height-compact\);/);
   assert.match(paginationLink, /min-height: var\(--rm-control-height-compact\);/);
-  assert.match(paginationLink, /color: var\(--rm-walnut-3\);/);
+  assert.match(paginationLink, /color: var\(--rm-admin-cta-text\);/);
   assert.match(paginationLink, /font: inherit;/);
   assert.match(paginationLink, /font-size: var\(--rm-control-font-size-compact\);/);
-  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited \{[\s\S]*color: var\(--rm-walnut-3\);/);
-  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-walnut\);/);
+  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited \{[\s\S]*color: var\(--rm-admin-cta-text\);/);
+  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus \{[\s\S]*color: var\(--rm-admin-cta-text\);/);
   assert.match(contextBarDangerAction, /border-color: var\(--rm-golden-orange\);/);
   assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
   assert.match(css, /\.operations-menu-prototype__warning-icon--warning \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);

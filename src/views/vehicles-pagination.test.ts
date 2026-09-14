@@ -28,11 +28,11 @@ test("shared pagination CSS keeps compact dimensions and active-state precedence
   assert.match(linkRule, /min-width: var\(--rm-control-height-compact\)/);
   assert.match(linkRule, /min-height: var\(--rm-control-height-compact\)/);
   assert.match(linkRule, /padding: var\(--rm-control-padding-block-compact\) var\(--rm-control-padding-inline-compact\)/);
-  assert.match(linkRule, /border: var\(--rm-control-border-width\) solid var\(--rm-light-bronze\)/);
-  assert.match(linkRule, /background: rgba\(255, 255, 255, 0\.55\)/);
+  assert.match(linkRule, /border: var\(--rm-control-border-width\) solid var\(--rm-admin-cta-border\)/);
+  assert.match(linkRule, /background: var\(--rm-admin-cta-bg\)/);
   assert.match(linkRule, /font-size: var\(--rm-control-font-size-compact\)/);
-  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited\s*\{[\s\S]*?color: var\(--rm-walnut-3\)/);
-  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus\s*\{[\s\S]*?color: var\(--rm-walnut\)/);
+  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):visited\s*\{[\s\S]*?color: var\(--rm-admin-cta-text\)/);
+  assert.match(css, /\.pagination-bar__link:not\(\.pagination-bar__link--active\):hover,\s*\.pagination-bar__link:not\(\.pagination-bar__link--active\):focus\s*\{[\s\S]*?background: var\(--rm-admin-cta-bg-hover\)[\s\S]*?color: var\(--rm-admin-cta-text\)/);
   assert.match(css, /\.pagination-bar__link--active\s*\{[\s\S]*?background: var\(--rm-camel\)[\s\S]*?border-color: var\(--rm-faded-copper\)[\s\S]*?color: var\(--rm-antique-white\)/);
   assert.match(css, /\.pagination-bar__link:focus,/);
 });
