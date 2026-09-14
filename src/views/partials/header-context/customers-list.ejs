@@ -18,6 +18,7 @@
           type="search"
           name="q"
           value="<%= search %>"
+          class="context-control--dynamic"
           placeholder="Surname, first name, email or phone"
         />
       </div>
@@ -26,14 +27,14 @@
     <div class="context-toolbar__right">
       <div class="context-toolbar__field context-toolbar__field--compact">
         <label for="customers-per-page">Records per page</label>
-        <select id="customers-per-page" name="perPage" onchange="this.form.submit()">
+        <select class="context-control--dynamic" id="customers-per-page" name="perPage" onchange="this.form.submit()">
           <% perPageOptions.forEach((option) => { %>
             <option value="<%= option %>" <%= option === perPage ? "selected" : "" %>><%= option %></option>
           <% }) %>
         </select>
       </div>
 
-      <a class="button button--admin-cta button--admin-cta--dynamic" href="/customers/register">New customer</a>
+      <a class="button button--dynamic-cta" href="/customers/register">New customer</a>
     </div>
   </form>
 </div>

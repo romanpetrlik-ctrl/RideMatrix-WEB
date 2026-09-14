@@ -43,7 +43,7 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(css, /\.customer-detail-layout__map \.address-map-preview,[\s\S]*?\.address-map-placeholder \{[\s\S]*?flex: 1 1 auto;[\s\S]*?min-height: 0;/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?grid-template-columns: 1fr/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.customer-detail-layout > \* \{[\s\S]*?height: auto;/);
-  assert.match(css, /\.site-header \.context-bar__action\.button--admin-cta,[\s\S]*?color: var\(--rm-admin-cta-text\);/);
+  assert.match(css, /\.site-header \.context-bar__action\.button--dynamic-cta,[\s\S]*?color: var\(--rm-admin-cta-text\);/);
   assert.doesNotMatch(css, /\.site-header \.context-toolbar \.button,[\s\S]*?color: var\(--rm-antique-white\);/);
   for (const label of ["Call", "Send WhatsApp message", "Send Email", "Edit Customer", "Suspend Customer", "Delete Record", "Close window"]) {
     assert.match(context, new RegExp(`>${label}<`));
@@ -54,8 +54,9 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(read("public/js/customer-window-coordination.js"), /event\.source/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.telHref %>">Call/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message/);
-  assert.match(context, /class="button button--admin-cta button--admin-cta--dynamic" href="<%= customer\.newBookingHref %>">New Booking/);
-  assert.match(context, /class="button button--admin-cta button--admin-cta--dynamic button--admin-cta--negative" href="<%= customer\.deleteHref %>">Delete Record/);
+  assert.match(context, /class="button button--dynamic-cta" href="<%= customer\.newBookingHref %>">New Booking/);
+  assert.match(context, /class="button button--dynamic-cta button--admin-cta--negative" href="<%= customer\.deleteHref %>">Delete Record/);
+  assert.doesNotMatch(context, /button--admin-cta--dynamic|button--admin-cta--system/);
 });
 
 test("customer detail map receives browser configuration and map id", () => {

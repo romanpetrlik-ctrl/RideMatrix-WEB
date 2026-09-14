@@ -17,6 +17,19 @@ function extractRuleBody(source: string, selector: string): string {
   return match[1];
 }
 
+function extractCustomPropertyValue(source: string, propertyName: string): string {
+  const expression = new RegExp(`${escapeRegExp(propertyName)}:\\s*([^;]+);`);
+  const match = source.match(expression);
+  assert.ok(match, `Missing custom property: ${propertyName}`);
+  return match[1].trim();
+}
+
+function remToPixels(value: string): number {
+  const match = value.match(/^([0-9.]+)rem$/);
+  assert.ok(match, `Expected rem value, received: ${value}`);
+  return Number(match[1]) * 16;
+}
+
 test("customer registration and edit actions are supplied by the dynamic bar", () => {
   const register = read("src/views/pages/customers/register.ejs");
   const edit = read("src/views/pages/customers/edit.ejs");
@@ -70,7 +83,8 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(actions, /type="submit"/);
   assert.match(actions, /form="<%= action\.formId %>"/);
   assert.match(actions, /href="<%= action\.href \|\| '#' %>"/);
-  assert.match(actions, /button--admin-cta--dynamic/);
+  assert.match(actions, /button--dynamic-cta/);
+  assert.doesNotMatch(actions, /button--admin-cta--dynamic|button--admin-cta--system/);
   assert.match(actions, /site-header__action context-bar__action/);
   assert.match(customersIndex, /customers-table__actions-list"/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>View/);
@@ -89,8 +103,8 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /--rm-control-focus-color:\s*var\(--rm-dark-cyan\);/);
   assert.match(css, /--rm-dashboard-action-width:\s*190px;/);
   assert.match(css, /--rm-cta-admin-height:\s*var\(--rm-control-height\);/);
-  assert.match(css, /--rm-cta-dynamic-height:\s*var\(--rm-control-height-compact\);/);
-  assert.match(css, /--rm-cta-system-height:\s*2\.25rem;/);
+  assert.match(css, /--rm-cta-dynamic-height:\s*2\.25rem;/);
+  assert.match(css, /--rm-cta-system-height:\s*2\.125rem;/);
   assert.match(css, /--rm-admin-cta-bg:\s*#fdf8f2;/);
   assert.match(css, /--rm-admin-cta-bg-hover:\s*var\(--rm-antique-white\);/);
   assert.match(css, /--rm-admin-cta-attention-bg:\s*#fff8e8;/);
@@ -101,6 +115,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /--rm-control-focus-outline:\s*2px solid var\(--rm-control-focus-color\);/);
   assert.match(css, /--rm-control-focus-shadow:\s*0 0 0 3px rgba\(10, 147, 150, 0\.22\);/);
   assert.match(css, /button:focus,[\s\S]*?\.button:focus,[\s\S]*?input\[type="submit"\]:focus,[\s\S]*?\.system-status-bar__account-action:focus,[\s\S]*?\.operations-menu-prototype__action:focus,[\s\S]*?\.pagination-bar__link:focus,[\s\S]*?\.workspace-tile:focus \{/);
+  assert.match(css, /\.site-header button,\s*\.site-header a \{[\s\S]*font-family: inherit;/);
   assert.match(siteHeaderAction, /align-items: center;/);
   assert.doesNotMatch(siteHeaderAction, /min-height:/);
   assert.match(systemBarAccountAction, /flex: 0 0 auto;/);
@@ -135,15 +150,15 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.button--execute,\s*\.button--primary \{[\s\S]*background: var\(--rm-cta-execute-bg\);/);
   assert.match(css, /\.button--execute-negative,\s*\.button--danger \{[\s\S]*background: var\(--rm-cta-negative-bg\);/);
   assert.match(css, /\.button--execute-helper,\s*\.button--secondary \{[\s\S]*background: var\(--rm-cta-helper-bg\);/);
-  assert.match(css, /\.button--admin-cta \{[\s\S]*min-height: var\(--rm-cta-admin-height\);[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
-  assert.match(css, /\.button--admin-cta\.button--admin-cta--dynamic \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
-  assert.match(css, /\.button--admin-cta\.button--admin-cta--system \{[\s\S]*min-height: var\(--rm-cta-system-height\);/);
-  assert.match(css, /\.button--admin-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);[\s\S]*border-color: var\(--rm-admin-cta-negative-border\);/);
-  assert.match(css, /\.button--admin-cta\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);[\s\S]*font-size: var\(--rm-control-font-size-compact\);/);
+  assert.match(css, /\.button--admin-cta,\s*\.button--dynamic-cta,\s*\.button--system-cta \{[\s\S]*min-height: var\(--rm-cta-admin-height\);[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
+  assert.match(css, /\.button--dynamic-cta \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
+  assert.match(css, /\.button--system-cta \{[\s\S]*min-height: var\(--rm-cta-system-height\);/);
+  assert.match(css, /\.button--admin-cta\.button--admin-cta--negative,\s*\.button--dynamic-cta\.button--admin-cta--negative,\s*\.button--system-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);[\s\S]*border-color: var\(--rm-admin-cta-negative-border\);/);
+  assert.match(css, /\.button--admin-cta\.button--small,\s*\.button--dynamic-cta\.button--small,\s*\.button--system-cta\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);[\s\S]*font-size: var\(--rm-control-font-size-compact\);/);
   assert.match(workspaceTile, /min-height: 118px;/);
   assert.doesNotMatch(workspaceTile, /min-height: var\(--rm-control-height-compact\);/);
   assert.match(css, /\.customers-table__actions-list \{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;[\s\S]*gap: var\(--rm-control-gap\);[\s\S]*white-space: normal;/);
-  assert.match(css, /\.context-toolbar \.button--admin-cta--dynamic \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
+  assert.match(css, /\.context-toolbar \.button--dynamic-cta \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
   assert.match(css, /\.customer-form-panel--centered \{[\s\S]*width: min\(100%, 1040px\);[\s\S]*margin-inline: auto;/);
@@ -162,6 +177,17 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(header, /site-header__breadcrumbs-row/);
   assert.match(header, /<nav class="site-header__breadcrumbs" aria-label="Breadcrumbs">/);
   assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
+  assert.doesNotMatch(css, /button--admin-cta--dynamic|button--admin-cta--system/);
+
+  const adminHeight = extractCustomPropertyValue(css, "--rm-cta-admin-height");
+  const dynamicHeight = extractCustomPropertyValue(css, "--rm-cta-dynamic-height");
+  const systemHeight = extractCustomPropertyValue(css, "--rm-cta-system-height");
+
+  assert.equal(adminHeight, "var(--rm-control-height)");
+  assert.equal(dynamicHeight, "2.25rem");
+  assert.equal(systemHeight, "2.125rem");
+  assert.ok(remToPixels(dynamicHeight) >= remToPixels(systemHeight));
+  assert.ok(remToPixels(adminHeight.replace("var(--rm-control-height)", "3rem")) > remToPixels(dynamicHeight));
 });
 
 test("customer context toolbar preserves controls and shared sizing", () => {
@@ -170,7 +196,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   const css = read("public/css/app.css");
   const toolbar = extractRuleBody(css, ".context-toolbar");
   const toolbarField = extractRuleBody(css, ".context-toolbar__field");
-  const dynamicToolbarControl = css.match(/\.context-toolbar \.button--admin-cta--dynamic\s*\{([^}]*)\}/)?.[1];
+  const dynamicToolbarControl = css.match(/\.context-toolbar \.button--dynamic-cta\s*\{([^}]*)\}/)?.[1];
 
   assert.ok(dynamicToolbarControl);
   assert.match(template, /<nav class="context-tabs" aria-label="Customer status filters">/);
@@ -178,7 +204,9 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /id="customers-per-page"/);
   assert.match(template, /context-toolbar__right[\s\S]*Records per page[\s\S]*customers-per-page[\s\S]*New customer/);
   assert.match(template, /customers-per-page[\s\S]*New customer/);
-  assert.match(template, /class="button button--admin-cta button--admin-cta--dynamic" href="\/customers\/register">New customer/);
+  assert.match(template, /class="button button--dynamic-cta" href="\/customers\/register">New customer/);
+  assert.match(template, /class="context-control--dynamic"/);
+  assert.doesNotMatch(template, /button--admin-cta--dynamic|button--admin-cta--system/);
   assert.match(template, /context-toolbar context-toolbar--customers/);
   assert.match(template, /class="context-tab context-tab--dynamic<%= tab\.isActive \? " context-tab--active" : "" %>"/);
   assert.equal((customersIndex.match(/Administration/g) || []).length, 1);
@@ -188,13 +216,13 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /\.context-tab \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-radius: var\(--rm-control-border-radius\);/);
   assert.match(css, /\.context-tab--active \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);[\s\S]*box-shadow: inset 0 -3px 0 var\(--rm-light-bronze\);/);
   assert.match(css, /\.context-tab:focus-visible \{[\s\S]*outline: var\(--rm-control-focus-outline\);/);
-  assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);/);
-  assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-color: var\(--rm-admin-cta-border\);/);
-  assert.match(css, /\.context-toolbar \.button--admin-cta--dynamic \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
+  assert.match(css, /\.context-toolbar input\.context-control--dynamic,\s*\.context-toolbar select\.context-control--dynamic \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);/);
+  assert.match(css, /\.context-toolbar input\.context-control--dynamic,\s*\.context-toolbar select\.context-control--dynamic \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-color: var\(--rm-admin-cta-border\);/);
+  assert.match(css, /\.context-toolbar \.button--dynamic-cta \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);
   assert.match(toolbar, /display: block;/);
-  assert.match(css, /\.context-toolbar__form \{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
+  assert.match(css, /\.context-toolbar__form \{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;[\s\S]*gap: 0\.75rem;/);
   assert.match(css, /\.context-toolbar__right \{[\s\S]*justify-content: flex-end;[\s\S]*white-space: nowrap;/);
   assert.match(css, /\.context-toolbar--customers \.context-tabs \{[\s\S]*flex: 0 0 auto;/);
   assert.match(css, /\.context-toolbar--customers \.context-toolbar__left \{[\s\S]*flex-wrap: nowrap;/);
