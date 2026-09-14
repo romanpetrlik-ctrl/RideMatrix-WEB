@@ -45,7 +45,7 @@ test("maps a Google place result into structured customer address fields", () =>
     cityTown: "London",
     county: "Greater London",
     state: "England",
-    postcode: "SW1A-2AA",
+    postcode: "SW1A 2AA",
     latitude: "51.5034",
     longitude: "-0.1276"
   });

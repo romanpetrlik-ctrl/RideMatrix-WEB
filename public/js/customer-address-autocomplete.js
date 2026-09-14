@@ -39,7 +39,7 @@
   function mapPlaceToAddress(place) {
     var components = indexComponents(place);
     var cityTown = components.postal_town || components.locality || components.administrative_area_level_2 || "";
-    var postcode = [components.postal_code, components.postal_code_suffix].filter(Boolean).join("-");
+    var postcode = [components.postal_code, components.postal_code_suffix].filter(Boolean).join(" ");
     var houseNameNumber = unique([
       components.subpremise,
       components.premise,

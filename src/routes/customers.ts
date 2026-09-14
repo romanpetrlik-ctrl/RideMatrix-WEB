@@ -427,7 +427,7 @@ async function resolveCustomerAddressPersistence(formData: {
   postcode: string;
   latitude: string;
   longitude: string;
-}): Promise<{
+}, existingCustomer?: CustomerRecord): Promise<{
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -454,6 +454,19 @@ async function resolveCustomerAddressPersistence(formData: {
     latitude: parseCustomerCoordinate(formData.latitude),
     longitude: parseCustomerCoordinate(formData.longitude)
   };
+  const existingAddress = existingCustomer
+    ? buildCustomerAddress(existingCustomer) || normalizeCustomerAddressFallback(existingCustomer.address)
+    : null;
+
+  if (!isValidGeoPoint(browserPoint) && existingCustomer && address === existingAddress) {
+    return {
+      address,
+      latitude: existingCustomer.latitude,
+      longitude: existingCustomer.longitude,
+      geocodedAt: existingCustomer.geocodedAt,
+      geocodeStatus: existingCustomer.geocodeStatus
+    };
+  }
 
   const geocoded = await mapService.geocodeAddress(address);
   if (geocoded) {
@@ -1263,7 +1276,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     try {
-      const addressData = await resolveCustomerAddressPersistence(formData);
+      const addressData = await resolveCustomerAddressPersistence(formData, customer);
       const updated = await updateCustomer(customer.id, {
         givenName: formData.givenName,
         surname: formData.surname,
