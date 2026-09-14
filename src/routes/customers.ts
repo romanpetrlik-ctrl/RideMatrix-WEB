@@ -414,6 +414,50 @@ function collectStructuredAddressErrors(
   return errors;
 }
 
+function toStructuredAddressPersistenceInput(formData: {
+  houseNameNumber: string;
+  addressLine1: string;
+  addressLine2: string;
+  addressLine3: string;
+  cityTown: string;
+  county: string;
+  state: string;
+  postcode: string;
+}): {
+  houseNameNumber: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  cityTown: string | null;
+  county: string | null;
+  state: string | null;
+  postcode: string | null;
+} {
+  if (!hasStructuredCustomerAddress(formData)) {
+    return {
+      houseNameNumber: null,
+      addressLine1: null,
+      addressLine2: null,
+      addressLine3: null,
+      cityTown: null,
+      county: null,
+      state: null,
+      postcode: null
+    };
+  }
+
+  return {
+    houseNameNumber: formData.houseNameNumber || null,
+    addressLine1: formData.addressLine1 || null,
+    addressLine2: formData.addressLine2 || null,
+    addressLine3: formData.addressLine3 || null,
+    cityTown: formData.cityTown || null,
+    county: formData.county || null,
+    state: formData.state || null,
+    postcode: formData.postcode || null
+  };
+}
+
 async function resolveCustomerAddressPersistence(formData: {
   address: string;
   addressSearch: string;
@@ -465,6 +509,16 @@ async function resolveCustomerAddressPersistence(formData: {
       longitude: existingCustomer.longitude,
       geocodedAt: existingCustomer.geocodedAt,
       geocodeStatus: existingCustomer.geocodeStatus
+    };
+  }
+
+  if (isValidGeoPoint(browserPoint)) {
+    return {
+      address,
+      latitude: browserPoint.latitude,
+      longitude: browserPoint.longitude,
+      geocodedAt,
+      geocodeStatus: "client-place"
     };
   }
 
@@ -840,6 +894,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     try {
       const addressData = await resolveCustomerAddressPersistence(registerFormData);
+      const structuredAddress = toStructuredAddressPersistenceInput(registerFormData);
       const newCustomer = await createCustomer({
         title: registerFormData.title || null,
         givenName: registerFormData.givenName,
@@ -848,14 +903,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         phone: normalizedPhone,
         company: registerFormData.company || null,
         address: addressData.address,
-        houseNameNumber: registerFormData.houseNameNumber || null,
-        addressLine1: registerFormData.addressLine1 || null,
-        addressLine2: registerFormData.addressLine2 || null,
-        addressLine3: registerFormData.addressLine3 || null,
-        cityTown: registerFormData.cityTown || null,
-        county: registerFormData.county || null,
-        state: registerFormData.state || null,
-        postcode: registerFormData.postcode || null,
+        ...structuredAddress,
         latitude: addressData.latitude,
         longitude: addressData.longitude,
         geocodedAt: addressData.geocodedAt,
@@ -1277,6 +1325,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     try {
       const addressData = await resolveCustomerAddressPersistence(formData, customer);
+      const structuredAddress = toStructuredAddressPersistenceInput(formData);
       const updated = await updateCustomer(customer.id, {
         givenName: formData.givenName,
         surname: formData.surname,
@@ -1284,14 +1333,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         phone: normalizedPhone,
         company: formData.company || null,
         address: addressData.address,
-        houseNameNumber: formData.houseNameNumber || null,
-        addressLine1: formData.addressLine1 || null,
-        addressLine2: formData.addressLine2 || null,
-        addressLine3: formData.addressLine3 || null,
-        cityTown: formData.cityTown || null,
-        county: formData.county || null,
-        state: formData.state || null,
-        postcode: formData.postcode || null,
+        ...structuredAddress,
         latitude: addressData.latitude,
         longitude: addressData.longitude,
         geocodedAt: addressData.geocodedAt,

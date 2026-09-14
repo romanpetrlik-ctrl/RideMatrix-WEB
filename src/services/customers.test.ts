@@ -63,12 +63,13 @@ test("persists created customers across a restart", async () => {
 
   assert.ok(reloaded);
   assert.equal(reloaded.surname, "Novak");
-   assert.equal(reloaded.address, "12A, Mill Lane, Manchester, M1 2AB");
+  assert.equal(reloaded.address, "12A, Mill Lane, Manchester, M1 2AB");
   assert.equal(reloaded.houseNameNumber, "12A");
   assert.equal(reloaded.cityTown, "Manchester");
   assert.equal(reloaded.postcode, "M1 2AB");
   assert.equal(reloaded.latitude, 53.4808);
   assert.equal(reloaded.longitude, -2.2426);
+  assert.equal(reloaded.geocodedAt, "2026-09-14T00:00:00.000Z");
   assert.equal(reloaded.geocodeStatus, "exact");
   assert.equal(reloaded.status, "Active");
 });
@@ -104,6 +105,7 @@ test("persists updates and status changes", async () => {
   assert.equal(reloaded.addressLine2, "Flat 2");
   assert.equal(reloaded.latitude, 53.481);
   assert.equal(reloaded.longitude, -2.243);
+  assert.equal(reloaded.geocodedAt, "2026-09-14T01:00:00.000Z");
   assert.equal(reloaded.geocodeStatus, "client-place");
 });
 

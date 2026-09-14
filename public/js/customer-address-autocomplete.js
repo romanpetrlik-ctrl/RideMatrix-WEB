@@ -109,6 +109,8 @@
       fields.addressLine2,
       fields.addressLine3,
       fields.cityTown,
+      fields.county,
+      fields.state,
       fields.postcode
     ].filter(Boolean).forEach(function (field) {
       field.addEventListener("input", markManualAddressChange);
