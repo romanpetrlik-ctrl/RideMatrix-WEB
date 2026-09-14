@@ -407,9 +407,13 @@ test("customer pages render one canonical breadcrumb trail with customer dynamic
     assert.match(editBody, /site-header__breadcrumb-current" aria-current="page">Edit customer</);
     assert.match(registerBody, /site-header__breadcrumb-current" aria-current="page">Private customer</);
     assert.match(listBody, /class="context-tab context-tab--dynamic(?: context-tab--active)?"/);
-    assert.match(listBody, /button button--admin-cta button--admin-cta--dynamic" href="\/customers\/register">New customer/);
-    assert.match(detailBody, /button button--admin-cta button--admin-cta--dynamic" href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers">Edit Customer/);
-    assert.match(editBody, /button button--admin-cta button--admin-cta--dynamic button--execute site-header__action context-bar__action context-bar__action--execute"/);
+    assert.match(listBody, /class="context-control--dynamic"/);
+    assert.match(listBody, /button button--dynamic-cta" href="\/customers\/register">New customer/);
+    assert.match(detailBody, /button button--dynamic-cta" href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers">Edit Customer/);
+    assert.match(editBody, /button button--dynamic-cta button--execute site-header__action context-bar__action context-bar__action--execute"/);
+    for (const body of [listBody, detailBody, detailChildBody, editBody, editChildBody, registerBody]) {
+      assert.doesNotMatch(body, /button--admin-cta--dynamic|button--admin-cta--system/);
+    }
     assert.doesNotMatch(detailChildBody, /class="system-status-bar"/);
     assert.doesNotMatch(editChildBody, /class="system-status-bar"/);
   } finally {

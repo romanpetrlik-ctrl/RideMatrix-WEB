@@ -43,14 +43,15 @@ test("system status bar actions use the system CTA variant", () => {
   const accountAction = css.match(/\.system-status-bar__account-action \{([\s\S]*?)\n\}/)?.[1] ?? "";
   const partial = fs.readFileSync("src/views/partials/system-status-bar.ejs", "utf8");
 
-  assert.match(partial, /class="button button--admin-cta button--admin-cta--system system-status-bar__account-action"/);
-  assert.match(partial, /class="button button--admin-cta button--admin-cta--system button--admin-cta--negative system-status-bar__account-action"/);
+  assert.match(partial, /class="button button--system-cta system-status-bar__account-action"/);
+  assert.match(partial, /class="button button--system-cta button--admin-cta--negative system-status-bar__account-action"/);
+  assert.doesNotMatch(partial, /button--admin-cta--dynamic|button--admin-cta--system/);
   assert.match(accountAction, /flex: 0 0 auto;/);
   assert.match(accountAction, /max-width: 100%;/);
   assert.match(accountAction, /white-space: nowrap;/);
-  assert.match(css, /\.button--admin-cta \{[\s\S]*min-height: var\(--rm-control-height\);/);
-  assert.match(css, /\.button--admin-cta\.button--admin-cta--system \{[\s\S]*min-height: var\(--rm-cta-system-height\);/);
-  assert.match(css, /\.button--admin-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);/);
+  assert.match(css, /\.button--admin-cta,\s*\.button--dynamic-cta,\s*\.button--system-cta \{[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.button--system-cta \{[\s\S]*min-height: var\(--rm-cta-system-height\);/);
+  assert.match(css, /\.button--admin-cta\.button--admin-cta--negative,\s*\.button--dynamic-cta\.button--admin-cta--negative,\s*\.button--system-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);/);
 });
 
 test("system status bar hides workspace switch on choose-role and for one workspace", async () => {
