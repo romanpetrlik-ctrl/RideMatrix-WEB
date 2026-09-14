@@ -60,6 +60,19 @@ export const operationalMenuRows: OperationalMenuRow[] = [
     ]
   },
   {
+    category: "Drivers",
+    actions: [{ label: "All drivers", href: "/dashboard?tile=drivers-all" }]
+  },
+  {
+    category: "Vehicles",
+    actions: [
+      { label: "Active vehicles", href: "/dashboard?tile=vehicles-active" },
+      { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },
+      { label: "All vehicles", href: "/vehicles" },
+      { label: "Settings", href: "/settings" }
+    ]
+  },
+  {
     category: "Staff",
     actions: [{ label: "All staff", href: "/staff" }]
   },
