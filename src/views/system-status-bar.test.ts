@@ -38,17 +38,18 @@ test("system status bar renders secure account actions for multiple workspaces",
   assert.match(html, /type="submit">Exit/);
 });
 
-test("system status bar actions use the Administration CTA system", () => {
+test("system status bar actions use the system CTA variant", () => {
   const css = fs.readFileSync("public/css/app.css", "utf8");
   const accountAction = css.match(/\.system-status-bar__account-action \{([\s\S]*?)\n\}/)?.[1] ?? "";
   const partial = fs.readFileSync("src/views/partials/system-status-bar.ejs", "utf8");
 
-  assert.match(partial, /class="button button--admin-cta system-status-bar__account-action"/);
-  assert.match(partial, /class="button button--admin-cta button--admin-cta--negative system-status-bar__account-action"/);
+  assert.match(partial, /class="button button--admin-cta button--admin-cta--system system-status-bar__account-action"/);
+  assert.match(partial, /class="button button--admin-cta button--admin-cta--system button--admin-cta--negative system-status-bar__account-action"/);
   assert.match(accountAction, /flex: 0 0 auto;/);
   assert.match(accountAction, /max-width: 100%;/);
   assert.match(accountAction, /white-space: nowrap;/);
   assert.match(css, /\.button--admin-cta \{[\s\S]*min-height: var\(--rm-control-height\);/);
+  assert.match(css, /\.button--admin-cta\.button--admin-cta--system \{[\s\S]*min-height: var\(--rm-cta-system-height\);/);
   assert.match(css, /\.button--admin-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);/);
 });
 

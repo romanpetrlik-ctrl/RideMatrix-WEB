@@ -54,8 +54,8 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(read("public/js/customer-window-coordination.js"), /event\.source/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.telHref %>">Call/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message/);
-  assert.match(context, /class="button button--admin-cta" href="<%= customer\.newBookingHref %>">New Booking/);
-  assert.match(context, /class="button button--admin-cta button--admin-cta--negative" href="<%= customer\.deleteHref %>">Delete Record/);
+  assert.match(context, /class="button button--admin-cta button--admin-cta--dynamic" href="<%= customer\.newBookingHref %>">New Booking/);
+  assert.match(context, /class="button button--admin-cta button--admin-cta--dynamic button--admin-cta--negative" href="<%= customer\.deleteHref %>">Delete Record/);
 });
 
 test("customer detail map receives browser configuration and map id", () => {
