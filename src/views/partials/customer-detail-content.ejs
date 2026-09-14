@@ -73,6 +73,8 @@
     </div>
     <%- include("./map-preview", {
       mapView,
+      mapBrowserApiKey,
+      mapId,
       emptyTitle: "Home address map is unavailable for this customer.",
       emptyMessage: "A configured map and valid customer coordinates are required."
     }) %>

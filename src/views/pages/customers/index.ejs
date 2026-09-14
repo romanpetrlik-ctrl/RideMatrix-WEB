@@ -71,7 +71,7 @@
                 <% customers.forEach((customer) => { %>
                   <tr>
                     <td>
-                      <a class="customer-table__identity" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">
+                      <a class="customer-table__identity" data-customer-detail-link href="<%= customer.detailHref %>" target="_blank" rel="opener">
                         <strong><%= customer.givenName %> <%= customer.surname %></strong>
                         <span><%= customer.company || customer.email || "No company or email" %></span>
                       </a>
@@ -90,7 +90,7 @@
                     </td>
                     <td class="customers-table__actions">
                       <div class="customers-table__actions-list">
-                        <a class="button button--secondary button--small" href="<%= customer.detailHref %>" target="_blank" rel="noopener noreferrer">View</a>
+                        <a class="button button--secondary button--small" data-customer-detail-link href="<%= customer.detailHref %>" target="_blank" rel="opener">View</a>
                         <a class="button button--secondary button--small" href="<%= customer.editHref %>">Edit</a>
                         <a class="button button--danger button--small" href="<%= customer.deleteHref %>">Delete</a>
                       </div>
@@ -118,5 +118,6 @@
     </main>
 
     <%- include("../../partials/footer") %>
+    <script src="/js/customer-window-coordination.js" defer></script>
   </body>
 </html>

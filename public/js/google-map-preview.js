@@ -42,9 +42,21 @@
   };
 
   if (typeof document === "undefined") return;
+  function showUnavailable(elements) {
+  elements.forEach(function (element) {
+    var message = element.querySelector("[data-map-error]");
+    if (message) message.hidden = false;
+  });
+  }
+
+  if (typeof document === "undefined") return;
   document.addEventListener("DOMContentLoaded", function () {
     var elements = Array.prototype.slice.call(document.querySelectorAll(".address-map-preview[data-map-browser-key]"));
     var browserKey = elements.length ? elements[0].dataset.mapBrowserKey : "";
-    if (browserKey && elements.length) window.RideMatrixMaps.load(browserKey, elements).catch(function () {});
+    if (browserKey && elements.length) {
+      window.RideMatrixMaps.load(browserKey, elements).catch(function () { showUnavailable(elements); });
+    } else if (elements.length) {
+      showUnavailable(elements);
+    }
   });
 }());
