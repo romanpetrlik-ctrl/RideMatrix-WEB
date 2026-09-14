@@ -93,7 +93,15 @@
       latitude: form.querySelector("#latitude"),
       longitude: form.querySelector("#longitude")
     };
-    if (!fields.addressSearch || !browserKey || !window.RideMatrixMaps || typeof window.RideMatrixMaps.load !== "function") return;
+    var status = form.querySelector("[data-address-autocomplete-status]");
+    function setStatus(message) {
+      if (status) status.textContent = message;
+    }
+    if (!fields.addressSearch) return;
+    if (!browserKey || !window.RideMatrixMaps || typeof window.RideMatrixMaps.load !== "function") {
+      setStatus("Google address suggestions are unavailable. Enter the address manually.");
+      return;
+    }
 
     var internalUpdate = false;
     function markManualAddressChange() {
@@ -116,8 +124,10 @@
       field.addEventListener("input", markManualAddressChange);
     });
 
+    setStatus("Loading Google address suggestions. Manual entry still works.");
     window.RideMatrixMaps.load(browserKey, [], { libraries: ["places"] }).then(function () {
       if (!window.google || !window.google.maps || !window.google.maps.places || !window.google.maps.places.Autocomplete) {
+        setStatus("Google address suggestions are unavailable. Enter the address manually.");
         return false;
       }
 
@@ -125,6 +135,7 @@
         types: ["address"],
         fields: ["address_components", "formatted_address", "geometry", "name"]
       });
+      setStatus("Google address suggestions are available. You can still edit every field manually.");
 
       autocomplete.addListener("place_changed", function () {
         var nextValues = mapPlaceToAddress(autocomplete.getPlace());
@@ -135,6 +146,7 @@
 
       return true;
     }).catch(function () {
+      setStatus("Google address suggestions are unavailable. Enter the address manually.");
       clearCoordinates(fields);
     });
   }

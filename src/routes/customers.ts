@@ -43,6 +43,8 @@ import { isChildWindowLayout } from "../middleware/layout-context";
 type CustomersRouterOptions = {
   appTitle: string;
   loadSession?: (cookieHeader?: string) => Promise<SessionAccount>;
+  getCustomerById?: typeof getCustomerById;
+  listRecentBookingsForCustomer?: typeof listRecentBookingsForCustomer;
 };
 
 type NoticeTone = "warning" | "critical";
@@ -101,7 +103,10 @@ function formatBookingDate(value: string): string {
   }).format(new Date(value));
 }
 
-async function loadRecentBookings(customerId: string): Promise<{
+async function loadRecentBookings(
+  customerId: string,
+  listRecentBookings = listRecentBookingsForCustomer
+): Promise<{
   bookings: Array<{
     id: string;
     reference: string;
@@ -493,7 +498,6 @@ async function resolveCustomerAddressPersistence(formData: {
   }
 
   const mapService = getMapService();
-  const geocodedAt = new Date().toISOString();
   const browserPoint = {
     latitude: parseCustomerCoordinate(formData.latitude),
     longitude: parseCustomerCoordinate(formData.longitude)
@@ -517,7 +521,7 @@ async function resolveCustomerAddressPersistence(formData: {
       address,
       latitude: browserPoint.latitude,
       longitude: browserPoint.longitude,
-      geocodedAt,
+      geocodedAt: new Date().toISOString(),
       geocodeStatus: "client-place"
     };
   }
@@ -528,18 +532,8 @@ async function resolveCustomerAddressPersistence(formData: {
       address,
       latitude: geocoded.point.latitude,
       longitude: geocoded.point.longitude,
-      geocodedAt,
+      geocodedAt: new Date().toISOString(),
       geocodeStatus: geocoded.matchQuality || "exact"
-    };
-  }
-
-  if (isValidGeoPoint(browserPoint)) {
-    return {
-      address,
-      latitude: browserPoint.latitude,
-      longitude: browserPoint.longitude,
-      geocodedAt,
-      geocodeStatus: "client-place"
     };
   }
 
@@ -547,7 +541,7 @@ async function resolveCustomerAddressPersistence(formData: {
     address,
     latitude: null,
     longitude: null,
-    geocodedAt,
+    geocodedAt: new Date().toISOString(),
     geocodeStatus: mapService.enabled ? "no-result" : "disabled"
   };
 }
@@ -574,6 +568,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.use(noStoreProtectedResponse);
   const upload = multer({ storage: multer.memoryStorage() });
   const loadSession = options.loadSession ?? getSessionAccount;
+  const loadCustomerById = options.getCustomerById ?? getCustomerById;
+  const loadRecentBookingsForCustomerList = options.listRecentBookingsForCustomer ?? listRecentBookingsForCustomer;
 
   router.get("/customers/phone-preview", async (req, res, next) => {
     try {
@@ -939,7 +935,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId);
+      const customer = await loadCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -1007,7 +1003,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.post("/customers/:customerId/suspend", async (req, res, next) => {
     try {
       await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId);
+      const customer = await loadCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -1045,7 +1041,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/bookings", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId);
+      const customer = await loadCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -1092,7 +1088,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/delete", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId);
+      const customer = await loadCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -1131,7 +1127,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.post("/customers/:customerId/delete", async (req, res, next) => {
     try {
       await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId);
+      const customer = await loadCustomerById(req.params.customerId);
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -1165,7 +1161,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   router.get("/customers/:customerId/edit", async (req, res, next) => {
     try {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
-      const customer = await getCustomerById(req.params.customerId, undefined, { loadBookings: false });
+      const customer = await loadCustomerById(req.params.customerId, undefined, { loadBookings: false });
 
       if (!customer) {
         return res.status(404).render("pages/unavailable", {
@@ -1175,7 +1171,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
-      const recentBookings = await loadRecentBookings(customer.id);
+      const recentBookings = await loadRecentBookings(customer.id, loadRecentBookingsForCustomerList);
       const isChildWindow = isChildWindowLayout(req.query.layout);
       const editActionHref = `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`;
       const cancelHref = buildCustomerHref(customer.id, {
@@ -1248,7 +1244,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       return next(error);
     }
 
-    const customer = await getCustomerById(req.params.customerId);
+    const customer = await loadCustomerById(req.params.customerId);
 
     if (!customer) {
       return res.status(404).render("pages/unavailable", {
@@ -1299,7 +1295,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     if (errors.length > 0) {
-      const recentBookings = await loadRecentBookings(customer.id);
+      const recentBookings = await loadRecentBookings(customer.id, loadRecentBookingsForCustomerList);
       return res.status(400).render("pages/customers/edit", {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
@@ -1365,7 +1361,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       );
     } catch (error) {
       if (error instanceof DuplicateActiveCustomerEmailError) {
-        const recentBookings = await loadRecentBookings(customer.id);
+        const recentBookings = await loadRecentBookings(customer.id, loadRecentBookingsForCustomerList);
         return res.status(409).render("pages/customers/edit", {
           title: `Edit ${customer.surname}, ${customer.givenName}`,
           appTitle: options.appTitle,
