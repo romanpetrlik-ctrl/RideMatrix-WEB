@@ -30,10 +30,12 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
   assert.match(register, /<h1 class="private-customer-page__heading">Private customer<\/h1>/);
   assert.match(register, /<p class="private-customer-page__intro">Fill in the individual's details below/);
   assert.match(edit, /customer-form-page customer-form-page--private/);
-  assert.match(edit, /class="panel panel--compact customer-form-panel"/);
+  assert.match(edit, /class="panel panel--compact customer-form-panel(?: customer-form-panel--centered)?"/);
   assert.match(register, /class="inline-form private-customer-form"/);
   assert.match(register, /id="private-customer-form"/);
   assert.match(register, /formId: "private-customer-form"/);
+  assert.match(register, /data-address-autocomplete-browser-key="<%= locals\.mapBrowserApiKey \|\| '' %>"/);
+  assert.match(register, /id="addressSearch"/);
   assert.doesNotMatch(register, /<div class="action-row">[\s\S]*Create Customer/);
 
   assert.match(edit, /contextBarActions:\s*\[/);
@@ -41,6 +43,14 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
   assert.match(edit, /Save Changes/);
   assert.match(edit, /id="edit-customer-form"/);
   assert.match(edit, /formId: "edit-customer-form"/);
+  assert.match(edit, /customer-form-panel customer-form-panel--centered/);
+  assert.match(edit, /data-address-autocomplete-browser-key="<%= locals\.mapBrowserApiKey \|\| '' %>"/);
+  assert.match(edit, /id="addressSearch"/);
+  assert.match(edit, /id="houseNameNumber"/);
+  assert.match(edit, /id="addressLine1"/);
+  assert.match(edit, /id="cityTown"/);
+  assert.match(edit, /id="postcode"/);
+  assert.match(edit, /customer-address-autocomplete\.js/);
   assert.doesNotMatch(edit, /<div class="action-row">[\s\S]*Save Changes/);
 });
 
@@ -139,10 +149,14 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.context-toolbar input\[type="submit"\]\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
+  assert.match(css, /\.customer-form-panel--centered \{[\s\S]*width: min\(100%, 1180px\);[\s\S]*margin-inline: auto;/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
+  assert.match(css, /\.private-customer-form__section-intro \{[\s\S]*color: var\(--rm-text-soft\);/);
   assert.match(css, /\.system-status-bar__account-actions \{[\s\S]*flex-wrap: wrap;[\s\S]*min-width: 0;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.system-status-bar__account-actions \{[\s\S]*justify-content: center;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar \.button,[\s\S]*?\.context-toolbar button \{[\s\S]*flex: 1 1 auto;/);
+  assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__column--map \{[\s\S]*grid-column: 1 \/ -1;/);
   assert.match(css, /h1,\s*h2,\s*h3 \{[\s\S]*margin-top: 0;/);
   assert.doesNotMatch(css, /\.customer-form-page--private \.customer-form-panel > h1 \{[\s\S]*font-size: clamp\(1\.75rem, 2\.4vw, 2rem\);/);
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);

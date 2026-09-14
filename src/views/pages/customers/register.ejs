@@ -38,7 +38,7 @@
         </section>
       <% } %>
 
-      <section class="panel panel--compact customer-form-panel customer-register-panel<%= selectedCustomerType === "private" ? " customer-register-panel--private" : "" %>">
+      <section class="panel panel--compact customer-form-panel customer-form-panel--centered customer-register-panel<%= selectedCustomerType === "private" ? " customer-register-panel--private" : "" %>">
         <% if (!selectedCustomerType) { %>
           <h1>New customer</h1>
           <p>Choose the customer type first so the registration flow matches the account you want to create.</p>
@@ -72,7 +72,13 @@
           <h1 class="private-customer-page__heading">Private customer</h1>
           <p class="private-customer-page__intro">Fill in the individual's details below. Fields marked with * are required.</p>
 
-          <form id="private-customer-form" class="inline-form private-customer-form" method="post" action="/customers/register">
+          <form
+            id="private-customer-form"
+            class="inline-form private-customer-form"
+            method="post"
+            action="/customers/register"
+            data-address-autocomplete-browser-key="<%= locals.mapBrowserApiKey || '' %>"
+          >
             <%- locals.csrfField || "" %>
             <div class="private-customer-form__grid">
               <section class="private-customer-form__column" aria-labelledby="private-contact-heading">
@@ -151,18 +157,38 @@
               <section class="private-customer-form__column" aria-labelledby="private-address-heading">
                 <h2 id="private-address-heading">Address data</h2>
 
+                <p class="private-customer-form__section-intro" id="addressSearch-help">Search the address first, then adjust any individual field if needed.</p>
+                <p class="private-customer-form__autocomplete-status" data-address-autocomplete-status aria-live="polite">Address suggestions load when Google Maps is available. Manual entry still works.</p>
+
                 <div class="form-field">
-                  <label for="houseNameNumber">House name / number *</label>
+                  <label for="addressSearch">Search address</label>
                   <input
-                    type="text"
-                    id="houseNameNumber"
-                    name="houseNameNumber"
-                    value="<%= formData.houseNameNumber || '' %>"
-                    required
+                    type="search"
+                    id="addressSearch"
+                    name="addressSearch"
+                    value="<%= formData.addressSearch || formData.address || '' %>"
+                    autocomplete="street-address"
+                    aria-describedby="addressSearch-help"
                   />
                 </div>
 
-                <div class="form-row form-row--three">
+                <input type="hidden" id="address" name="address" value="<%= formData.address || '' %>" />
+                <input type="hidden" id="latitude" name="latitude" value="<%= formData.latitude || '' %>" />
+                <input type="hidden" id="longitude" name="longitude" value="<%= formData.longitude || '' %>" />
+
+                <div class="form-row form-row--two">
+                  <div class="form-field">
+                    <label for="houseNameNumber">House number / name *</label>
+                    <input
+                      type="text"
+                      id="houseNameNumber"
+                      name="houseNameNumber"
+                      value="<%= formData.houseNameNumber || '' %>"
+                      autocomplete="address-line1"
+                      required
+                    />
+                  </div>
+
                   <div class="form-field">
                     <label for="addressLine1">Address line 1 *</label>
                     <input
@@ -174,7 +200,9 @@
                       required
                     />
                   </div>
+                </div>
 
+                <div class="form-row form-row--two">
                   <div class="form-field">
                     <label for="addressLine2">Address line 2</label>
                     <input
@@ -197,7 +225,7 @@
                   </div>
                 </div>
 
-                <div class="form-row form-row--four">
+                <div class="form-row form-row--two">
                   <div class="form-field">
                     <label for="cityTown">City / Town *</label>
                     <input
@@ -210,6 +238,20 @@
                     />
                   </div>
 
+                  <div class="form-field">
+                    <label for="postcode">Postcode *</label>
+                    <input
+                      type="text"
+                      id="postcode"
+                      name="postcode"
+                      value="<%= formData.postcode || '' %>"
+                      autocomplete="postal-code"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div class="form-row form-row--two">
                   <div class="form-field">
                     <label for="county">County</label>
                     <input
@@ -228,18 +270,6 @@
                       id="state"
                       name="state"
                       value="<%= formData.state || '' %>"
-                    />
-                  </div>
-
-                  <div class="form-field">
-                    <label for="postcode">Postcode *</label>
-                    <input
-                      type="text"
-                      id="postcode"
-                      name="postcode"
-                      value="<%= formData.postcode || '' %>"
-                      autocomplete="postal-code"
-                      required
                     />
                   </div>
                 </div>
@@ -283,5 +313,9 @@
     </main>
 
     <%- include("../../partials/footer") %>
+    <% if (selectedCustomerType === "private") { %>
+      <script src="/js/google-map-preview.js" defer></script>
+      <script src="/js/customer-address-autocomplete.js" defer></script>
+    <% } %>
   </body>
 </html>

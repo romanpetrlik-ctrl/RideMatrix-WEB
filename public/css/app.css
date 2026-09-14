@@ -637,6 +637,12 @@ h3 {
   margin-bottom: 0.75rem;
 }
 
+.customer-form-panel--centered {
+  width: min(100%, 1180px);
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
 label {
   display: inline-block;
   margin-bottom: 0.4rem;
@@ -836,6 +842,17 @@ button:visited,
   font-size: 1rem;
 }
 
+.private-customer-form__section-intro {
+  margin: 0;
+  color: var(--rm-text-soft);
+}
+
+.private-customer-form__autocomplete-status {
+  margin: -0.25rem 0 0;
+  color: var(--rm-text-soft);
+  font-size: 0.88rem;
+}
+
 .private-customer-form .form-field {
   margin-bottom: 0;
   min-width: 0;
@@ -982,6 +999,10 @@ button:visited,
   background: rgba(255, 249, 242, 0.6);
 }
 
+.customer-bookings-panel--inline {
+  margin-top: 1rem;
+}
+
 .customer-bookings-panel h2 {
   margin: 0 0 0.85rem;
   color: var(--rm-walnut);
@@ -1060,6 +1081,14 @@ button:visited,
 }
 
 @media (max-width: 1200px) {
+  .private-customer-form__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .private-customer-form__column--map {
+    grid-column: 1 / -1;
+  }
+
   .private-customer-form .form-row--contact {
     grid-template-columns: 1fr;
   }

@@ -3,7 +3,20 @@
 
   var canUseWeakSet = typeof WeakSet === "function";
   var rendered = canUseWeakSet ? new WeakSet() : [];
-  var loading;
+  var loadingByKey = {};
+
+  function ensureLibraries(libraries) {
+    if (!Array.isArray(libraries) || libraries.length === 0) return Promise.resolve(true);
+    if (!window.google || !window.google.maps) return Promise.resolve(false);
+    if (typeof window.google.maps.importLibrary === "function") {
+      return Promise.all(libraries.map(function (library) {
+        return window.google.maps.importLibrary(library);
+      })).then(function () { return true; });
+    }
+    return Promise.resolve(libraries.every(function (library) {
+      return library !== "places" || Boolean(window.google.maps.places);
+    }));
+  }
 
   function render(element, googleMaps) {
       if (!element || (canUseWeakSet ? rendered.has(element) : rendered.indexOf(element) !== -1)) return true;
@@ -26,36 +39,46 @@
 
   window.RideMatrixMaps = {
     render: render,
-    load: function (browserKey, elements) {
-      if (!browserKey || !Array.isArray(elements) || elements.length === 0) return Promise.resolve(false);
+    load: function (browserKey, elements, options) {
+      var previewElements = Array.isArray(elements) ? elements : [];
+      var libraries = options && Array.isArray(options.libraries) ? options.libraries.filter(Boolean) : [];
+      if (!browserKey) return Promise.resolve(false);
       if (window.google && window.google.maps) {
-        elements.forEach(function (element) { render(element, window.google.maps); });
-        return Promise.resolve(true);
-      }
-      if (loading) {
-        return loading.then(function () {
-          elements.forEach(function (element) { render(element, window.google.maps); });
+        return ensureLibraries(libraries).then(function () {
+          previewElements.forEach(function (element) { render(element, window.google.maps); });
           return true;
         });
       }
+      if (loadingByKey[browserKey]) {
+        return loadingByKey[browserKey].then(function () {
+          return ensureLibraries(libraries).then(function () {
+            previewElements.forEach(function (element) { render(element, window.google.maps); });
+            return true;
+          });
+        });
+      }
 
-      loading = new Promise(function (resolve, reject) {
-        var callback = "rideMatrixMapsLoaded";
+      loadingByKey[browserKey] = new Promise(function (resolve, reject) {
+        var callback = "rideMatrixMapsLoaded_" + Math.random().toString(36).slice(2);
         window[callback] = function () {
-          elements.forEach(function (element) { render(element, window.google.maps); });
-          loading = null;
+          delete loadingByKey[browserKey];
           resolve(true);
           delete window[callback];
         };
         var script = document.createElement("script");
-        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey) + "&callback=" + callback;
+        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey) + "&callback=" + callback + "&loading=async";
         script.async = true;
-        script.onerror = function () { loading = null; reject(new Error("Google Maps preview unavailable")); };
+        script.onerror = function () {
+          delete loadingByKey[browserKey];
+          reject(new Error("Google Maps preview unavailable"));
+        };
         document.head.appendChild(script);
       });
-      return loading.then(function () {
-        elements.forEach(function (element) { render(element, window.google.maps); });
-        return true;
+      return loadingByKey[browserKey].then(function () {
+        return ensureLibraries(libraries).then(function () {
+          previewElements.forEach(function (element) { render(element, window.google.maps); });
+          return true;
+        });
       });
     }
   };
@@ -71,9 +94,14 @@
   if (typeof document === "undefined") return;
   document.addEventListener("DOMContentLoaded", function () {
     var elements = Array.prototype.slice.call(document.querySelectorAll(".address-map-preview[data-map-browser-key]"));
-    var browserKey = elements.length ? elements[0].dataset.mapBrowserKey : "";
-    if (browserKey && elements.length) {
-      window.RideMatrixMaps.load(browserKey, elements).catch(function () { showUnavailable(elements); });
+    var autocompleteRoots = Array.prototype.slice.call(document.querySelectorAll("[data-address-autocomplete-browser-key]"));
+    var browserKey = autocompleteRoots.length
+      ? autocompleteRoots[0].dataset.addressAutocompleteBrowserKey
+      : (elements.length ? elements[0].dataset.mapBrowserKey : "");
+    if (browserKey && (elements.length || autocompleteRoots.length)) {
+      window.RideMatrixMaps.load(browserKey, elements, {
+        libraries: autocompleteRoots.length ? ["places"] : []
+      }).catch(function () { showUnavailable(elements); });
     } else if (elements.length) {
       showUnavailable(elements);
     }

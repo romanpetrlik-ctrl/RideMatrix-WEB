@@ -157,6 +157,10 @@ export type CustomerCreateInput = {
   preferredContact?: PreferredContact;
   status?: Exclude<CustomerStatus, "all">;
   source?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  geocodedAt?: string | null;
+  geocodeStatus?: string | null;
 };
 
 export type CustomerUpdateInput = Partial<Omit<CustomerCreateInput, "id">>;
@@ -472,14 +476,14 @@ export async function createCustomer(
         id, title, given_name, surname, email, email_normalized, phone, company, address,
         house_name_number, address_line1, address_line2, address_line3,
         city_town, county, state, postcode,
-        preferred_contact, notes, status, source, created_at, updated_at,
+        preferred_contact, notes, status, source, latitude, longitude, geocoded_at, geocode_status, created_at, updated_at,
         last_login_at, last_booking_at, deleted_at,
         inactive_at, anonymized_at, erasure_requested_at, retention_hold_until, retention_hold_reason, purge_after
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11, $12, $13,
         $14, $15, $16, $17,
-        $18, $19, $20, $21, $22, $23,
+        $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
       )`,
       [
@@ -504,6 +508,10 @@ export async function createCustomer(
         trimOrNull(input.notes),
         validateStatus(input.status || "Active"),
         input.source || "manual",
+        typeof input.latitude === "number" && Number.isFinite(input.latitude) ? input.latitude : null,
+        typeof input.longitude === "number" && Number.isFinite(input.longitude) ? input.longitude : null,
+        trimOrNull(input.geocodedAt),
+        trimOrNull(input.geocodeStatus),
         now,
         now
       ]
@@ -589,6 +597,26 @@ export async function updateCustomer(
   if (input.status !== undefined) {
     values.push(validateStatus(input.status));
     assignments.push(`status = $${values.length}`);
+  }
+
+  if (input.latitude !== undefined) {
+    values.push(typeof input.latitude === "number" && Number.isFinite(input.latitude) ? input.latitude : null);
+    assignments.push(`latitude = $${values.length}`);
+  }
+
+  if (input.longitude !== undefined) {
+    values.push(typeof input.longitude === "number" && Number.isFinite(input.longitude) ? input.longitude : null);
+    assignments.push(`longitude = $${values.length}`);
+  }
+
+  if (input.geocodedAt !== undefined) {
+    values.push(trimOrNull(input.geocodedAt));
+    assignments.push(`geocoded_at = $${values.length}`);
+  }
+
+  if (input.geocodeStatus !== undefined) {
+    values.push(trimOrNull(input.geocodeStatus));
+    assignments.push(`geocode_status = $${values.length}`);
   }
 
   values.push(new Date().toISOString());

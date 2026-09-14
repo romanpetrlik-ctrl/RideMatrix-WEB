@@ -28,6 +28,19 @@ test("map configuration is disabled without provider or API key", () => {
   }).enabled, false);
 });
 
+test("map configuration keeps browser and server keys separate", () => {
+  const configuration = readMapConfiguration({
+    GOOGLE_MAPS_ENABLED: "true",
+    GOOGLE_MAPS_SERVER_API_KEY: "server-only",
+    GOOGLE_MAPS_BROWSER_API_KEY: "browser-only",
+    GOOGLE_MAPS_MAP_ID: "map-id"
+  });
+
+  assert.equal(configuration.serverApiKey, "server-only");
+  assert.equal(configuration.browserApiKey, "browser-only");
+  assert.equal(configuration.mapId, "map-id");
+});
+
 test("geocodes a normalized address through the provider-neutral interface", async () => {
   let requested = "";
   const provider: MapProvider = {
