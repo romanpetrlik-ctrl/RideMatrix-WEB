@@ -10,8 +10,8 @@ test("customer list opens the normal detail page in a new tab", () => {
   const index = read("src/views/pages/customers/index.ejs");
 
   assert.doesNotMatch(index, /data-customer-detail-modal|data-customer-detail-trigger/);
-  assert.match(index, /class="customer-table__identity" href="<%= customer\.detailHref %>" target="_blank" rel="noopener noreferrer"/);
-  assert.match(index, /href="<%= customer\.detailHref %>" target="_blank" rel="noopener noreferrer">View<\/a>/);
+  assert.match(index, /class="customer-table__identity" data-customer-detail-link href="<%= customer\.detailHref %>" target="_blank" rel="opener"/);
+  assert.match(index, /data-customer-detail-link href="<%= customer\.detailHref %>" target="_blank" rel="opener">View<\/a>/);
 });
 
 test("customer detail links explicitly request the child-window layout", () => {
@@ -45,9 +45,39 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.customer-detail-layout > \* \{[\s\S]*?height: auto;/);
   assert.match(css, /\.site-header \.context-bar__action,[\s\S]*?\.site-header \.context-bar__action:visited,[\s\S]*?\.site-header \.context-bar__action:hover,[\s\S]*?\.site-header \.context-bar__action:focus \{[\s\S]*?color: var\(--rm-antique-white\);/);
   assert.match(css, /\.site-header \.context-toolbar \.button,[\s\S]*?\.site-header \.context-toolbar \.button:visited,[\s\S]*?\.site-header \.context-toolbar \.button:hover,[\s\S]*?\.site-header \.context-toolbar \.button:focus \{[\s\S]*?color: var\(--rm-antique-white\);/);
-  for (const label of ["Call", "Send WhatsApp message", "Send Email", "Edit Customer", "Suspend Customer", "Delete Record", "Back to Customers"]) {
+  for (const label of ["Call", "Send WhatsApp message", "Send Email", "Edit Customer", "Suspend Customer", "Delete Record", "Close window"]) {
     assert.match(context, new RegExp(`>${label}<`));
   }
+  assert.doesNotMatch(context, />Back to Customers</);
+  assert.match(context, /data-close-detail-window/);
+  assert.match(read("public/js/customer-window-coordination.js"), /event\.origin !== origin/);
+  assert.match(read("public/js/customer-window-coordination.js"), /event\.source/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.telHref %>">Call/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message/);
+});
+
+test("customer detail map receives browser configuration and map id", () => {
+  const detail = read("src/views/pages/customers/detail.ejs");
+  const partial = read("src/views/partials/customer-detail-content.ejs");
+  const map = read("src/views/partials/map-preview.ejs");
+  const route = read("src/routes/customers.ts");
+
+  assert.match(route, /mapBrowserApiKey: readMapConfiguration\(\)\.browserApiKey/);
+  assert.match(route, /mapId: readMapConfiguration\(\)\.mapId/);
+  assert.match(detail, /mapBrowserApiKey, mapId/);
+  assert.match(partial, /mapBrowserApiKey,/);
+  assert.match(partial, /mapId,/);
+  assert.match(map, /data-map-browser-key/);
+  assert.match(map, /data-map-id/);
+});
+
+test("customer edit uses server-rendered customer-specific action URLs and preserves child layout", () => {
+  const edit = read("src/views/pages/customers/edit.ejs");
+  const route = read("src/routes/customers.ts");
+
+  assert.match(edit, /href: cancelHref/);
+  assert.match(edit, /action="<%= editActionHref %>"/);
+  assert.doesNotMatch(edit, /<%= customer\.id %>\/edit\?returnTo=/);
+  assert.match(route, /editActionHref/);
+  assert.match(route, /isChildWindowLayout\(req\.query\.layout\)/);
 });

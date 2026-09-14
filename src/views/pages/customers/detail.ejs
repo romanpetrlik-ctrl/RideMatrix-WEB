@@ -16,7 +16,7 @@
       activeRoleLabel,
       hintsLabel: customer.status,
       contextBarPartial: "header-context/customer-detail",
-      contextBarData: { customer, backToCustomersHref }
+      contextBarData: { customer, backToCustomersHref, isChildWindow }
     }) %>
 
     <main class="container">
@@ -26,7 +26,7 @@
         </section>
       <% } %>
 
-      <%- include("../../partials/customer-detail-content", { customer, mapView }) %>
+      <%- include("../../partials/customer-detail-content", { customer, mapView, mapBrowserApiKey, mapId }) %>
     </main>
 
     <%- include("../../partials/footer") %>

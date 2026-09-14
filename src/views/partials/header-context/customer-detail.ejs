@@ -26,6 +26,10 @@
     </form>
 
     <a class="button button--danger" href="<%= customer.deleteHref %>">Delete Record</a>
-    <a class="button button--secondary" href="<%= backToCustomersHref %>">Back to Customers</a>
+    <button class="button button--secondary" type="button" data-close-detail-window>Close window</button>
+    <p class="customer-detail-close-fallback" data-close-detail-fallback role="status" hidden>
+      This window can be closed after returning to the customer list in the original window.
+    </p>
   </div>
 </div>
+<script src="/js/customer-window-coordination.js" defer></script>

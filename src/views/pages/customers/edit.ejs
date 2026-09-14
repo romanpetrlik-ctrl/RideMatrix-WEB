@@ -6,7 +6,8 @@
       appTitle,
       systemStatus: "System status: Healthy",
       currentUserEmail: email,
-      currentUserHref: "/account"
+      currentUserHref: "/account",
+      isChildWindow
     }) %>
 
     <%- include("../../partials/header", {
@@ -17,7 +18,7 @@
       hintsLabel: customer.status,
       contextBarActions: [
         { label: "Back to customer list", href: backToCustomersHref, tone: "execute-helper" },
-        { label: "Cancel", href: `/customers/<%= customer.id %>?returnTo=<%= encodeURIComponent(backToCustomersHref) %>`, tone: "execute-helper" },
+        { label: "Cancel", href: cancelHref, tone: "execute-helper" },
         { label: "Save Changes", type: "submit", formId: "edit-customer-form", tone: "execute" }
       ]
     }) %>
@@ -38,7 +39,7 @@
         <h1>Edit <%= customer.surname %>, <%= customer.givenName %></h1>
         <p>Update the customer's details below. Fields marked with * are required.</p>
 
-        <form id="edit-customer-form" class="inline-form private-customer-form" method="post" action="/customers/<%= customer.id %>/edit?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
+        <form id="edit-customer-form" class="inline-form private-customer-form" method="post" action="<%= editActionHref %>">
           <%- locals.csrfField || "" %>
           <div class="form-field">
             <label for="givenName">First name *</label>
@@ -164,6 +165,8 @@
             <h2 id="customer-map-heading">Address map</h2>
             <%- include("../../partials/map-preview", {
               mapView,
+              mapBrowserApiKey,
+              mapId,
               emptyTitle: customer.address ? "Map preview unavailable." : "Address has not been geocoded.",
               emptyMessage: customer.address
                 ? "Address has not been geocoded."

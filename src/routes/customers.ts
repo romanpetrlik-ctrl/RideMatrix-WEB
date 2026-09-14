@@ -819,7 +819,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         isChildWindow,
         notice: getNotice(req.query.notice, customer),
         mapView: getCustomerMapView(customer),
-        mapBrowserApiKey: readMapConfiguration().browserApiKey
+        mapBrowserApiKey: readMapConfiguration().browserApiKey,
+        mapId: readMapConfiguration().mapId
       };
 
       return res.render("pages/customers/detail", detailViewModel);
@@ -890,6 +891,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+      const isChildWindow = isChildWindowLayout(req.query.layout);
 
       return res.render("pages/customers/bookings", {
         title: `${customer.surname}, ${customer.givenName} Bookings`,
@@ -1010,6 +1012,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
       const recentBookings = await loadRecentBookings(customer.id);
+      const isChildWindow = isChildWindowLayout(req.query.layout);
+      const editActionHref = `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`;
+      const cancelHref = buildCustomerHref(customer.id, {
+        returnTo: backToCustomersHref,
+        layout: isChildWindow ? "child" : undefined
+      });
 
       return res.render("pages/customers/edit", {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
@@ -1018,7 +1026,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: session.activeRoleLabel,
         customer,
         mapView: getCustomerMapView(customer),
+        mapBrowserApiKey: readMapConfiguration().browserApiKey,
+        mapId: readMapConfiguration().mapId,
         backToCustomersHref,
+        cancelHref,
+        editActionHref,
+        isChildWindow,
         recentBookings: recentBookings.bookings,
         recentBookingsError: recentBookings.error,
         formData: {
@@ -1080,6 +1093,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+    const isChildWindow = isChildWindowLayout(req.query.layout);
 
     const formData = {
       givenName: String(req.body.givenName || "").trim(),
@@ -1116,7 +1130,15 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         activeRoleLabel: sessionContext.activeRoleLabel,
         customer,
         mapView: getCustomerMapView(customer),
+        mapBrowserApiKey: readMapConfiguration().browserApiKey,
+        mapId: readMapConfiguration().mapId,
         backToCustomersHref,
+        cancelHref: buildCustomerHref(customer.id, {
+          returnTo: backToCustomersHref,
+          layout: isChildWindow ? "child" : undefined
+        }),
+        editActionHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`,
+        isChildWindow,
         recentBookings: recentBookings.bookings,
         recentBookingsError: recentBookings.error,
         formData,
@@ -1151,7 +1173,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       return res.redirect(
-        buildCustomerHref(updated.id, { notice: "customer-updated", returnTo: backToCustomersHref })
+        buildCustomerHref(updated.id, {
+          notice: "customer-updated",
+          returnTo: backToCustomersHref,
+          layout: isChildWindow ? "child" : undefined
+        })
       );
     } catch (error) {
       if (error instanceof DuplicateActiveCustomerEmailError) {
@@ -1161,7 +1187,16 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           email: sessionContext.email,
           activeRoleLabel: sessionContext.activeRoleLabel,
           customer,
+          mapView: getCustomerMapView(customer),
+          mapBrowserApiKey: readMapConfiguration().browserApiKey,
+          mapId: readMapConfiguration().mapId,
           backToCustomersHref,
+          cancelHref: buildCustomerHref(customer.id, {
+            returnTo: backToCustomersHref,
+            layout: isChildWindowLayout(req.query.layout) ? "child" : undefined
+          }),
+          editActionHref: `/customers/${customer.id}/edit?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindowLayout(req.query.layout) ? "&layout=child" : ""}`,
+          isChildWindow: isChildWindowLayout(req.query.layout),
           formData,
           errors: ["An active customer with this email address already exists."]
         });
