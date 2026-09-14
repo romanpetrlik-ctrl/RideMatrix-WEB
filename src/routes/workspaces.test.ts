@@ -99,8 +99,8 @@ test("dashboard template renders only the canonical operational menu", () => {
   assert.doesNotMatch(template, /dashboard-layout|Management|Platform/);
   assert.match(template, /class="operations-menu-prototype__action\$\{statusClass\}"/);
   assert.match(template, /aria-label="\$\{action\.label\}\.\$\{externalText\}\$\{statusText\}"/);
-  assert.match(template, /class="operations-menu-prototype__status-icon"[^>]*focusable="false" aria-hidden="true"/);
-  assert.match(template, /class="visually-hidden">\$\{action\.status\.message\}<\/span>/);
+  assert.match(template, /class="operations-menu-prototype__status-icon operations-menu-prototype__warning-icon operations-menu-prototype__warning-icon--\$\{action\.status\.tone === "red" \? "critical" : "warning"\}"[^>]*focusable="false" aria-hidden="true"/);
+  assert.match(template, /class="operations-menu-prototype__tooltip" role="tooltip">\$\{action\.status\.message\}<\/span>/);
 });
 
 test("dashboard keeps the admin redirect and authorization guard", () => {
@@ -153,9 +153,9 @@ test("workspace and customer-detail CSS rules stay intact", () => {
   assert.match(operationalAction, /min-height: var\(--rm-control-height\);/);
   assert.match(operationalAction, /font-size: var\(--rm-control-font-size\);/);
   assert.match(operationalAction, /padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*border-color: var\(--rm-admin-warning-border\);[\s\S]*background: var\(--rm-admin-warning-bg\);/);
-  assert.match(css, /\.operations-menu-prototype__action--amber \.operations-menu-prototype__status-icon \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
-  assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*border-bottom-color: var\(--rm-oxidized-iron\);/);
+  assert.match(css, /\.operations-menu-prototype__action--amber \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);/);
+  assert.match(css, /\.operations-menu-prototype__warning-icon--warning \{[\s\S]*color: var\(--rm-admin-warning-icon\);/);
+  assert.match(css, /\.operations-menu-prototype__action--red \{[\s\S]*background: var\(--rm-admin-cta-attention-bg\);/);
   assert.match(css, /\.button--small \{[\s\S]*min-height: var\(--rm-control-height-compact\);/);
   assert.match(mobile820, /\.dashboard-tile-grid,\s*\.workspace-tile-grid\s*\{[^}]*grid-template-columns: 1fr;/);
 
