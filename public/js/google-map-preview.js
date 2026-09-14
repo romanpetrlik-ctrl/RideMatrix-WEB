@@ -3,7 +3,7 @@
 
   var canUseWeakSet = typeof WeakSet === "function";
   var rendered = canUseWeakSet ? new WeakSet() : [];
-  var loading;
+  var loadingByKey = {};
 
   function ensureLibraries(libraries) {
     if (!Array.isArray(libraries) || libraries.length === 0) return Promise.resolve(true);
@@ -49,8 +49,8 @@
           return true;
         });
       }
-      if (loading) {
-        return loading.then(function () {
+      if (loadingByKey[browserKey]) {
+        return loadingByKey[browserKey].then(function () {
           return ensureLibraries(libraries).then(function () {
             previewElements.forEach(function (element) { render(element, window.google.maps); });
             return true;
@@ -58,20 +58,23 @@
         });
       }
 
-      loading = new Promise(function (resolve, reject) {
-        var callback = "rideMatrixMapsLoaded";
+      loadingByKey[browserKey] = new Promise(function (resolve, reject) {
+        var callback = "rideMatrixMapsLoaded_" + Math.random().toString(36).slice(2);
         window[callback] = function () {
-          loading = null;
+          delete loadingByKey[browserKey];
           resolve(true);
           delete window[callback];
         };
         var script = document.createElement("script");
         script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey) + "&callback=" + callback + "&loading=async";
         script.async = true;
-        script.onerror = function () { loading = null; reject(new Error("Google Maps preview unavailable")); };
+        script.onerror = function () {
+          delete loadingByKey[browserKey];
+          reject(new Error("Google Maps preview unavailable"));
+        };
         document.head.appendChild(script);
       });
-      return loading.then(function () {
+      return loadingByKey[browserKey].then(function () {
         return ensureLibraries(libraries).then(function () {
           previewElements.forEach(function (element) { render(element, window.google.maps); });
           return true;

@@ -497,7 +497,6 @@ async function resolveCustomerAddressPersistence(formData: {
     };
   }
 
-  const mapService = getMapService();
   const browserPoint = {
     latitude: parseCustomerCoordinate(formData.latitude),
     longitude: parseCustomerCoordinate(formData.longitude)
@@ -516,34 +515,45 @@ async function resolveCustomerAddressPersistence(formData: {
     };
   }
 
-  if (isValidGeoPoint(browserPoint)) {
+  try {
+    const mapService = getMapService();
+    if (isValidGeoPoint(browserPoint)) {
+      return {
+        address,
+        latitude: browserPoint.latitude,
+        longitude: browserPoint.longitude,
+        geocodedAt: new Date().toISOString(),
+        geocodeStatus: "client-place"
+      };
+    }
+
+    const geocoded = await mapService.geocodeAddress(address);
+    if (geocoded) {
+      return {
+        address,
+        latitude: geocoded.point.latitude,
+        longitude: geocoded.point.longitude,
+        geocodedAt: new Date().toISOString(),
+        geocodeStatus: geocoded.matchQuality || "exact"
+      };
+    }
+
     return {
       address,
-      latitude: browserPoint.latitude,
-      longitude: browserPoint.longitude,
+      latitude: null,
+      longitude: null,
       geocodedAt: new Date().toISOString(),
-      geocodeStatus: "client-place"
+      geocodeStatus: mapService.enabled ? "no-result" : "disabled"
     };
-  }
-
-  const geocoded = await mapService.geocodeAddress(address);
-  if (geocoded) {
+  } catch {
     return {
       address,
-      latitude: geocoded.point.latitude,
-      longitude: geocoded.point.longitude,
-      geocodedAt: new Date().toISOString(),
-      geocodeStatus: geocoded.matchQuality || "exact"
+      latitude: null,
+      longitude: null,
+      geocodedAt: null,
+      geocodeStatus: "unavailable"
     };
   }
-
-  return {
-    address,
-    latitude: null,
-    longitude: null,
-    geocodedAt: new Date().toISOString(),
-    geocodeStatus: mapService.enabled ? "no-result" : "disabled"
-  };
 }
 
 function getCustomerMapView(customer: CustomerRecord): MapView | null {
