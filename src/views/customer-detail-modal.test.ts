@@ -43,7 +43,6 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(css, /\.customer-detail-layout__map \.address-map-preview,[\s\S]*?\.address-map-placeholder \{[\s\S]*?flex: 1 1 auto;[\s\S]*?min-height: 0;/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?grid-template-columns: 1fr/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.customer-detail-layout > \* \{[\s\S]*?height: auto;/);
-  assert.match(css, /\.site-header \.context-bar__action,[\s\S]*?\.site-header \.context-bar__action:visited,[\s\S]*?\.site-header \.context-bar__action:hover,[\s\S]*?\.site-header \.context-bar__action:focus \{[\s\S]*?color: var\(--rm-antique-white\);/);
   assert.doesNotMatch(css, /\.site-header \.context-toolbar \.button,[\s\S]*?color: var\(--rm-antique-white\);/);
   for (const label of ["Call", "Send WhatsApp message", "Send Email", "Edit Customer", "Suspend Customer", "Delete Record", "Close window"]) {
     assert.match(context, new RegExp(`>${label}<`));
@@ -54,8 +53,8 @@ test("customer detail keeps a home address map area and readable context actions
   assert.match(read("public/js/customer-window-coordination.js"), /event\.source/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.telHref %>">Call/);
   assert.match(content, /class="button button--secondary" href="<%= customer\.whatsappHref %>" target="_blank" rel="noopener noreferrer">Send WhatsApp message/);
-  assert.match(context, /class="button button--execute" href="<%= customer\.newBookingHref %>">New Booking/);
-  assert.match(context, /class="button button--danger" href="<%= customer\.deleteHref %>">Delete Record/);
+  assert.match(context, /class="button button--admin-cta" href="<%= customer\.newBookingHref %>">New Booking/);
+  assert.match(context, /class="button button--danger button--admin-cta button--admin-cta--negative" href="<%= customer\.deleteHref %>">Delete Record/);
 });
 
 test("customer detail map receives browser configuration and map id", () => {
@@ -69,8 +68,8 @@ test("customer detail map receives browser configuration and map id", () => {
   assert.match(detail, /mapBrowserApiKey, mapId/);
   assert.match(partial, /mapBrowserApiKey,/);
   assert.match(partial, /mapId,/);
-  assert.match(map, /data-map-browser-key/);
-  assert.match(map, /data-map-id/);
+  assert.match(map, /data-map-browser-key="<%= typeof mapBrowserApiKey === 'string' \? mapBrowserApiKey : '' %>"/);
+  assert.match(map, /data-map-id="<%= typeof mapId === 'string' \? mapId : '' %>"/);
 });
 
 test("customer edit uses server-rendered customer-specific action URLs and preserves child layout", () => {

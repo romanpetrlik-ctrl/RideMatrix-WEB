@@ -2,8 +2,8 @@
   <nav class="context-bar__actions" aria-label="Page actions">
     <% actions.forEach((action) => {
       const tone = action.tone || (action.type === "submit" ? "execute" : "execute-helper");
-      const semanticTone = tone === "primary" ? "execute" : tone === "secondary" ? "execute-helper" : tone === "danger" ? "execute-negative" : tone;
-      const actionClass = `button button--${semanticTone} site-header__action context-bar__action context-bar__action--${tone}`;
+      const isNegative = tone === "danger" || tone === "execute-negative";
+      const actionClass = `button button--admin-cta${isNegative ? " button--admin-cta--negative button--danger" : ""} site-header__action context-bar__action`;
     %>
       <% if (action.type === "submit") { %>
         <button

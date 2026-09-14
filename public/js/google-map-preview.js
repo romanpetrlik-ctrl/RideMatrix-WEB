@@ -37,45 +37,59 @@
       return true;
   }
 
+  function normalizeLibraries(libraries) {
+    return Array.isArray(libraries)
+      ? libraries.filter(Boolean).map(function (library) { return String(library).trim(); }).filter(Boolean)
+      : [];
+  }
+
   window.RideMatrixMaps = {
     render: render,
     load: function (browserKey, elements, options) {
       var previewElements = Array.isArray(elements) ? elements : [];
-      var libraries = options && Array.isArray(options.libraries) ? options.libraries.filter(Boolean) : [];
+      var libraries = normalizeLibraries(options && options.libraries);
+      var librariesKey = libraries.slice().sort().join(",");
       if (!browserKey) return Promise.resolve(false);
       if (window.google && window.google.maps) {
-        return ensureLibraries(libraries).then(function () {
+        return ensureLibraries(libraries).then(function (loaded) {
+          if (!loaded) throw new Error("Google Maps libraries unavailable");
           previewElements.forEach(function (element) { render(element, window.google.maps); });
           return true;
         });
       }
-      if (loadingByKey[browserKey]) {
-        return loadingByKey[browserKey].then(function () {
-          return ensureLibraries(libraries).then(function () {
+      var loaderKey = browserKey + "::" + librariesKey;
+      if (loadingByKey[loaderKey]) {
+        return loadingByKey[loaderKey].then(function () {
+          return ensureLibraries(libraries).then(function (loaded) {
+            if (!loaded) throw new Error("Google Maps libraries unavailable");
             previewElements.forEach(function (element) { render(element, window.google.maps); });
             return true;
           });
         });
       }
 
-      loadingByKey[browserKey] = new Promise(function (resolve, reject) {
+      loadingByKey[loaderKey] = new Promise(function (resolve, reject) {
         var callback = "rideMatrixMapsLoaded_" + Math.random().toString(36).slice(2);
         window[callback] = function () {
-          delete loadingByKey[browserKey];
+          delete loadingByKey[loaderKey];
           resolve(true);
           delete window[callback];
         };
         var script = document.createElement("script");
-        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey) + "&callback=" + callback + "&loading=async";
+        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(browserKey)
+          + "&callback=" + callback
+          + "&loading=async"
+          + (libraries.length ? "&libraries=" + encodeURIComponent(libraries.join(",")) : "");
         script.async = true;
         script.onerror = function () {
-          delete loadingByKey[browserKey];
+          delete loadingByKey[loaderKey];
           reject(new Error("Google Maps preview unavailable"));
         };
         document.head.appendChild(script);
       });
-      return loadingByKey[browserKey].then(function () {
-        return ensureLibraries(libraries).then(function () {
+      return loadingByKey[loaderKey].then(function () {
+        return ensureLibraries(libraries).then(function (loaded) {
+          if (!loaded) throw new Error("Google Maps libraries unavailable");
           previewElements.forEach(function (element) { render(element, window.google.maps); });
           return true;
         });
@@ -83,12 +97,11 @@
     }
   };
 
-  if (typeof document === "undefined") return;
   function showUnavailable(elements) {
-  elements.forEach(function (element) {
-    var message = element.querySelector("[data-map-error]");
-    if (message) message.hidden = false;
-  });
+    elements.forEach(function (element) {
+      var message = element.querySelector("[data-map-error]");
+      if (message) message.hidden = false;
+    });
   }
 
   if (typeof document === "undefined") return;
