@@ -146,6 +146,7 @@ test("shared context action partial renders only supplied actions with semantic 
 
 test("customer context toolbar preserves controls and shared sizing", () => {
   const template = read("src/views/partials/header-context/customers-list.ejs");
+  const customersIndex = read("src/views/pages/customers/index.ejs");
   const css = read("public/css/app.css");
   const toolbar = extractRuleBody(css, ".context-toolbar");
   const toolbarField = extractRuleBody(css, ".context-toolbar__field");
@@ -155,18 +156,24 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /<nav class="context-tabs" aria-label="Customer status filters">/);
   assert.match(template, /id="customers-search"/);
   assert.match(template, /id="customers-per-page"/);
+  assert.match(template, /context-toolbar__right[\s\S]*Records per page[\s\S]*customers-per-page[\s\S]*New customer/);
+  assert.match(template, /customers-per-page[\s\S]*New customer/);
   assert.match(template, /class="button button--execute" href="\/customers\/register">New customer/);
   assert.match(template, /context-toolbar context-toolbar--customers/);
+  assert.equal((customersIndex.match(/Administration/g) || []).length, 1);
+  assert.doesNotMatch(customersIndex, /context-toolbar[\s\S]*Administration[\s\S]*Customer management/);
   assert.match(css, /\.context-tab \{[\s\S]*height: var\(--rm-control-height\);[\s\S]*min-height: var\(--rm-control-height\);/);
   assert.match(css, /\.context-toolbar input,\s*\.context-toolbar select \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: 0 var\(--rm-control-padding-inline\);/);
   assert.match(css, /\.context-toolbar \.button:not\(\.button--small\),[\s\S]*?\.context-toolbar input\[type="submit"\]:not\(\.button--small\) \{[\s\S]*min-height: var\(--rm-control-height\);[\s\S]*padding: var\(--rm-control-padding-block\) var\(--rm-control-padding-inline\);/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);
-  assert.match(toolbar, /flex-wrap: wrap;/);
+  assert.match(toolbar, /display: block;/);
+  assert.match(css, /\.context-toolbar__form \{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
+  assert.match(css, /\.context-toolbar__right \{[\s\S]*justify-content: flex-end;[\s\S]*white-space: nowrap;/);
   assert.match(css, /\.context-toolbar--customers \.context-tabs \{[\s\S]*flex: 0 0 auto;/);
-  assert.match(css, /\.context-toolbar--customers \.context-toolbar__form \{[\s\S]*flex: 1 1 auto;[\s\S]*min-width: 0;/);
-  assert.match(css, /\.context-toolbar--customers \.context-toolbar__field \{[\s\S]*flex-basis: 18rem;/);
+  assert.match(css, /\.context-toolbar--customers \.context-toolbar__left \{[\s\S]*flex-wrap: nowrap;/);
+  assert.match(css, /\.context-toolbar--customers \.context-toolbar__field \{[\s\S]*flex: 1 1 18rem;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar__field label \{[\s\S]*margin-bottom: 0;/);
-  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-toolbar__form \{[\s\S]*flex-basis: 100%;/);
+  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-toolbar__form \{[\s\S]*grid-template-columns: 1fr;/);
   assert.doesNotMatch(toolbarControls, /min-height:\s*40px/);
 });

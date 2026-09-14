@@ -1460,15 +1460,20 @@ button:visited,
 }
 
 .context-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rm-control-gap);
+  display: block;
   min-width: 0;
 }
 
-.context-toolbar__form,
+.context-toolbar__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.context-toolbar__left,
+.context-toolbar__right,
 .context-toolbar__actions {
   display: flex;
   flex-wrap: wrap;
@@ -1476,9 +1481,13 @@ button:visited,
   align-items: center;
 }
 
-.context-toolbar__form {
-  flex: 1 1 48rem;
+.context-toolbar__left {
+  min-width: 0;
+}
+
+.context-toolbar__right {
   justify-content: flex-end;
+  white-space: nowrap;
 }
 
 .context-toolbar__field {
@@ -1499,22 +1508,25 @@ button:visited,
   align-items: center;
 }
 
+.context-toolbar--customers .context-toolbar__form {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.context-toolbar--customers .context-toolbar__left {
+  flex-wrap: nowrap;
+}
+
 .context-toolbar--customers .context-tabs {
   flex: 0 0 auto;
 }
 
-.context-toolbar--customers .context-toolbar__form {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.context-toolbar--customers .context-tabs,
-.context-toolbar--customers .context-toolbar__form {
+.context-toolbar--customers .context-toolbar__left,
+.context-toolbar--customers .context-toolbar__right {
   min-width: 0;
 }
 
 .context-toolbar--customers .context-toolbar__field {
-  flex-basis: 18rem;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
@@ -2071,13 +2083,22 @@ button:visited,
     margin: 0.25rem 0;
   }
 
-  .context-toolbar__form,
-  .context-toolbar__actions {
+  .context-toolbar__form {
     align-items: stretch;
   }
 
   .context-toolbar--customers .context-toolbar__form {
-    flex-basis: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .context-toolbar--customers .context-toolbar__left {
+    flex-wrap: wrap;
+  }
+
+  .context-toolbar--customers .context-toolbar__right {
+    justify-content: flex-start;
+    width: 100%;
+    white-space: normal;
   }
 
   .context-toolbar__field,
