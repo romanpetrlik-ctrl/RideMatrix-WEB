@@ -6,7 +6,7 @@ import test, { after, before, describe } from "node:test";
 import express from "express";
 import { createRecoveryRouter } from "./recovery";
 
-describe("GET /recovery", () => {
+describe("GET /recovery", { concurrency: false }, () => {
   type MockSession = {
     authenticated: boolean;
     user?: {
