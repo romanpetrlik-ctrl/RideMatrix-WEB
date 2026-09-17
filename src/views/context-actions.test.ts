@@ -71,6 +71,9 @@ test("shared context action partial renders only supplied actions with semantic 
   const header = read("src/views/partials/header.ejs");
   const actions = read("src/views/partials/context-actions.ejs");
   const customersIndex = read("src/views/pages/customers/index.ejs");
+  const vehiclesIndex = read("src/views/pages/vehicles/index.ejs");
+  const customerDetail = read("src/views/pages/customers/detail.ejs");
+  const staffInvite = read("src/views/pages/staff/invite.ejs");
   const css = read("public/css/app.css");
   const siteHeaderAction = extractRuleBody(css, ".site-header__action");
   const systemBarAccountAction = extractRuleBody(css, ".system-status-bar__account-action");
@@ -87,6 +90,10 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.doesNotMatch(actions, /button--admin-cta--dynamic|button--admin-cta--system/);
   assert.match(actions, /site-header__action context-bar__action/);
   assert.match(customersIndex, /customers-table__actions-list"/);
+  assert.match(customersIndex, /<main class="container rm-page-shell customer-list-page">/);
+  assert.match(vehiclesIndex, /<main class="container rm-page-shell vehicle-page vehicle-list-page">/);
+  assert.match(customerDetail, /<main class="container rm-page-shell customer-detail-page">/);
+  assert.match(staffInvite, /<main class="container rm-page-shell staff-page staff-invite-page">/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>View/);
   assert.match(customersIndex, /button button--admin-cta button--small.*>Edit/);
   assert.match(customersIndex, /button--admin-cta button--admin-cta--negative button--small.*>Delete/);
@@ -163,7 +170,8 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.context-toolbar \.button--dynamic-cta \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
   assert.match(css, /\.customer-register-panel--private > \.private-customer-page__heading \{[\s\S]*font-size: 30px;[\s\S]*line-height: 1\.1;[\s\S]*margin-block: 0 0\.35rem;/);
   assert.match(css, /\.customer-form-page--private \.customer-form-panel > p \{[\s\S]*margin-top: 0;[\s\S]*margin-bottom: 0\.75rem;/);
-  assert.match(css, /\.customer-form-panel--centered \{[\s\S]*width: min\(100%, 1040px\);[\s\S]*margin-inline: auto;/);
+  assert.match(css, /\.customer-form-panel--centered \{[\s\S]*width: 100%;[\s\S]*max-width: none;[\s\S]*margin-inline: 0;/);
+  assert.doesNotMatch(css, /\.customer-form-panel--centered \{[\s\S]*1040px/);
   assert.match(css, /\.customer-register-panel--private \.private-customer-form \{[\s\S]*margin-top: 0;/);
   assert.match(css, /\.private-customer-form__section-intro \{[\s\S]*color: var\(--rm-text-soft\);/);
   assert.match(css, /\.system-status-bar__account-actions \{[\s\S]*flex-wrap: wrap;[\s\S]*min-width: 0;/);
@@ -257,13 +265,49 @@ test("customer context toolbar preserves controls and shared sizing", () => {
 test("shared header keeps one system bar and no legacy navigation rows", () => {
   const baseLayout = read("src/views/layouts/base.ejs");
   const header = read("src/views/partials/header.ejs");
+  const systemStatus = read("src/views/partials/system-status-bar.ejs");
   const css = read("public/css/app.css");
 
   assert.equal((baseLayout.match(/system-status-bar/g) || []).length, 1);
+  assert.match(baseLayout, /<main class="container rm-page-shell">/);
+  assert.match(header, /class="container rm-page-shell site-header__inner"/);
+  assert.match(header, /class="container rm-page-shell site-header__context"/);
+  assert.match(systemStatus, /class="system-status-bar__inner rm-page-shell"/);
   assert.doesNotMatch(header, /module-bar|module bar|breadcrumb/i);
   assert.doesNotMatch(css, /module-bar|breadcrumb/i);
   assert.equal((header.match(/context-toolbar/g) || []).length, 0);
   assert.match(header, /contextBarPartial/);
+  assert.match(css, /--rm-page-shell-max-width:\s*1320px;/);
+  assert.match(css, /--rm-page-shell-edge-space:\s*clamp\(1rem, 2vw, 1\.5rem\);/);
+  assert.match(css, /\.rm-page-shell,\s*\.container \{[\s\S]*width: min\(calc\(100% - \(2 \* var\(--rm-page-shell-edge-space\)\)\), var\(--rm-page-shell-max-width\)\);[\s\S]*max-width: var\(--rm-page-shell-max-width\);[\s\S]*margin-inline: auto;[\s\S]*min-width: 0;[\s\S]*box-sizing: border-box;/);
+  assert.match(css, /\.system-status-bar__inner \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\);/);
+  assert.doesNotMatch(css, /--rm-top-bar-edge-space/);
+  assert.doesNotMatch(css, /--rm-main-content-edge-space/);
+  assert.doesNotMatch(css, /\.site-header > \.container \{/);
   assert.match(css, /\.context-toolbar \{[\s\S]*min-height: var\(--rm-context-bar-min-height\);/);
   assert.doesNotMatch(css, /html\s*,\s*body\s*\{[\s\S]*overflow-x:\s*hidden;/);
+});
+
+test("shell-scoped overflow and wrapper behavior stays consistent", () => {
+  const css = read("public/css/app.css");
+  const register = read("src/views/pages/customers/register.ejs");
+  const importPage = read("src/views/pages/customers/import.ejs");
+  const deletePage = read("src/views/pages/customers/delete.ejs");
+  const bookingsPage = read("src/views/pages/customers/bookings.ejs");
+  const vehiclesDetail = read("src/views/pages/vehicles/detail.ejs");
+
+  assert.match(register, /<main class="container rm-page-shell customer-page/);
+  assert.match(importPage, /<main class="container rm-page-shell stack">/);
+  assert.match(deletePage, /<main class="container rm-page-shell">/);
+  assert.match(bookingsPage, /<main class="container rm-page-shell customer-detail-page">/);
+  assert.match(vehiclesDetail, /<main class="container rm-page-shell vehicle-page vehicle-detail-page">/);
+  assert.match(css, /\.customers-table-wrapper,\s*\.staff-table-wrapper \{[\s\S]*width: 100%;[\s\S]*min-width: 0;[\s\S]*overflow-x: auto;/);
+  assert.match(css, /\.vehicle-table-wrapper \{[\s\S]*width:100%;[\s\S]*min-width:0;[\s\S]*overflow-x:auto;/);
+  assert.doesNotMatch(css, /\.customer-register-panel \{[\s\S]*overflow-x:\s*auto;/);
+  assert.match(css, /\.customer-type-selector \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*min-width: 0;/);
+  assert.match(css, /\.vehicle-card \{[\s\S]*min-width:0;/);
+  assert.match(css, /\.vehicle-detail-grid > \* \{[\s\S]*min-width:0;/);
+  assert.match(css, /\.context-toolbar--customers \.context-tabs \.context-tab\.context-tab--dynamic \{[\s\S]*width: 7\.25rem;/);
+  assert.doesNotMatch(css, /^\s*\.context-tab\.context-tab--dynamic\s*\{[\s\S]*?width:/m);
+  assert.doesNotMatch(css, /Help \/ Recovery|href="\/recovery"|breadcrumb|module-bar/i);
 });

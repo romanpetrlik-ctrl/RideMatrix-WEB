@@ -127,8 +127,8 @@
 
   --rm-shadow-soft: 0 8px 24px rgba(88, 49, 1, 0.12);
   --rm-shadow-bar: 0 2px 8px rgba(88, 49, 1, 0.18);
-  --rm-top-bar-edge-space: 50px;
-  --rm-main-content-edge-space: clamp(1rem, 2vw, 1.5rem);
+  --rm-page-shell-max-width: 1320px;
+  --rm-page-shell-edge-space: clamp(1rem, 2vw, 1.5rem);
   --rm-panel-inline-space: 1.25rem;
 }
 
@@ -156,12 +156,13 @@ a {
   color: inherit;
 }
 
+.rm-page-shell,
 .container {
-  /* Main operational workspace: use the compact edge spacing without capping
-     the width, so wide desktop screens do not show large unused margins. */
-  width: calc(100% - (2 * var(--rm-main-content-edge-space)));
-  max-width: none;
-  margin: 0 auto;
+  width: min(calc(100% - (2 * var(--rm-page-shell-edge-space))), var(--rm-page-shell-max-width));
+  max-width: var(--rm-page-shell-max-width);
+  margin-inline: auto;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .phone-number-component {
@@ -227,8 +228,6 @@ a {
 }
 
 .system-status-bar__inner {
-  width: calc(100% - (2 * var(--rm-top-bar-edge-space)));
-  margin: 0 auto;
   min-height: 2.25rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -399,11 +398,6 @@ a {
   box-shadow: var(--rm-shadow-bar);
 }
 
-.site-header > .container {
-  width: calc(100% - (2 * var(--rm-top-bar-edge-space)));
-  max-width: none;
-}
-
 .site-header__link {
   color: var(--rm-context-bar-text);
   text-decoration: none;
@@ -496,10 +490,9 @@ h3 {
 }
 
 .customer-form-panel--centered {
-  /* Keep private customer register/edit forms centered and readable instead of spanning the full viewport width. */
-  width: min(100%, 1040px);
-  margin-inline: auto;
-  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
 }
 
 label {
@@ -617,16 +610,12 @@ button:visited,
   background: #fff9f2;
 }
 
-.customer-register-panel {
-  overflow-x: auto;
-}
-
 .customer-type-selector {
   display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   margin-top: 1.25rem;
-  min-width: 640px;
+  min-width: 0;
 }
 
 .customer-type-card {
@@ -1728,6 +1717,7 @@ button:visited,
 .customers-table-wrapper,
 .staff-table-wrapper {
   width: 100%;
+  min-width: 0;
   overflow-x: auto;
   padding-inline: var(--rm-panel-inline-space);
 }
@@ -2022,10 +2012,6 @@ button:visited,
 }
 
 @media (max-width: 820px) {
-  :root {
-    --rm-top-bar-edge-space: 20px;
-  }
-
   .dashboard-tile-grid,
   .workspace-tile-grid {
     grid-template-columns: 1fr;
@@ -2221,7 +2207,8 @@ button:visited,
 .vehicle-page__header h1 { margin-bottom:.25rem; }
 .vehicle-toolbar { justify-content:flex-start; }
 .vehicle-toolbar label { display:flex; align-items:center; gap:.5rem; }
-.vehicle-card { background:#fff; border:1px solid #e1dfdd; border-radius:8px; padding:1.25rem; margin:1rem 0; overflow:auto; }
+.vehicle-card { background:#fff; border:1px solid #e1dfdd; border-radius:8px; padding:1.25rem; margin:1rem 0; min-width:0; }
+.vehicle-table-wrapper { width:100%; min-width:0; overflow-x:auto; }
 .vehicle-table { width:100%; border-collapse:collapse; min-width:760px; }
 .vehicle-table th, .vehicle-table td { padding:.8rem; border-bottom:1px solid #e1dfdd; text-align:left; }
 .vehicle-form__grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:1rem; }
@@ -2229,6 +2216,7 @@ button:visited,
 .vehicle-form__wide { grid-column:1/-1; }
 .vehicle-form textarea { min-height:6rem; }
 .vehicle-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.vehicle-detail-grid > * { min-width:0; }
 .vehicle-detail-grid dl { display:grid; grid-template-columns:8rem 1fr; gap:.5rem; }
 .vehicle-detail-grid dt { font-weight:700; }
 .vehicle-document-form { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; }

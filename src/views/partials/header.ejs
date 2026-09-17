@@ -12,7 +12,7 @@
 
 <header class="site-header">
   <% if (headerContextActions.length > 0) { %>
-    <div class="container site-header__inner">
+    <div class="container rm-page-shell site-header__inner">
       <div class="site-header__context-actions">
         <%- include("context-actions", { actions: headerContextActions }) %>
       </div>
@@ -21,7 +21,7 @@
   <% } %>
 
   <% if (headerContextBarPartial) { %>
-    <div class="container site-header__context">
+    <div class="container rm-page-shell site-header__context">
       <% if (headerContextBarPartial) { %>
         <%- include(headerContextBarPartial, headerContextBarData) %>
       <% } %>
