@@ -87,7 +87,9 @@ async function checkRoute(page: Page, route: string, viewportWidth: number): Pro
     ];
     const shells = shellSelectors.map((selector) => {
       const element = document.querySelector<HTMLElement>(selector);
-      assert(element, `Missing ${selector}`);
+      if (!element) {
+        throw new Error(`Missing ${selector}`);
+      }
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       return {
@@ -125,10 +127,10 @@ async function checkRoute(page: Page, route: string, viewportWidth: number): Pro
   for (const shell of result.shells) {
     assert.ok(Math.abs(shell.left - expectedEdge) <= 1, `${route} ${shell.selector} left edge mismatch`);
     assert.ok(Math.abs(shell.right - (viewportWidth - expectedEdge)) <= 1, `${route} ${shell.selector} right edge mismatch`);
-    assert.equal(shell.maxWidth, "none");
-    assert.equal(shell.minWidth, "0px");
-    assert.equal(shell.marginLeft, `${expectedEdge}px`);
-    assert.equal(shell.marginRight, `${expectedEdge}px`);
+    assert.equal(shell.maxWidth, "none", `${route} ${shell.selector} max-width`);
+    assert.equal(shell.minWidth, "0px", `${route} ${shell.selector} min-width`);
+    assert.equal(shell.marginLeft, `${expectedEdge}px`, `${route} ${shell.selector} margin-left`);
+    assert.equal(shell.marginRight, `${expectedEdge}px`, `${route} ${shell.selector} margin-right`);
     assert.notEqual(shell.paddingLeft, "");
     assert.notEqual(shell.paddingRight, "");
   }

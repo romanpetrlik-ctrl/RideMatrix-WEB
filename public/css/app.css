@@ -285,7 +285,6 @@ a {
   padding-block: var(--rm-context-bar-padding-block);
   box-sizing: border-box;
   min-width: 0;
-  max-width: 100%;
 }
 
 .site-header__context-actions {
