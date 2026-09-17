@@ -53,6 +53,8 @@
   --rm-cta-dynamic-padding-block: 0.35rem;
   --rm-cta-dynamic-padding-inline: var(--rm-control-padding-inline-compact);
   --rm-cta-dynamic-font-size: var(--rm-control-font-size-compact);
+  --rm-context-bar-min-height: 3.5rem;
+  --rm-context-bar-padding-block: 0.625rem;
   --rm-cta-system-height: 2.125rem;
   --rm-cta-system-padding-block: 0.35rem;
   --rm-cta-system-padding-inline: 0.65rem;
@@ -272,8 +274,14 @@ a {
   white-space: nowrap;
 }
 
-.site-header__context {
-  padding-bottom: 0.3rem;
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-height: var(--rm-context-bar-min-height);
+  padding-block: var(--rm-context-bar-padding-block);
+  box-sizing: border-box;
 }
 
 .site-header__context-actions {
@@ -284,6 +292,10 @@ a {
   flex: 0 1 auto;
   min-width: 0;
   margin-left: auto;
+}
+
+.site-header__context {
+  padding: 0;
 }
 
 .site-header__action {
@@ -1413,8 +1425,12 @@ button:visited,
 }
 
 .context-toolbar {
-  display: block;
+  display: flex;
+  align-items: center;
   min-width: 0;
+  min-height: var(--rm-context-bar-min-height);
+  padding-block: var(--rm-context-bar-padding-block);
+  box-sizing: border-box;
 }
 
 .context-toolbar__form {
@@ -1423,6 +1439,7 @@ button:visited,
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
+  width: 100%;
 }
 
 .context-toolbar__left,
@@ -1430,7 +1447,7 @@ button:visited,
 .context-toolbar__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--rm-control-gap);
   align-items: center;
 }
 
@@ -1441,6 +1458,7 @@ button:visited,
 .context-toolbar__right {
   justify-content: flex-end;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .context-toolbar__field {
@@ -2055,6 +2073,7 @@ button:visited,
   }
 
   .site-header__inner {
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: flex-start;
     gap: 0.5rem;
