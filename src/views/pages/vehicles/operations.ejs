@@ -4,7 +4,7 @@
   <body>
     <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
     <%- include("../../partials/header", { appTitle }) %>
-    <main class="container vehicle-page"><section class="vehicle-card empty-state"><h1><%= title %></h1>
+    <main class="container rm-page-shell vehicle-page vehicle-detail-page"><section class="vehicle-card empty-state"><h1><%= title %></h1>
       <% if (locals.driverSummary !== undefined) { %>
         <% if (driverSummary) { %>
           <dl class="vehicle-driver-summary">
