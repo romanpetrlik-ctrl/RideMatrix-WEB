@@ -83,6 +83,8 @@ test("dashboard operational menu is the canonical navigation", () => {
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "All staff")?.href, "/staff");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Live board")?.href, "/dashboard?tile=dispatch-live-board");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Live Map")?.href, "/dashboard?tile=dispatch-live-map");
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Help / Recovery"), undefined);
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.href === "/recovery"), undefined);
 });
 
 test("drivers and vehicles operational actions use existing destinations or dashboard placeholders", () => {
@@ -114,6 +116,7 @@ test("operational dashboard links resolve to their selected-action notices", () 
 test("dashboard template renders only the canonical operational menu", () => {
   const template = readFileSync(path.join(process.cwd(), "src/views/pages/dashboard.ejs"), "utf8");
   assert.match(template, /Operational shortcuts/);
+  assert.doesNotMatch(template, /Help \/ Recovery|href="\/recovery"/);
   assert.doesNotMatch(template, /dashboard-layout|Management|Platform/);
   assert.match(template, /class="operations-menu-prototype__action\$\{statusClass\}"/);
   assert.match(template, /aria-label="\$\{action\.label\}\.\$\{externalText\}\$\{statusText\}"/);

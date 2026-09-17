@@ -50,9 +50,6 @@
     </div>
 
     <div class="system-status-bar__right">
-      <% if (isAuthenticated) { %>
-        <a class="system-status-bar__user-link" href="/recovery">Help / Recovery</a>
-      <% } %>
       <a class="system-status-bar__user-link" href="<%= userHref %>">
         <%= currentUserLabel %>
       </a>
