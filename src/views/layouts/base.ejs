@@ -12,11 +12,6 @@
     <% if (typeof showContextBar === "undefined" || showContextBar) { %>
       <%- include("../partials/header", {
         appTitle,
-        pageTitle: typeof pageTitle !== "undefined" ? pageTitle : title,
-        pageMeta: typeof pageMeta !== "undefined" ? pageMeta : "Module workspace",
-        activeRoleLabel: typeof activeRoleLabel !== "undefined" ? activeRoleLabel : "",
-        breadcrumbs: typeof breadcrumbs !== "undefined" ? breadcrumbs : [],
-        hintsLabel: typeof hintsLabel !== "undefined" ? hintsLabel : "",
         contextBarPartial: typeof contextBarPartial !== "undefined" ? contextBarPartial : "",
         contextBarData: typeof contextBarData !== "undefined" ? contextBarData : {},
         contextBarActions: typeof contextBarActions !== "undefined" ? contextBarActions : []

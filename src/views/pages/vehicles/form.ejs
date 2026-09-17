@@ -3,7 +3,7 @@
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: null, currentUserHref: "/account" }) %>
-    <%- include("../../partials/header", { appTitle, pageTitle: title, pageMeta: "Vehicle management", breadcrumbs: [{ label: "Vehicles", href: "/vehicles" }, { label: title }] }) %>
+    <%- include("../../partials/header", { appTitle }) %>
     <main class="container vehicle-page"><section class="vehicle-card vehicle-form"><h1><%= title %></h1>
       <% if (errors.length) { %><div class="notice notice--critical"><% errors.forEach((error) => { %><p><%= error %></p><% }) %></div><% } %>
       <form method="post" action="<%= vehicle ? `/vehicles/${vehicle.id}/edit` : '/vehicles/new' %>"><%- locals.csrfField || "" %>

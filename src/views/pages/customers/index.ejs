@@ -11,14 +11,6 @@
 
     <%- include("../../partials/header", {
       appTitle,
-      pageTitle: "Customers",
-      pageMeta: "Manage customer records, contact data, and status.",
-      activeRoleLabel,
-      breadcrumbs: [
-        { label: "Administration", href: "/dashboard" },
-        { label: "Customer management" }
-      ],
-      hintsLabel: `${customerCount} customers`,
       contextBarPartial: "header-context/customers-list",
       contextBarData: { statusTabs, status, search, perPage, perPageOptions }
     }) %>

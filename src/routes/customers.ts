@@ -367,7 +367,7 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
 async function requireAdminSession(
   cookieHeader: string | undefined,
   loadSession: (cookieHeader?: string) => Promise<SessionAccount>
-): Promise<{ email: string; activeRoleLabel: string }> {
+): Promise<{ email: string }> {
   const session = await loadSession(cookieHeader);
 
   if (!session.authenticated || !session.user) {
@@ -381,8 +381,7 @@ async function requireAdminSession(
   }
 
   return {
-    email: session.user.email,
-    activeRoleLabel: getRoleLabel(session.user.active_role || "admin")
+    email: session.user.email
   };
 }
 
@@ -645,7 +644,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: "Customers",
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         customers: result.customers.map((customer) => ({
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
@@ -713,7 +711,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: "Customers Import",
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         latestBatches: batches.slice(0, 5),
         summary: null,
         errors: []
@@ -739,7 +736,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const importCsrfGuard = requireCsrfToken({ appTitle: options.appTitle });
 
   router.post("/customers/import", upload.single("bookingsCsv"), importCsrfGuard, async (req, res, next) => {
-    let sessionContext: { email: string; activeRoleLabel: string } | null = null;
+    let sessionContext: { email: string } | null = null;
 
     try {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
@@ -752,7 +749,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           title: "Customers Import",
           appTitle: options.appTitle,
           email: session.email,
-          activeRoleLabel: session.activeRoleLabel,
           latestBatches: batches.slice(0, 5),
           summary: null,
           errors: ["Please upload a non-empty CSV file."]
@@ -770,7 +766,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: "Customers Import",
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         latestBatches: batches.slice(0, 5),
         summary: result.summary,
         errors: []
@@ -793,7 +788,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           title: "Customers Import",
           appTitle: options.appTitle,
           email: sessionContext?.email || "",
-          activeRoleLabel: sessionContext?.activeRoleLabel || "Administration",
           latestBatches: batches.slice(0, 5),
           summary: null,
           errors: [`Missing required columns: ${error.missingColumns.join(", ")}`]
@@ -816,7 +810,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: "New Customer",
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         customerType,
         formData: {},
         errors: [],
@@ -841,7 +834,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   });
 
   router.post("/customers/register", async (req, res, next) => {
-    let sessionContext: { email: string; activeRoleLabel: string } | null = null;
+    let sessionContext: { email: string } | null = null;
 
     try {
       sessionContext = await requireAdminSession(req.headers.cookie, loadSession);
@@ -903,7 +896,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: "New Customer",
         appTitle: options.appTitle,
         email: sessionContext.email,
-        activeRoleLabel: sessionContext.activeRoleLabel,
         customerType: "private",
         formData: registerFormData,
         errors: registerErrors,
@@ -943,7 +935,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           title: "New Customer",
           appTitle: options.appTitle,
           email: sessionContext.email,
-          activeRoleLabel: sessionContext.activeRoleLabel,
           customerType: "private",
           formData: registerFormData,
           errors: ["An active customer with this email address already exists."],
@@ -981,7 +972,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: `${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         customer: {
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
@@ -1087,7 +1077,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: `${customer.surname}, ${customer.givenName} Bookings`,
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         customer: {
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
@@ -1133,7 +1122,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: `Delete ${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         customer,
         mapView: getCustomerMapView(customer),
         backToCustomersHref
@@ -1224,7 +1212,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: session.email,
-        activeRoleLabel: session.activeRoleLabel,
         customer,
         mapView: getCustomerMapView(customer),
         mapBrowserApiKey: readMapConfiguration().browserApiKey,
@@ -1255,7 +1242,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   });
 
   router.post("/customers/:customerId/edit", async (req, res, next) => {
-    let sessionContext: { email: string; activeRoleLabel: string } | null = null;
+    let sessionContext: { email: string } | null = null;
 
     try {
       sessionContext = await requireAdminSession(req.headers.cookie, loadSession);
@@ -1330,7 +1317,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         title: `Edit ${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: sessionContext.email,
-        activeRoleLabel: sessionContext.activeRoleLabel,
         customer,
         mapView: getCustomerMapView(customer),
         mapBrowserApiKey: readMapConfiguration().browserApiKey,
@@ -1396,7 +1382,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           title: `Edit ${customer.surname}, ${customer.givenName}`,
           appTitle: options.appTitle,
           email: sessionContext.email,
-          activeRoleLabel: sessionContext.activeRoleLabel,
           customer,
           mapView: getCustomerMapView(customer),
           mapBrowserApiKey: readMapConfiguration().browserApiKey,

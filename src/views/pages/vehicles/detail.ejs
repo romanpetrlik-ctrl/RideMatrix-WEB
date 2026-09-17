@@ -3,7 +3,7 @@
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
-    <%- include("../../partials/header", { appTitle, pageTitle: vehicle.registration, pageMeta: `${vehicle.make} ${vehicle.model}`, breadcrumbs: [{ label: "Vehicles", href: "/vehicles" }, { label: vehicle.registration }] }) %>
+    <%- include("../../partials/header", { appTitle }) %>
     <main class="container vehicle-page">
       <header class="vehicle-page__header"><div><h1><%= vehicle.registration %></h1><p><%= vehicle.make %> <%= vehicle.model %></p></div><div><span class="status-pill status-pill--<%= vehicle.status %>"><%= vehicle.status[0].toUpperCase() + vehicle.status.slice(1) %></span> <a class="button button--primary" href="/vehicles/<%= vehicle.id %>/edit">Edit</a></div></header>
       <% if (notice) { %><div class="notice notice--warning"><%= notice.replace(/-/g, " ") %></div><% } %>

@@ -1,34 +1,4 @@
 <%
-  const headerTitle = typeof pageTitle === "string" && pageTitle.trim()
-    ? pageTitle.trim()
-    : appTitle;
-
-  const headerMeta = typeof pageMeta === "string" && pageMeta.trim()
-    ? pageMeta.trim()
-    : "Operational workspace";
-
-  const headerRole = typeof activeRoleLabel === "string" && activeRoleLabel.trim()
-    ? activeRoleLabel.trim()
-    : "";
-
-  const headerBreadcrumbs = Array.isArray(breadcrumbs) ? breadcrumbs : [];
-  let previousBreadcrumbLabel = "";
-  let previousBreadcrumbHref = "";
-  let hasPreviousBreadcrumb = false;
-  const normalizedBreadcrumbs = headerBreadcrumbs.reduce((items, crumb) => {
-    if (!crumb || typeof crumb.label !== "string") return items;
-    const label = crumb.label.trim();
-    if (!label) return items;
-    const href = typeof crumb.href === "string" && crumb.href.trim() ? crumb.href.trim() : "";
-    if (hasPreviousBreadcrumb && label === previousBreadcrumbLabel && href === previousBreadcrumbHref) return items;
-    previousBreadcrumbLabel = label;
-    previousBreadcrumbHref = href;
-    hasPreviousBreadcrumb = true;
-    items.push({ label, href });
-    return items;
-  }, []);
-
-  const showHintsToggle = typeof hintsLabel === "string" && hintsLabel.trim();
   const headerContextBarPartial = typeof contextBarPartial === "string" && contextBarPartial.trim()
     ? contextBarPartial.trim()
     : "";
@@ -41,49 +11,12 @@
 %>
 
 <header class="site-header">
-  <div class="container site-header__inner">
-    <div class="site-header__left">
-      <div class="site-header__title"><%= headerTitle %></div>
-      <div class="site-header__meta"><%= headerMeta %></div>
-      <% if (headerRole) { %>
-        <div class="site-header__role">Module: <strong><%= headerRole %></strong></div>
-      <% } %>
-    </div>
-
-    <% if (headerContextActions.length > 0) { %>
+  <% if (headerContextActions.length > 0) { %>
+    <div class="container site-header__inner">
       <div class="site-header__context-actions">
         <%- include("context-actions", { actions: headerContextActions }) %>
       </div>
       <div class="site-header__action-divider" aria-hidden="true"></div>
-    <% } %>
-
-    <div class="site-header__right">
-      <% if (showHintsToggle) { %>
-        <div class="site-header__hint"><%= hintsLabel %></div>
-      <% } %>
-    </div>
-  </div>
-
-  <% if (normalizedBreadcrumbs.length > 0) { %>
-    <div class="site-header__breadcrumbs-row">
-      <div class="container">
-        <nav class="site-header__breadcrumbs" aria-label="Breadcrumbs">
-          <ol class="site-header__breadcrumb-list">
-            <% normalizedBreadcrumbs.forEach((crumb, index) => { %>
-              <li class="site-header__breadcrumb-item">
-                <% if (crumb.href && index < normalizedBreadcrumbs.length - 1) { %>
-                  <a class="site-header__breadcrumb-link" href="<%= crumb.href %>"><%= crumb.label %></a>
-                <% } else { %>
-                  <span class="site-header__breadcrumb-current"<% if (index === normalizedBreadcrumbs.length - 1) { %> aria-current="page"<% } %>><%= crumb.label %></span>
-                <% } %>
-                <% if (index < normalizedBreadcrumbs.length - 1) { %>
-                  <span class="site-header__breadcrumb-separator" aria-hidden="true">/</span>
-                <% } %>
-              </li>
-            <% }) %>
-          </ol>
-        </nav>
-      </div>
     </div>
   <% } %>
 

@@ -173,9 +173,6 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.doesNotMatch(css, /\.customer-form-page--private \.customer-form-panel > h1 \{[\s\S]*font-size: clamp\(1\.75rem, 2\.4vw, 2rem\);/);
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);
   assert.match(header, /headerContextActions\.length > 0/);
-  assert.match(header, /const normalizedBreadcrumbs = headerBreadcrumbs\.reduce/);
-  assert.match(header, /site-header__breadcrumbs-row/);
-  assert.match(header, /<nav class="site-header__breadcrumbs" aria-label="Breadcrumbs">/);
   assert.doesNotMatch(header, /site-header__action-divider[\s\S]*headerContextActions\.length === 0/);
   assert.doesNotMatch(css, /button--admin-cta--dynamic|button--admin-cta--system/);
 

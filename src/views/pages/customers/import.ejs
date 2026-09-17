@@ -1,12 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-  <%
-    const customerBreadcrumbs = [
-      { label: "Administration", href: "/dashboard" },
-      { label: "Customer management", href: "/customers" },
-      { label: "Customer import" }
-    ];
-  %>
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
     <%- include("../../partials/system-status-bar", {
@@ -17,12 +10,7 @@
     }) %>
 
     <%- include("../../partials/header", {
-      appTitle,
-      pageTitle: "Customers Import",
-      pageMeta: "Upload cleaned Cabcher bookings CSV and derive customer records by normalized email.",
-      activeRoleLabel,
-      hintsLabel: "Phase 1 import",
-      breadcrumbs: customerBreadcrumbs,
+      appTitle
     }) %>
 
     <main class="container stack">
