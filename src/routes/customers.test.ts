@@ -370,7 +370,7 @@ test("customer detail keeps New Booking unchanged and points Edit Customer to th
   }
 });
 
-test("customer pages render one canonical breadcrumb trail with customer dynamic controls", async () => {
+test("customer pages render customer dynamic controls without legacy breadcrumb rows", async () => {
   const server = createTestServer(adminSession, {
     getCustomerById: async () => createTestCustomer(),
     listRecentBookingsForCustomer: async () => [],
@@ -396,16 +396,9 @@ test("customer pages render one canonical breadcrumb trail with customer dynamic
     ]);
 
     for (const body of [listBody, detailBody, detailChildBody, editBody, editChildBody, registerBody]) {
-      assert.equal(countMatches(body, /aria-label="Breadcrumbs"/g), 1);
+      assert.equal(countMatches(body, /aria-label="Breadcrumbs"/g), 0);
     }
 
-    assert.match(listBody, /site-header__breadcrumb-current" aria-current="page">Customer management</);
-    assert.match(detailBody, /site-header__breadcrumb-link" href="\/customers">Customer management</);
-    assert.match(detailBody, /site-header__breadcrumb-current" aria-current="page">Lovelace, Ada</);
-    assert.match(editBody, /site-header__breadcrumb-link" href="\/customers">Customer management</);
-    assert.match(editBody, /site-header__breadcrumb-link" href="\/customers\/cust-test-1\?returnTo=%2Fcustomers">Lovelace, Ada</);
-    assert.match(editBody, /site-header__breadcrumb-current" aria-current="page">Edit customer</);
-    assert.match(registerBody, /site-header__breadcrumb-current" aria-current="page">Private customer</);
     assert.match(listBody, /class="context-tab context-tab--dynamic(?: context-tab--active)?"/);
     assert.match(listBody, /class="context-control--dynamic"/);
     assert.match(listBody, /button button--dynamic-cta" href="\/customers\/register">New customer/);

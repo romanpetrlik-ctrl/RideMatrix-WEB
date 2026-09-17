@@ -208,7 +208,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.doesNotMatch(template, /button--admin-cta--dynamic|button--admin-cta--system/);
   assert.match(template, /context-toolbar context-toolbar--customers/);
   assert.match(template, /class="context-tab context-tab--dynamic<%= tab\.isActive \? " context-tab--active" : "" %>"/);
-  assert.equal((customersIndex.match(/Administration/g) || []).length, 1);
+  assert.equal((customersIndex.match(/Administration/g) || []).length, 0);
   assert.doesNotMatch(customersIndex, /context-toolbar[\s\S]*Administration[\s\S]*Customer management/);
   assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*height: var\(--rm-cta-dynamic-height\);[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
   assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);[\s\S]*font-size: var\(--rm-cta-dynamic-font-size\);/);
