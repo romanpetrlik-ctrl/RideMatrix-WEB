@@ -127,7 +127,7 @@
 
   --rm-shadow-soft: 0 8px 24px rgba(88, 49, 1, 0.12);
   --rm-shadow-bar: 0 2px 8px rgba(88, 49, 1, 0.18);
-  --rm-page-shell-edge-space: clamp(1rem, 2vw, 3rem);
+  --rm-page-edge-space: clamp(1rem, 2vw, 3rem);
   --rm-panel-inline-space: 1.25rem;
 }
 
@@ -157,9 +157,10 @@ a {
 
 .rm-page-shell,
 .container {
-  width: calc(100% - (2 * var(--rm-page-shell-edge-space)));
+  display: block;
+  width: auto;
   max-width: none;
-  margin-inline: auto;
+  margin-inline: var(--rm-page-edge-space);
   min-width: 0;
   box-sizing: border-box;
 }
@@ -408,7 +409,8 @@ a {
   text-decoration: underline;
 }
 
-main.container {
+main.container,
+main.rm-page-shell {
   padding: 0.75rem 0 1.5rem;
 }
 
@@ -492,6 +494,8 @@ h3 {
   width: 100%;
   max-width: none;
   margin-inline: 0;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 label {
@@ -655,9 +659,11 @@ button:visited,
   display: grid;
   grid-template-columns: minmax(20rem, 1fr) minmax(30rem, 1.35fr) minmax(20rem, 1fr);
   gap: 1rem;
+  width: 100%;
   align-items: stretch;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
+  box-sizing: border-box;
 }
 
 .private-customer-form__column {
@@ -841,10 +847,12 @@ button:visited,
 }
 
 .customer-bookings-panel {
+  width: 100%;
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--rm-border);
   background: rgba(255, 249, 242, 0.6);
+  box-sizing: border-box;
 }
 
 .customer-bookings-panel--inline {
@@ -1148,6 +1156,10 @@ button:visited,
 }
 
 .dashboard-hero {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
   margin-bottom: 1.25rem;
 }
 
@@ -1157,14 +1169,22 @@ button:visited,
 
 .dashboard-layout {
   display: grid;
+  width: 100%;
+  max-width: none;
   gap: 1.5rem;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .workspace-tile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.85rem;
+  width: 100%;
+  max-width: none;
   margin-top: 0.5rem;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .workspace-tile-form {
@@ -1226,11 +1246,15 @@ button:visited,
 
 .operations-menu-prototype {
   display: grid;
+  width: 100%;
+  max-width: none;
   gap: 1rem;
   border: 1px solid var(--rm-border);
   background: #fff;
   box-shadow: 0 2px 8px rgba(23, 43, 56, 0.06);
   padding: 1.2rem var(--rm-panel-inline-space);
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .operations-menu-prototype__header {
@@ -1280,13 +1304,14 @@ button:visited,
 
 .operations-menu-prototype__actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: var(--rm-control-gap);
+  width: 100%;
   min-width: 0;
-  overflow-x: auto;
   padding-bottom: 0.2rem;
   padding-left: 0.75rem;
   border-left: 1px solid var(--rm-menu-separator);
+  box-sizing: border-box;
 }
 
 .operations-menu-prototype__action {
@@ -1718,11 +1743,12 @@ button:visited,
 }
 
 .customers-table-wrapper,
-.staff-table-wrapper {
+.staff-table-wrapper,
+.vehicle-table-wrapper,
+.table-wrapper {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
-  padding-inline: var(--rm-panel-inline-space);
 }
 
 .customers-table,
@@ -1894,27 +1920,37 @@ button:visited,
 
 .customer-detail-layout {
   display: grid;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
   grid-template-columns: minmax(0, 3fr) minmax(16rem, 1fr);
   gap: 1.25rem;
   align-items: stretch;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout > * {
+  width: 100%;
   min-width: 0;
   height: 100%;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout__information {
   display: grid;
+  width: 100%;
   gap: 1.25rem;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout__map {
   display: flex;
   flex-direction: column;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout__map .address-map-preview,
@@ -2008,6 +2044,10 @@ button:visited,
 
 .customer-detail-list dd {
   margin: 0;
+}
+
+.customer-detail-list .phone-number-actions {
+  grid-template-columns: 1fr;
 }
 
 .customer-detail-list__full {
@@ -2211,7 +2251,6 @@ button:visited,
 .vehicle-toolbar { justify-content:flex-start; }
 .vehicle-toolbar label { display:flex; align-items:center; gap:.5rem; }
 .vehicle-card { background:#fff; border:1px solid #e1dfdd; border-radius:8px; padding:1.25rem; margin:1rem 0; min-width:0; }
-.vehicle-table-wrapper { width:100%; min-width:0; overflow-x:auto; }
 .vehicle-table { width:100%; border-collapse:collapse; min-width:760px; }
 .vehicle-table th, .vehicle-table td { padding:.8rem; border-bottom:1px solid #e1dfdd; text-align:left; }
 .vehicle-form__grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:1rem; }
@@ -2404,8 +2443,6 @@ button:visited,
 }
 
 .staff-page .staff-table-wrapper {
-  width: 100%;
-  overflow-x: auto;
   padding-inline: 0;
 }
 
