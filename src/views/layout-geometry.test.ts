@@ -84,6 +84,8 @@ test("dashboard and private-customer layouts stay full width without non-table o
   const edit = read("src/views/pages/customers/edit.ejs");
   const mobile1200 = extractBlock(css, "@media (max-width: 1200px)");
   const mobile760 = extractBlock(css, "@media (max-width: 760px)");
+  const detailLayout = extractRuleBody(css, ".customer-detail-layout");
+  const detailPhoneActions = extractRuleBody(css, ".customer-detail-list .phone-number-actions");
 
   for (const selector of [
     ".dashboard-hero",
@@ -120,6 +122,11 @@ test("dashboard and private-customer layouts stay full width without non-table o
   assert.match(mobile1200, /\.private-customer-form__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(mobile1200, /\.private-customer-form__column--map\s*\{[^}]*grid-column: 1 \/ -1;/);
   assert.match(mobile760, /\.private-customer-form__grid\s*\{[^}]*grid-template-columns: 1fr;/);
+  assert.match(detailLayout, /width: 100%;/);
+  assert.match(detailLayout, /max-width: none;/);
+  assert.match(detailLayout, /min-width: 0;/);
+  assert.match(detailLayout, /box-sizing: border-box;/);
+  assert.match(detailPhoneActions, /grid-template-columns: 1fr;/);
 
   assert.match(chooseRole, /class="dashboard-layout"/);
   assert.match(chooseRole, /class="workspace-tile-grid"/);

@@ -847,10 +847,12 @@ button:visited,
 }
 
 .customer-bookings-panel {
+  width: 100%;
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--rm-border);
   background: rgba(255, 249, 242, 0.6);
+  box-sizing: border-box;
 }
 
 .customer-bookings-panel--inline {
@@ -1918,27 +1920,37 @@ button:visited,
 
 .customer-detail-layout {
   display: grid;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
   grid-template-columns: minmax(0, 3fr) minmax(16rem, 1fr);
   gap: 1.25rem;
   align-items: stretch;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout > * {
+  width: 100%;
   min-width: 0;
   height: 100%;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout__information {
   display: grid;
+  width: 100%;
   gap: 1.25rem;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout__map {
   display: flex;
   flex-direction: column;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .customer-detail-layout__map .address-map-preview,
@@ -2032,6 +2044,10 @@ button:visited,
 
 .customer-detail-list dd {
   margin: 0;
+}
+
+.customer-detail-list .phone-number-actions {
+  grid-template-columns: 1fr;
 }
 
 .customer-detail-list__full {
