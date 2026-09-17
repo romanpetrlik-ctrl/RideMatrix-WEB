@@ -1,162 +1,182 @@
 import assert from "node:assert/strict";
+import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { chromium, type Browser, type Page } from "playwright";
+
+const viewports = [
+  [1920, 1080], [1600, 900], [1440, 900], [1280, 800],
+  [1024, 768], [820, 900], [390, 844]
+] as const;
+const routes = [
+  "/choose-role", "/dashboard", "/customers", "/customers/register?type=private",
+  "/customers/1", "/customers/1/edit", "/staff", "/staff/invite", "/vehicles", "/vehicles/1"
+];
+const shellSelectors = [
+  ".system-status-bar__inner", ".site-header__inner", ".site-header__context",
+  "main", ".site-footer > .rm-page-shell"
+];
+const optionalSelectors = [".dashboard-layout", ".workspace-tile-grid", ".private-customer-form__grid"];
+const tableWrapperSelectors = [".customers-table-wrapper", ".staff-table-wrapper", ".vehicle-table-wrapper", ".table-wrapper"];
+
+type BrowserGeometry = {
+  selector: string;
+  rect: ReturnType<DOMRect["toJSON"]>;
+  computed: Record<string, string>;
+  parents: Array<{ tag: string; id: string; className: string }>;
+  suspectRules: string[];
+};
 
 function read(relativePath: string): string {
   return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function pageMarkup(route: string): string {
+  const pageClass = route.includes("/customers") ? "customers-page" : route.includes("/staff") ? "staff-page" : route.includes("/vehicles") ? "vehicle-page" : "dashboard-page";
+  const pageContent = route === "/choose-role"
+    ? '<section class="dashboard-layout"><div class="workspace-tile-grid"><article>Workspace</article></div></section>'
+    : route.includes("register") || route.includes("/edit")
+      ? '<form class="private-customer-form"><div class="private-customer-form__grid"><div>Details</div><div>Address</div><div>Map</div></div></form>'
+      : route.includes("/customers")
+        ? '<div class="customers-table-wrapper"><table class="customers-table"><tr><td>Customer</td></tr></table></div>'
+        : route.includes("/staff")
+          ? '<div class="staff-table-wrapper"><table class="staff-table"><tr><td>Staff</td></tr></table></div>'
+          : route.includes("/vehicles")
+            ? '<div class="vehicle-table-wrapper"><table class="vehicle-table"><tr><td>Vehicle</td></tr></table></div>'
+            : '<div class="dashboard-layout"><div class="workspace-tile-grid"><article>Workspace</article></div></div>';
+  return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/css/app.css"></head>
+    <body class="${pageClass}">
+      <div class="system-status-bar"><div class="container rm-page-shell system-status-bar__inner">System status</div></div>
+      <header class="site-header"><div class="container rm-page-shell site-header__inner"><strong>RideMatrix</strong></div>
+        <div class="container rm-page-shell site-header__context">Context</div></header>
+      <main class="container rm-page-shell">${pageContent}</main>
+      <footer class="site-footer"><div class="container rm-page-shell"></div></footer>
+    </body></html>`;
 }
 
-function extractRuleBody(source: string, selector: string): string {
-  const expression = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`);
-  const match = source.match(expression);
-  assert.ok(match, `Missing rule for selector: ${selector}`);
-  return match[1];
+async function startFixtureServer(): Promise<{ server: http.Server; origin: string }> {
+  const server = http.createServer((request, response) => {
+    const requestUrl = request.url || "/";
+    const requestPath = new URL(requestUrl, "http://localhost").pathname;
+    if (requestPath === "/css/app.css") {
+      response.writeHead(200, { "content-type": "text/css" });
+      response.end(read("public/css/app.css"));
+    } else if (routes.includes(requestUrl) || routes.includes(requestPath)) {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(pageMarkup(requestUrl));
+    } else {
+      response.writeHead(404);
+      response.end("Not found");
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  return { server, origin: `http://127.0.0.1:${address.port}` };
 }
 
-function extractBlock(source: string, marker: string): string {
-  const markerIndex = source.indexOf(marker);
-  assert.notEqual(markerIndex, -1, `Missing block marker: ${marker}`);
-  const openBraceIndex = source.indexOf("{", markerIndex);
-  assert.notEqual(openBraceIndex, -1, `Missing opening brace for: ${marker}`);
-
-  let depth = 0;
-  for (let index = openBraceIndex; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return source.slice(openBraceIndex + 1, index);
+async function inspect(page: Page, selector: string): Promise<BrowserGeometry | null> {
+  const locator = page.locator(selector).first();
+  if (await locator.count() === 0) return null;
+  return locator.evaluate((element, requestedSelector) => {
+    const rect = element.getBoundingClientRect().toJSON();
+    const style = getComputedStyle(element);
+    const parents = [];
+    let parent = element.parentElement;
+    while (parent && parents.length < 4) {
+      parents.push({ tag: parent.tagName.toLowerCase(), id: parent.id, className: parent.className });
+      parent = parent.parentElement;
+    }
+    const suspectRules: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        if (rule instanceof CSSStyleRule && element.matches(rule.selectorText)) {
+          const declarations = ["width", "max-width", "min-width", "overflow-x", "margin", "padding"]
+            .map((property) => `${property}:${rule.style.getPropertyValue(property)}`)
+            .filter((declaration) => !declaration.endsWith(":"));
+          if (declarations.length) suspectRules.push(`${rule.selectorText} { ${declarations.join("; ")} }`);
+        }
       }
     }
-  }
-
-  assert.fail(`Unterminated block for: ${marker}`);
+    return {
+      selector: requestedSelector,
+      rect,
+      computed: Object.fromEntries(["width", "max-width", "min-width", "margin-left", "margin-right", "padding-left", "padding-right", "overflow-x"].map((property) => [property, style.getPropertyValue(property)])),
+      parents,
+      suspectRules
+    };
+  }, selector);
 }
 
-function computePageEdgeSpace(viewportWidth: number): number {
-  return Math.max(16, Math.min(viewportWidth * 0.02, 48));
+async function diagnostic(page: Page, url: string, viewport: readonly [number, number], selector: string, message: string): Promise<never> {
+  throw new Error(JSON.stringify({ message, url, viewport, selector, geometry: await inspect(page, selector) }, null, 2));
 }
 
-test("shell geometry keeps consistent full-width edges across audited viewports", () => {
-  const css = read("public/css/app.css");
-  const baseLayout = read("src/views/layouts/base.ejs");
-  const header = read("src/views/partials/header.ejs");
-  const systemStatus = read("src/views/partials/system-status-bar.ejs");
-  const footer = read("src/views/partials/footer.ejs");
+let browser: Browser;
+let fixture: { server: http.Server; origin: string };
 
-  assert.match(css, /--rm-page-edge-space:\s*clamp\(1rem, 2vw, 3rem\);/);
-  assert.match(css, /\.rm-page-shell,\s*\.container \{[\s\S]*display: block;[\s\S]*width: auto;[\s\S]*max-width: none;[\s\S]*margin-inline: var\(--rm-page-edge-space\);[\s\S]*min-width: 0;[\s\S]*box-sizing: border-box;/);
-  assert.match(css, /main\.container,\s*main\.rm-page-shell \{[\s\S]*padding: 0\.75rem 0 1\.5rem;/);
-  assert.match(baseLayout, /<main class="container rm-page-shell">/);
-  assert.match(header, /class="container rm-page-shell site-header__inner"/);
-  assert.match(header, /class="container rm-page-shell site-header__context"/);
-  assert.match(systemStatus, /class="container rm-page-shell system-status-bar__inner"/);
-  assert.match(footer, /class="container rm-page-shell"/);
-  assert.doesNotMatch(css, /--rm-page-shell-max-width|--rm-page-shell-edge-space|--rm-top-bar-edge-space|--rm-main-content-edge-space/);
-
-  for (const viewportWidth of [1920, 1600, 1440, 1280, 1024, 820, 390]) {
-    const edge = computePageEdgeSpace(viewportWidth);
-    const leftGap = edge;
-    const rightGap = edge;
-    const shellWidth = viewportWidth - (edge * 2);
-
-    assert.ok(edge <= 80, `Viewport ${viewportWidth} produced an artificial shell gap of ${edge}px`);
-    assert.ok(Math.abs(leftGap - rightGap) <= 2, `Viewport ${viewportWidth} shell gaps are not symmetric`);
-    assert.ok(shellWidth > 0, `Viewport ${viewportWidth} produced a non-positive shell width`);
-  }
-
-  assert.ok(1920 - (computePageEdgeSpace(1920) * 2) > 1320);
-  assert.ok(1600 - (computePageEdgeSpace(1600) * 2) > 1320);
+test.before(async () => {
+  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium", headless: true });
+  fixture = await startFixtureServer();
 });
 
-test("dashboard and private-customer layouts stay full width without non-table overflow", () => {
-  const css = read("public/css/app.css");
-  const chooseRole = read("src/views/pages/choose-role.ejs");
-  const dashboard = read("src/views/pages/dashboard.ejs");
-  const register = read("src/views/pages/customers/register.ejs");
-  const edit = read("src/views/pages/customers/edit.ejs");
-  const mobile1200 = extractBlock(css, "@media (max-width: 1200px)");
-  const mobile760 = extractBlock(css, "@media (max-width: 760px)");
-  const detailLayout = extractRuleBody(css, ".customer-detail-layout");
-  const detailPhoneActions = extractRuleBody(css, ".customer-detail-list .phone-number-actions");
-
-  for (const selector of [
-    ".dashboard-hero",
-    ".dashboard-layout",
-    ".workspace-tile-grid",
-    ".operations-menu-prototype"
-  ]) {
-    const rule = extractRuleBody(css, selector);
-    assert.match(rule, /width: 100%;/);
-    assert.match(rule, /max-width: none;/);
-    assert.match(rule, /min-width: 0;/);
-    assert.match(rule, /box-sizing: border-box;/);
-  }
-
-  const actionsRule = extractRuleBody(css, ".operations-menu-prototype__actions");
-  assert.match(actionsRule, /flex-wrap: wrap;/);
-  assert.match(actionsRule, /width: 100%;/);
-  assert.doesNotMatch(actionsRule, /overflow-x:/);
-
-  const centeredPanel = extractRuleBody(css, ".customer-form-panel--centered");
-  assert.match(centeredPanel, /width: 100%;/);
-  assert.match(centeredPanel, /max-width: none;/);
-  assert.match(centeredPanel, /margin-inline: 0;/);
-  assert.match(centeredPanel, /min-width: 0;/);
-  assert.match(centeredPanel, /box-sizing: border-box;/);
-
-  const formGrid = extractRuleBody(css, ".private-customer-form__grid");
-  assert.match(formGrid, /grid-template-columns: minmax\(20rem, 1fr\) minmax\(30rem, 1\.35fr\) minmax\(20rem, 1fr\);/);
-  assert.match(formGrid, /width: 100%;/);
-  assert.match(formGrid, /max-width: none;/);
-  assert.match(formGrid, /min-width: 0;/);
-  assert.match(formGrid, /box-sizing: border-box;/);
-
-  assert.match(mobile1200, /\.private-customer-form__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-  assert.match(mobile1200, /\.private-customer-form__column--map\s*\{[^}]*grid-column: 1 \/ -1;/);
-  assert.match(mobile760, /\.private-customer-form__grid\s*\{[^}]*grid-template-columns: 1fr;/);
-  assert.match(detailLayout, /width: 100%;/);
-  assert.match(detailLayout, /max-width: none;/);
-  assert.match(detailLayout, /min-width: 0;/);
-  assert.match(detailLayout, /box-sizing: border-box;/);
-  assert.match(detailPhoneActions, /grid-template-columns: 1fr;/);
-
-  assert.match(chooseRole, /class="dashboard-layout"/);
-  assert.match(chooseRole, /class="workspace-tile-grid"/);
-  assert.match(dashboard, /class="operations-menu-prototype"/);
-  assert.match(register, /class="inline-form private-customer-form"/);
-  assert.match(edit, /class="inline-form private-customer-form"/);
+test.after(async () => {
+  await browser.close();
+  await new Promise<void>((resolve, reject) => fixture.server.close((error) => error ? reject(error) : resolve()));
 });
 
-test("wrapper-only horizontal overflow stays limited to table wrappers", () => {
+test("rendered shell geometry is symmetric and uncapped at every required route and viewport", async () => {
+  for (const viewport of viewports) {
+    const page = await browser.newPage({ viewport: { width: viewport[0], height: viewport[1] } });
+    for (const route of routes) {
+      const url = `${fixture.origin}${route}`;
+      await page.goto(url, { waitUntil: "load" });
+      const documentGeometry = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth
+      }));
+      if (documentGeometry.scrollWidth > documentGeometry.clientWidth) {
+        await diagnostic(page, url, viewport, "html", `Horizontal page overflow: ${documentGeometry.scrollWidth}px > ${documentGeometry.clientWidth}px`);
+      }
+      const measured = (await Promise.all(shellSelectors.map((selector) => inspect(page, selector)))).filter(Boolean) as BrowserGeometry[];
+      const first = measured[0];
+      assert.ok(first, `Missing shell on ${url}`);
+      for (const geometry of measured) {
+        if (geometry.computed["overflow-x"] === "auto" || geometry.computed["overflow-x"] === "scroll") {
+          await diagnostic(page, url, viewport, geometry.selector, "Shell is a horizontal scroll container");
+        }
+      }
+      for (const geometry of measured.slice(1)) {
+        if (Math.abs(geometry.rect.left - first.rect.left) > 2) await diagnostic(page, url, viewport, geometry.selector, "Shell left edges differ by more than 2px");
+        if (Math.abs(geometry.rect.right - first.rect.right) > 2) await diagnostic(page, url, viewport, geometry.selector, "Shell right edges differ by more than 2px");
+      }
+      if (Math.abs(first.rect.left - (viewport[0] - first.rect.right)) > 2) {
+        await diagnostic(page, url, viewport, first.selector, "Shell edges are not symmetric");
+      }
+      if (viewport[0] >= 1600 && first.rect.width <= 1320) {
+        await diagnostic(page, url, viewport, first.selector, "Wide viewport has an artificial outer width limit");
+      }
+      for (const selector of optionalSelectors) {
+        const geometry = await inspect(page, selector);
+        if (geometry && (geometry.computed["overflow-x"] === "auto" || geometry.computed["overflow-x"] === "scroll")) {
+          await diagnostic(page, url, viewport, selector, "Page layout is a horizontal scroll container");
+        }
+      }
+      const overflowContainers = await page.locator("*").evaluateAll((elements, allowed) => elements
+        .filter((element) => ["auto", "scroll"].includes(getComputedStyle(element).overflowX))
+        .map((element) => ({ tag: element.tagName.toLowerCase(), className: element.className, allowed: (allowed as string[]).some((selector) => element.matches(selector)) })), tableWrapperSelectors);
+      assert.deepEqual(overflowContainers.filter((element) => !element.allowed), [], JSON.stringify({ url, viewport, overflowContainers }));
+    }
+    await page.close();
+  }
+});
+
+test("build serves the current stylesheet from the RideMatrix-WEB source context", () => {
   const css = read("public/css/app.css");
-  const customers = read("src/views/pages/customers/index.ejs");
-  const detail = read("src/views/partials/customer-detail-content.ejs");
-  const staff = read("src/views/pages/staff/index.ejs");
-  const vehicles = read("src/views/pages/vehicles/index.ejs");
-  const htmlRule = extractRuleBody(css, "html");
-  const bodyRule = extractRuleBody(css, "body");
-  const shellRule = css.match(/\.rm-page-shell,\s*\.container\s*\{([^}]*)\}/)?.[1];
-  const mainRule = css.match(/main\.container,\s*main\.rm-page-shell\s*\{([^}]*)\}/)?.[1];
-
-  assert.equal((css.match(/overflow-x\s*:/g) || []).length, 1);
-  assert.match(css, /\.customers-table-wrapper,\s*\.staff-table-wrapper,\s*\.vehicle-table-wrapper,\s*\.table-wrapper \{[\s\S]*overflow-x: auto;/);
-  assert.ok(shellRule);
-  assert.ok(mainRule);
-  assert.doesNotMatch(htmlRule, /overflow-x:/);
-  assert.doesNotMatch(bodyRule, /overflow-x:/);
-  assert.doesNotMatch(shellRule, /overflow-x:/);
-  assert.doesNotMatch(mainRule, /overflow-x:/);
-
-  assert.match(customers, /class="customers-table-wrapper"/);
-  assert.match(detail, /class="customers-table-wrapper"/);
-  assert.match(staff, /class="staff-table-wrapper"/);
-  assert.match(vehicles, /class="vehicle-table-wrapper"/);
+  assert.match(read("src/views/partials/head.ejs"), /href="\/css\/app\.css"/);
+  assert.ok(css.includes("--rm-page-edge-space"), "public/css/app.css is not the canonical current stylesheet");
+  assert.ok(fs.existsSync(path.join(process.cwd(), "public/css/app.css")));
+  assert.match(read("src/index.ts"), /path\.join\(__dirname, "\.\.\/public"\)/);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "dist/public/css/app.css")), false, "A second stale stylesheet exists in build output");
 });
