@@ -72,6 +72,9 @@
   --rm-admin-cta-text: var(--rm-menu-action-text);
   --rm-admin-cta-attention-bg: #fff8e8;
   --rm-admin-cta-attention-bg-hover: #fff3d6;
+  --rm-dynamic-active-bg: #fff8e8;
+  --rm-dynamic-active-border: var(--rm-light-bronze);
+  --rm-dynamic-active-text: var(--rm-menu-action-text);
   --rm-admin-cta-negative-bg: #fff4f2;
   --rm-admin-cta-negative-bg-hover: #ffe5e0;
   --rm-admin-cta-negative-border: var(--rm-warning-red);
@@ -1559,6 +1562,9 @@ button:visited,
 }
 
 .context-tab.context-tab--dynamic {
+  width: 7.25rem;
+  justify-content: center;
+  text-align: center;
   height: var(--rm-cta-dynamic-height);
   min-height: var(--rm-cta-dynamic-height);
   padding: 0 var(--rm-cta-dynamic-padding-inline);
@@ -1584,10 +1590,9 @@ button:visited,
 }
 
 .context-tab--active {
-  background: var(--rm-admin-cta-attention-bg);
-  color: var(--rm-admin-cta-text);
-  border-color: var(--rm-light-bronze);
-  box-shadow: inset 0 -3px 0 var(--rm-light-bronze);
+  background: var(--rm-dynamic-active-bg);
+  border-color: var(--rm-dynamic-active-border);
+  color: var(--rm-dynamic-active-text);
 }
 
 .customers-panel__header {
@@ -2127,6 +2132,10 @@ button:visited,
 
   .context-toolbar__field label {
     margin-bottom: 0;
+  }
+
+  .context-tab.context-tab--dynamic {
+    width: 6rem;
   }
 
   .context-toolbar .button,
