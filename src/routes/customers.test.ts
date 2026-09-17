@@ -400,6 +400,10 @@ test("customer pages render customer dynamic controls without legacy breadcrumb 
     }
 
     assert.match(listBody, /class="context-tab context-tab--dynamic(?: context-tab--active)?" href="[^"]+"(?: aria-current="page")?/);
+    assert.equal(countMatches(listBody, /class="context-tab context-tab--dynamic(?: context-tab--active)?"/g), 3);
+    for (const body of [detailBody, detailChildBody, editBody, editChildBody, registerBody]) {
+      assert.equal(countMatches(body, /class="context-tab context-tab--dynamic(?: context-tab--active)?"/g), 0);
+    }
     assert.match(listBody, /class="context-control--dynamic"/);
     assert.match(listBody, /button button--dynamic-cta" href="\/customers\/register">New customer/);
     assert.match(detailBody, /button button--dynamic-cta" href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers">Edit Customer/);

@@ -168,7 +168,7 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.private-customer-form__section-intro \{[\s\S]*color: var\(--rm-text-soft\);/);
   assert.match(css, /\.system-status-bar__account-actions \{[\s\S]*flex-wrap: wrap;[\s\S]*min-width: 0;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.system-status-bar__account-actions \{[\s\S]*justify-content: center;/);
-  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar \.button,[\s\S]*?\.context-toolbar button \{[\s\S]*flex: 1 1 auto;/);
+  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-toolbar__right \.button,[\s\S]*?\.context-toolbar--customers \.context-toolbar__right button \{[\s\S]*flex: 1 1 auto;/);
   assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__column--map \{[\s\S]*grid-column: 1 \/ -1;/);
   assert.match(css, /h1,\s*h2,\s*h3 \{[\s\S]*margin-top: 0;/);
@@ -210,9 +210,10 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(template, /class="context-tab context-tab--dynamic<%= tab\.isActive \? " context-tab--active" : "" %>" href="<%= tab\.href %>"<%= tab\.isActive \? ' aria-current="page"' : "" %>/);
   assert.equal((customersIndex.match(/Administration/g) || []).length, 0);
   assert.doesNotMatch(customersIndex, /context-toolbar[\s\S]*Administration[\s\S]*Customer management/);
-  assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*height: var\(--rm-cta-dynamic-height\);[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
-  assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*width: 7\.25rem;[\s\S]*justify-content: center;[\s\S]*text-align: center;/);
-  assert.match(css, /\.context-tab\.context-tab--dynamic \{[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);[\s\S]*font-size: var\(--rm-cta-dynamic-font-size\);/);
+  assert.match(css, /\.context-toolbar--customers \.context-tabs \.context-tab\.context-tab--dynamic \{[\s\S]*height: var\(--rm-cta-dynamic-height\);[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
+  assert.match(css, /\.context-toolbar--customers \.context-tabs \.context-tab\.context-tab--dynamic \{[\s\S]*width: 7\.25rem;[\s\S]*justify-content: center;[\s\S]*text-align: center;/);
+  assert.match(css, /\.context-toolbar--customers \.context-tabs \.context-tab\.context-tab--dynamic \{[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);[\s\S]*font-size: var\(--rm-cta-dynamic-font-size\);/);
+  assert.doesNotMatch(css, /^\s*\.context-tab\.context-tab--dynamic\s*\{[\s\S]*?width:/m);
   assert.match(css, /\.context-tab \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-radius: var\(--rm-control-border-radius\);/);
   assert.match(css, /--rm-dynamic-active-bg:\s*#fff8e8;/);
   assert.match(css, /--rm-dynamic-active-border:\s*var\(--rm-light-bronze\);/);
@@ -222,7 +223,8 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /\.context-tab:focus-visible \{[\s\S]*outline: var\(--rm-control-focus-outline\);/);
   assert.match(css, /\.context-toolbar input\.context-control--dynamic,\s*\.context-toolbar select\.context-control--dynamic \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);[\s\S]*padding: 0 var\(--rm-cta-dynamic-padding-inline\);/);
   assert.match(css, /\.context-toolbar input\.context-control--dynamic,\s*\.context-toolbar select\.context-control--dynamic \{[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*border-color: var\(--rm-admin-cta-border\);/);
-  assert.match(css, /\.context-toolbar \.button--dynamic-cta \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
+  assert.match(css, /\.context-toolbar \.button--dynamic-cta \{[\s\S]*line-height: var\(--rm-control-line-height\);[\s\S]*width: auto;/);
+  assert.doesNotMatch(dynamicToolbarControl, /width:\s*(?:7\.25rem|6rem)/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);
   assert.match(toolbar, /display: flex;/);
@@ -232,7 +234,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /\.context-toolbar__right \{[\s\S]*justify-content: flex-end;[\s\S]*white-space: nowrap;/);
   assert.match(css, /\.context-toolbar__left,\s*\.context-toolbar__right,\s*\.context-toolbar__actions \{[\s\S]*gap: var\(--rm-control-gap\);[\s\S]*align-items: center;/);
   assert.match(css, /\.context-toolbar--customers \.context-tabs \{[\s\S]*flex: 0 0 auto;/);
-  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-tab\.context-tab--dynamic \{[\s\S]*width: 6rem;/);
+  assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-tabs \.context-tab\.context-tab--dynamic \{[\s\S]*width: 6rem;/);
   assert.match(css, /\.context-toolbar--customers \.context-toolbar__left \{[\s\S]*flex-wrap: nowrap;/);
   assert.match(css, /\.context-toolbar--customers \.context-toolbar__field \{[\s\S]*flex: 1 1 18rem;/);
   assert.match(css, /\.context-toolbar--customers \.context-toolbar__right > \.button \{[\s\S]*flex: 0 0 auto;/);
