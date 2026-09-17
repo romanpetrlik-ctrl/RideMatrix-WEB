@@ -1,20 +1,32 @@
 import { Router } from "express";
-import { getSessionAccount } from "../services/api";
+import { SessionAccount, getSessionAccount } from "../services/api";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 
 type RecoveryRouterOptions = {
   appTitle: string;
+  loadSession?: (cookieHeader?: string) => Promise<SessionAccount>;
 };
+
+function readRecoverySession(res: { locals: { recoverySession?: SessionAccount } }): SessionAccount {
+  const session = res.locals.recoverySession;
+  if (!session) {
+    throw new Error("Recovery session is not available.");
+  }
+
+  return session;
+}
 
 export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
   const router = Router();
   router.use(noStoreProtectedResponse);
+  const loadSession = options.loadSession ?? getSessionAccount;
   router.use(async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = await loadSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
+      res.locals.recoverySession = session;
       const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
       if (!roles.includes("superuser")) {
         return res.status(403).render("pages/unavailable", {
@@ -30,7 +42,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.get("/recovery", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
@@ -47,7 +59,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.get("/recovery/backup", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
@@ -64,7 +76,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.post("/recovery/backup", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
@@ -82,7 +94,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.get("/recovery/warning", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
@@ -99,7 +111,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.post("/recovery/warning", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
@@ -117,7 +129,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.get("/recovery/restart", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
@@ -134,7 +146,7 @@ export function createRecoveryRouter(options: RecoveryRouterOptions): Router {
 
   router.post("/recovery/restart", async (req, res, next) => {
     try {
-      const session = await getSessionAccount(req.headers.cookie);
+      const session = readRecoverySession(res);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }

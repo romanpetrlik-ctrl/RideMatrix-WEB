@@ -32,6 +32,7 @@ test("system status bar renders secure account actions for multiple workspaces",
   });
 
   assert.match(html, /class="system-status-bar__account-actions"/);
+  assert.doesNotMatch(html, /Help \/ Recovery|href="\/recovery"/);
   assert.match(html, /href="\/choose-role">Switch workspace/);
   assert.match(html, /<form class="system-status-bar__account-action-form" method="post" action="\/exit">/);
   assert.match(html, /name="_csrf"/);
@@ -81,6 +82,7 @@ test("system status bar hides all account actions for public access", async () =
     hideWorkspaceSwitch: false
   });
 
+  assert.doesNotMatch(html, /Help \/ Recovery|href="\/recovery"/);
   assert.doesNotMatch(html, /Switch workspace|action="\/exit"/);
 });
 
