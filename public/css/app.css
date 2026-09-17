@@ -1542,6 +1542,7 @@ button:visited,
 
 .context-toolbar .button--dynamic-cta {
   line-height: var(--rm-control-line-height);
+  width: auto;
 }
 
 .context-tabs {
@@ -1561,7 +1562,7 @@ button:visited,
   font-weight: var(--rm-control-font-weight);
 }
 
-.context-tab.context-tab--dynamic {
+.context-toolbar--customers .context-tabs .context-tab.context-tab--dynamic {
   width: 7.25rem;
   justify-content: center;
   text-align: center;
@@ -2134,12 +2135,12 @@ button:visited,
     margin-bottom: 0;
   }
 
-  .context-tab.context-tab--dynamic {
+  .context-toolbar--customers .context-tabs .context-tab.context-tab--dynamic {
     width: 6rem;
   }
 
-  .context-toolbar .button,
-  .context-toolbar button {
+  .context-toolbar--customers .context-toolbar__right .button,
+  .context-toolbar--customers .context-toolbar__right button {
     flex: 1 1 auto;
   }
 
