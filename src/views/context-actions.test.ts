@@ -304,7 +304,8 @@ test("shell-scoped overflow and wrapper behavior stays consistent", () => {
   assert.match(css, /\.customers-table-wrapper,\s*\.staff-table-wrapper \{[\s\S]*width: 100%;[\s\S]*min-width: 0;[\s\S]*overflow-x: auto;/);
   assert.match(css, /\.vehicle-table-wrapper \{[\s\S]*width:100%;[\s\S]*min-width:0;[\s\S]*overflow-x:auto;/);
   assert.doesNotMatch(css, /\.customer-register-panel \{[\s\S]*overflow-x:\s*auto;/);
-  assert.match(css, /\.customer-type-selector \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*min-width: 0;/);
+  assert.match(css, /\.customer-type-selector \{[\s\S]*grid-template-columns: repeat\(2, minmax\(260px, 1fr\)\);[\s\S]*min-width: 0;/);
+  assert.match(css, /@media \(max-width: 900px\) \{[\s\S]*\.customer-type-selector \{[\s\S]*grid-template-columns: 1fr;/);
   assert.match(css, /\.vehicle-card \{[\s\S]*min-width:0;/);
   assert.match(css, /\.vehicle-detail-grid > \* \{[\s\S]*min-width:0;/);
   assert.match(css, /\.context-toolbar--customers \.context-tabs \.context-tab\.context-tab--dynamic \{[\s\S]*width: 7\.25rem;/);
