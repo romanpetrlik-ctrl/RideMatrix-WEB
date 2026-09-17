@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import http from "node:http";
+import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
@@ -17,30 +17,19 @@ describe("GET /recovery", () => {
     };
   };
 
-  let authServer: http.Server;
-  let appServer: http.Server;
+  let appServer: Server;
   let baseUrl: string;
   let mockSession: MockSession = { authenticated: false };
 
   before(async () => {
-    authServer = http.createServer((req, res) => {
-      if (req.url === "/auth/session") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(mockSession));
-        return;
-      }
-
-      res.writeHead(404);
-      res.end();
-    });
-
-    await new Promise<void>((resolve) => authServer.listen(4000, "127.0.0.1", resolve));
-
     const app = express();
     app.set("view engine", "ejs");
     app.set("views", path.join(process.cwd(), "src/views"));
     app.use(express.urlencoded({ extended: true }));
-    app.use(createRecoveryRouter({ appTitle: "RideMatrix Test" }));
+    app.use(createRecoveryRouter({
+      appTitle: "RideMatrix Test",
+      loadSession: async () => mockSession
+    }));
 
     appServer = app.listen(0);
     await new Promise<void>((resolve) => appServer.once("listening", resolve));
@@ -49,7 +38,6 @@ describe("GET /recovery", () => {
 
   after(async () => {
     await new Promise<void>((resolve) => appServer.close(() => resolve()));
-    await new Promise<void>((resolve) => authServer.close(() => resolve()));
   });
 
   test("redirects unauthenticated visitors to /access", async () => {
