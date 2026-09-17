@@ -1591,8 +1591,8 @@ button:visited,
 
 .context-tab--active {
   background: var(--rm-dynamic-active-bg);
-  color: var(--rm-dynamic-active-text);
   border-color: var(--rm-dynamic-active-border);
+  color: var(--rm-dynamic-active-text);
 }
 
 .customers-panel__header {
