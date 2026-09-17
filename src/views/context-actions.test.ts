@@ -169,8 +169,8 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.system-status-bar__account-actions \{[\s\S]*flex-wrap: wrap;[\s\S]*min-width: 0;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.system-status-bar__account-actions \{[\s\S]*justify-content: center;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar--customers \.context-toolbar__right \.button,[\s\S]*?\.context-toolbar--customers \.context-toolbar__right button \{[\s\S]*flex: 1 1 auto;/);
-  assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-  assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__column--map \{[\s\S]*grid-column: 1 \/ -1;/);
+  assert.match(css, /@media \(max-width: 1320px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(css, /@media \(max-width: 1320px\) \{[\s\S]*\.private-customer-form__column--map \{[\s\S]*grid-column: 1 \/ -1;/);
   assert.match(css, /h1,\s*h2,\s*h3 \{[\s\S]*margin-top: 0;/);
   assert.doesNotMatch(css, /\.customer-form-page--private \.customer-form-panel > h1 \{[\s\S]*font-size: clamp\(1\.75rem, 2\.4vw, 2rem\);/);
   assert.match(header, /site-header__action-divider" aria-hidden="true"/);
@@ -243,6 +243,15 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.site-header__inner \{[\s\S]*display: grid;/);
   assert.match(css, /@media \(max-width: 820px\) \{[\s\S]*\.context-toolbar__right \{[\s\S]*white-space: normal;/);
   assert.doesNotMatch(dynamicToolbarControl, /min-height:\s*40px/);
+  assert.match(css, /\.site-header__inner \{[\s\S]*min-width: 0;[\s\S]*max-width: 100%;/);
+  assert.match(css, /\.site-header__context-actions \{[\s\S]*max-width: 100%;[\s\S]*flex-wrap: wrap;/);
+  assert.match(css, /\.context-bar__actions \{[\s\S]*flex-wrap: wrap;[\s\S]*min-width: 0;[\s\S]*max-width: 100%;/);
+  assert.match(css, /\.context-bar__action \{[\s\S]*flex: 0 0 auto;[\s\S]*min-width: 0;[\s\S]*max-width: 100%;/);
+  assert.match(css, /\.site-header__context-actions \.context-bar__actions \{[\s\S]*width: 100%;[\s\S]*justify-content: flex-end;/);
+  assert.match(css, /@media \(max-width: 1320px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(css, /@media \(max-width: 1320px\) \{[\s\S]*\.private-customer-form__column--map \{[\s\S]*grid-column: 1 \/ -1;/);
+  assert.match(css, /@media \(max-width: 900px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: 1fr;/);
+  assert.doesNotMatch(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__grid \{/);
 });
 
 test("shared header keeps one system bar and no legacy navigation rows", () => {
@@ -256,4 +265,5 @@ test("shared header keeps one system bar and no legacy navigation rows", () => {
   assert.equal((header.match(/context-toolbar/g) || []).length, 0);
   assert.match(header, /contextBarPartial/);
   assert.match(css, /\.context-toolbar \{[\s\S]*min-height: var\(--rm-context-bar-min-height\);/);
+  assert.doesNotMatch(css, /html\s*,\s*body\s*\{[\s\S]*overflow-x:\s*hidden;/);
 });
