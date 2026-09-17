@@ -186,7 +186,6 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
         title: "Staff",
         appTitle: options.appTitle,
         email: session.user.email,
-        activeRoleLabel: getRoleLabel(session.user.active_role || "admin"),
         staffCount: staff.length,
         staff: staff.map((member) => ({
           ...member,

@@ -10,15 +10,7 @@
     }) %>
 
     <%- include("../../partials/header", {
-      appTitle,
-      pageTitle: "Staff",
-      pageMeta: "Internal user accounts, roles, and status.",
-      activeRoleLabel,
-      breadcrumbs: [
-        { label: "Administration", href: "/dashboard" },
-        { label: "Staff" }
-      ],
-      hintsLabel: `${staffCount} staff`,
+      appTitle
     }) %>
 
     <main class="container staff-page staff-list-page">
