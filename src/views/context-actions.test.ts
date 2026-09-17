@@ -220,7 +220,7 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /\.context-toolbar \.button--dynamic-cta \{[\s\S]*line-height: var\(--rm-control-line-height\);/);
   assert.match(toolbarField, /display: grid;/);
   assert.match(toolbarField, /align-items: center;/);
-  assert.match(toolbar, /display: block;/);
+  assert.match(toolbar, /display: flex;/);
   assert.match(css, /\.context-toolbar__form \{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;[\s\S]*gap: 0\.75rem;/);
   assert.match(css, /\.context-toolbar \{[\s\S]*display: flex;[\s\S]*align-items: center;[\s\S]*min-height: var\(--rm-context-bar-min-height\);[\s\S]*padding-block: var\(--rm-context-bar-padding-block\);/);
   assert.match(css, /\.site-header__inner \{[\s\S]*display: flex;[\s\S]*align-items: center;[\s\S]*min-height: var\(--rm-context-bar-min-height\);[\s\S]*padding-block: var\(--rm-context-bar-padding-block\);/);
