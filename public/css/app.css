@@ -1935,6 +1935,8 @@ button:visited,
   display: grid;
   gap: 1rem;
   margin: 0;
+  width: 100%;
+  max-width: none;
 }
 
 .setup-wizard .setup-form__field {
@@ -1952,13 +1954,14 @@ button:visited,
 .setup-wizard .setup-form__field select,
 .setup-wizard .setup-form__field textarea {
   width: 100%;
-  max-width: 40rem;
+  max-width: none;
   box-sizing: border-box;
 }
 
 .setup-wizard .setup-form__field input[type="file"] {
   width: 100%;
-  max-width: 40rem;
+  max-width: none;
+  box-sizing: border-box;
 }
 
 .setup-wizard .setup-form__field--checkbox {
