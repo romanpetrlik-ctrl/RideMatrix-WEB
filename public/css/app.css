@@ -1931,6 +1931,29 @@ button:visited,
 
 /* Initial setup wizard forms */
 
+.setup-wizard {
+  width: min(100% - 2rem, 52rem);
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
+.setup-wizard > .panel {
+  margin-inline: auto;
+}
+
+.setup-wizard > .panel:first-child {
+  text-align: center;
+}
+
+.setup-wizard > .panel:first-child ol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1.5rem;
+  margin: 1rem auto 0;
+  padding-left: 1.5rem;
+  text-align: left;
+}
+
 .setup-wizard form {
   display: grid;
   gap: 1rem;
@@ -1962,6 +1985,12 @@ button:visited,
   width: 100%;
   max-width: none;
   box-sizing: border-box;
+}
+
+.setup-wizard .setup-form__field input:not([type="checkbox"]):not([type="file"]),
+.setup-wizard .setup-form__field select,
+.setup-wizard .setup-form__field textarea {
+  min-height: 2.75rem;
 }
 
 .setup-wizard .setup-form__field--checkbox {

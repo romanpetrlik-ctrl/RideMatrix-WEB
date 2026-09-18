@@ -819,6 +819,19 @@ export const MIGRATIONS: Migration[] = [
       FOR EACH ROW
       EXECUTE FUNCTION rm_enforce_test_booking_policy();
     `
+  },
+  {
+    id: "0010_operator_trial_status",
+    sql: `
+      ALTER TABLE operators
+        DROP CONSTRAINT IF EXISTS operators_status_check;
+      ALTER TABLE operators
+        ADD CONSTRAINT operators_status_check
+        CHECK (status IN ('setup_required', 'trial', 'active', 'suspended', 'archived'));
+      ALTER TABLE operators
+        ADD COLUMN IF NOT EXISTS trial_started_at TEXT,
+        ADD COLUMN IF NOT EXISTS trial_ends_at TEXT;
+    `
   }
 ];
 

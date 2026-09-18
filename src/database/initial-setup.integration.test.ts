@@ -219,6 +219,15 @@ test("full setup completion provisions selected production test accounts and dea
   assert.equal(setupState.rows[0].status, "completed");
   assert.equal(setupState.rows[0].completed_by_user_id, installerActor.userId);
 
+  const operator = await query<{ status: string; trial_started_at: string | null; trial_ends_at: string | null }>(
+    `SELECT status, trial_started_at, trial_ends_at
+       FROM operators
+      LIMIT 1`
+  );
+  assert.equal(operator.rows[0].status, "trial");
+  assert.ok(operator.rows[0].trial_started_at);
+  assert.ok(operator.rows[0].trial_ends_at);
+
   const activeTestAccounts = await query<{ role_key: string }>(
     `SELECT role_key
        FROM system_test_accounts
