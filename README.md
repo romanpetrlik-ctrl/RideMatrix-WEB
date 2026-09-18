@@ -177,7 +177,7 @@ After Initial System Setup is implemented and real operator data exists, revisit
 
 ## 10) Development commands and validation
 
-Commands verified from [`package.json`](./package.json):
+Commands defined in [`package.json`](./package.json):
 
 ```bash
 npm install
