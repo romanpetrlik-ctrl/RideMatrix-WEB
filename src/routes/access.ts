@@ -8,11 +8,15 @@ import { getLandingRoute } from "./auth-callback";
 type AccessRouterOptions = {
   appTitle: string;
   logLogin?: typeof logStaffLogin;
+  assertTestSink?: (email: string) => Promise<void>;
+  requestAccess?: (email: string) => Promise<void>;
 };
 
 export function createAccessRouter(options: AccessRouterOptions): Router {
   const router = Router();
   const auditLogin = options.logLogin ?? logStaffLogin;
+  const assertTestSink = options.assertTestSink ?? assertSafeNotificationSinkForTestEmail;
+  const requestAccess = options.requestAccess ?? submitAccessRequest;
   const loginRateLimit = rateLimit({
     windowMs: 60_000,
     limit: 10,
@@ -58,8 +62,8 @@ export function createAccessRouter(options: AccessRouterOptions): Router {
   router.post("/access", loginRateLimit, async (req, res, next) => {
     try {
       const email = String(req.body.email || "").trim();
-      await assertSafeNotificationSinkForTestEmail(email);
-      await submitAccessRequest(email);
+      await assertTestSink(email);
+      await requestAccess(email);
 
       res.render("pages/request-received", {
         title: "Access",

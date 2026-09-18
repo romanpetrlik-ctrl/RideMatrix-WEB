@@ -14,7 +14,17 @@
     <main class="container rm-page-shell">
       <section class="panel">
         <h1>Initial System Setup</h1>
-        <p>Current step: <strong><%= currentPath %></strong></p>
+        <% const stepTitles = {
+          "/setup/bootstrap-superuser": "Step 1 — Bootstrap superuser",
+          "/setup/operator-profile": "Step 2 — Operator profile",
+          "/setup/registered-pho-address": "Step 3 — Registered PHO address",
+          "/setup/operational-address": "Step 4 — Operational address",
+          "/setup/pho-licence": "Step 5 — PHO licence",
+          "/setup/licence-document": "Step 6 — Licence document upload",
+          "/setup/review": "Step 7 — Review and confirmation",
+          "/setup/completed": "Step 8 — Completion"
+        }; %>
+        <p>Current step: <strong><%= stepTitles[currentPath] || "Initial setup" %></strong></p>
 
         <% if (notice) { %>
           <section class="notice notice--success" role="status"><%= notice %></section>
@@ -43,7 +53,7 @@
         </ol>
       </section>
 
-      <% if (currentPath === stepPaths.bootstrap_superuser) { %>
+      <% if (requestedPath === stepPaths.bootstrap_superuser) { %>
         <section class="panel">
           <h2>Step 1 — Bootstrap verified superuser</h2>
           <p>Use the same email that is currently signed in via the existing login-code / magic-link flow.</p>
@@ -56,7 +66,7 @@
         </section>
       <% } %>
 
-      <% if (currentPath === stepPaths.operator_profile) { %>
+      <% if (requestedPath === stepPaths.operator_profile) { %>
         <section class="panel">
           <h2>Step 2 — Operator profile</h2>
           <form method="post" action="/setup/operator-profile">
@@ -78,48 +88,48 @@
         </section>
       <% } %>
 
-      <% if (currentPath === stepPaths.registered_pho_address || currentPath === stepPaths.operational_address) { %>
-        <% const addressType = currentPath === stepPaths.registered_pho_address ? "registered_pho" : "operational"; %>
+      <% if (requestedPath === stepPaths.registered_pho_address || requestedPath === stepPaths.operational_address) { %>
+        <% const addressType = requestedPath === stepPaths.registered_pho_address ? "registered_pho" : "operational"; %>
         <section class="panel">
           <h2><%= addressType === "registered_pho" ? "Step 3 — Registered PHO address" : "Step 4 — Operational address" %></h2>
           <form method="post" action="<%= addressType === "registered_pho" ? "/setup/registered-pho-address" : "/setup/operational-address" %>">
             <%- locals.csrfField || "" %>
             <label for="formattedAddress">Formatted address *</label>
-            <input id="formattedAddress" name="formattedAddress" required />
+            <input id="formattedAddress" name="formattedAddress" required value="<%= formData.formattedAddress || '' %>" />
             <label for="houseNameNumber">House name / number</label>
-            <input id="houseNameNumber" name="houseNameNumber" />
+            <input id="houseNameNumber" name="houseNameNumber" value="<%= formData.houseNameNumber || '' %>" />
             <label for="addressLine1">Address line 1 *</label>
-            <input id="addressLine1" name="addressLine1" required />
+            <input id="addressLine1" name="addressLine1" required value="<%= formData.addressLine1 || '' %>" />
             <label for="addressLine2">Address line 2</label>
-            <input id="addressLine2" name="addressLine2" />
+            <input id="addressLine2" name="addressLine2" value="<%= formData.addressLine2 || '' %>" />
             <label for="addressLine3">Address line 3</label>
-            <input id="addressLine3" name="addressLine3" />
+            <input id="addressLine3" name="addressLine3" value="<%= formData.addressLine3 || '' %>" />
             <label for="cityTown">City / Town *</label>
-            <input id="cityTown" name="cityTown" required />
+            <input id="cityTown" name="cityTown" required value="<%= formData.cityTown || '' %>" />
             <label for="county">County</label>
-            <input id="county" name="county" />
+            <input id="county" name="county" value="<%= formData.county || '' %>" />
             <label for="state">State</label>
-            <input id="state" name="state" />
+            <input id="state" name="state" value="<%= formData.state || '' %>" />
             <label for="postcode">Postcode *</label>
-            <input id="postcode" name="postcode" required />
+            <input id="postcode" name="postcode" required value="<%= formData.postcode || '' %>" />
             <label for="countryCode">Country code *</label>
-            <input id="countryCode" name="countryCode" maxlength="2" required />
+            <input id="countryCode" name="countryCode" maxlength="2" required value="<%= formData.countryCode || '' %>" />
             <label for="countryName">Country name *</label>
-            <input id="countryName" name="countryName" required />
+            <input id="countryName" name="countryName" required value="<%= formData.countryName || '' %>" />
             <label for="latitude">Latitude</label>
-            <input id="latitude" name="latitude" />
+            <input id="latitude" name="latitude" value="<%= formData.latitude || '' %>" />
             <label for="longitude">Longitude</label>
-            <input id="longitude" name="longitude" />
+            <input id="longitude" name="longitude" value="<%= formData.longitude || '' %>" />
             <label for="providerName">Provider name</label>
-            <input id="providerName" name="providerName" />
+            <input id="providerName" name="providerName" value="<%= formData.providerName || '' %>" />
             <label for="providerPlaceId">Provider place id</label>
-            <input id="providerPlaceId" name="providerPlaceId" />
+            <input id="providerPlaceId" name="providerPlaceId" value="<%= formData.providerPlaceId || '' %>" />
             <button type="submit">Save and continue</button>
           </form>
         </section>
       <% } %>
 
-      <% if (currentPath === stepPaths.pho_licence) { %>
+      <% if (requestedPath === stepPaths.pho_licence) { %>
         <section class="panel">
           <h2>Step 5 — PHO licence</h2>
           <form method="post" action="/setup/pho-licence">
@@ -144,19 +154,19 @@
         </section>
       <% } %>
 
-      <% if (currentPath === stepPaths.licence_document) { %>
+      <% if (requestedPath === stepPaths.licence_document) { %>
         <section class="panel">
           <h2>Step 6 — Licence document upload</h2>
           <form method="post" action="/setup/licence-document" enctype="multipart/form-data">
             <%- locals.csrfField || "" %>
             <label for="licenceDocument">Document (PDF, PNG, JPEG, max 10 MB) *</label>
-            <input id="licenceDocument" type="file" name="licenceDocument" required />
+            <input id="licenceDocument" type="file" name="licenceDocument" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required />
             <button type="submit">Upload and continue</button>
           </form>
         </section>
       <% } %>
 
-      <% if (currentPath === stepPaths.review_confirmation) { %>
+      <% if (requestedPath === stepPaths.review_confirmation) { %>
         <section class="panel">
           <h2>Step 7 — Review and confirmation</h2>
           <p>Operator: <strong><%= setup.operator ? setup.operator.legalName : "Not configured" %></strong></p>
@@ -175,7 +185,7 @@
         </section>
       <% } %>
 
-      <% if (currentPath === stepPaths.completed) { %>
+      <% if (requestedPath === stepPaths.completed) { %>
         <section class="panel">
           <h2>Step 8 — Completion</h2>
           <p>Initial setup is completed. Operator status is active and setup is locked.</p>

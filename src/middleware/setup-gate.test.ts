@@ -33,6 +33,7 @@ before(async () => {
         operatorId: setupCompleted ? "op-1" : null,
         operator: null,
         addresses: { registeredPho: false, operational: false },
+        addressDetails: { registeredPho: null, operational: null },
         licence: null,
         latestDocument: null
       })

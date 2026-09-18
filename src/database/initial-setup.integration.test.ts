@@ -32,6 +32,8 @@ async function insertRole(id: number, key: string): Promise<void> {
 }
 
 async function insertRequiredRoleCatalogue(): Promise<void> {
+  await insertRole(1, "admin");
+  await insertRole(2, "driver");
   await insertRole(10, "superuser");
   await insertRole(11, "staff");
   await insertRole(12, "customer");
@@ -286,11 +288,11 @@ test("test-booking policy blocks non-test zero fares and excludes test bookings 
     () =>
       query(
         `INSERT INTO customer_bookings
-          (id, customer_id, reference, service_date, pickup, dropoff, status, created_at, total_fare_amount, is_test_booking)
-         VALUES ($1, $2, 'RM-NONTEST-0', $3, 'A', 'B', 'Scheduled', $3, 0, FALSE)`,
+          (id, customer_id, reference, service_date, pickup, dropoff, status, created_at, assignment_status, total_fare_amount, is_test_booking)
+         VALUES ($1, $2, 'RM-NONTEST-0', $3, 'A', 'B', 'Scheduled', $3, 'assigned', 0, FALSE)`,
         ["booking-non-test-zero", "cust-setup-test", now]
       ),
-    /Zero fare is only allowed for test bookings/
+    /Non-test bookings must have a positive fare amount/
   );
 
   await query(

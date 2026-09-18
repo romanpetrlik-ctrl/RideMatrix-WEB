@@ -8,11 +8,13 @@ import { listLicensingAuthorities } from "../services/licensing";
 import {
   CLEANUP_TARGETS,
   CleanupTarget,
+  MissingAuthRoleError,
   SetupValidationError,
   assertSafeNotificationSinkForTestEmail,
   bootstrapRealInstallerSuperuser,
   completeInitialSetup,
   deactivateLegacyOperationalAccounts,
+  getBootstrapState,
   getSetupOverview,
   isSetupAdministrationRole,
   listSetupAuditEvents,
@@ -110,7 +112,18 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         allowedBootstrapEmails.includes(String(session.user.email || "").trim().toLowerCase())
       );
     }
-    return session.user.roles.includes("superuser");
+    if (!isSetupAdministrationRole(session.user.roles || [])) {
+      return false;
+    }
+    if (session.user.roles.includes("superuser")) {
+      return true;
+    }
+    const bootstrap = await getBootstrapState();
+    return (
+      bootstrap?.status === "completed" &&
+      bootstrap.installerUserId === session.user.id &&
+      session.user.roles.includes("admin")
+    );
   }
 
   async function renderWizard(
@@ -118,7 +131,8 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     session: SessionAccount,
     requestedPath: string,
     errors: string[] = [],
-    notice: string | null = null
+    notice: string | null = null,
+    formOverrides: Record<string, string> = {}
   ) {
     const overview = await getSetupOverview();
     const currentPath = SETUP_STEP_PATHS[overview.currentStep];
@@ -143,15 +157,84 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       licensingAuthorityId: overview.licence?.licensingAuthorityId || "",
       validFrom: overview.licence?.validFrom || "",
       validTo: overview.licence?.validTo || "",
-      registeredAddress: "",
-      operationalAddress: ""
+      formattedAddress:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.formattedAddress
+          : overview.addressDetails.registeredPho?.formattedAddress) || "",
+      houseNameNumber:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.houseNameNumber
+          : overview.addressDetails.registeredPho?.houseNameNumber) || "",
+      addressLine1:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.addressLine1
+          : overview.addressDetails.registeredPho?.addressLine1) || "",
+      addressLine2:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.addressLine2
+          : overview.addressDetails.registeredPho?.addressLine2) || "",
+      addressLine3:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.addressLine3
+          : overview.addressDetails.registeredPho?.addressLine3) || "",
+      cityTown:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.cityTown
+          : overview.addressDetails.registeredPho?.cityTown) || "",
+      county:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.county
+          : overview.addressDetails.registeredPho?.county) || "",
+      state:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.state
+          : overview.addressDetails.registeredPho?.state) || "",
+      postcode:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.postcode
+          : overview.addressDetails.registeredPho?.postcode) || "",
+      countryCode:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.countryCode
+          : overview.addressDetails.registeredPho?.countryCode) || "",
+      countryName:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.countryName
+          : overview.addressDetails.registeredPho?.countryName) || "",
+      latitude:
+        String(
+          requestedPath === SETUP_STEP_PATHS.operational_address
+            ? overview.addressDetails.operational?.latitude ?? ""
+            : overview.addressDetails.registeredPho?.latitude ?? ""
+        ) || "",
+      longitude:
+        String(
+          requestedPath === SETUP_STEP_PATHS.operational_address
+            ? overview.addressDetails.operational?.longitude ?? ""
+            : overview.addressDetails.registeredPho?.longitude ?? ""
+        ) || "",
+      providerName:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.providerName
+          : overview.addressDetails.registeredPho?.providerName) || "",
+      providerPlaceId:
+        (requestedPath === SETUP_STEP_PATHS.operational_address
+          ? overview.addressDetails.operational?.providerPlaceId
+          : overview.addressDetails.registeredPho?.providerPlaceId) || ""
     };
+
+    for (const [key, value] of Object.entries(formOverrides)) {
+      if (typeof value === "string") {
+        (formData as Record<string, string>)[key] = value;
+      }
+    }
 
     return res.render("pages/setup/wizard", {
       title: "Initial Setup",
       appTitle: options.appTitle,
       email: session.user?.email || "",
-      currentPath: requestedPath,
+      currentPath,
+      requestedPath,
       stepPaths: SETUP_STEP_PATHS,
       setup: overview,
       authorities,
@@ -198,11 +281,16 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     });
   }
 
-  router.post("/setup/bootstrap-superuser", setupRateLimit, async (req, res, next) => {
+  const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
+
+  router.post("/setup/bootstrap-superuser", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
+      }
+      if (!(await canAccessSetupAdministration(session))) {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
       await bootstrapRealInstallerSuperuser({
@@ -210,26 +298,36 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         installerEmail: normalizeText(req.body.installerEmail)
       });
 
-      return res.redirect(SETUP_STEP_PATHS.operator_profile);
+      const overview = await getSetupOverview();
+      return res.redirect(SETUP_STEP_PATHS[overview.currentStep]);
     } catch (error) {
-      if (error instanceof SetupValidationError || error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
-        return renderWizard(res, session, req.path.replace(/\/$/, ""), [error.message]);
+        return renderWizard(
+          res,
+          session,
+          req.path.replace(/\/$/, ""),
+          [error.message],
+          null,
+          {
+            installerEmail: normalizeText(req.body.installerEmail)
+          }
+        );
       }
-      next(error);
+      return next(error);
     }
   });
 
-  router.post("/setup/operator-profile", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/operator-profile", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -246,24 +344,29 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
       return res.redirect(SETUP_STEP_PATHS.registered_pho_address);
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
-        return renderWizard(res, session, req.path, [error.message]);
+        return renderWizard(res, session, req.path, [error.message], null, {
+          legalName: normalizeText(req.body.legalName),
+          tradingName: normalizeText(req.body.tradingName),
+          licenceHolderName: normalizeText(req.body.licenceHolderName),
+          operatorStatus: normalizeText(req.body.operatorStatus)
+        });
       }
-      next(error);
+      return next(error);
     }
   });
 
-  router.post("/setup/registered-pho-address", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/registered-pho-address", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -288,24 +391,40 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
       return res.redirect(SETUP_STEP_PATHS.operational_address);
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
-        return renderWizard(res, session, req.path, [error.message]);
+        return renderWizard(res, session, req.path, [error.message], null, {
+          formattedAddress: normalizeText(req.body.formattedAddress),
+          houseNameNumber: normalizeText(req.body.houseNameNumber),
+          addressLine1: normalizeText(req.body.addressLine1),
+          addressLine2: normalizeText(req.body.addressLine2),
+          addressLine3: normalizeText(req.body.addressLine3),
+          cityTown: normalizeText(req.body.cityTown),
+          county: normalizeText(req.body.county),
+          state: normalizeText(req.body.state),
+          postcode: normalizeText(req.body.postcode),
+          countryCode: normalizeText(req.body.countryCode),
+          countryName: normalizeText(req.body.countryName),
+          latitude: normalizeText(req.body.latitude),
+          longitude: normalizeText(req.body.longitude),
+          providerName: normalizeText(req.body.providerName),
+          providerPlaceId: normalizeText(req.body.providerPlaceId)
+        });
       }
-      next(error);
+      return next(error);
     }
   });
 
-  router.post("/setup/operational-address", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/operational-address", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -330,24 +449,40 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
       return res.redirect(SETUP_STEP_PATHS.pho_licence);
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
-        return renderWizard(res, session, req.path, [error.message]);
+        return renderWizard(res, session, req.path, [error.message], null, {
+          formattedAddress: normalizeText(req.body.formattedAddress),
+          houseNameNumber: normalizeText(req.body.houseNameNumber),
+          addressLine1: normalizeText(req.body.addressLine1),
+          addressLine2: normalizeText(req.body.addressLine2),
+          addressLine3: normalizeText(req.body.addressLine3),
+          cityTown: normalizeText(req.body.cityTown),
+          county: normalizeText(req.body.county),
+          state: normalizeText(req.body.state),
+          postcode: normalizeText(req.body.postcode),
+          countryCode: normalizeText(req.body.countryCode),
+          countryName: normalizeText(req.body.countryName),
+          latitude: normalizeText(req.body.latitude),
+          longitude: normalizeText(req.body.longitude),
+          providerName: normalizeText(req.body.providerName),
+          providerPlaceId: normalizeText(req.body.providerPlaceId)
+        });
       }
-      next(error);
+      return next(error);
     }
   });
 
-  router.post("/setup/pho-licence", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/pho-licence", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -359,22 +494,45 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       });
       return res.redirect(SETUP_STEP_PATHS.licence_document);
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
-        return renderWizard(res, session, req.path, [error.message]);
+        return renderWizard(res, session, req.path, [error.message], null, {
+          licenceNumber: normalizeText(req.body.licenceNumber),
+          licensingAuthorityId: normalizeText(req.body.licensingAuthorityId),
+          validFrom: normalizeText(req.body.validFrom),
+          validTo: normalizeText(req.body.validTo)
+        });
       }
-      next(error);
+      return next(error);
     }
   });
 
   const uploadCsrfGuard = requireCsrfToken({ appTitle: options.appTitle });
 
+  function requireSameOriginMultipart(req: any, res: any, next: any) {
+    const originHeader = String(req.headers.origin || req.headers.referer || "").trim();
+    if (!originHeader) {
+      return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+    }
+    try {
+      const origin = new URL(originHeader);
+      const host = String(req.headers.host || "");
+      if (!host || origin.host !== host) {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      return next();
+    } catch {
+      return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+    }
+  }
+
   router.post(
     "/setup/licence-document",
     setupRateLimit,
+    requireSameOriginMultipart,
     setupUpload.single("licenceDocument"),
     uploadCsrfGuard,
     async (req, res, next) => {
@@ -383,7 +541,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
-        if (!session.user.roles.includes("superuser")) {
+        if (!(await canAccessSetupAdministration(session))) {
           return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
         }
 
@@ -402,25 +560,25 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
         return res.redirect(SETUP_STEP_PATHS.review_confirmation);
       } catch (error) {
-        if (error instanceof Error) {
+        if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
           const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
           if (!session.authenticated || !session.user) {
             return res.redirect("/access");
           }
           return renderWizard(res, session, SETUP_STEP_PATHS.licence_document, [error.message]);
         }
-        next(error);
+        return next(error);
       }
     }
   );
 
-  router.post("/setup/review", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/review", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -434,24 +592,24 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
       return res.redirect(SETUP_STEP_PATHS.completed);
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
         return renderWizard(res, session, SETUP_STEP_PATHS.review_confirmation, [error.message]);
       }
-      next(error);
+      return next(error);
     }
   });
 
-  router.post("/setup/cleanup-accounts", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/cleanup-accounts", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -473,24 +631,24 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         "Cleanup request completed. Selected legacy operational accounts were deactivated from internal access roles."
       );
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
         return renderWizard(res, session, SETUP_STEP_PATHS.completed, [error.message]);
       }
-      next(error);
+      return next(error);
     }
   });
 
-  router.post("/setup/test-account-access-code", setupRateLimit, async (req, res, next) => {
+  router.post("/setup/test-account-access-code", setupRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const session = await resolveSession(req.headers.cookie);
       if (!session.authenticated || !session.user) {
         return res.redirect("/access");
       }
-      if (!session.user.roles.includes("superuser")) {
+      if (!(await canAccessSetupAdministration(session))) {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
@@ -505,14 +663,14 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         `Test-account access-code request is allowed for ${email}. Use the standard /access flow in the configured test sink environment.`
       );
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {
         const session = await resolveSession(req.headers.cookie).catch(() => ({ authenticated: false } as SessionAccount));
         if (!session.authenticated || !session.user) {
           return res.redirect("/access");
         }
         return renderWizard(res, session, SETUP_STEP_PATHS.completed, [error.message]);
       }
-      next(error);
+      return next(error);
     }
   });
 

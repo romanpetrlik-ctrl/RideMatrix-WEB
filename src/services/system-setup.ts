@@ -78,6 +78,10 @@ export type SetupOverview = {
     registeredPho: boolean;
     operational: boolean;
   };
+  addressDetails: {
+    registeredPho: OperatorAddressInput | null;
+    operational: OperatorAddressInput | null;
+  };
   licence: {
     id: string;
     licenceNumber: string;
@@ -339,6 +343,14 @@ async function readBootstrap(runner?: Queryable): Promise<{
   };
 }
 
+export async function getBootstrapState(runner?: Queryable): Promise<{
+  status: "pending" | "completed";
+  installerUserId: string | null;
+  installerEmailNormalized: string | null;
+} | null> {
+  return readBootstrap(runner);
+}
+
 async function writeSetupStep(
   step: SetupStep,
   actor: SetupActor,
@@ -501,15 +513,81 @@ export async function getSetupOverview(runner?: Queryable): Promise<SetupOvervie
   const operatorId = setupState?.operator_id ?? null;
   const operator = operatorId ? await getOperatorOverview(operatorId, runner) : null;
   const addressResult = operatorId
-    ? await query<{ address_type: "registered_pho" | "operational" }>(
-        `SELECT address_type
+    ? await query<{
+        address_type: "registered_pho" | "operational";
+        formatted_address: string | null;
+        house_name_number: string | null;
+        address_line1: string | null;
+        address_line2: string | null;
+        address_line3: string | null;
+        city_town: string | null;
+        county: string | null;
+        state: string | null;
+        postcode: string | null;
+        country_code: string | null;
+        country_name: string | null;
+        latitude: number | null;
+        longitude: number | null;
+        provider_name: string | null;
+        provider_place_id: string | null;
+      }>(
+        `SELECT address_type, formatted_address, house_name_number, address_line1, address_line2, address_line3,
+                city_town, county, state, postcode, country_code, country_name, latitude, longitude, provider_name, provider_place_id
            FROM operator_addresses
           WHERE operator_id = $1`,
         [operatorId],
         runner
       )
-    : { rows: [] as Array<{ address_type: "registered_pho" | "operational" }> };
+    : {
+        rows: [] as Array<{
+          address_type: "registered_pho" | "operational";
+          formatted_address: string | null;
+          house_name_number: string | null;
+          address_line1: string | null;
+          address_line2: string | null;
+          address_line3: string | null;
+          city_town: string | null;
+          county: string | null;
+          state: string | null;
+          postcode: string | null;
+          country_code: string | null;
+          country_name: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          provider_name: string | null;
+          provider_place_id: string | null;
+        }>
+      };
   const addressTypes = new Set(addressResult.rows.map((row) => row.address_type));
+  const addressByType = new Map(
+    addressResult.rows.map((row) => [row.address_type, row] as const)
+  );
+  const toAddressInput = (
+    addressType: "registered_pho" | "operational"
+  ): OperatorAddressInput | null => {
+    const source = addressByType.get(addressType);
+    if (!source) {
+      return null;
+    }
+    return {
+      addressType,
+      formattedAddress: source.formatted_address || "",
+      houseNameNumber: source.house_name_number,
+      addressLine1: source.address_line1 || "",
+      addressLine2: source.address_line2,
+      addressLine3: source.address_line3,
+      cityTown: source.city_town || "",
+      county: source.county,
+      state: source.state,
+      postcode: source.postcode || "",
+      countryCode: source.country_code || "",
+      countryName: source.country_name || "",
+      latitude: source.latitude,
+      longitude: source.longitude,
+      providerName: source.provider_name,
+      providerPlaceId: source.provider_place_id
+    };
+  };
   const licence = operatorId ? await getLatestLicence(operatorId, runner) : null;
   const latestDocument = licence ? await getLatestLicenceDocument(licence.id, runner) : null;
 
@@ -541,6 +619,10 @@ export async function getSetupOverview(runner?: Queryable): Promise<SetupOvervie
     addresses: {
       registeredPho: addressTypes.has("registered_pho"),
       operational: addressTypes.has("operational")
+    },
+    addressDetails: {
+      registeredPho: toAddressInput("registered_pho"),
+      operational: toAddressInput("operational")
     },
     licence,
     latestDocument
@@ -779,6 +861,11 @@ export async function saveOperatorProfile(
   }
 
   return withTransaction(async (client) => {
+    const setupState = await getSetupStateRow(client);
+    if (setupState?.status === "completed") {
+      throw new SetupValidationError("Initial setup is already completed and locked.");
+    }
+
     const operatorId = await resolveOrCreateSetupOperator(profile, actor, client);
     const now = new Date().toISOString();
     await query(
@@ -1504,7 +1591,12 @@ export function isTestSinkEnabled(): boolean {
 }
 
 export async function assertSafeNotificationSinkForTestEmail(email: string): Promise<void> {
-  const isTestAccount = await isActiveRegisteredTestAccountByEmail(email);
+  const normalized = normalizeUserEmail(email);
+  const isDefinedSystemTestAddress = SYSTEM_TEST_ACCOUNT_DEFINITIONS.some(
+    (account) => normalizeUserEmail(account.email) === normalized
+  );
+  const isTestAccount =
+    isDefinedSystemTestAddress || (await isActiveRegisteredTestAccountByEmail(normalized));
   if (isTestAccount && !isTestSinkEnabled()) {
     throw new SetupValidationError(
       "Test-account notification sink is not configured. Set TEST_NOTIFICATION_SINK_MODE=mailpit (or internal) before requesting access codes for test accounts."

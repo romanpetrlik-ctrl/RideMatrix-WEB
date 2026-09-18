@@ -49,9 +49,7 @@ export function createSetupGateMiddleware(options: SetupGateOptions = {}): Reque
 
       const shouldGate =
         startsWithAny(pathname, PROTECTED_PREFIXES) ||
-        pathname === "/entry" ||
-        pathname === "/auth/callback" ||
-        pathname === "/access";
+        pathname === "/entry";
 
       if (shouldGate) {
         return res.redirect("/setup");

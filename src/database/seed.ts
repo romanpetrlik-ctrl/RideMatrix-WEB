@@ -510,8 +510,8 @@ export async function seedCustomers(client: Queryable): Promise<boolean> {
 
   const insertBookingSql = `
     INSERT INTO customer_bookings (
-      id, customer_id, reference, service_date, pickup, dropoff, status, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      id, customer_id, reference, service_date, pickup, dropoff, status, created_at, total_fare_amount
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (id) DO NOTHING
   `;
 
@@ -545,7 +545,8 @@ export async function seedCustomers(client: Queryable): Promise<boolean> {
           booking.pickup,
           booking.dropoff,
           booking.status,
-          customer.createdAt
+          customer.createdAt,
+          25
         ]);
       }
     }

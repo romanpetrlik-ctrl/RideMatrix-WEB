@@ -802,8 +802,9 @@ export const MIGRATIONS: Migration[] = [
             RAISE EXCEPTION 'Only active registered test accounts may create test bookings.';
           END IF;
         ELSE
-          IF NEW.total_fare_amount = 0 THEN
-            RAISE EXCEPTION 'Zero fare is only allowed for test bookings.';
+          IF lower(COALESCE(NEW.assignment_status, '')) = 'assigned'
+             AND (NEW.total_fare_amount IS NULL OR NEW.total_fare_amount <= 0) THEN
+            RAISE EXCEPTION 'Non-test bookings must have a positive fare amount.';
           END IF;
         END IF;
 
@@ -813,7 +814,7 @@ export const MIGRATIONS: Migration[] = [
 
       DROP TRIGGER IF EXISTS trg_customer_bookings_test_policy ON customer_bookings;
       CREATE TRIGGER trg_customer_bookings_test_policy
-      BEFORE INSERT OR UPDATE OF is_test_booking, test_account_user_id, test_reason, total_fare_amount
+      BEFORE INSERT OR UPDATE OF is_test_booking, test_account_user_id, test_reason, total_fare_amount, assignment_status
       ON customer_bookings
       FOR EACH ROW
       EXECUTE FUNCTION rm_enforce_test_booking_policy();

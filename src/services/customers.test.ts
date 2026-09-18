@@ -121,8 +121,8 @@ test("lists at most five recent bookings for the requested customer", async () =
   for (let index = 0; index < 6; index += 1) {
     await query(
       `INSERT INTO customer_bookings
-       (id, customer_id, reference, service_date, pickup, dropoff, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       (id, customer_id, reference, service_date, pickup, dropoff, status, created_at, total_fare_amount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         `recent-booking-${index}`,
         customer.id,
@@ -131,7 +131,8 @@ test("lists at most five recent bookings for the requested customer", async () =
         `Pickup ${index}`,
         `Dropoff ${index}`,
         "Completed",
-        new Date().toISOString()
+        new Date().toISOString(),
+        15
       ]
     );
   }
