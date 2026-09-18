@@ -56,7 +56,7 @@
             <thead><tr><th scope="col">Reference</th><th scope="col">Service Date</th><th scope="col">Pickup</th><th scope="col">Dropoff</th><th scope="col">Licensing authority</th><th scope="col">Status</th></tr></thead>
             <tbody>
               <% customer.bookings.forEach((booking) => { %>
-                <tr><td><strong><%= booking.reference %></strong></td><td><%= booking.formattedServiceDate %></td><td><%= booking.pickup %></td><td><%= booking.dropoff %></td><td><%= booking.licensingAuthorityName || "Unassigned / unresolved" %></td><td><span class="status-pill status-pill--booking"><%= booking.status %></span></td></tr>
+                <tr><td><strong><%= booking.reference %></strong> <% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %></td><td><%= booking.formattedServiceDate %></td><td><%= booking.pickup %></td><td><%= booking.dropoff %></td><td><%= booking.licensingAuthorityName || "Unassigned / unresolved" %></td><td><span class="status-pill status-pill--booking"><%= booking.status %></span></td></tr>
               <% }) %>
             </tbody>
           </table>

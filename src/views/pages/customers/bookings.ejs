@@ -45,7 +45,12 @@
               <tbody>
                 <% customer.bookings.forEach((booking) => { %>
                   <tr>
-                    <td><strong><%= booking.reference %></strong></td>
+                    <td>
+                      <strong><%= booking.reference %></strong>
+                      <% if (booking.isTestBooking) { %>
+                        <span class="status-pill status-pill--critical">TEST</span>
+                      <% } %>
+                    </td>
                     <td><%= booking.formattedServiceDate %></td>
                     <td><%= booking.pickup %></td>
                     <td><%= booking.dropoff %></td>

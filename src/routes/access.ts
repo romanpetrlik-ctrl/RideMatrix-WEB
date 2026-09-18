@@ -2,6 +2,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { ApiRequestError, getSessionAccount, submitAccessRequest } from "../services/api";
 import { logStaffLogin, STAFF_LOGIN_FAILED } from "../services/staff-audit";
+import { assertSafeNotificationSinkForTestEmail } from "../services/system-setup";
 import { getLandingRoute } from "./auth-callback";
 
 type AccessRouterOptions = {
@@ -57,6 +58,7 @@ export function createAccessRouter(options: AccessRouterOptions): Router {
   router.post("/access", loginRateLimit, async (req, res, next) => {
     try {
       const email = String(req.body.email || "").trim();
+      await assertSafeNotificationSinkForTestEmail(email);
       await submitAccessRequest(email);
 
       res.render("pages/request-received", {

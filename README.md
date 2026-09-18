@@ -82,6 +82,12 @@ RideMatrix-WEB is the server-rendered web application layer for RideMatrix opera
 - **Implemented:** CSRF protection middleware and multipart-safe validation path.
   - [`src/middleware/csrf.ts`](./src/middleware/csrf.ts)
   - [`docs/csrf-protection.md`](./docs/csrf-protection.md)
+- **Implemented:** Initial setup wizard and setup gate (`/setup/*`) for superuser bootstrap, operator setup state, PHO licence document upload, and one-time completion lock.
+  - [`src/routes/setup.ts`](./src/routes/setup.ts)
+  - [`src/services/system-setup.ts`](./src/services/system-setup.ts)
+- **Implemented:** Production-safe test-account registry (`system_test_accounts`) and test-booking safety fields (`customer_bookings.is_test_booking`, `test_account_user_id`, `test_reason`) with server-side/DB enforcement.
+  - [`src/database/migrations.ts`](./src/database/migrations.ts)
+  - [`src/services/system-setup.ts`](./src/services/system-setup.ts)
 
 ### Existing test/typecheck/build expectations
 
@@ -92,13 +98,10 @@ RideMatrix-WEB is the server-rendered web application layer for RideMatrix opera
 
 - **Implemented:** Google Places autocomplete is technically working with the new component flow.
 - **Known limitation:** Autocomplete localization/region behavior is intentionally **not finalized**.
-- **Not yet implemented:** Complete Initial System Setup flow for operator/license holder.
-- **Not yet implemented:** Confirmed persisted source of truth for:
-  - operator primary profile,
-  - PHO licence details,
-  - registered PHO address,
-  - operational address,
-  - setup completion state.
+- **Implemented:** Initial System Setup wizard for operator profile, both addresses, PHO licence, document upload, and one-time completion state.
+- **Implemented:** Setup bootstrap grants `superuser` only to the currently authenticated installer email and logs setup audit events.
+- **Implemented:** Setup completion provisions selected production test accounts and deactivates legacy `test.superuser` / `test.admin` access roles.
+- **Constraint:** WEB can enforce test-account sink policy checks before requesting access codes, but actual e-mail and magic-link transport delivery remains owned by external auth/API infrastructure.
 - **Known behavior:** `House number / name` may be legitimately empty when Google does not provide it; future UX should support explicit confirmation to continue without it, rather than fabricating values.
 - **Known diagnostic note:** An unrelated `favicon` 404 must not be treated as a Google Maps root cause.
 - **Not yet implemented:** Operator setup database model/UI should not be assumed to exist.

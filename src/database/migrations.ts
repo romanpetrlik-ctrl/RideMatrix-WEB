@@ -683,6 +683,141 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_system_setup_state_operator
         ON system_setup_state (operator_id);
     `
+  },
+  {
+    id: "0009_initial_setup_wizard_and_test_safety",
+    sql: `
+      CREATE TABLE IF NOT EXISTS system_setup_bootstrap (
+        id TEXT PRIMARY KEY,
+        bootstrap_key TEXT NOT NULL UNIQUE
+          CHECK (bootstrap_key IN ('initial_superuser_bootstrap')),
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'completed')),
+        installer_user_id TEXT,
+        installer_email_normalized TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS system_setup_steps (
+        setup_key TEXT NOT NULL
+          CHECK (setup_key IN ('initial_system_setup')),
+        step_key TEXT NOT NULL
+          CHECK (
+            step_key IN (
+              'bootstrap_superuser',
+              'operator_profile',
+              'registered_pho_address',
+              'operational_address',
+              'pho_licence',
+              'licence_document',
+              'review_confirmation',
+              'completed'
+            )
+          ),
+        completed_at TEXT NOT NULL,
+        completed_by_user_id TEXT,
+        completed_by_user_email TEXT,
+        PRIMARY KEY (setup_key, step_key)
+      );
+
+      CREATE TABLE IF NOT EXISTS system_setup_audit_events (
+        id TEXT PRIMARY KEY,
+        occurred_at TEXT NOT NULL,
+        event_name TEXT NOT NULL,
+        actor_user_id TEXT,
+        actor_user_email TEXT,
+        setup_key TEXT,
+        operator_id TEXT,
+        summary TEXT NOT NULL,
+        metadata JSONB
+      );
+      CREATE INDEX IF NOT EXISTS idx_system_setup_audit_occurred_at
+        ON system_setup_audit_events (occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_system_setup_audit_operator
+        ON system_setup_audit_events (operator_id, occurred_at DESC);
+
+      CREATE TABLE IF NOT EXISTS system_test_accounts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        role_key TEXT NOT NULL,
+        email_normalized_snapshot TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by_user_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deactivated_at TEXT,
+        deactivated_by_user_id TEXT,
+        UNIQUE (user_id, role_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_system_test_accounts_active
+        ON system_test_accounts (active, role_key);
+      CREATE INDEX IF NOT EXISTS idx_system_test_accounts_email
+        ON system_test_accounts (email_normalized_snapshot);
+
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS total_fare_amount NUMERIC(12, 2);
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS is_test_booking BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS test_account_user_id TEXT;
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS test_reason TEXT;
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS test_marked_at TEXT;
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS test_marked_by_user_id TEXT;
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS chk_customer_bookings_test_fields;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT chk_customer_bookings_test_fields
+        CHECK (
+          (is_test_booking = TRUE AND test_account_user_id IS NOT NULL AND length(trim(COALESCE(test_reason, ''))) > 0)
+          OR
+          (is_test_booking = FALSE AND test_account_user_id IS NULL AND COALESCE(test_reason, '') = '')
+        );
+
+      CREATE INDEX IF NOT EXISTS idx_customer_bookings_test_booking
+        ON customer_bookings (is_test_booking, service_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_customer_bookings_test_account
+        ON customer_bookings (test_account_user_id, service_date DESC)
+        WHERE test_account_user_id IS NOT NULL;
+
+      CREATE OR REPLACE FUNCTION rm_enforce_test_booking_policy() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.is_test_booking THEN
+          IF NEW.test_account_user_id IS NULL THEN
+            RAISE EXCEPTION 'Test bookings require a registered test account user id.';
+          END IF;
+
+          IF NOT EXISTS (
+            SELECT 1
+            FROM system_test_accounts ta
+            WHERE ta.user_id = NEW.test_account_user_id
+              AND ta.active = TRUE
+          ) THEN
+            RAISE EXCEPTION 'Only active registered test accounts may create test bookings.';
+          END IF;
+        ELSE
+          IF NEW.total_fare_amount = 0 THEN
+            RAISE EXCEPTION 'Zero fare is only allowed for test bookings.';
+          END IF;
+        END IF;
+
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_customer_bookings_test_policy ON customer_bookings;
+      CREATE TRIGGER trg_customer_bookings_test_policy
+      BEFORE INSERT OR UPDATE OF is_test_booking, test_account_user_id, test_reason, total_fare_amount
+      ON customer_bookings
+      FOR EACH ROW
+      EXECUTE FUNCTION rm_enforce_test_booking_policy();
+    `
   }
 ];
 
