@@ -25,9 +25,9 @@ before(async () => {
 
   const now = new Date().toISOString();
   await query(
-    `INSERT INTO customer_bookings (id, customer_id, reference, service_date, pickup, dropoff, status, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    ["book-real-1", realCustomerId, "RM-REAL-1", now, "Home", "Office", "Scheduled", now]
+    `INSERT INTO customer_bookings (id, customer_id, reference, service_date, pickup, dropoff, status, created_at, total_fare_amount)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    ["book-real-1", realCustomerId, "RM-REAL-1", now, "Home", "Office", "Scheduled", now, 10]
   );
 });
 

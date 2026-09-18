@@ -12,10 +12,12 @@ import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
 import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
+import { createSetupRouter } from "./routes/setup";
 import { errorHandler } from "./middleware/error-handler";
 import { createCsrfProtection } from "./middleware/csrf";
 import { createSystemStatusBarViewModelMiddleware } from "./middleware/system-status-bar";
 import { createLayoutContextMiddleware } from "./middleware/layout-context";
+import { createSetupGateMiddleware } from "./middleware/setup-gate";
 import { initializeDatabase } from "./database/connection";
 
 dotenv.config();
@@ -43,6 +45,7 @@ async function startServer() {
   app.use(createCsrfProtection({ appTitle }));
   app.use(createLayoutContextMiddleware());
   app.use(createSystemStatusBarViewModelMiddleware());
+  app.use(createSetupGateMiddleware());
 
   app.get("/", (_req, res) => {
     res.redirect("/access");
@@ -54,6 +57,7 @@ async function startServer() {
   app.use(createExitRouter());
   app.use(createAuthCallbackRouter());
   app.use(createRecoveryRouter({ appTitle }));
+  app.use(createSetupRouter({ appTitle }));
   app.use(createDashboardRouter({ appTitle }));
   app.use(createCustomersRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));

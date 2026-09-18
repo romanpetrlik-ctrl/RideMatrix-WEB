@@ -27,6 +27,8 @@ export type BookingRecord = {
   status: "Scheduled" | "Completed" | "Cancelled";
   licensingAuthorityId: string | null;
   licensingAuthorityName: string | null;
+  isTestBooking: boolean;
+  testReason: string | null;
 };
 
 export async function listRecentBookingsForCustomer(
@@ -43,12 +45,16 @@ export async function listRecentBookingsForCustomer(
     status: BookingRecord["status"];
     licensing_authority_id: string | null;
     licensing_authority_name: string | null;
+    is_test_booking: boolean;
+    test_reason: string | null;
   }>(
     `SELECT id, reference, service_date, pickup, dropoff, status,
-           licensing_authority_id, licensing_authority_name
+          licensing_authority_id, licensing_authority_name, is_test_booking, test_reason
      FROM (
        SELECT b.id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
-              b.licensing_authority_id, a.name AS licensing_authority_name
+              b.licensing_authority_id, a.name AS licensing_authority_name,
+              COALESCE(b.is_test_booking, FALSE) AS is_test_booking,
+              b.test_reason
        FROM customer_bookings b
        LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
        WHERE b.customer_id = $1
@@ -61,6 +67,8 @@ export async function listRecentBookingsForCustomer(
          dropoff_text,
          CASE WHEN service_date_time > NOW()::text THEN 'Scheduled' ELSE 'Completed' END,
          NULL,
+         NULL,
+         FALSE,
          NULL
        FROM imported_bookings
        WHERE customer_id = $1
@@ -78,8 +86,29 @@ export async function listRecentBookingsForCustomer(
     dropoff: booking.dropoff,
     status: booking.status
     ,licensingAuthorityId: booking.licensing_authority_id,
-    licensingAuthorityName: booking.licensing_authority_name
+    licensingAuthorityName: booking.licensing_authority_name,
+    isTestBooking: Boolean(booking.is_test_booking),
+    testReason: booking.test_reason
   }));
+}
+
+export async function getFinancialBookingTotals(client?: Queryable): Promise<{
+  bookingCount: number;
+  fareAmountTotal: number;
+}> {
+  const runner = client || getPool();
+  const result = await runner.query<{ booking_count: number; fare_amount_total: string | null }>(
+    `SELECT
+       COUNT(*)::int AS booking_count,
+       COALESCE(SUM(total_fare_amount), 0)::text AS fare_amount_total
+     FROM customer_bookings
+     WHERE is_test_booking = FALSE`
+  );
+
+  return {
+    bookingCount: Number(result.rows[0]?.booking_count ?? 0),
+    fareAmountTotal: Number(result.rows[0]?.fare_amount_total ?? 0)
+  };
 }
 
 export type CustomerRecord = {
@@ -334,9 +363,13 @@ async function loadBookings(
     status: BookingRecord["status"];
     licensing_authority_id: string | null;
     licensing_authority_name: string | null;
+    is_test_booking: boolean;
+    test_reason: string | null;
   }>(
     `SELECT b.id, b.customer_id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
-            b.licensing_authority_id, a.name AS licensing_authority_name
+           b.licensing_authority_id, a.name AS licensing_authority_name,
+           COALESCE(b.is_test_booking, FALSE) AS is_test_booking,
+           b.test_reason
      FROM customer_bookings b
      LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
      WHERE b.customer_id = ANY($1)
@@ -354,7 +387,9 @@ async function loadBookings(
       dropoff: booking.dropoff,
       status: booking.status,
       licensingAuthorityId: booking.licensing_authority_id,
-      licensingAuthorityName: booking.licensing_authority_name
+      licensingAuthorityName: booking.licensing_authority_name,
+      isTestBooking: Boolean(booking.is_test_booking),
+      testReason: booking.test_reason
     });
     grouped.set(booking.customer_id, list);
   }
@@ -388,7 +423,9 @@ async function loadBookings(
       // stay "Scheduled" forever once their service date has passed.
       status: booking.service_date_time > nowIso ? "Scheduled" : "Completed",
       licensingAuthorityId: null,
-      licensingAuthorityName: null
+      licensingAuthorityName: null,
+      isTestBooking: false,
+      testReason: null
     });
     grouped.set(booking.customer_id, list);
   }
