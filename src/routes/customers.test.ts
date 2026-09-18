@@ -208,7 +208,9 @@ test("customer register exposes structured address inputs and only the browser m
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /id="addressSearch"/);
+    assert.match(body, /id="addressSearchAutocomplete" class="private-customer-form__autocomplete-host" data-address-autocomplete-host hidden/);
+    assert.match(body, /id="addressSearchManual"/);
+    assert.match(body, /<input[^>]*type="hidden"[^>]*id="addressSearch"[^>]*name="addressSearch"/);
     assert.match(body, /id="houseNameNumber"[^>]*required/);
     assert.match(body, /id="addressLine1"[^>]*required/);
     assert.match(body, /id="addressLine2"/);
@@ -287,7 +289,9 @@ test("customer edit exposes structured address inputs and only the browser maps 
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /id="addressSearch"/);
+    assert.match(body, /id="addressSearchAutocomplete" class="private-customer-form__autocomplete-host" data-address-autocomplete-host hidden/);
+    assert.match(body, /id="addressSearchManual"/);
+    assert.match(body, /<input[^>]*type="hidden"[^>]*id="addressSearch"[^>]*name="addressSearch"/);
     assert.match(body, /id="houseNameNumber"/);
     assert.match(body, /id="addressLine1"/);
     assert.match(body, /id="cityTown"/);

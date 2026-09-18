@@ -706,6 +706,17 @@ button:visited,
   font-size: 0.88rem;
 }
 
+.private-customer-form__autocomplete-host {
+  width: 100%;
+  min-width: 0;
+}
+
+.private-customer-form__autocomplete-host > * {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .private-customer-form .form-field {
   margin-bottom: 0;
   min-width: 0;
