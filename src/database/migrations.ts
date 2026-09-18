@@ -536,6 +536,153 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_staff_login_audit_account
         ON staff_login_audit (account_id, occurred_at DESC);
     `
+  },
+  {
+    id: "0008_operator_setup_foundation",
+    sql: `
+      CREATE TABLE IF NOT EXISTS operators (
+        id TEXT PRIMARY KEY,
+        legal_name TEXT NOT NULL,
+        trading_name TEXT,
+        license_holder_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'setup_required'
+          CHECK (status IN ('setup_required', 'active', 'suspended', 'archived')),
+        created_by_user_id TEXT,
+        created_by_user_email TEXT,
+        updated_by_user_id TEXT,
+        updated_by_user_email TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_operators_status
+        ON operators (status);
+
+      CREATE TABLE IF NOT EXISTS operator_addresses (
+        id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+        address_type TEXT NOT NULL
+          CHECK (address_type IN ('registered_pho', 'operational')),
+        formatted_address TEXT,
+        house_name_number TEXT,
+        address_line1 TEXT,
+        address_line2 TEXT,
+        address_line3 TEXT,
+        city_town TEXT,
+        county TEXT,
+        state TEXT,
+        postcode TEXT,
+        country_code TEXT
+          CHECK (country_code IS NULL OR country_code ~ '^[A-Z]{2}$'),
+        country_name TEXT,
+        latitude DOUBLE PRECISION
+          CHECK (latitude IS NULL OR (latitude >= -90 AND latitude <= 90)),
+        longitude DOUBLE PRECISION
+          CHECK (longitude IS NULL OR (longitude >= -180 AND longitude <= 180)),
+        provider_name TEXT,
+        provider_place_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (operator_id, address_type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_operator_addresses_country_code
+        ON operator_addresses (country_code);
+
+      CREATE TABLE IF NOT EXISTS operator_licences (
+        id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES operators(id),
+        licence_type TEXT NOT NULL DEFAULT 'pho'
+          CHECK (licence_type IN ('pho')),
+        licence_number TEXT NOT NULL,
+        licensing_authority_id TEXT REFERENCES licensing_authorities(id),
+        valid_from TEXT NOT NULL,
+        valid_to TEXT,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'active', 'expired', 'suspended', 'revoked')),
+        created_by_user_id TEXT,
+        created_by_user_email TEXT,
+        updated_by_user_id TEXT,
+        updated_by_user_email TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (valid_to IS NULL OR valid_to > valid_from)
+      );
+      CREATE INDEX IF NOT EXISTS idx_operator_licences_operator
+        ON operator_licences (operator_id);
+      CREATE INDEX IF NOT EXISTS idx_operator_licences_status
+        ON operator_licences (status);
+      CREATE INDEX IF NOT EXISTS idx_operator_licences_validity
+        ON operator_licences (valid_from, valid_to);
+
+      CREATE TABLE IF NOT EXISTS operator_licence_documents (
+        id TEXT PRIMARY KEY,
+        licence_id TEXT NOT NULL REFERENCES operator_licences(id) ON DELETE CASCADE,
+        original_filename TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size BIGINT NOT NULL CHECK (byte_size > 0),
+        checksum TEXT NOT NULL,
+        storage_key TEXT,
+        content BYTEA,
+        is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+        superseded_at TEXT,
+        uploaded_by_user_id TEXT,
+        uploaded_by_user_email TEXT,
+        uploaded_at TEXT NOT NULL,
+        CHECK (storage_key IS NOT NULL OR content IS NOT NULL)
+      );
+      CREATE INDEX IF NOT EXISTS idx_operator_licence_documents_licence
+        ON operator_licence_documents (licence_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_operator_licence_documents_latest
+        ON operator_licence_documents (licence_id)
+        WHERE is_latest = TRUE;
+
+      CREATE TABLE IF NOT EXISTS operator_licence_history (
+        id TEXT PRIMARY KEY,
+        licence_id TEXT NOT NULL REFERENCES operator_licences(id) ON DELETE RESTRICT,
+        event_type TEXT NOT NULL
+          CHECK (
+            event_type IN (
+              'created',
+              'updated',
+              'status_changed',
+              'document_uploaded',
+              'document_replaced',
+              'document_removed'
+            )
+          ),
+        actor_user_id TEXT,
+        actor_user_email TEXT,
+        previous_status TEXT,
+        next_status TEXT,
+        summary TEXT NOT NULL,
+        metadata JSONB,
+        occurred_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_operator_licence_history_licence_time
+        ON operator_licence_history (licence_id, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_operator_licence_history_actor_time
+        ON operator_licence_history (actor_user_id, occurred_at DESC);
+
+      CREATE TABLE IF NOT EXISTS system_setup_state (
+        id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+        setup_key TEXT NOT NULL
+          CHECK (setup_key IN ('initial_system_setup')),
+        status TEXT NOT NULL DEFAULT 'incomplete'
+          CHECK (status IN ('incomplete', 'in_progress', 'completed')),
+        started_at TEXT,
+        started_by_user_id TEXT,
+        started_by_user_email TEXT,
+        completed_at TEXT,
+        completed_by_user_id TEXT,
+        completed_by_user_email TEXT,
+        last_edited_at TEXT,
+        last_edited_by_user_id TEXT,
+        last_edited_by_user_email TEXT,
+        UNIQUE (setup_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_system_setup_state_operator
+        ON system_setup_state (operator_id);
+    `
   }
 ];
 
