@@ -1929,6 +1929,67 @@ button:visited,
   color: var(--rm-walnut);
 }
 
+/* Initial setup wizard forms */
+
+.setup-wizard form {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+}
+
+.setup-wizard .setup-form__field {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.setup-wizard .setup-form__field label {
+  font-weight: 700;
+}
+
+.setup-wizard .setup-form__field input:not([type="checkbox"]):not([type="file"]),
+.setup-wizard .setup-form__field select,
+.setup-wizard .setup-form__field textarea {
+  width: 100%;
+  max-width: 40rem;
+  box-sizing: border-box;
+}
+
+.setup-wizard .setup-form__field input[type="file"] {
+  width: 100%;
+  max-width: 40rem;
+}
+
+.setup-wizard .setup-form__field--checkbox {
+  display: block;
+}
+
+.setup-wizard .setup-form__field--checkbox label {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.setup-wizard .setup-form__field--checkbox input {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+
+.setup-wizard .setup-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+@media (max-width: 600px) {
+  .setup-wizard .setup-form__actions button {
+    width: 100%;
+  }
+}
+
 .empty-state {
   padding: 1.5rem 0.2rem 0.5rem;
 }
