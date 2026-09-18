@@ -14,7 +14,11 @@ test("setup wizard fields use scoped single-column layout and separate actions",
   assert.match(css, /\.setup-wizard form \{[\s\S]*display: grid;[\s\S]*gap: 1rem;/);
   assert.match(
     css,
-    /\.setup-wizard \.setup-form__field input:not\(\[type="checkbox"\]\):not\(\[type="file"\]\),[\s\S]*max-width: 40rem;/
+    /\.setup-wizard form \{[\s\S]*width: 100%;[\s\S]*max-width: none;[\s\S]*\}/
+  );
+  assert.match(
+    css,
+    /\.setup-wizard \.setup-form__field input:not\(\[type="checkbox"\]\):not\(\[type="file"\]\),[\s\S]*width: 100%;[\s\S]*max-width: none;[\s\S]*box-sizing: border-box;/
   );
   assert.match(css, /\.setup-wizard \.setup-form__actions \{[\s\S]*display: flex;/);
 });
