@@ -2,6 +2,7 @@
   "use strict";
 
   var PLACE_FIELDS = ["formattedAddress", "addressComponents", "location", "displayName"];
+  var AVAILABLE_STATUS = "Google address suggestions are available.";
 
   function toText(value) {
     return typeof value === "string" ? value.trim() : "";
@@ -30,6 +31,15 @@
     if (place.displayName && typeof place.displayName.text === "string") return toText(place.displayName.text);
     if (typeof place.displayName === "string") return toText(place.displayName);
     if (typeof place.name === "string") return toText(place.name);
+    return "";
+  }
+
+  function readPredictionText(prediction) {
+    if (!prediction || typeof prediction !== "object") return "";
+    if (prediction.text && typeof prediction.text.text === "string") return toText(prediction.text.text);
+    if (typeof prediction.text === "string") return toText(prediction.text);
+    if (prediction.mainText && typeof prediction.mainText.text === "string") return toText(prediction.mainText.text);
+    if (typeof prediction.mainText === "string") return toText(prediction.mainText);
     return "";
   }
 
@@ -223,19 +233,33 @@
       }
       fields.autocompleteHost.appendChild(autocompleteElement);
       setManualVisible(false);
-      setStatus("Google address suggestions are available. You can still edit every field manually.");
+      setStatus(AVAILABLE_STATUS);
 
       autocompleteElement.addEventListener("gmp-select", function (event) {
         var placePrediction = event && (event.placePrediction || (event.detail && event.detail.placePrediction));
+        var predictionText = readPredictionText(placePrediction);
         if (!placePrediction || typeof placePrediction.toPlace !== "function") {
+          if (predictionText) {
+            syncSearchValue(predictionText);
+            if (fields.address) fields.address.value = predictionText;
+          }
+          clearCoordinates(fields);
+          setManualVisible(true);
           setStatus("Selected place does not include usable structured fields. Enter details manually.");
           return;
         }
         var place = placePrediction.toPlace();
         if (!place || typeof place.fetchFields !== "function") {
+          if (predictionText) {
+            syncSearchValue(predictionText);
+            if (fields.address) fields.address.value = predictionText;
+          }
+          clearCoordinates(fields);
+          setManualVisible(true);
           setStatus("Selected place does not include usable structured fields. Enter details manually.");
           return;
         }
+        var selectedAddressText = readFormattedAddress(place) || predictionText;
 
         Promise.resolve(place.fetchFields({ fields: PLACE_FIELDS })).then(function () {
           var nextValues = mapPlaceToAddress(place);
@@ -243,11 +267,21 @@
           applyAddress(fields, nextValues);
           internalUpdate = false;
           if (!hasStructuredAddress(nextValues)) {
+            var fallbackAddress = nextValues.addressSearch || selectedAddressText;
+            if (fallbackAddress) {
+              syncSearchValue(fallbackAddress);
+              if (fields.address) fields.address.value = fallbackAddress;
+            }
+            clearCoordinates(fields);
+            setManualVisible(true);
             setStatus("Selected place does not include usable structured fields. Enter details manually.");
             return;
           }
-          setStatus("Google address suggestions are available. You can still edit every field manually.");
+          setManualVisible(false);
+          setStatus(AVAILABLE_STATUS);
         }).catch(function () {
+          if (selectedAddressText) syncSearchValue(selectedAddressText);
+          if (fields.address && selectedAddressText) fields.address.value = selectedAddressText;
           setStatus("Google address suggestions are unavailable. Continue with manual address entry.");
           clearCoordinates(fields);
           setManualVisible(true);

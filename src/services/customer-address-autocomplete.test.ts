@@ -208,7 +208,7 @@ test("initializes PlaceAutocompleteElement, handles gmp-select, and fetches only
   loaded.api.bindAutocomplete(form as any);
   await flushPromises();
 
-  assert.equal(fields.status.textContent, "Google address suggestions are available. You can still edit every field manually.");
+  assert.equal(fields.status.textContent, "Google address suggestions are available.");
   assert.equal(fields.addressSearchManual.hidden, true);
   assert.equal(fields.autocompleteHost.hidden, false);
   assert.ok(selectedHandler);
@@ -251,6 +251,217 @@ test("initializes PlaceAutocompleteElement, handles gmp-select, and fetches only
   assert.equal(fields.postcode.value, "SW1A 1AA");
   assert.equal(fields.latitude.value, "51.5");
   assert.equal(fields.longitude.value, "-0.12");
+});
+
+test("preserves selected address text when fetchFields fails and switches to manual fallback", async () => {
+  const loaded = loadAutocomplete();
+  let selectedHandler: ((event: any) => void) | null = null;
+
+  class MockPlaceAutocompleteElement {
+    addEventListener(type: string, handler: (event: any) => void) {
+      if (type === "gmp-select") selectedHandler = handler;
+    }
+    setAttribute() {
+      // ignored in tests
+    }
+  }
+
+  loaded.window.RideMatrixMaps = {
+    load: () => Promise.resolve(true)
+  };
+  loaded.window.google = {
+    maps: {
+      importLibrary: async () => ({ PlaceAutocompleteElement: MockPlaceAutocompleteElement })
+    }
+  };
+  const { form, fields } = createForm("browser-key");
+
+  loaded.api.bindAutocomplete(form as any);
+  await flushPromises();
+  assert.ok(selectedHandler);
+  const handler = selectedHandler as (event: any) => Promise<void> | void;
+
+  await handler({
+    placePrediction: {
+      toPlace: () => ({
+        formattedAddress: "Selected Address, London",
+        fetchFields: async () => {
+          throw new Error("fetch failed");
+        }
+      })
+    }
+  });
+  await flushPromises();
+
+  assert.equal(fields.addressSearch.value, "Selected Address, London");
+  assert.equal(fields.addressSearchManual.value, "Selected Address, London");
+  assert.equal(fields.address.value, "Selected Address, London");
+  assert.equal(fields.addressSearchManual.hidden, false);
+  assert.equal(fields.autocompleteHost.hidden, true);
+});
+
+test("uses prediction text fallback when fetchFields fails before formatted address is available", async () => {
+  const loaded = loadAutocomplete();
+  let selectedHandler: ((event: any) => void) | null = null;
+
+  class MockPlaceAutocompleteElement {
+    addEventListener(type: string, handler: (event: any) => void) {
+      if (type === "gmp-select") selectedHandler = handler;
+    }
+    setAttribute() {
+      // ignored in tests
+    }
+  }
+
+  loaded.window.RideMatrixMaps = { load: () => Promise.resolve(true) };
+  loaded.window.google = {
+    maps: {
+      importLibrary: async () => ({ PlaceAutocompleteElement: MockPlaceAutocompleteElement })
+    }
+  };
+  const { form, fields } = createForm("browser-key");
+
+  loaded.api.bindAutocomplete(form as any);
+  await flushPromises();
+  assert.ok(selectedHandler);
+  const handler = selectedHandler as (event: any) => Promise<void> | void;
+
+  await handler({
+    placePrediction: {
+      text: { text: "Prediction Text Address" },
+      toPlace: () => ({
+        fetchFields: async () => {
+          throw new Error("fetch failed");
+        }
+      })
+    }
+  });
+  await flushPromises();
+
+  assert.equal(fields.addressSearch.value, "Prediction Text Address");
+  assert.equal(fields.addressSearchManual.value, "Prediction Text Address");
+  assert.equal(fields.address.value, "Prediction Text Address");
+});
+
+test("shows manual fallback when selected place has no usable structured fields", async () => {
+  const loaded = loadAutocomplete();
+  let selectedHandler: ((event: any) => void) | null = null;
+
+  class MockPlaceAutocompleteElement {
+    addEventListener(type: string, handler: (event: any) => void) {
+      if (type === "gmp-select") selectedHandler = handler;
+    }
+    setAttribute() {
+      // ignored in tests
+    }
+  }
+
+  loaded.window.RideMatrixMaps = { load: () => Promise.resolve(true) };
+  loaded.window.google = {
+    maps: {
+      importLibrary: async () => ({ PlaceAutocompleteElement: MockPlaceAutocompleteElement })
+    }
+  };
+  const { form, fields } = createForm("browser-key");
+
+  loaded.api.bindAutocomplete(form as any);
+  await flushPromises();
+  assert.ok(selectedHandler);
+  const handler = selectedHandler as (event: any) => Promise<void> | void;
+
+  await handler({
+    placePrediction: {
+      text: { text: "Bare Address" },
+      toPlace: () => ({
+        formattedAddress: "Bare Address",
+        fetchFields: async () => undefined
+      })
+    }
+  });
+  await flushPromises();
+
+  assert.equal(fields.status.textContent, "Selected place does not include usable structured fields. Enter details manually.");
+  assert.equal(fields.addressSearch.value, "Bare Address");
+  assert.equal(fields.address.value, "Bare Address");
+  assert.equal(fields.addressSearchManual.hidden, false);
+  assert.equal(fields.autocompleteHost.hidden, true);
+  assert.equal(fields.latitude.value, "");
+  assert.equal(fields.longitude.value, "");
+});
+
+test("switches to manual mode when gmp-select event has no usable prediction", async () => {
+  const loaded = loadAutocomplete();
+  let selectedHandler: ((event: any) => void) | null = null;
+
+  class MockPlaceAutocompleteElement {
+    addEventListener(type: string, handler: (event: any) => void) {
+      if (type === "gmp-select") selectedHandler = handler;
+    }
+    setAttribute() {
+      // ignored in tests
+    }
+  }
+
+  loaded.window.RideMatrixMaps = { load: () => Promise.resolve(true) };
+  loaded.window.google = {
+    maps: {
+      importLibrary: async () => ({ PlaceAutocompleteElement: MockPlaceAutocompleteElement })
+    }
+  };
+  const { form, fields } = createForm("browser-key");
+
+  loaded.api.bindAutocomplete(form as any);
+  await flushPromises();
+  assert.ok(selectedHandler);
+  const handler = selectedHandler as (event: any) => Promise<void> | void;
+
+  await handler({});
+  await flushPromises();
+
+  assert.equal(fields.status.textContent, "Selected place does not include usable structured fields. Enter details manually.");
+  assert.equal(fields.addressSearchManual.hidden, false);
+  assert.equal(fields.autocompleteHost.hidden, true);
+});
+
+test("preserves prediction text when selected place cannot fetch fields", async () => {
+  const loaded = loadAutocomplete();
+  let selectedHandler: ((event: any) => void) | null = null;
+
+  class MockPlaceAutocompleteElement {
+    addEventListener(type: string, handler: (event: any) => void) {
+      if (type === "gmp-select") selectedHandler = handler;
+    }
+    setAttribute() {
+      // ignored in tests
+    }
+  }
+
+  loaded.window.RideMatrixMaps = { load: () => Promise.resolve(true) };
+  loaded.window.google = {
+    maps: {
+      importLibrary: async () => ({ PlaceAutocompleteElement: MockPlaceAutocompleteElement })
+    }
+  };
+  const { form, fields } = createForm("browser-key");
+
+  loaded.api.bindAutocomplete(form as any);
+  await flushPromises();
+  assert.ok(selectedHandler);
+  const handler = selectedHandler as (event: any) => Promise<void> | void;
+
+  await handler({
+    placePrediction: {
+      text: { text: "Prediction Without FetchFields" },
+      toPlace: () => ({})
+    }
+  });
+  await flushPromises();
+
+  assert.equal(fields.addressSearch.value, "Prediction Without FetchFields");
+  assert.equal(fields.addressSearchManual.value, "Prediction Without FetchFields");
+  assert.equal(fields.address.value, "Prediction Without FetchFields");
+  assert.equal(fields.latitude.value, "");
+  assert.equal(fields.longitude.value, "");
 });
 
 test("does not use legacy google.maps.places.Autocomplete API", () => {
