@@ -1,4 +1,6 @@
 <div class="context-toolbar context-toolbar--customers">
+  <% const normalizedPerPage = Number(perPage); %>
+  <% const selectedPerPage = perPageOptions.includes(normalizedPerPage) ? normalizedPerPage : 10; %>
   <form class="context-toolbar__form" method="get" action="/customers">
     <% if (status !== "all") { %>
       <input type="hidden" name="status" value="<%= status %>" />
@@ -29,7 +31,7 @@
         <label for="customers-per-page">Records per page</label>
         <select class="context-control--dynamic" id="customers-per-page" name="perPage" onchange="this.form.submit()">
           <% perPageOptions.forEach((option) => { %>
-            <option value="<%= option %>" <%= option === perPage ? "selected" : "" %>><%= option %></option>
+            <option value="<%= option %>" <%= Number(option) === selectedPerPage ? "selected" : "" %>><%= option %></option>
           <% }) %>
         </select>
       </div>

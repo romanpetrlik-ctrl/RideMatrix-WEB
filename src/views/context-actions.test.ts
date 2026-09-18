@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import ejs from "ejs";
 import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
+
+const root = process.cwd();
 
 function read(path: string): string {
   return fs.readFileSync(path, "utf8");
@@ -260,6 +264,47 @@ test("customer context toolbar preserves controls and shared sizing", () => {
   assert.match(css, /@media \(max-width: 1200px\) \{[\s\S]*\.private-customer-form__column--map \{[\s\S]*grid-column: 1 \/ -1;/);
   assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*\.private-customer-form__grid \{[\s\S]*grid-template-columns: 1fr;/);
   assert.match(css, /\.private-customer-form__grid \{[\s\S]*grid-template-columns: minmax\(20rem, 1fr\) minmax\(30rem, 1\.35fr\) minmax\(20rem, 1fr\);/);
+});
+
+test("customer per-page selection normalizes values and defaults to ten", async () => {
+  const templatePath = path.join(root, "src/views/partials/header-context/customers-list.ejs");
+  const perPageOptions = [10, 25, 50];
+  const render = (perPage: number | string | undefined) =>
+    ejs.renderFile(templatePath, {
+      status: "all",
+      statusTabs: [],
+      search: "",
+      perPage,
+      perPageOptions
+    });
+
+  for (const [perPage, expected] of [
+    [10, "10"],
+    ["10", "10"],
+    ["25", "25"],
+    [50, "50"],
+    [undefined, "10"],
+    ["999", "10"]
+  ] as const) {
+    const html = await render(perPage);
+    const selected = html.match(/<option[^>]*selected[^>]*>/g) ?? [];
+    assert.equal(selected.length, 1);
+    assert.match(selected[0], new RegExp(`value="${expected}"`));
+  }
+
+  const defaultHtml = await render(undefined);
+  for (const option of perPageOptions) {
+    assert.match(defaultHtml, new RegExp(`<option value="${option}"`));
+  }
+});
+
+test("customer per-page alignment is scoped to the customer control", () => {
+  const css = read("public/css/app.css");
+  assert.match(css, /\.context-toolbar--customers #customers-per-page \{[\s\S]*text-align: center;[\s\S]*text-align-last: center;/);
+  assert.match(css, /\.context-toolbar--customers #customers-per-page option \{[\s\S]*text-align: center;/);
+  assert.doesNotMatch(css, /^\s*select\s*\{[\s\S]*text-align:\s*center;/m);
+  assert.doesNotMatch(css, /^\s*select\s*\{[\s\S]*text-align-last:\s*center;/m);
+  assert.match(css, /\.context-toolbar--customers \.context-toolbar__right > \.button \{[\s\S]*flex: 0 0 auto;/);
 });
 
 test("shared header keeps one system bar and no legacy navigation rows", () => {

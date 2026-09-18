@@ -1555,6 +1555,15 @@ button:visited,
   line-height: var(--rm-control-line-height);
 }
 
+.context-toolbar--customers #customers-per-page {
+  text-align: center;
+  text-align-last: center;
+}
+
+.context-toolbar--customers #customers-per-page option {
+  text-align: center;
+}
+
 .context-toolbar input.context-control--dynamic:hover,
 .context-toolbar select.context-control--dynamic:hover {
   border-color: var(--rm-admin-cta-border-hover);
