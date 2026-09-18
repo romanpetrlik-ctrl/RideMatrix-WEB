@@ -4,13 +4,25 @@
   var canUseWeakSet = typeof WeakSet === "function";
   var rendered = canUseWeakSet ? new WeakSet() : [];
   var loadingByKey = {};
+  var importedLibraries = {};
+  var importingLibraries = {};
 
   function ensureLibraries(libraries) {
     if (!Array.isArray(libraries) || libraries.length === 0) return Promise.resolve(true);
     if (!window.google || !window.google.maps) return Promise.resolve(false);
     if (typeof window.google.maps.importLibrary === "function") {
       return Promise.all(libraries.map(function (library) {
-        return window.google.maps.importLibrary(library);
+        if (importedLibraries[library]) return Promise.resolve(true);
+        if (importingLibraries[library]) return importingLibraries[library];
+        importingLibraries[library] = Promise.resolve(window.google.maps.importLibrary(library)).then(function () {
+          importedLibraries[library] = true;
+          delete importingLibraries[library];
+          return true;
+        }).catch(function (error) {
+          delete importingLibraries[library];
+          throw error;
+        });
+        return importingLibraries[library];
       })).then(function () { return true; });
     }
     return Promise.resolve(libraries.every(function (library) {

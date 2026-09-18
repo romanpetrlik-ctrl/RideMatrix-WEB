@@ -1,19 +1,49 @@
 (function () {
   "use strict";
 
+  var PLACE_FIELDS = ["formattedAddress", "addressComponents", "location", "displayName"];
+
   function toText(value) {
     return typeof value === "string" ? value.trim() : "";
   }
 
+  function readComponentName(component) {
+    if (!component || typeof component !== "object") return "";
+    if (typeof component.long_name === "string" && component.long_name.trim()) return component.long_name.trim();
+    if (typeof component.longText === "string" && component.longText.trim()) return component.longText.trim();
+    return "";
+  }
+
+  function readComponentTypes(component) {
+    if (!component || typeof component !== "object") return [];
+    if (Array.isArray(component.types)) return component.types;
+    if (Array.isArray(component.type)) return component.type;
+    return [];
+  }
+
+  function readFormattedAddress(place) {
+    return toText(place && (place.formatted_address || place.formattedAddress));
+  }
+
+  function readDisplayName(place) {
+    if (!place) return "";
+    if (place.displayName && typeof place.displayName.text === "string") return toText(place.displayName.text);
+    if (typeof place.displayName === "string") return toText(place.displayName);
+    if (typeof place.name === "string") return toText(place.name);
+    return "";
+  }
+
   function indexComponents(place) {
     var lookup = {};
-    var components = place && Array.isArray(place.address_components) ? place.address_components : [];
+    var components = place && Array.isArray(place.address_components)
+      ? place.address_components
+      : (place && Array.isArray(place.addressComponents) ? place.addressComponents : []);
     components.forEach(function (component) {
-      if (!component || !Array.isArray(component.types)) return;
-      component.types.forEach(function (type) {
-        if (!lookup[type] && typeof component.long_name === "string" && component.long_name.trim()) {
-          lookup[type] = component.long_name.trim();
-        }
+      var name = readComponentName(component);
+      var types = readComponentTypes(component);
+      if (!name || !types.length) return;
+      types.forEach(function (type) {
+        if (!lookup[type]) lookup[type] = name;
       });
     });
     return lookup;
@@ -26,7 +56,7 @@
   }
 
   function readLocation(place) {
-    var location = place && place.geometry && place.geometry.location;
+    var location = (place && place.geometry && place.geometry.location) || (place && place.location);
     if (!location) return { latitude: "", longitude: "" };
     var latitude = typeof location.lat === "function" ? location.lat() : location.lat;
     var longitude = typeof location.lng === "function" ? location.lng() : location.lng;
@@ -45,13 +75,15 @@
       components.premise,
       components.street_number
     ]).join(", ");
-    var addressLine1 = components.route || components.premise || toText(place && place.name) || "";
+    var addressLine1 = components.route || components.premise || readDisplayName(place) || "";
     var addressLine2 = components.sublocality_level_1 || components.sublocality || components.neighborhood || "";
     var county = components.administrative_area_level_2 || "";
+    var formattedAddress = readFormattedAddress(place);
+    var location = readLocation(place);
 
     return {
-      address: toText(place && place.formatted_address),
-      addressSearch: toText(place && place.formatted_address),
+      address: formattedAddress,
+      addressSearch: formattedAddress,
       houseNameNumber: houseNameNumber,
       addressLine1: addressLine1,
       addressLine2: addressLine2,
@@ -60,8 +92,8 @@
       county: county,
       state: components.administrative_area_level_1 || "",
       postcode: postcode,
-      latitude: readLocation(place).latitude,
-      longitude: readLocation(place).longitude
+      latitude: location.latitude,
+      longitude: location.longitude
     };
   }
 
@@ -72,8 +104,31 @@
 
   function applyAddress(fields, nextValues) {
     Object.keys(nextValues).forEach(function (key) {
+      if (key === "addressSearch") {
+        if (fields.addressSearch) fields.addressSearch.value = nextValues[key] || "";
+        if (fields.addressSearchManual) fields.addressSearchManual.value = nextValues[key] || "";
+        return;
+      }
       if (fields[key]) fields[key].value = nextValues[key] || "";
     });
+  }
+
+  function supportsPlaceAutocomplete() {
+    return Boolean(window.google
+      && window.google.maps
+      && typeof window.google.maps.importLibrary === "function");
+  }
+
+  function hasStructuredAddress(nextValues) {
+    return Boolean(nextValues
+      && (nextValues.houseNameNumber
+        || nextValues.addressLine1
+        || nextValues.addressLine2
+        || nextValues.addressLine3
+        || nextValues.cityTown
+        || nextValues.county
+        || nextValues.state
+        || nextValues.postcode));
   }
 
   function bindAutocomplete(form) {
@@ -82,6 +137,8 @@
     var fields = {
       address: form.querySelector("#address"),
       addressSearch: form.querySelector("#addressSearch"),
+      addressSearchManual: form.querySelector("#addressSearchManual"),
+      autocompleteHost: form.querySelector("[data-address-autocomplete-host]"),
       houseNameNumber: form.querySelector("#houseNameNumber"),
       addressLine1: form.querySelector("#addressLine1"),
       addressLine2: form.querySelector("#addressLine2"),
@@ -97,21 +154,34 @@
     function setStatus(message) {
       if (status) status.textContent = message;
     }
-    if (!fields.addressSearch) return;
-    if (!browserKey || !window.RideMatrixMaps || typeof window.RideMatrixMaps.load !== "function") {
-      setStatus("Google address suggestions are unavailable. Enter the address manually.");
-      return;
+    if (!fields.addressSearch && !fields.addressSearchManual) return;
+
+    function getSearchValue() {
+      if (fields.addressSearchManual) return toText(fields.addressSearchManual.value);
+      if (fields.addressSearch) return toText(fields.addressSearch.value);
+      return "";
+    }
+
+    function syncSearchValue(value) {
+      if (fields.addressSearch) fields.addressSearch.value = value;
+      if (fields.addressSearchManual) fields.addressSearchManual.value = value;
+    }
+
+    function setManualVisible(visible) {
+      if (fields.addressSearchManual) fields.addressSearchManual.hidden = !visible;
+      if (fields.autocompleteHost) fields.autocompleteHost.hidden = visible;
     }
 
     var internalUpdate = false;
     function markManualAddressChange() {
       if (internalUpdate) return;
-      if (fields.address) fields.address.value = toText(fields.addressSearch && fields.addressSearch.value);
+      if (fields.address) fields.address.value = getSearchValue();
+      syncSearchValue(getSearchValue());
       clearCoordinates(fields);
     }
 
     [
-      fields.addressSearch,
+      fields.addressSearchManual || fields.addressSearch,
       fields.houseNameNumber,
       fields.addressLine1,
       fields.addressLine2,
@@ -124,29 +194,70 @@
       field.addEventListener("input", markManualAddressChange);
     });
 
+    setManualVisible(true);
+    if (!browserKey || !window.RideMatrixMaps || typeof window.RideMatrixMaps.load !== "function") {
+      setStatus("Google address suggestions are unavailable. Continue with manual address entry.");
+      return;
+    }
+
     setStatus("Loading Google address suggestions. Manual entry still works.");
     window.RideMatrixMaps.load(browserKey, [], { libraries: ["places"] }).then(function () {
-      if (!window.google || !window.google.maps || !window.google.maps.places || !window.google.maps.places.Autocomplete) {
-        setStatus("Google address suggestions are unavailable. Enter the address manually.");
-        return false;
+      if (!supportsPlaceAutocomplete()) throw new Error("Google Maps libraries unavailable");
+      return window.google.maps.importLibrary("places");
+    }).then(function (placesLibrary) {
+      if (!fields.autocompleteHost) throw new Error("Autocomplete host missing");
+      var PlaceAutocompleteElement = placesLibrary && placesLibrary.PlaceAutocompleteElement
+        ? placesLibrary.PlaceAutocompleteElement
+        : (window.google && window.google.maps && window.google.maps.places && window.google.maps.places.PlaceAutocompleteElement);
+      if (typeof PlaceAutocompleteElement !== "function") throw new Error("Place autocomplete unavailable");
+
+      while (fields.autocompleteHost.firstChild) {
+        fields.autocompleteHost.removeChild(fields.autocompleteHost.firstChild);
       }
 
-      var autocomplete = new window.google.maps.places.Autocomplete(fields.addressSearch, {
-        types: ["address"],
-        fields: ["address_components", "formatted_address", "geometry", "name"]
-      });
+      var autocompleteElement = new PlaceAutocompleteElement();
+      autocompleteElement.className = "private-customer-form__autocomplete-element";
+      if (typeof autocompleteElement.setAttribute === "function") {
+        autocompleteElement.setAttribute("aria-label", "Search address");
+        autocompleteElement.setAttribute("aria-describedby", "addressSearch-help");
+      }
+      fields.autocompleteHost.appendChild(autocompleteElement);
+      setManualVisible(false);
       setStatus("Google address suggestions are available. You can still edit every field manually.");
 
-      autocomplete.addListener("place_changed", function () {
-        var nextValues = mapPlaceToAddress(autocomplete.getPlace());
-        internalUpdate = true;
-        applyAddress(fields, nextValues);
-        internalUpdate = false;
+      autocompleteElement.addEventListener("gmp-select", function (event) {
+        var placePrediction = event && (event.placePrediction || (event.detail && event.detail.placePrediction));
+        if (!placePrediction || typeof placePrediction.toPlace !== "function") {
+          setStatus("Selected place does not include usable structured fields. Enter details manually.");
+          return;
+        }
+        var place = placePrediction.toPlace();
+        if (!place || typeof place.fetchFields !== "function") {
+          setStatus("Selected place does not include usable structured fields. Enter details manually.");
+          return;
+        }
+
+        Promise.resolve(place.fetchFields({ fields: PLACE_FIELDS })).then(function () {
+          var nextValues = mapPlaceToAddress(place);
+          internalUpdate = true;
+          applyAddress(fields, nextValues);
+          internalUpdate = false;
+          if (!hasStructuredAddress(nextValues)) {
+            setStatus("Selected place does not include usable structured fields. Enter details manually.");
+            return;
+          }
+          setStatus("Google address suggestions are available. You can still edit every field manually.");
+        }).catch(function () {
+          setStatus("Google address suggestions are unavailable. Continue with manual address entry.");
+          clearCoordinates(fields);
+          setManualVisible(true);
+        });
       });
 
       return true;
     }).catch(function () {
-      setStatus("Google address suggestions are unavailable. Enter the address manually.");
+      setStatus("Google address suggestions are unavailable. Continue with manual address entry.");
+      setManualVisible(true);
       clearCoordinates(fields);
     });
   }

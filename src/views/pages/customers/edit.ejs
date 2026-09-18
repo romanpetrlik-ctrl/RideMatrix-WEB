@@ -134,17 +134,18 @@
               <p class="private-customer-form__autocomplete-status" data-address-autocomplete-status aria-live="polite">Address suggestions load when Google Maps is available. Manual entry still works.</p>
 
               <div class="form-field">
-                <label for="addressSearch">Search address</label>
+                <label for="addressSearchManual">Search address</label>
+                <div id="addressSearchAutocomplete" class="private-customer-form__autocomplete-host" data-address-autocomplete-host hidden></div>
                 <input
                   type="search"
-                  id="addressSearch"
-                  name="addressSearch"
+                  id="addressSearchManual"
                   value="<%= formData.addressSearch || formData.address %>"
                   autocomplete="street-address"
                   aria-describedby="addressSearch-help"
                 />
               </div>
 
+              <input type="hidden" id="addressSearch" name="addressSearch" value="<%= formData.addressSearch || formData.address %>" />
               <input type="hidden" id="address" name="address" value="<%= formData.address %>" />
               <input type="hidden" id="latitude" name="latitude" value="<%= formData.latitude %>" />
               <input type="hidden" id="longitude" name="longitude" value="<%= formData.longitude %>" />

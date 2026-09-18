@@ -23,6 +23,15 @@ function createField(initialValue = "") {
   return {
     value: initialValue,
     textContent: "",
+    hidden: false,
+    firstChild: null as any,
+    appendChild(child: any) {
+      this.firstChild = child;
+      return child;
+    },
+    removeChild() {
+      this.firstChild = null;
+    },
     addEventListener(type: string, listener: () => void) {
       listeners[type] = listeners[type] || [];
       listeners[type].push(listener);
@@ -37,6 +46,8 @@ function createForm(browserKey: string) {
   const fields = {
     address: createField(""),
     addressSearch: createField(""),
+    addressSearchManual: createField(""),
+    autocompleteHost: createField(""),
     houseNameNumber: createField(""),
     addressLine1: createField(""),
     addressLine2: createField(""),
@@ -53,6 +64,8 @@ function createForm(browserKey: string) {
   const bySelector: Record<string, ReturnType<typeof createField> | undefined> = {
     "#address": fields.address,
     "#addressSearch": fields.addressSearch,
+    "#addressSearchManual": fields.addressSearchManual,
+    "[data-address-autocomplete-host]": fields.autocompleteHost,
     "#houseNameNumber": fields.houseNameNumber,
     "#addressLine1": fields.addressLine1,
     "#addressLine2": fields.addressLine2,
@@ -77,27 +90,25 @@ function createForm(browserKey: string) {
   };
 }
 
-test("maps a Google place result into structured customer address fields", () => {
+test("maps a selected place into structured customer address fields", () => {
   const loaded = loadAutocomplete();
   assert.ok(loaded.api);
 
   const mapped = JSON.parse(JSON.stringify(loaded.api.mapPlaceToAddress({
-    formatted_address: "10 Downing Street, Westminster, London SW1A 2AA, UK",
-    geometry: {
-      location: {
-        lat: () => 51.5034,
-        lng: () => -0.1276
-      }
+    formattedAddress: "10 Downing Street, Westminster, London SW1A 2AA, UK",
+    location: {
+      lat: () => 51.5034,
+      lng: () => -0.1276
     },
-    address_components: [
-      { long_name: "10", types: ["street_number"] },
-      { long_name: "Downing Street", types: ["route"] },
-      { long_name: "Westminster", types: ["sublocality_level_1"] },
-      { long_name: "London", types: ["postal_town"] },
-      { long_name: "Greater London", types: ["administrative_area_level_2"] },
-      { long_name: "England", types: ["administrative_area_level_1"] },
-      { long_name: "SW1A", types: ["postal_code"] },
-      { long_name: "2AA", types: ["postal_code_suffix"] }
+    addressComponents: [
+      { longText: "10", types: ["street_number"] },
+      { longText: "Downing Street", types: ["route"] },
+      { longText: "Westminster", types: ["sublocality_level_1"] },
+      { longText: "London", types: ["postal_town"] },
+      { longText: "Greater London", types: ["administrative_area_level_2"] },
+      { longText: "England", types: ["administrative_area_level_1"] },
+      { longText: "SW1A", types: ["postal_code"] },
+      { longText: "2AA", types: ["postal_code_suffix"] }
     ]
   })));
 
@@ -117,16 +128,35 @@ test("maps a Google place result into structured customer address fields", () =>
   });
 });
 
+test("handles missing address components without throwing", () => {
+  const loaded = loadAutocomplete();
+  const mapped = JSON.parse(JSON.stringify(loaded.api.mapPlaceToAddress({
+    formattedAddress: "UK",
+    location: {}
+  })));
+
+  assert.equal(mapped.address, "UK");
+  assert.equal(mapped.addressLine1, "");
+  assert.equal(mapped.postcode, "");
+});
+
 test("shows manual-entry fallback when browser key is missing", () => {
   const loaded = loadAutocomplete();
   const { form, fields } = createForm("");
 
   loaded.api.bindAutocomplete(form as any);
+  fields.addressSearchManual.value = "Fallback lane 9";
+  fields.addressSearchManual.trigger("input");
 
-  assert.equal(fields.status.textContent, "Google address suggestions are unavailable. Enter the address manually.");
+  assert.equal(fields.status.textContent, "Google address suggestions are unavailable. Continue with manual address entry.");
+  assert.equal(fields.addressSearchManual.hidden, false);
+  assert.equal(fields.address.value, "Fallback lane 9");
+  assert.equal(fields.addressSearch.value, "Fallback lane 9");
+  assert.equal(fields.latitude.value, "");
+  assert.equal(fields.longitude.value, "");
 });
 
-test("shows manual-entry fallback and clears coordinates when map script fails to load", async () => {
+test("manual fallback keeps address in sync and clears coordinates", async () => {
   const loaded = loadAutocomplete();
   loaded.window.RideMatrixMaps = {
     load: () => Promise.reject(new Error("script failure"))
@@ -136,33 +166,40 @@ test("shows manual-entry fallback and clears coordinates when map script fails t
   loaded.api.bindAutocomplete(form as any);
   await flushPromises();
 
-  assert.equal(fields.status.textContent, "Google address suggestions are unavailable. Enter the address manually.");
+  fields.addressSearchManual.value = "Manual road 1, Poole";
+  fields.addressSearchManual.trigger("input");
+
+  assert.equal(fields.status.textContent, "Google address suggestions are unavailable. Continue with manual address entry.");
+  assert.equal(fields.address.value, "Manual road 1, Poole");
+  assert.equal(fields.addressSearch.value, "Manual road 1, Poole");
   assert.equal(fields.latitude.value, "");
   assert.equal(fields.longitude.value, "");
 });
 
-test("initializes Google Places autocomplete and maps selected place into form fields", async () => {
+test("initializes PlaceAutocompleteElement, handles gmp-select, and fetches only needed fields", async () => {
   const loaded = loadAutocomplete();
-  let selectedPlace: any = null;
-  let placeChangedHandler: (() => void) | null = null;
+  const fetchedFields: string[][] = [];
+  let selectedHandler: ((event: any) => void) | null = null;
+
+  class MockPlaceAutocompleteElement {
+    className = "";
+    attributes: Record<string, string> = {};
+    addEventListener(type: string, handler: (event: any) => void) {
+      if (type === "gmp-select") selectedHandler = handler;
+    }
+    setAttribute(name: string, value: string) {
+      this.attributes[name] = value;
+    }
+  }
 
   loaded.window.RideMatrixMaps = {
     load: () => Promise.resolve(true)
   };
   loaded.window.google = {
     maps: {
-      places: {
-        Autocomplete: class {
-          addListener(event: string, handler: () => void) {
-            if (event === "place_changed") {
-              placeChangedHandler = handler;
-            }
-          }
-
-          getPlace() {
-            return selectedPlace;
-          }
-        }
+      importLibrary: async (library: string) => {
+        assert.equal(library, "places");
+        return { PlaceAutocompleteElement: MockPlaceAutocompleteElement };
       }
     }
   };
@@ -172,31 +209,55 @@ test("initializes Google Places autocomplete and maps selected place into form f
   await flushPromises();
 
   assert.equal(fields.status.textContent, "Google address suggestions are available. You can still edit every field manually.");
-  selectedPlace = {
-    formatted_address: "1 Test Street, London SW1A 1AA, UK",
-    address_components: [
-      { long_name: "1", types: ["street_number"] },
-      { long_name: "Test Street", types: ["route"] },
-      { long_name: "London", types: ["postal_town"] },
-      { long_name: "SW1A", types: ["postal_code"] },
-      { long_name: "1AA", types: ["postal_code_suffix"] }
+  assert.equal(fields.addressSearchManual.hidden, true);
+  assert.equal(fields.autocompleteHost.hidden, false);
+  assert.ok(selectedHandler);
+  const handler = selectedHandler as (event: any) => Promise<void> | void;
+
+  const place = {
+    formattedAddress: "1 Test Street, London SW1A 1AA, UK",
+    addressComponents: [
+      { longText: "1", types: ["street_number"] },
+      { longText: "Test Street", types: ["route"] },
+      { longText: "London", types: ["postal_town"] },
+      { longText: "SW1A", types: ["postal_code"] },
+      { longText: "1AA", types: ["postal_code_suffix"] }
     ],
-    geometry: {
-      location: {
-        lat: () => 51.5,
-        lng: () => -0.12
-      }
+    location: {
+      lat: () => 51.5,
+      lng: () => -0.12
+    },
+    fetchFields: async (request: { fields: string[] }) => {
+      fetchedFields.push(request.fields);
     }
   };
 
-  assert.ok(placeChangedHandler);
-  (placeChangedHandler as unknown as () => void)();
+  await handler({
+    placePrediction: {
+      toPlace: () => place
+    }
+  });
+  await flushPromises();
 
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(fetchedFields)),
+    [["formattedAddress", "addressComponents", "location", "displayName"]]
+  );
   assert.equal(fields.address.value, "1 Test Street, London SW1A 1AA, UK");
   assert.equal(fields.addressSearch.value, "1 Test Street, London SW1A 1AA, UK");
+  assert.equal(fields.addressSearchManual.value, "1 Test Street, London SW1A 1AA, UK");
   assert.equal(fields.addressLine1.value, "Test Street");
   assert.equal(fields.cityTown.value, "London");
   assert.equal(fields.postcode.value, "SW1A 1AA");
   assert.equal(fields.latitude.value, "51.5");
   assert.equal(fields.longitude.value, "-0.12");
+});
+
+test("does not use legacy google.maps.places.Autocomplete API", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "public/js/customer-address-autocomplete.js"), "utf8");
+  assert.doesNotMatch(source, /new\s+window\.google\.maps\.places\.Autocomplete/);
+  assert.doesNotMatch(source, /place_changed/);
+  assert.doesNotMatch(source, /getPlace\(\)/);
+  assert.match(source, /PlaceAutocompleteElement/);
+  assert.match(source, /gmp-select/);
 });

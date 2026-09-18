@@ -81,6 +81,7 @@ test("map preview loader rejects when requested libraries are unavailable", asyn
 
 test("map preview loader shares one script load across concurrent library requests", async () => {
   const loaded = loadMapsBundle();
+  let importCount = 0;
   const first = loaded.maps.load("browser-key", [], { libraries: [] });
   const second = loaded.maps.load("browser-key", [], { libraries: ["places"] });
 
@@ -89,10 +90,14 @@ test("map preview loader shares one script load across concurrent library reques
   assert.ok(callbackParam);
   loaded.window.google = {
     maps: {
-      importLibrary: async () => ({})
+      importLibrary: async () => {
+        importCount += 1;
+        return {};
+      }
     }
   };
   loaded.window[callbackParam]();
 
   assert.deepEqual(await Promise.all([first, second]), [true, true]);
+  assert.equal(importCount, 1);
 });
