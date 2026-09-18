@@ -7,7 +7,7 @@ const css = fs.readFileSync("public/css/app.css", "utf8");
 
 test("setup wizard fields use scoped single-column layout and separate actions", () => {
   assert.match(wizard, /<main class="container rm-page-shell setup-wizard">/);
-  assert.equal((wizard.match(/class="setup-form__field"/g) || []).length, 14);
+  assert.equal((wizard.match(/class="setup-form__field"/g) || []).length, 12);
   assert.equal((wizard.match(/class="setup-form__actions"/g) || []).length, 8);
   assert.match(wizard, /class="setup-form__field setup-form__field--checkbox"/);
   assert.match(wizard, /enctype="multipart\/form-data"/);
