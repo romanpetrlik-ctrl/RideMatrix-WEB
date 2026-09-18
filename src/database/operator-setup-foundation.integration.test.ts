@@ -326,6 +326,16 @@ test("operator licences enforce approved type, status, and validity constraints"
     ),
     (error: unknown) => (error as { code?: string }).code === "23514"
   );
+
+  await assert.rejects(
+    () => query(
+      `INSERT INTO operator_licences (
+        id, operator_id, licence_type, licence_number, valid_from, status, created_at, updated_at
+      ) VALUES ($1, $2, 'pho', 'BAD-FORMAT', 'not-a-date', 'draft', $3, $3)`,
+      [`operator-licence-${randomUUID()}`, operatorId, now]
+    ),
+    (error: unknown) => (error as { code?: string }).code === "22007"
+  );
 });
 
 test("operator licence documents and history enforce document storage, latest uniqueness, and history constraints", async () => {

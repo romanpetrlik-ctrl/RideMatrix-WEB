@@ -594,8 +594,8 @@ export const MIGRATIONS: Migration[] = [
           CHECK (licence_type IN ('pho')),
         licence_number TEXT NOT NULL,
         licensing_authority_id TEXT REFERENCES licensing_authorities(id),
-        valid_from TEXT NOT NULL,
-        valid_to TEXT,
+        valid_from DATE NOT NULL,
+        valid_to DATE,
         status TEXT NOT NULL DEFAULT 'draft'
           CHECK (status IN ('draft', 'active', 'expired', 'suspended', 'revoked')),
         created_by_user_id TEXT,
