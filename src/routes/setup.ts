@@ -152,7 +152,6 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       legalName: overview.operator?.legalName || "",
       tradingName: overview.operator?.tradingName || "",
       licenceHolderName: overview.operator?.licenceHolderName || "",
-      operatorStatus: overview.operator?.status || "setup_required",
       licenceNumber: overview.licence?.licenceNumber || "",
       licensingAuthorityId: overview.licence?.licensingAuthorityId || "",
       validFrom: overview.licence?.validFrom || "",
@@ -335,11 +334,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         legalName: normalizeText(req.body.legalName),
         tradingName: normalizeText(req.body.tradingName),
         licenceHolderName: normalizeText(req.body.licenceHolderName),
-        status: normalizeText(req.body.operatorStatus) as
-          | "setup_required"
-          | "active"
-          | "suspended"
-          | "archived"
+        status: "trial"
       });
 
       return res.redirect(SETUP_STEP_PATHS.registered_pho_address);
@@ -353,7 +348,6 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
           legalName: normalizeText(req.body.legalName),
           tradingName: normalizeText(req.body.tradingName),
           licenceHolderName: normalizeText(req.body.licenceHolderName),
-          operatorStatus: normalizeText(req.body.operatorStatus)
         });
       }
       return next(error);

@@ -31,7 +31,7 @@ export type OperatorProfileInput = {
   legalName: string;
   tradingName: string | null;
   licenceHolderName: string;
-  status: "setup_required" | "active" | "suspended" | "archived";
+  status: "setup_required" | "trial" | "active" | "suspended" | "archived";
 };
 
 export type OperatorAddressInput = {
@@ -194,7 +194,6 @@ function validateOperatorProfile(input: OperatorProfileInput): OperatorProfileIn
   const legalName = normalizeText(input.legalName);
   const licenceHolderName = normalizeText(input.licenceHolderName);
   const tradingName = normalizeOptionalText(input.tradingName);
-  const status = normalizeText(input.status) as OperatorProfileInput["status"];
 
   if (!legalName) {
     throw new SetupValidationError("Legal name is required.");
@@ -202,15 +201,11 @@ function validateOperatorProfile(input: OperatorProfileInput): OperatorProfileIn
   if (!licenceHolderName) {
     throw new SetupValidationError("Licence holder name is required.");
   }
-  if (!["setup_required", "active", "suspended", "archived"].includes(status)) {
-    throw new SetupValidationError("Unsupported operator status.");
-  }
-
   return {
     legalName,
     tradingName,
     licenceHolderName,
-    status
+    status: "trial"
   };
 }
 
@@ -787,7 +782,9 @@ async function resolveOrCreateSetupOperator(
           SET legal_name = $2,
               trading_name = $3,
               license_holder_name = $4,
-              status = $5,
+              status = 'trial',
+              trial_started_at = COALESCE(trial_started_at, $5),
+              trial_ends_at = COALESCE(trial_ends_at, ($5::timestamptz + INTERVAL '1 month')::text),
               updated_by_user_id = $6,
               updated_by_user_email = $7,
               updated_at = $8
@@ -797,7 +794,7 @@ async function resolveOrCreateSetupOperator(
         profile.legalName,
         profile.tradingName,
         profile.licenceHolderName,
-        profile.status,
+        now,
         actor.userId || null,
         actor.email || null,
         now
@@ -810,14 +807,14 @@ async function resolveOrCreateSetupOperator(
   const operatorId = randomUUID();
   await query(
     `INSERT INTO operators
-      (id, legal_name, trading_name, license_holder_name, status, created_by_user_id, created_by_user_email, updated_by_user_id, updated_by_user_email, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $7, $8, $8)`,
+      (id, legal_name, trading_name, license_holder_name, status, trial_started_at, trial_ends_at, created_by_user_id, created_by_user_email, updated_by_user_id, updated_by_user_email, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 'trial', $5, ($5::timestamptz + INTERVAL '1 month')::text, $6, $7, $6, $7, $8, $8)`,
     [
       operatorId,
       profile.legalName,
       profile.tradingName,
       profile.licenceHolderName,
-      profile.status,
+      now,
       actor.userId || null,
       actor.email || null,
       now
@@ -888,7 +885,7 @@ export async function saveOperatorProfile(
         legalName: profile.legalName,
         tradingName: profile.tradingName,
         licenceHolderName: profile.licenceHolderName,
-        status: profile.status
+        status: "trial"
       },
       client
     });
@@ -1441,44 +1438,6 @@ export async function completeInitialSetup(actorInput: SetupActor): Promise<void
 
     const now = new Date().toISOString();
     await query(
-      `UPDATE operators
-          SET status = 'active',
-              updated_by_user_id = $2,
-              updated_by_user_email = $3,
-              updated_at = $4
-        WHERE id = $1`,
-      [state.operator_id, actor.userId || null, actor.email || null, now],
-      client
-    );
-
-    await query(
-      `UPDATE operator_licences
-          SET status = 'active',
-              updated_by_user_id = $2,
-              updated_by_user_email = $3,
-              updated_at = $4
-        WHERE id = $1`,
-      [overview.licence.id, actor.userId || null, actor.email || null, now],
-      client
-    );
-
-    await query(
-      `INSERT INTO operator_licence_history
-        (id, licence_id, event_type, actor_user_id, actor_user_email, previous_status, next_status, summary, metadata, occurred_at)
-       VALUES ($1, $2, 'status_changed', $3, $4, 'draft', 'active', $5, $6::jsonb, $7)`,
-      [
-        randomUUID(),
-        overview.licence.id,
-        actor.userId || null,
-        actor.email || null,
-        "PHO licence activated after initial setup completion.",
-        JSON.stringify({ setupKey: INITIAL_SETUP_KEY }),
-        now
-      ],
-      client
-    );
-
-    await query(
       `UPDATE system_setup_state
           SET status = 'completed',
               completed_at = $2,
@@ -1498,7 +1457,7 @@ export async function completeInitialSetup(actorInput: SetupActor): Promise<void
       eventName: "initial_setup_completed",
       actor,
       operatorId: state.operator_id,
-      summary: "Initial system setup completed and operator activated.",
+      summary: "Initial system setup completed; operator remains in trial status pending licence or subscription activation.",
       metadata: {
         operatorId: state.operator_id
       },

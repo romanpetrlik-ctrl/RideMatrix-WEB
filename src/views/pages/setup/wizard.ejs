@@ -13,18 +13,20 @@
 
     <main class="container rm-page-shell setup-wizard">
       <section class="panel">
-        <h1>Initial System Setup</h1>
+        <h1>Set up your RideMatrix account</h1>
+        <p>We’ll guide you through a few short steps to configure your taxi or private-hire business.</p>
+        <p>You will need your business details, operating addresses and PHO licence information. You can review everything before the setup is completed.</p>
         <% const stepTitles = {
-          "/setup/bootstrap-superuser": "Step 1 — Bootstrap superuser",
-          "/setup/operator-profile": "Step 2 — Operator profile",
-          "/setup/registered-pho-address": "Step 3 — Registered PHO address",
-          "/setup/operational-address": "Step 4 — Operational address",
-          "/setup/pho-licence": "Step 5 — PHO licence",
-          "/setup/licence-document": "Step 6 — Licence document upload",
-          "/setup/review": "Step 7 — Review and confirmation",
-          "/setup/completed": "Step 8 — Completion"
+          "/setup/bootstrap-superuser": "Confirm your administrator account",
+          "/setup/operator-profile": "Business details",
+          "/setup/registered-pho-address": "Registered business address",
+          "/setup/operational-address": "Operating address",
+          "/setup/pho-licence": "PHO licence details",
+          "/setup/licence-document": "Upload your licence document",
+          "/setup/review": "Review your information",
+          "/setup/completed": "Finish setup"
         }; %>
-        <p>Current step: <strong><%= stepTitles[currentPath] || "Initial setup" %></strong></p>
+        <p>Step <strong><%= Object.keys(stepTitles).indexOf(currentPath) + 1 %> of 8</strong>: <%= stepTitles[currentPath] || "Account setup" %></p>
 
         <% if (notice) { %>
           <section class="notice notice--success" role="status"><%= notice %></section>
@@ -41,30 +43,28 @@
           </section>
         <% } %>
 
-        <ol>
-          <li>Bootstrap superuser</li>
-          <li>Operator profile</li>
-          <li>Registered PHO address</li>
-          <li>Operational address</li>
-          <li>PHO licence</li>
-          <li>Licence document</li>
-          <li>Review and confirm</li>
-          <li>Completed</li>
+        <ol aria-label="Setup progress">
+          <% Object.values(stepTitles).forEach((stepTitle) => { %>
+            <li><%= stepTitle %></li>
+          <% }) %>
         </ol>
       </section>
 
       <% if (requestedPath === stepPaths.bootstrap_superuser) { %>
         <section class="panel">
-          <h2>Step 1 — Bootstrap verified superuser</h2>
-          <p>Use the same email that is currently signed in via the existing login-code / magic-link flow.</p>
+          <h2>Confirm your administrator account</h2>
+          <p>In this step, enter the email address that will be used to create the system administrator account (superuser).</p>
+          <p>This email address should not be shared with another user of the system. The superuser has, apart from limited technical exceptions, full rights across the entire system.</p>
+          <p>The email address used to create the superuser is permanently recorded in the system. After the setup wizard has been completed, it cannot be changed through the normal application interface.</p>
+          <p>This address is used for secure administrator sign-in. It is separate from the address used as the sender of production emails.</p>
           <form method="post" action="/setup/bootstrap-superuser">
             <%- locals.csrfField || "" %>
             <div class="setup-form__field">
-              <label for="installerEmail">Installer email *</label>
+              <label for="installerEmail">Administrator email address *</label>
               <input id="installerEmail" name="installerEmail" type="email" required value="<%= formData.installerEmail %>" />
             </div>
             <div class="setup-form__actions">
-              <button type="submit">Verify and assign superuser</button>
+              <button type="submit">Confirm administrator account</button>
             </div>
           </form>
         </section>
@@ -72,11 +72,13 @@
 
       <% if (requestedPath === stepPaths.operator_profile) { %>
         <section class="panel">
-          <h2>Step 2 — Operator profile</h2>
+          <h2>Business details</h2>
+          <p>In this step, enter the details related to your business.</p>
+          <p>Please use the official business and licence-holder names shown on your business or PHO documents.</p>
           <form method="post" action="/setup/operator-profile">
             <%- locals.csrfField || "" %>
             <div class="setup-form__field">
-              <label for="legalName">Legal name *</label>
+              <label for="legalName">Registered business name *</label>
               <input id="legalName" name="legalName" required value="<%= formData.legalName %>" />
             </div>
             <div class="setup-form__field">
@@ -84,19 +86,11 @@
               <input id="tradingName" name="tradingName" value="<%= formData.tradingName %>" />
             </div>
             <div class="setup-form__field">
-              <label for="licenceHolderName">Licence holder name *</label>
+              <label for="licenceHolderName">Name on the PHO licence *</label>
               <input id="licenceHolderName" name="licenceHolderName" required value="<%= formData.licenceHolderName %>" />
             </div>
-            <div class="setup-form__field">
-              <label for="operatorStatus">Lifecycle status *</label>
-              <select id="operatorStatus" name="operatorStatus">
-                <% ["setup_required", "active", "suspended", "archived"].forEach((statusOption) => { %>
-                  <option value="<%= statusOption %>" <%= formData.operatorStatus === statusOption ? "selected" : "" %>><%= statusOption %></option>
-                <% }) %>
-              </select>
-            </div>
             <div class="setup-form__actions">
-              <button type="submit">Save and continue</button>
+              <button type="submit">Save business details and continue</button>
             </div>
           </form>
         </section>
@@ -105,7 +99,10 @@
       <% if (requestedPath === stepPaths.registered_pho_address || requestedPath === stepPaths.operational_address) { %>
         <% const addressType = requestedPath === stepPaths.registered_pho_address ? "registered_pho" : "operational"; %>
         <section class="panel">
-          <h2><%= addressType === "registered_pho" ? "Step 3 — Registered PHO address" : "Step 4 — Operational address" %></h2>
+          <h2><%= addressType === "registered_pho" ? "Where is your business registered?" : "Where do you operate from?" %></h2>
+          <p><%= addressType === "registered_pho"
+            ? "Enter the registered address associated with your business or PHO licence. This may be different from the address where your day-to-day operations take place."
+            : "Enter the address used for your day-to-day taxi or private-hire operations. This may be your office, dispatch centre or operating base." %></p>
           <form method="post" action="<%= addressType === "registered_pho" ? "/setup/registered-pho-address" : "/setup/operational-address" %>">
             <%- locals.csrfField || "" %>
             <% [
@@ -131,7 +128,7 @@
               </div>
             <% }) %>
             <div class="setup-form__actions">
-              <button type="submit">Save and continue</button>
+              <button type="submit"><%= addressType === "registered_pho" ? "Save registered address and continue" : "Save operating address and continue" %></button>
             </div>
           </form>
         </section>
@@ -139,11 +136,12 @@
 
       <% if (requestedPath === stepPaths.pho_licence) { %>
         <section class="panel">
-          <h2>Step 5 — PHO licence</h2>
+          <h2>PHO licence details</h2>
+          <p>Enter the licence information exactly as it appears on your PHO licence document.</p>
           <form method="post" action="/setup/pho-licence">
             <%- locals.csrfField || "" %>
             <div class="setup-form__field">
-              <label for="licenceNumber">Licence number *</label>
+              <label for="licenceNumber">PHO licence number *</label>
               <input id="licenceNumber" name="licenceNumber" required value="<%= formData.licenceNumber %>" />
             </div>
             <div class="setup-form__field">
@@ -158,15 +156,16 @@
               </select>
             </div>
             <div class="setup-form__field">
-              <label for="validFrom">Valid from *</label>
+              <label for="validFrom">Licence valid from *</label>
               <input id="validFrom" name="validFrom" type="date" required value="<%= formData.validFrom %>" />
             </div>
             <div class="setup-form__field">
-              <label for="validTo">Valid to</label>
+              <label for="validTo">Licence valid until</label>
               <input id="validTo" name="validTo" type="date" value="<%= formData.validTo %>" />
             </div>
+            <p>If your licence does not have an expiry date, you may leave the final field empty.</p>
             <div class="setup-form__actions">
-              <button type="submit">Save and continue</button>
+              <button type="submit">Save licence details and continue</button>
             </div>
           </form>
         </section>
@@ -174,15 +173,17 @@
 
       <% if (requestedPath === stepPaths.licence_document) { %>
         <section class="panel">
-          <h2>Step 6 — Licence document upload</h2>
+          <h2>Upload your PHO licence document</h2>
+          <p>Upload a clear copy of your current PHO licence. The document will be stored securely with your business records and can be reviewed by authorised administrators.</p>
           <form method="post" action="/setup/licence-document" enctype="multipart/form-data">
             <%- locals.csrfField || "" %>
             <div class="setup-form__field">
-              <label for="licenceDocument">Document (PDF, PNG, JPEG, max 10 MB) *</label>
+              <label for="licenceDocument">Licence document *</label>
               <input id="licenceDocument" type="file" name="licenceDocument" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required />
+              <span>Accepted formats: PDF, PNG or JPEG. Maximum file size: 10 MB.</span>
             </div>
             <div class="setup-form__actions">
-              <button type="submit">Upload and continue</button>
+              <button type="submit">Upload document and continue</button>
             </div>
           </form>
         </section>
@@ -190,22 +191,24 @@
 
       <% if (requestedPath === stepPaths.review_confirmation) { %>
         <section class="panel">
-          <h2>Step 7 — Review and confirmation</h2>
-          <p>Operator: <strong><%= setup.operator ? setup.operator.legalName : "Not configured" %></strong></p>
+          <h2>Review your setup details</h2>
+          <p>Please check the information below before completing the installation.</p>
+          <p>If anything needs correcting, you can return to an earlier step. The business will remain in TRIAL status until the relevant licence or subscription activation is completed.</p>
+          <p>Business: <strong><%= setup.operator ? setup.operator.legalName : "Not configured" %></strong></p>
           <p>Registered address: <strong><%= setup.addresses.registeredPho ? "Complete" : "Missing" %></strong></p>
           <p>Operational address: <strong><%= setup.addresses.operational ? "Complete" : "Missing" %></strong></p>
           <p>PHO licence: <strong><%= setup.licence ? setup.licence.licenceNumber : "Missing" %></strong></p>
-          <p>Document: <strong><%= setup.latestDocument ? setup.latestDocument.originalFilename : "Missing" %></strong></p>
+          <p>Licence document: <strong><%= setup.latestDocument ? setup.latestDocument.originalFilename : "Missing" %></strong></p>
           <form method="post" action="/setup/review">
             <%- locals.csrfField || "" %>
             <div class="setup-form__field setup-form__field--checkbox">
               <label>
                 <input type="checkbox" name="confirmSetup" value="yes" />
-                I confirm all setup details and want to complete initial setup.
+                I have checked the information above and confirm that it is correct.
               </label>
             </div>
             <div class="setup-form__actions">
-              <button type="submit">Complete setup</button>
+              <button type="submit">Complete RideMatrix setup</button>
             </div>
           </form>
         </section>
@@ -213,56 +216,14 @@
 
       <% if (requestedPath === stepPaths.completed) { %>
         <section class="panel">
-          <h2>Step 8 — Completion</h2>
-          <p>Initial setup is completed. Operator status is active and setup is locked.</p>
-          <p>System test accounts are intentionally retained for production-safe testing and compliance demonstrations.</p>
+          <h2>Your RideMatrix setup is complete</h2>
+          <p>Your RideMatrix business setup has been completed.</p>
+          <p>Your business is currently in TRIAL status for one month. After the relevant licence or subscription has been purchased and activated, the system can move the business to ACTIVE status automatically.</p>
+          <p>You can now configure users, pricing, vehicles, bookings and notifications.</p>
+          <p>Test accounts and test bookings are clearly marked and kept separate from real financial activity. Test email messages are delivered only to the internal test mailbox.</p>
 
-          <h3>Superuser-only legacy cleanup path</h3>
-          <form method="post" action="/setup/cleanup-accounts">
-            <%- locals.csrfField || "" %>
-            <% cleanupTargets.forEach((target) => { %>
-              <div class="setup-form__field setup-form__field--checkbox">
-                <label>
-                  <input type="checkbox" name="cleanupTargets" value="<%= target %>" />
-                  Deactivate internal operational roles for <%= target %>
-                </label>
-              </div>
-            <% }) %>
-            <div class="setup-form__actions">
-              <button type="submit">Run cleanup deactivation</button>
-            </div>
-          </form>
-
-          <h3>Test-account access-code routing check</h3>
-          <form method="post" action="/setup/test-account-access-code">
-            <%- locals.csrfField || "" %>
-            <div class="setup-form__field">
-              <label for="testAccountEmail">Test account email</label>
-              <input id="testAccountEmail" name="testAccountEmail" type="email" required />
-            </div>
-            <div class="setup-form__actions">
-              <button type="submit">Validate sink policy</button>
-            </div>
-          </form>
         </section>
       <% } %>
-
-      <section class="panel">
-        <h2>Recent setup audit</h2>
-        <% if (setupAudit.length === 0) { %>
-          <p>No setup audit events recorded yet.</p>
-        <% } else { %>
-          <ul>
-            <% setupAudit.forEach((auditEvent) => { %>
-              <li>
-                <strong><%= auditEvent.eventName %></strong>
-                — <%= auditEvent.summary %>
-                (<%= auditEvent.actorUserEmail || "system" %>, <%= auditEvent.occurredAt %>)
-              </li>
-            <% }) %>
-          </ul>
-        <% } %>
-      </section>
     </main>
 
     <%- include("../../partials/footer") %>
