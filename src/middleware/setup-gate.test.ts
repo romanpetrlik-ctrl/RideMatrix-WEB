@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
+import { createSetupRouter } from "../routes/setup";
 import { createSetupGateMiddleware } from "./setup-gate";
 
 let authenticated = true;
@@ -45,7 +46,15 @@ async function withServer(gateFlag: string | undefined, run: (baseUrl: string) =
   );
 
   app.get("/dashboard", (_req, res) => res.status(200).send("dashboard"));
-  app.get("/setup/operator-profile", (_req, res) => res.status(200).send("setup"));
+  app.use(
+    createSetupRouter({
+      appTitle: "RideMatrix",
+      loadSession: async () => (authenticated ? {
+        authenticated: true,
+        user: { id: "u-1", email: "admin@ridematrix.uk", roles: ["admin"] }
+      } : { authenticated: false })
+    })
+  );
   app.get("/access", (_req, res) => res.status(200).send("access"));
 
   const server = app.listen(0);
@@ -85,13 +94,14 @@ test("redirects authenticated users to /setup when the gate is explicitly enable
   });
 });
 
-test("does not gate /setup paths", async () => {
-  authenticated = true;
+test("keeps /setup routes available through their own authorization checks", async () => {
+  authenticated = false;
   setupCompleted = false;
 
   await withServer("true", async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/setup/operator-profile`);
-    assert.equal(response.status, 200);
+    const response = await fetch(`${baseUrl}/setup/operator-profile`, { redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/access");
   });
 });
 
