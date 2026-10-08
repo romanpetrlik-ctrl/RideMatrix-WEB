@@ -28,8 +28,13 @@ function startsWithAny(pathname: string, prefixes: string[]): boolean {
 export function createSetupGateMiddleware(options: SetupGateOptions = {}): RequestHandler {
   const loadSession = options.loadSession ?? getSessionAccount;
   const loadSetupOverview = options.loadSetupOverview ?? getSetupOverview;
+  const enabled = process.env.INITIAL_SETUP_GATE_ENABLED === "true";
 
   return async (req: Request, res: Response, next: NextFunction) => {
+    if (!enabled) {
+      return next();
+    }
+
     try {
       const pathname = req.path;
 
