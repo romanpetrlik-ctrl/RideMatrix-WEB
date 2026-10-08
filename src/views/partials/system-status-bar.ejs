@@ -23,6 +23,15 @@
   const showWorkspaceSwitch = isAuthenticated
     && statusBarAccount.availableWorkspaceModuleCount > 1
     && !statusBarAccount.hideWorkspaceSwitch;
+  const statusBarExitActionPath = typeof exitActionPath === "string" && exitActionPath.trim()
+    ? exitActionPath.trim()
+    : "/exit";
+  const statusBarExitActionLabel = typeof exitActionLabel === "string" && exitActionLabel.trim()
+    ? exitActionLabel.trim()
+    : "Exit";
+  const statusBarExitActionIsNegative = typeof exitActionIsNegative === "boolean"
+    ? exitActionIsNegative
+    : true;
 %>
 
 <div class="system-status-bar">
@@ -58,9 +67,9 @@
           <% if (showWorkspaceSwitch) { %>
             <a class="button button--system-cta system-status-bar__account-action" href="/choose-role">Switch workspace</a>
           <% } %>
-          <form class="system-status-bar__account-action-form" method="post" action="/exit">
+          <form class="system-status-bar__account-action-form" method="post" action="<%= statusBarExitActionPath %>">
             <%- locals.csrfField || "" %>
-            <button class="button button--system-cta button--admin-cta--negative system-status-bar__account-action" type="submit">Exit</button>
+            <button class="button button--system-cta <%= statusBarExitActionIsNegative ? "button--admin-cta--negative" : "" %> system-status-bar__account-action" type="submit"><%= statusBarExitActionLabel %></button>
           </form>
         </div>
       <% } %>
