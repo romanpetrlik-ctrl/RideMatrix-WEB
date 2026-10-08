@@ -96,6 +96,13 @@ describe("logout flow", () => {
     logoutStatus = 204;
     logoutCookies = ["rm_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"];
 
+    const authenticatedAccessResponse = await fetch(`${baseUrl}/access`, {
+      headers: { cookie: "rm_session=session-value" },
+      redirect: "manual"
+    });
+    assert.equal(authenticatedAccessResponse.status, 302);
+    assert.equal(authenticatedAccessResponse.headers.get("location"), "/choose-role");
+
     const response = await fetch(`${baseUrl}/setup/exit`, {
       method: "POST",
       headers: { cookie: "rm_session=session-value; rm_refresh=refresh-value" },
