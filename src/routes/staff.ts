@@ -5,6 +5,7 @@ import {
   getStaffUser,
   listStaffLoginAuditEvents,
   listStaffUsers,
+  normalizeStaffDisplayName,
   STAFF_LOGIN_AUDIT_PAGE_LIMIT
 } from "../services/staff";
 import { noStoreProtectedResponse } from "../middleware/no-store";
@@ -22,7 +23,8 @@ import {
   getPermissionsForRoles,
   isValidUserEmail,
   listAssignableRoles,
-  normalizeUserEmail
+  normalizeUserEmail,
+  updateStaffDisplayName
 } from "../services/staff-users";
 
 type StaffRouterOptions = {
@@ -38,6 +40,7 @@ type StaffRouterOptions = {
 
 type InviteFormData = {
   email: string;
+  displayName?: string;
   roles: string[];
 };
 
@@ -333,6 +336,60 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
     }
   });
 
+  router.get("/staff/:accountId/profile", async (req, res, next) => {
+    try {
+      const resolved = await resolveActor(req);
+      if (resolved === "unauthenticated") return res.redirect("/access");
+      if (resolved === "forbidden") return renderUnavailable(res);
+      const member = await getStaffUser(req.params.accountId);
+      if (!member) {
+        return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      return res.render("pages/staff/profile", {
+        title: "Edit staff name",
+        appTitle: options.appTitle,
+        email: resolved.actor.email,
+        member,
+        displayName: member.displayName || "",
+        errors: []
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/staff/:accountId/profile", async (req, res, next) => {
+    try {
+      const resolved = await resolveActor(req);
+      if (resolved === "unauthenticated") return res.redirect("/access");
+      if (resolved === "forbidden") return renderUnavailable(res);
+      const member = await getStaffUser(req.params.accountId);
+      if (!member) {
+        return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      let displayName: string | null;
+      try {
+        displayName = normalizeStaffDisplayName(req.body.displayName);
+      } catch (error) {
+        return res.status(400).render("pages/staff/profile", {
+          title: "Edit staff name",
+          appTitle: options.appTitle,
+          email: resolved.actor.email,
+          member,
+          displayName: typeof req.body.displayName === "string" ? req.body.displayName : "",
+          errors: [(error as Error).message]
+        });
+      }
+      const updated = await updateStaffDisplayName(member.id, displayName, resolved.actor);
+      if (!updated) {
+        return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      return res.redirect(303, "/staff");
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/staff/invite", async (req, res, next) => {
     try {
       const resolved = await resolveActor(req);
@@ -350,6 +407,14 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       const selectedRoles = toRoleList(req.body.roles);
       const formData: InviteFormData = { email, roles: selectedRoles };
       const errors: string[] = [];
+      let displayName: string | null = null;
+      formData.displayName = typeof req.body.displayName === "string" ? req.body.displayName : "";
+      try {
+        displayName = normalizeStaffDisplayName(req.body.displayName);
+        formData.displayName = displayName || "";
+      } catch (error) {
+        errors.push((error as Error).message);
+      }
 
       if (!email) {
         errors.push("Email is required.");
@@ -392,7 +457,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       let created;
 
       try {
-        created = await createStaffUser({ email, roles: selectedRoles, actor });
+        created = await createStaffUser({ email, displayName, roles: selectedRoles, actor });
       } catch (error) {
         if (error instanceof DuplicateStaffUserEmailError) {
           return renderForm(res, {

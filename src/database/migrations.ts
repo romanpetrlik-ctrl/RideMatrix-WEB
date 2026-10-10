@@ -832,6 +832,20 @@ export const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS trial_started_at TEXT,
         ADD COLUMN IF NOT EXISTS trial_ends_at TEXT;
     `
+  },
+  {
+    id: "0011_staff_profiles",
+    sql: `
+      CREATE TABLE IF NOT EXISTS staff_profiles (
+        account_id TEXT PRIMARY KEY,
+        display_name TEXT,
+        CHECK (display_name IS NULL OR (
+          display_name = btrim(display_name)
+          AND char_length(display_name) BETWEEN 1 AND 100
+          AND display_name !~ '[[:cntrl:]]'
+        ))
+      );
+    `
   }
 ];
 

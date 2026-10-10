@@ -25,6 +25,7 @@ into an array rather than joining out one row per role.
 
 | Field       | Source                                                              |
 | ----------- | -------------------------------------------------------------------|
+| Name        | RideMatrix-owned `staff_profiles.display_name`; `Name not provided` if absent |
 | Email       | `users.email`                                                      |
 | Status      | `users.status`                                                     |
 | Roles       | `roles.key` via `user_roles`, one pill per assigned role; `superuser` is listed first as `SU · System Control` |
@@ -39,6 +40,41 @@ migrate that schema. Rather than assuming a column exists, `listStaffUsers` insp
 none of those exist, the field is safely omitted (rendered as `Never`) instead of
 inventing data. No password, token, login-code, or other sensitive column is ever
 selected or rendered.
+
+### Display names and maintenance
+
+The verified `SessionAccount` contract (`src/services/api.ts`) provides only id,
+email and roles, and the repository's auth schema contract has no staff-name field.
+Customer names belong to separate customer profiles and are not a staff identity
+source. No production database was inspected, no auth name columns are assumed,
+and names are never guessed from email addresses.
+
+Migration `0011_staff_profiles` adds a RideMatrix-owned table with a text
+`account_id` primary key and an optional `display_name`. It does not alter external
+auth tables or add foreign keys to them; text ids support both UUID and text auth
+identifiers. There is no name backfill. Existing accounts remain listed once each,
+with the same roles and email-based sort order.
+
+The smallest maintenance policy is admin-managed display names, not separate given
+name/surname fields or self-service profiles. Users with the existing create/invite
+rights (`superuser`, `manage_users`, or `manage_user_roles`) can:
+
+- Set an optional display name when creating/inviting a staff account. The profile
+  is saved in the same transaction as the account and roles; invitation delivery
+  still uses the existing email/login-code flow.
+- Select **Edit name** in the directory to use `GET/POST /staff/:accountId/profile`.
+  Only existing internal staff accounts are eligible. Email, roles and credentials
+  cannot be changed through this form.
+
+Names are trimmed, limited to 100 characters, checked for string type and control
+characters, and escaped by EJS. Blank names clear the field. Mutations retain
+session authorization and application CSRF protection, and protected responses
+use no-store headers.
+
+The directory shows the stored name above its email link. Missing/blank names show
+**Name not provided** and a neutral `?` avatar; email stays visible and links to the
+existing login history. Names may identify a colleague or an approved shared
+account; they are administrator-entered labels, not verified legal identities.
 
 ### Superuser indicator
 

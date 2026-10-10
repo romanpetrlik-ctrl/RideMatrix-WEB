@@ -61,6 +61,11 @@
           <div class="staff-form__section">
             <h2 class="staff-form__section-title">Account</h2>
             <div class="staff-field">
+              <label class="staff-field__label" for="displayName">Display name (optional)</label>
+              <input class="staff-field__input" type="text" id="displayName" name="displayName" value="<%= formData.displayName || '' %>" maxlength="100" autocomplete="name" />
+              <p class="staff-field__hint">An administrator-maintained name for the directory, not inferred from email.</p>
+            </div>
+            <div class="staff-field">
               <label class="staff-field__label" for="email">Email *</label>
               <input
                 class="staff-field__input"
