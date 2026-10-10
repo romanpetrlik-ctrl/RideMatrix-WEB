@@ -11,7 +11,7 @@ import {
   getVehicleDriverSummary, listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicles,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
   VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleDriverAssignmentError,
-  VehicleInput, VehicleValidationError
+  VehicleInput, VehicleNotFoundError, VehicleValidationError
 } from "../services/vehicles";
 
 type Options = {
@@ -174,8 +174,8 @@ export function createVehiclesRouter(options: Options): Router {
         const notice = outcome === "unchanged" ? "driver-unchanged" : outcome === "unassigned" ? "driver-unassigned" : "driver-updated";
         return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=${notice}`);
       } catch (error) {
+        if (error instanceof VehicleNotFoundError) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
         if (!(error instanceof VehicleDriverAssignmentError)) throw error;
-        if (!(await getVehicleById(vehicleId))) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
         return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=driver-invalid`);
       }
     } catch (error) { next(error); }
@@ -222,7 +222,8 @@ export function createVehiclesRouter(options: Options): Router {
       if (!file || !text(req.body.documentType)) return res.redirect(`${detailUrl}?notice=document-required`);
       try { validateVehicleDocumentUpload(file); } catch { return res.redirect(`${detailUrl}?notice=document-invalid-file`); }
       if (!(VEHICLE_DOCUMENT_TYPES as readonly string[]).includes(text(req.body.documentType))) return res.redirect(`${detailUrl}?notice=document-invalid-type`);
-      const expiryStatus = getDocumentStatus(text(req.body.expiresOn) || null);
+      const expiresOn = text(req.body.expiresOn);
+      const expiryStatus = /^\d{4}-\d{2}-\d{2}$/.test(expiresOn) ? getDocumentStatus(expiresOn) : "Missing";
       if (expiryStatus === "Missing" || expiryStatus === "Expired") return res.redirect(`${detailUrl}?notice=document-invalid-expiry`);
       await createVehicleDocument({ vehicleId: vehicle.id, documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
         issuedOn: text(req.body.issuedOn), expiresOn: text(req.body.expiresOn), originalFilename: file.originalname, mimeType: file.mimetype,

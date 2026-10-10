@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { initializeDatabase, query } from "../database/connection";
 import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import { createCsrfProtection } from "../middleware/csrf";
@@ -35,6 +36,7 @@ describe("vehicle management end-to-end workflow", () => {
     const app = express();
     app.set("view engine", "ejs");
     app.set("views", path.join(process.cwd(), "src/views"));
+    app.use(rateLimit({ windowMs: 60_000, limit: 1_000, standardHeaders: true, legacyHeaders: false }));
     app.use(express.urlencoded({ extended: true }));
     app.use(createCsrfProtection({ appTitle: "RideMatrix Test" }));
     app.use(createVehiclesRouter({ appTitle: "RideMatrix Test", loadSession: async () => session }));

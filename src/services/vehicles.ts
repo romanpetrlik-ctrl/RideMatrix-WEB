@@ -266,12 +266,13 @@ export async function updateVehicle(id: string, input: VehicleInput, client?: Qu
 }
 
 export class VehicleDriverAssignmentError extends Error {}
+export class VehicleNotFoundError extends Error {}
 
 export async function assignVehicleDriver(vehicleId: string, driverId: string, client?: Queryable): Promise<"assigned" | "unassigned" | "unchanged"> {
   const nextDriverId = text(driverId);
   return withVehicleTransaction(client, async (runner) => {
     const vehicle = await runner.query("SELECT id FROM vehicles WHERE id = $1 FOR UPDATE", [vehicleId]);
-    if (!vehicle.rows[0]) throw new VehicleDriverAssignmentError("Vehicle not found.");
+    if (!vehicle.rows[0]) throw new VehicleNotFoundError("Vehicle not found.");
     if (nextDriverId) {
       const driver = await runner.query(
         `SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
