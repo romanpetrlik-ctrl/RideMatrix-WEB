@@ -34,7 +34,6 @@ function input(body: any): VehicleInput {
     classKeys: rawClasses.map(text).filter(Boolean), fuelType: text(body.fuelType) as any,
     passengerCapacity: Number(body.passengerCapacity), status: text(body.status) as any,
     registeredKeeperDetails: text(body.registeredKeeperDetails) || null,
-    wheelchairAccessible: body.wheelchairAccessible === "on",
     notes: text(body.notes) || null, baggageCapacities };
 }
 // Re-renders submitted values with the same shape the form uses for stored vehicles.

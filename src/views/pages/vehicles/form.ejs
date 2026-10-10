@@ -11,13 +11,14 @@
           <section class="vehicle-form__section" aria-labelledby="vehicle-basic-heading">
             <h2 class="vehicle-form__section-heading" id="vehicle-basic-heading">Basic details</h2>
             <div class="vehicle-form__fields">
+              <% const currentYear = new Date().getFullYear(); const year = vehicle?.year; %>
               <label><span class="vehicle-form__label">Registration number</span><input name="registration" required value="<%= vehicle?.registration || '' %>"></label>
               <label><span class="vehicle-form__label">Make</span><input name="make" required value="<%= vehicle?.make || '' %>"></label>
               <label><span class="vehicle-form__label">Model</span><input name="model" required value="<%= vehicle?.model || '' %>"></label>
               <label><span class="vehicle-form__label">Fuel type <%- include("../../partials/help-button", { key: "vehicle.fuelType", helpFor }) %></span><select name="fuelType" required><% fuelTypes.forEach((item) => { %><option value="<%= item %>" <%= (vehicle?.fuelType || "ICE") === item ? "selected" : "" %>><%= item %></option><% }) %></select></label>
               <label><span class="vehicle-form__label">Passenger capacity <%- include("../../partials/help-button", { key: "vehicle.passengerCapacity", helpFor }) %></span><input name="passengerCapacity" type="number" min="1" step="1" required value="<%= vehicle?.passengerCapacity || '' %>"></label>
               <label><span class="vehicle-form__label">Status</span><select name="status" required><% statuses.forEach((item) => { %><option value="<%= item %>" <%= (vehicle?.status || "active") === item ? "selected" : "" %>><%= item[0].toUpperCase() + item.slice(1) %></option><% }) %></select></label>
-              <label><span class="vehicle-form__label">Year</span><input name="year" type="number" min="1900" max="2100" step="1" value="<%= vehicle?.year ?? '' %>"></label>
+              <label><span class="vehicle-form__label">Year of first registration</span><select name="year"><option value="" <%= year == null ? "selected" : "" %>>Not set</option><% if (year != null && (year < 2005 || year > currentYear)) { %><option value="<%= year %>" selected><%= year %> (legacy)</option><% } %><% for (let optionYear = 2005; optionYear <= currentYear; optionYear += 1) { %><option value="<%= optionYear %>" <%= year === optionYear ? "selected" : "" %>><%= optionYear %></option><% } %></select></label>
               <label><span class="vehicle-form__label">Colour</span><input name="colour" value="<%= vehicle?.colour || '' %>"></label>
             </div>
           </section>
@@ -29,13 +30,9 @@
             <h2 class="vehicle-form__section-heading" id="vehicle-keeper-heading">Registered operator</h2>
             <label class="vehicle-form__single-field"><span class="vehicle-form__label">Registered keeper details <%- include("../../partials/help-button", { key: "vehicle.registeredKeeper", helpFor }) %></span><textarea name="registeredKeeperDetails"><%= vehicle?.registeredKeeperDetails || '' %></textarea></label>
           </section>
-          <section class="vehicle-form__section vehicle-form__accessibility" aria-labelledby="vehicle-accessibility-heading">
-            <h2 class="vehicle-form__section-heading" id="vehicle-accessibility-heading">Accessibility</h2>
-            <label class="vehicle-checkbox"><input type="checkbox" name="wheelchairAccessible" <%= vehicle?.wheelchairAccessible ? "checked" : "" %>><span>Wheelchair accessibility capability</span><%- include("../../partials/help-button", { key: "vehicle.wheelchairAccessible", helpFor }) %></label>
-          </section>
           <section class="vehicle-form__section" aria-labelledby="vehicle-baggage-heading">
             <h2 class="vehicle-form__section-heading" id="vehicle-baggage-heading">Baggage capacity (maximum quantity) <%- include("../../partials/help-button", { key: "vehicle.luggageCapacity", helpFor }) %></h2>
-            <div class="vehicle-capacity-grid"><% baggageCategories.forEach((category) => { const existing = vehicle?.capacities?.find((capacity) => capacity.categoryKey === category.key); const helpKey = category.key === "xl_suitcase" ? "baggage.xlSuitcase" : category.key === "l_suitcase" ? "baggage.lSuitcase" : category.key === "cabin_bag" ? "baggage.cabinBag" : "baggage.backpack"; %><label><span class="vehicle-form__label"><%= category.label %> <%- include("../../partials/help-button", { key: helpKey, helpFor }) %></span><input name="capacity_<%= category.key %>" type="number" min="0" step="1" value="<%= existing?.maxQuantity ?? '' %>"></label><% }) %></div>
+            <div class="vehicle-capacity-grid"><% baggageCategories.forEach((category) => { const existing = vehicle?.capacities?.find((capacity) => capacity.categoryKey === category.key); const capacity = existing?.maxQuantity; const helpKey = category.key === "xl_suitcase" ? "baggage.xlSuitcase" : category.key === "l_suitcase" ? "baggage.lSuitcase" : category.key === "cabin_bag" ? "baggage.cabinBag" : "baggage.backpack"; %><label><span class="vehicle-form__label"><%= category.label %> <%- include("../../partials/help-button", { key: helpKey, helpFor }) %></span><select name="capacity_<%= category.key %>"><option value="" <%= capacity == null ? "selected" : "" %>>Not set</option><% if (capacity != null && (capacity < 1 || capacity > 8)) { %><option value="<%= capacity %>" selected><%= capacity %> (legacy)</option><% } %><% for (let quantity = 1; quantity <= 8; quantity += 1) { %><option value="<%= quantity %>" <%= capacity === quantity ? "selected" : "" %>><%= quantity %></option><% } %></select></label><% }) %></div>
           </section>
           <section class="vehicle-form__section" aria-labelledby="vehicle-notes-heading">
             <h2 class="vehicle-form__section-heading" id="vehicle-notes-heading">Notes</h2>

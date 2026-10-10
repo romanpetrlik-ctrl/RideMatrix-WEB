@@ -36,7 +36,7 @@ export type VehicleInput = {
   registration: string; make: string; model: string; classKeys?: string[];
   vehicleClassKey?: string; fuelType: VehicleFuelType; passengerCapacity: number;
   status: VehicleStatus; colour?: string | null; registeredKeeperDetails?: string | null;
-  wheelchairAccessible?: boolean; year?: number | null; notes?: string | null;
+  year?: number | null; notes?: string | null;
   baggageCapacities?: Record<string, number | null>;
 };
 
@@ -173,7 +173,6 @@ export async function getVehicleById(id: string, client?: Queryable): Promise<Ve
 function normalizedClasses(input: VehicleInput): string[] {
   const keys = (input.classKeys || (input.vehicleClassKey ? [input.vehicleClassKey] : []))
     .map(text).filter(Boolean);
-  if (input.wheelchairAccessible) keys.push("wheelchair_accessible");
   return Array.from(new Set(keys));
 }
 function validateVehicleInput(input: VehicleInput): string[] {
@@ -236,7 +235,7 @@ export async function createVehicle(input: VehicleInput, client?: Queryable): Pr
         (id, registration, make, model, year, colour, registered_keeper_details, fuel_type,
          passenger_capacity, wheelchair_accessible, status, notes, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
-      [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year || null,
+      [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year ?? null,
         text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
         input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
         input.status, text(input.notes) || null, new Date().toISOString()]
@@ -254,7 +253,7 @@ export async function updateVehicle(id: string, input: VehicleInput, client?: Qu
       `UPDATE vehicles SET registration=$2, make=$3, model=$4, year=$5, colour=$6,
          registered_keeper_details=$7, fuel_type=$8, passenger_capacity=$9,
          wheelchair_accessible=$10, status=$11, notes=$12, updated_at=$13 WHERE id=$1`,
-      [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year || null,
+      [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year ?? null,
         text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
         input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
         input.status, text(input.notes) || null, new Date().toISOString()]

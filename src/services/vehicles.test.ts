@@ -15,6 +15,7 @@ import {
   listVehicleDocuments,
   listVehicles,
   normalizeVehicleStatusFilter,
+  updateVehicle,
   validateVehicleDocumentUpload,
   VEHICLE_DEFAULT_PER_PAGE
 } from "./vehicles";
@@ -175,6 +176,35 @@ test("wheelchair accessibility is synchronized from class assignment", async () 
     fuelType: "ICE", passengerCapacity: 4, status: "active"
   }, client);
   assert.ok(params.some((values) => values[1] === false));
+});
+
+test("vehicle edits preserve zero-valued legacy year and baggage capacity", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      if (sql.startsWith("UPDATE vehicles SET registration")) return { rowCount: 1, rows: [] };
+      if (sql.startsWith("SELECT v.*")) {
+        return { rows: [{
+          id: "v1", registration: "AB1", make: "Make", model: "Model", year: 0, colour: null,
+          registered_keeper_details: null, fuel_type: "ICE", passenger_capacity: 4, status: "active",
+          wheelchair_accessible: true, classes: [{ key: "wheelchair_accessible", label: "Wheelchair Accessible" }],
+          capacities: [{ categoryKey: "xl_suitcase", maxQuantity: 0 }], documents_count: 0
+        }] };
+      }
+      return { rows: [] };
+    }
+  };
+
+  await updateVehicle("v1", {
+    registration: "AB1", make: "Make", model: "Model", year: 0,
+    classKeys: ["wheelchair_accessible"], fuelType: "ICE", passengerCapacity: 4, status: "active",
+    baggageCapacities: { xl_suitcase: 0 }
+  }, client);
+
+  const vehicleUpdate = calls.find(({ sql }) => sql.startsWith("UPDATE vehicles SET registration"));
+  assert.equal(vehicleUpdate?.params[4], 0);
+  assert.ok(calls.some(({ sql, params }) => sql.includes("INSERT INTO vehicle_baggage_capacities") && params[2] === 0));
 });
 
 test("document replacement preserves history and only latest documents are returned", async () => {
