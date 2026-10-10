@@ -15,6 +15,15 @@
         <% } else { %>
           <p>No active driver is assigned to this vehicle.</p>
         <% } %>
+      <% } else if (locals.driverAssignments !== undefined) { %>
+        <p>One active primary driver per vehicle; previous assignments are kept as history.</p>
+        <% if (driverAssignments.length) { %>
+          <div class="vehicle-table-wrapper"><table class="vehicle-table"><thead><tr><th>Driver</th><th>Assigned</th><th>Unassigned</th><th>State</th></tr></thead><tbody>
+            <% driverAssignments.forEach((assignment) => { %><tr><td><%= assignment.driver_email || assignment.driver_id %></td><td><%= assignment.assigned_at %></td><td><%= assignment.unassigned_at || "—" %></td><td><%= assignment.unassigned_at ? "Ended" : "Current" %></td></tr><% }) %>
+          </tbody></table></div>
+        <% } else { %>
+          <p>No driver has been assigned to this vehicle yet.</p>
+        <% } %>
       <% } else { %>
         <p>This operational view is ready for booking and assignment data when that source is connected.</p>
       <% } %>

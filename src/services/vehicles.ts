@@ -78,9 +78,10 @@ export async function listBaggageCategories(client?: Queryable): Promise<Baggage
 export async function listDrivers(client?: Queryable): Promise<Array<{ id: string; email: string }>> {
   try {
     const result = await db(client).query<{ id: string; email: string }>(
-      `SELECT DISTINCT u.id, u.email FROM users u
-       JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
-       WHERE r.key = 'driver' ORDER BY lower(u.email)`
+      `SELECT u.id::text AS id, u.email FROM users u
+       WHERE EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = u.id AND r.key = 'driver')
+       ORDER BY lower(u.email)`
     );
     return result.rows;
   } catch (error) {
@@ -122,42 +123,49 @@ async function withVehicleTransaction<T>(client: Queryable | undefined, work: (r
   return work(runner);
 }
 
-export async function getVehicleCount(search = "", client?: Queryable): Promise<number> {
-  const result = await db(client).query<{ count: string }>(
-    `SELECT count(*)::text AS count FROM vehicles v
-     WHERE ($1 = '' OR v.registration ILIKE '%' || $1 || '%' OR v.make ILIKE '%' || $1 || '%'
+export function normalizeVehicleStatusFilter(value: unknown): VehicleStatus | "" {
+  if (typeof value !== "string") return "";
+  const status = text(value).toLowerCase();
+  return VEHICLE_STATUS_OPTIONS.includes(status as VehicleStatus) ? (status as VehicleStatus) : "";
+}
+
+const vehicleDirectoryWhere = `($1 = '' OR v.registration ILIKE '%' || $1 || '%' OR v.make ILIKE '%' || $1 || '%'
        OR v.model ILIKE '%' || $1 || '%' OR EXISTS (
          SELECT 1 FROM vehicle_class_assignments vca JOIN vehicle_classes vc ON vc.key = vca.vehicle_class_key
-         WHERE vca.vehicle_id = v.id AND vca.unassigned_at IS NULL AND vc.label ILIKE '%' || $1 || '%'))`,
-    [text(search)]
+         WHERE vca.vehicle_id = v.id AND vca.unassigned_at IS NULL AND vc.label ILIKE '%' || $1 || '%'))
+     AND ($2 = '' OR v.status = $2)`;
+
+export async function getVehicleCount(search = "", client?: Queryable, status: unknown = ""): Promise<number> {
+  const result = await db(client).query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM vehicles v
+     WHERE ${vehicleDirectoryWhere}`,
+    [text(search), normalizeVehicleStatusFilter(status)]
   );
   return Number(result.rows[0]?.count || 0);
 }
 
-export async function listVehicles(params: { search?: string; page?: number; perPage?: number; client?: Queryable } = {}) {
-  const perPage = Math.max(1, Math.min(100, Number(params.perPage || VEHICLE_DEFAULT_PER_PAGE)));
-  const total = await getVehicleCount(params.search, params.client);
+export async function listVehicles(params: { search?: string; status?: unknown; page?: number; perPage?: number; client?: Queryable } = {}) {
+  const perPage = Math.max(1, Math.min(100, Number(params.perPage) || VEHICLE_DEFAULT_PER_PAGE));
+  const status = normalizeVehicleStatusFilter(params.status);
+  const total = await getVehicleCount(params.search, params.client, status);
   const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const page = Math.max(1, Math.min(totalPages, Number(params.page || 1)));
+  const page = Math.max(1, Math.min(totalPages, Math.trunc(Number(params.page)) || 1));
   const result = await db(params.client).query(
     `SELECT ${vehicleSelect} FROM vehicles v
      LEFT JOIN vehicle_driver_assignments a ON a.vehicle_id = v.id AND a.unassigned_at IS NULL
-     LEFT JOIN users u ON u.id = a.driver_id
-     WHERE ($1 = '' OR v.registration ILIKE '%' || $1 || '%' OR v.make ILIKE '%' || $1 || '%'
-       OR v.model ILIKE '%' || $1 || '%' OR EXISTS (
-         SELECT 1 FROM vehicle_class_assignments vca JOIN vehicle_classes vc ON vc.key = vca.vehicle_class_key
-         WHERE vca.vehicle_id = v.id AND vca.unassigned_at IS NULL AND vc.label ILIKE '%' || $1 || '%'))
-     ORDER BY lower(v.registration) LIMIT $2 OFFSET $3`,
-    [text(params.search), perPage, (page - 1) * perPage]
+     LEFT JOIN users u ON u.id::text = a.driver_id
+     WHERE ${vehicleDirectoryWhere}
+     ORDER BY lower(v.registration) LIMIT $3 OFFSET $4`,
+    [text(params.search), status, perPage, (page - 1) * perPage]
   );
-  return { vehicles: result.rows.map(mapVehicle), page, perPage, total, totalPages };
+  return { vehicles: result.rows.map(mapVehicle), status, page, perPage, total, totalPages };
 }
 
 export async function getVehicleById(id: string, client?: Queryable): Promise<Vehicle | null> {
   const result = await db(client).query(
     `SELECT ${vehicleSelect} FROM vehicles v
      LEFT JOIN vehicle_driver_assignments a ON a.vehicle_id = v.id AND a.unassigned_at IS NULL
-     LEFT JOIN users u ON u.id = a.driver_id WHERE v.id = $1`, [id]
+     LEFT JOIN users u ON u.id::text = a.driver_id WHERE v.id = $1`, [id]
   );
   return result.rows[0] ? mapVehicle(result.rows[0]) : null;
 }
@@ -210,9 +218,17 @@ async function persistAssignments(id: string, input: VehicleInput, client: Query
   await client.query("UPDATE vehicles SET wheelchair_accessible = $2 WHERE id = $1", [id, classes.includes("wheelchair_accessible")]);
 }
 
+export class VehicleValidationError extends Error {}
+function toVehicleValidationError(error: unknown): unknown {
+  const code = (error as { code?: string }).code;
+  if (code === "23505") return new VehicleValidationError("A vehicle with this registration number already exists.");
+  if (code === "23503") return new VehicleValidationError("Select a valid vehicle class assignment and baggage categories.");
+  return error;
+}
+
 export async function createVehicle(input: VehicleInput, client?: Queryable): Promise<Vehicle> {
   const errors = validateVehicleInput(input);
-  if (errors.length) throw new Error(errors.join(" "));
+  if (errors.length) throw new VehicleValidationError(errors.join(" "));
   const id = randomUUID();
   return withVehicleTransaction(client, async (runner) => {
     await runner.query(
@@ -227,14 +243,14 @@ export async function createVehicle(input: VehicleInput, client?: Queryable): Pr
     );
     await persistAssignments(id, input, runner);
     return (await getVehicleById(id, runner))!;
-  });
+  }).catch((error) => { throw toVehicleValidationError(error); });
 }
 
 export async function updateVehicle(id: string, input: VehicleInput, client?: Queryable): Promise<Vehicle | null> {
   const errors = validateVehicleInput(input);
-  if (errors.length) throw new Error(errors.join(" "));
+  if (errors.length) throw new VehicleValidationError(errors.join(" "));
   return withVehicleTransaction(client, async (runner) => {
-    await runner.query(
+    const updated = await runner.query(
       `UPDATE vehicles SET registration=$2, make=$3, model=$4, year=$5, colour=$6,
          registered_keeper_details=$7, fuel_type=$8, passenger_capacity=$9,
          wheelchair_accessible=$10, status=$11, notes=$12, updated_at=$13 WHERE id=$1`,
@@ -243,24 +259,46 @@ export async function updateVehicle(id: string, input: VehicleInput, client?: Qu
         input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
         input.status, text(input.notes) || null, new Date().toISOString()]
     );
+    if (updated.rowCount === 0) return null;
     await persistAssignments(id, input, runner);
     return getVehicleById(id, runner);
-  });
+  }).catch((error) => { throw toVehicleValidationError(error); });
 }
 
-export async function assignVehicleDriver(vehicleId: string, driverId: string, client?: Queryable): Promise<void> {
-  const runner = db(client);
-  const now = new Date().toISOString();
-  await runner.query("UPDATE vehicle_driver_assignments SET unassigned_at=$2 WHERE vehicle_id=$1 AND unassigned_at IS NULL", [vehicleId, now]);
-  if (text(driverId)) await runner.query(
-    "INSERT INTO vehicle_driver_assignments (vehicle_id, driver_id, assigned_at) VALUES ($1,$2,$3)",
-    [vehicleId, text(driverId), now]
-  );
+export class VehicleDriverAssignmentError extends Error {}
+
+export async function assignVehicleDriver(vehicleId: string, driverId: string, client?: Queryable): Promise<"assigned" | "unassigned" | "unchanged"> {
+  const nextDriverId = text(driverId);
+  return withVehicleTransaction(client, async (runner) => {
+    const vehicle = await runner.query("SELECT id FROM vehicles WHERE id = $1 FOR UPDATE", [vehicleId]);
+    if (!vehicle.rows[0]) throw new VehicleDriverAssignmentError("Vehicle not found.");
+    if (nextDriverId) {
+      const driver = await runner.query(
+        `SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
+         WHERE u.id::text = $1 AND r.key = 'driver' LIMIT 1`, [nextDriverId]
+      );
+      if (!driver.rows[0]) throw new VehicleDriverAssignmentError("Select a valid driver.");
+    }
+    const current = await runner.query(
+      "SELECT driver_id FROM vehicle_driver_assignments WHERE vehicle_id = $1 AND unassigned_at IS NULL", [vehicleId]
+    );
+    const currentDriverId = text(current.rows[0]?.driver_id);
+    if (currentDriverId === nextDriverId) return "unchanged";
+    const now = new Date().toISOString();
+    await runner.query("UPDATE vehicle_driver_assignments SET unassigned_at=$2 WHERE vehicle_id=$1 AND unassigned_at IS NULL", [vehicleId, now]);
+    if (!nextDriverId) return "unassigned";
+    await runner.query(
+      "INSERT INTO vehicle_driver_assignments (vehicle_id, driver_id, assigned_at) VALUES ($1,$2,$3)",
+      [vehicleId, nextDriverId, now]
+    );
+    return "assigned";
+  });
 }
 export async function listVehicleDriverAssignments(vehicleId: string, client?: Queryable) {
   const result = await db(client).query(
-    `SELECT driver_id, assigned_at, unassigned_at FROM vehicle_driver_assignments
-     WHERE vehicle_id=$1 ORDER BY assigned_at DESC`, [vehicleId]
+    `SELECT a.driver_id, u.email AS driver_email, a.assigned_at, a.unassigned_at
+     FROM vehicle_driver_assignments a LEFT JOIN users u ON u.id::text = a.driver_id
+     WHERE a.vehicle_id=$1 ORDER BY a.assigned_at DESC`, [vehicleId]
   );
   return result.rows;
 }
@@ -269,7 +307,7 @@ export async function getVehicleDriverSummary(vehicleId: string, client?: Querya
     const result = await db(client).query(
       `SELECT a.driver_id AS id, u.email, u.status, a.assigned_at
        FROM vehicle_driver_assignments a
-       JOIN users u ON u.id = a.driver_id
+       JOIN users u ON u.id::text = a.driver_id
        WHERE a.vehicle_id = $1 AND a.unassigned_at IS NULL
        ORDER BY a.assigned_at DESC
        LIMIT 1`,
