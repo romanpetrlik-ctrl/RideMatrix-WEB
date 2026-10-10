@@ -17,7 +17,10 @@
         ["document-required", ["Choose a document type and file to upload.", true]],
         ["document-invalid-file", ["Only valid PDF, JPEG, and PNG documents are accepted.", true]],
         ["document-invalid-type", ["Select a valid compliance document type.", true]],
-        ["document-invalid-expiry", ["Enter a valid current or future expiry date.", true]]
+        ["document-invalid-expiry", ["Enter a valid current or future expiry date.", true]],
+        ["document-invalid-license", ["Select a valid vehicle licence for this document.", true]],
+        ["license-saved", ["Vehicle licence saved.", false]],
+        ["license-invalid", ["Enter valid vehicle licence details.", true]]
       ]).get(notice); %>
       <p><a href="/vehicles">&larr; All vehicles</a> · <a href="/vehicles?status=active">Active vehicles</a></p>
       <% if (noticeMessage) { %><div class="notice<%= noticeMessage[1] ? " notice--warning" : "" %>" role="status"><%= noticeMessage[0] %></div><% } %>
@@ -31,7 +34,46 @@
           <dt>Linked driver <%- include("../../partials/help-button", { key: "vehicle.linkedDriver", helpFor }) %></dt><dd><%= vehicle.driverEmail || "Unassigned" %> <% if (vehicle.driverId) { %><a href="/vehicles/<%= vehicle.id %>/driver-details">View driver details</a><% } else { %><span class="muted">View driver details unavailable until a driver is assigned.</span><% } %></dd>
           <dt>Wheelchair accessible <%- include("../../partials/help-button", { key: "vehicle.wheelchairAccessible", helpFor }) %></dt><dd><%= vehicle.wheelchairAccessible ? "Yes" : "No" %></dd><dt>Status</dt><dd><%= vehicle.status %></dd>
         </dl></article>
-        <article class="vehicle-card"><h2>Compliance documents</h2><% documentTypes.forEach((type) => { const document = documents.find((item) => item.document_type === type); const label = type === "hackney_ph_badge" ? "Hackney / PH badge" : type.toUpperCase(); const helpKey = type === "mec" ? "vehicle.mec" : type === "hackney_ph_badge" ? "vehicle.hackneyPhBadge" : null; %><div class="vehicle-document-row"><strong><%= label %> <% if (helpKey) { %><%- include("../../partials/help-button", { key: helpKey, helpFor }) %><% } %></strong><span>Status: <%= document?.status || "Missing" %></span><span>Expires: <%= document?.expires_on || "—" %></span><% if (document) { %><%- include("../../partials/document-preview", { id: document.id, label, href: `/vehicles/documents/${document.id}`, mimeType: document.mime_type }) %><% } %></div><% }) %><form method="post" action="/vehicles/<%= vehicle.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form"><%- locals.csrfField || "" %><label>Type<select name="documentType" required><% documentTypes.forEach((type) => { %><option value="<%= type %>"><%= type === "hackney_ph_badge" ? "Hackney / PH badge" : type.toUpperCase() %></option><% }) %></select></label><label>Number<input name="documentNumber"></label><label>Expires<input name="expiresOn" type="date" required></label><label>File<input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label><button class="button button--secondary" type="submit">Upload / replace</button></form></article>
+        <article class="vehicle-card"><h2>Vehicle licences</h2><p>Licence type and Vehicle licence badge belong to each authority-specific licence. They are separate from vehicle class, licence reference, and driver badge.</p>
+          <% licenses.forEach((license) => { %><form method="post" action="/vehicles/<%= vehicle.id %>/licenses" class="vehicle-document-form"><%- locals.csrfField || "" %><input type="hidden" name="licenseId" value="<%= license.id %>">
+            <label>Licensing authority<select name="licensingAuthorityId" required><% authorities.forEach((authority) => { %><option value="<%= authority.id %>" <%= license.licensingAuthorityId === authority.id ? "selected" : "" %>><%= authority.name %></option><% }) %></select></label>
+            <label>Vehicle licence type<select name="licenseType" required><% licenseTypes.forEach((type) => { %><option value="<%= type %>" <%= license.licenseType === type ? "selected" : "" %>><%= type === "hackney_carriage" ? "Hackney Carriage" : "Private Hire" %></option><% }) %></select></label>
+            <label>Vehicle licence badge<input name="vehicleLicenseBadge" maxlength="64" value="<%= license.vehicleLicenseBadge || '' %>" aria-label="Vehicle licence badge"></label>
+            <label>Licence reference<input name="licenseReference" value="<%= license.licenseReference || '' %>"></label>
+            <label>Valid from<input name="validFrom" type="date" required value="<%= String(license.validFrom).slice(0, 10) %>"></label>
+            <label>Valid until<input name="validUntil" type="date" value="<%= license.validUntil ? String(license.validUntil).slice(0, 10) : '' %>"></label>
+            <label>Notes<input name="notes" value="<%= license.notes || '' %>"></label>
+            <span><%= license.active ? "Active" : "Inactive" %> · <%= license.licenseType === "hackney_carriage" ? "Hackney Carriage" : license.licenseType === "private_hire" ? "Private Hire" : "Type not set" %></span>
+            <button class="button button--secondary" type="submit">Save licence</button>
+          </form><% }) %>
+          <% if (!licenses.length) { %><p>No vehicle licences recorded.</p><% } %>
+          <h3>Add vehicle licence</h3><form method="post" action="/vehicles/<%= vehicle.id %>/licenses" class="vehicle-document-form"><%- locals.csrfField || "" %>
+            <label>Licensing authority<select name="licensingAuthorityId" required><option value="">Select authority</option><% authorities.forEach((authority) => { %><option value="<%= authority.id %>"><%= authority.name %></option><% }) %></select></label>
+            <label>Vehicle licence type<select name="licenseType" required><option value="">Select type</option><% licenseTypes.forEach((type) => { %><option value="<%= type %>"><%= type === "hackney_carriage" ? "Hackney Carriage" : "Private Hire" %></option><% }) %></select></label>
+            <label>Vehicle licence badge<input name="vehicleLicenseBadge" maxlength="64" aria-label="Vehicle licence badge"></label>
+            <label>Licence reference<input name="licenseReference"></label><label>Valid from<input name="validFrom" type="date" required></label>
+            <label>Valid until<input name="validUntil" type="date"></label><label>Notes<input name="notes"></label>
+            <button class="button button--secondary" type="submit">Add licence</button>
+          </form>
+        </article>
+        <article class="vehicle-card"><h2>Compliance documents</h2>
+          <% if (documents.length) { documents.forEach((document) => { const label = document.document_type === "hackney_ph_badge" ? "Hackney / PH badge" : document.document_type.toUpperCase(); %>
+            <div class="vehicle-document-row"><strong><%= label %><%= document.is_latest ? " · Current" : " · Replaced" %></strong>
+              <span>Licence: <%= document.license_type === "hackney_carriage" ? "Hackney Carriage" : document.license_type === "private_hire" ? "Private Hire" : "Vehicle-level" %></span>
+              <span>Status: <%= document.status %></span><span>Expires: <%= document.expires_on || "—" %></span>
+              <span>Uploaded: <%= document.uploaded_at %> · <%= document.uploaded_by || "Unknown user" %></span>
+              <span>Size: <%= document.byte_size ?? "Unknown" %> bytes · SHA-256: <%= document.checksum || "Unavailable for legacy upload" %></span>
+              <%- include("../../partials/document-preview", { id: document.id, label, href: `/vehicles/documents/${document.id}`, mimeType: document.mime_type }) %>
+            </div>
+          <% }) } else { %><p>No compliance documents have been uploaded.</p><% } %>
+          <form method="post" action="/vehicles/<%= vehicle.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form"><%- locals.csrfField || "" %>
+            <label>Type<select name="documentType" required><% documentTypes.forEach((type) => { %><option value="<%= type %>"><%= type === "hackney_ph_badge" ? "Hackney / PH badge" : type.toUpperCase() %></option><% }) %></select></label>
+            <label>Vehicle licence<select name="licenseId"><option value="">Vehicle-level document</option><% licenses.forEach((license) => { %><option value="<%= license.id %>"><%= license.licenseType === "hackney_carriage" ? "Hackney Carriage" : license.licenseType === "private_hire" ? "Private Hire" : "Type not set" %> · <%= license.licensingAuthorityName %></option><% }) %></select></label>
+            <label>Number<input name="documentNumber"></label><label>Expires<input name="expiresOn" type="date" required></label>
+            <label>File<input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+            <button class="button button--secondary" type="submit">Upload / replace</button>
+          </form>
+        </article>
       </section>
       <section class="vehicle-operations"><a class="button button--secondary" href="/vehicles/<%= vehicle.id %>/bookings">Assigned bookings</a><a class="button button--secondary" href="/vehicles/<%= vehicle.id %>/driver-history">Driver assignment history</a></section>
       <section class="vehicle-card"><h2>Linked driver</h2><p class="form-help">This MVP supports one active primary driver per vehicle; a driver may be linked to multiple vehicles.</p><form method="post" action="/vehicles/<%= vehicle.id %>/driver"><%- locals.csrfField || "" %><label for="driverId">Assigned driver</label><select id="driverId" name="driverId"><option value="">Unassigned</option><% drivers.forEach((driver) => { %><option value="<%= driver.id %>" <%= driver.id === vehicle.driverId ? "selected" : "" %>><%= driver.email %></option><% }) %></select><button class="button button--secondary" type="submit">Save assignment</button></form><% if (!drivers.length) { %><p class="form-help">No accounts with the driver role are available yet.</p><% } %>

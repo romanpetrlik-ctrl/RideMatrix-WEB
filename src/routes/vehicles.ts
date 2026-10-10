@@ -7,6 +7,12 @@ import { getSessionAccount, SessionAccount } from "../services/api";
 import { resolveHelpContent } from "../services/help";
 import { canManageStaff } from "../services/staff";
 import {
+  listLicensingAuthorities,
+  listVehicleLicenses,
+  saveVehicleLicense,
+  VEHICLE_LICENSE_TYPES
+} from "../services/licensing";
+import {
   assignVehicleDriver, createVehicle, createVehicleDocument, getDocumentStatus, getVehicleById, getVehicleDocument,
   getVehicleDriverSummary, listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicles,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
@@ -160,9 +166,37 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicle = await getVehicleById(req.params.vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
       return res.render("pages/vehicles/detail", { title: vehicle.registration, appTitle: options.appTitle, email: res.locals.vehicleUser.email,
-        vehicle, documents: await listVehicleDocuments(vehicle.id), driverAssignments: await listVehicleDriverAssignments(vehicle.id),
+        vehicle, documents: await listVehicleDocuments(vehicle.id), licenses: await listVehicleLicenses(vehicle.id),
+        authorities: await listLicensingAuthorities(), licenseTypes: VEHICLE_LICENSE_TYPES,
+        driverAssignments: await listVehicleDriverAssignments(vehicle.id),
         drivers: await listDrivers(), baggageCategories: await listBaggageCategories(), documentTypes: VEHICLE_DOCUMENT_TYPES,
         helpFor: resolveHelpContent, notice: text(req.query.notice) });
+    } catch (error) { return next(error); }
+  });
+  router.post("/vehicles/:vehicleId/licenses", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
+    try {
+      const vehicleId = text(req.params.vehicleId);
+      const vehicle = await getVehicleById(vehicleId);
+      if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const licenseId = text(req.body.licenseId);
+      try {
+        const saved = await saveVehicleLicense(vehicleId, {
+          licensingAuthorityId: text(req.body.licensingAuthorityId),
+          licenseType: text(req.body.licenseType) as typeof VEHICLE_LICENSE_TYPES[number],
+          vehicleLicenseBadge: text(req.body.vehicleLicenseBadge) || null,
+          licenseReference: text(req.body.licenseReference) || null,
+          validFrom: text(req.body.validFrom),
+          validUntil: text(req.body.validUntil) || null,
+          notes: text(req.body.notes) || null
+        }, licenseId || undefined);
+        if (licenseId && !saved) return res.sendStatus(404);
+        return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=license-saved`);
+      } catch (error) {
+        if (error instanceof Error && (error.message.includes("licence") || error.message.includes("license") || error.message.includes("authority"))) {
+          return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=license-invalid`);
+        }
+        throw error;
+      }
     } catch (error) { return next(error); }
   });
   router.post("/vehicles/:vehicleId/driver", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
@@ -221,12 +255,20 @@ export function createVehiclesRouter(options: Options): Router {
       if (!file || !text(req.body.documentType)) return res.redirect(`${detailUrl}?notice=document-required`);
       try { validateVehicleDocumentUpload(file); } catch { return res.redirect(`${detailUrl}?notice=document-invalid-file`); }
       if (!(VEHICLE_DOCUMENT_TYPES as readonly string[]).includes(text(req.body.documentType))) return res.redirect(`${detailUrl}?notice=document-invalid-type`);
+      const licenseId = text(req.body.licenseId);
+      const vehicleLicenses = licenseId ? await listVehicleLicenses(vehicle.id) : [];
+      if (licenseId && !vehicleLicenses.some((license) => license.id === licenseId)) {
+        return res.redirect(`${detailUrl}?notice=document-invalid-license`);
+      }
+      if (text(req.body.documentType) === "hackney_ph_badge" && !licenseId) {
+        return res.redirect(`${detailUrl}?notice=document-invalid-license`);
+      }
       const expiresOn = text(req.body.expiresOn);
       const expiryStatus = /^\d{4}-\d{2}-\d{2}$/.test(expiresOn) ? getDocumentStatus(expiresOn) : "Missing";
       if (expiryStatus === "Missing" || expiryStatus === "Expired") return res.redirect(`${detailUrl}?notice=document-invalid-expiry`);
       await createVehicleDocument({ vehicleId: vehicle.id, documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
         issuedOn: text(req.body.issuedOn), expiresOn: text(req.body.expiresOn), originalFilename: file.originalname, mimeType: file.mimetype,
-        content: file.buffer, uploadedBy: res.locals.vehicleUser.id });
+        content: file.buffer, uploadedBy: res.locals.vehicleUser.id, licenseId: licenseId || null });
       return res.redirect(`${detailUrl}?notice=document-added`);
     } catch (error) { return next(error); }
   });
