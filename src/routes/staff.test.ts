@@ -222,6 +222,126 @@ describe("GET /staff (staff directory)", () => {
       "bookings@ must appear once it also holds the internal staff role"
     );
   });
+
+  describe("login audit history", () => {
+    const DRIVER_ID = "a0000000-0000-0000-0000-000000000002";
+    const adminSession: MockSession = {
+      authenticated: true,
+      user: { id: "u-3", email: "admin@ridematrix.com", roles: ["admin"], active_role: "admin" }
+    };
+
+    before(async () => {
+      await query(`DELETE FROM staff_login_audit`);
+      await query(
+        `INSERT INTO staff_login_audit
+          (id, occurred_at, event_name, account_id, login_identifier, success, failure_category, ip_address, user_agent)
+         VALUES
+          ('route-evt-1', '2025-03-04T09:10:11.000Z', 'staff_login_succeeded', $1, 'driver@ridematrix.com', TRUE, NULL, '198.51.100.7', 'Mozilla/5.0 <script>alert("ua")</script>'),
+          ('route-evt-2', '2025-03-05T09:10:11.000Z', 'staff_login_failed', $1, 'driver@ridematrix.com', FALSE, 'unauthorized', '198.51.100.8', NULL),
+          ('route-evt-3', '2025-03-06T09:10:11.000Z', 'staff_login_succeeded', 'someone-else', 'other@ridematrix.com', TRUE, NULL, '192.0.2.99', 'Other-Agent')`,
+        [DRIVER_ID]
+      );
+    });
+
+    after(async () => {
+      await query(`DELETE FROM staff_login_audit`);
+    });
+
+    test("the directory shows the last login derived from staff_login_audit and links each record to its history", async () => {
+      mockSession = adminSession;
+
+      const body = await (await fetch(`${baseUrl}/staff`)).text();
+
+      assert.match(body, /4 Mar 2025/);
+      assert.match(body, /id="staff-login-history-hint"/);
+      assert.match(
+        body,
+        new RegExp(`<a class="staff-table__email staff-table__email-link" href="/staff/${DRIVER_ID}/audit" aria-describedby="staff-login-history-hint">driver@ridematrix\\.com</a>`)
+      );
+    });
+
+    test("an authorized admin sees successful and failed events for the selected account only", async () => {
+      mockSession = adminSession;
+
+      const response = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit`);
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("cache-control") || "", /no-store/);
+
+      const body = await response.text();
+      assert.match(body, /Login history/);
+      assert.match(body, /driver@ridematrix\.com/);
+      assert.match(body, /2 login events/);
+      assert.match(body, /Succeeded/);
+      assert.match(body, /Failed/);
+      assert.match(body, /staff_login_succeeded/);
+      assert.match(body, /staff_login_failed/);
+      assert.match(body, /Unauthorized/);
+      assert.match(body, /198\.51\.100\.7/);
+      assert.match(body, /198\.51\.100\.8/);
+      assert.match(body, /<time datetime="2025-03-04T09:10:11.000Z">/);
+      assert.doesNotMatch(body, /192\.0\.2\.99/);
+      assert.doesNotMatch(body, /Other-Agent/);
+      assert.doesNotMatch(body, /other@ridematrix\.com/);
+    });
+
+    test("user-controlled audit values are HTML-escaped", async () => {
+      mockSession = adminSession;
+
+      const body = await (await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit`)).text();
+
+      assert.doesNotMatch(body, /<script>alert\("ua"\)<\/script>/);
+      assert.match(body, /&lt;script&gt;alert\(&#34;ua&#34;\)&lt;\/script&gt;/);
+    });
+
+    test("an account without events renders an empty history", async () => {
+      mockSession = adminSession;
+
+      const response = await fetch(`${baseUrl}/staff/b0000000-0000-0000-0000-000000000001/audit`);
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(body, /No login events recorded/);
+    });
+
+    test("unauthenticated requests are redirected to /access", async () => {
+      mockSession = { authenticated: false };
+
+      const response = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit`, { redirect: "manual" });
+
+      assert.equal(response.status, 302);
+      assert.equal(response.headers.get("location"), "/access");
+    });
+
+    test("users without staff-management authorization receive 403 and no audit data", async () => {
+      mockSession = {
+        authenticated: true,
+        user: { id: DRIVER_ID, email: "driver@ridematrix.com", roles: ["driver", "staff"] }
+      };
+
+      const response = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit`, { redirect: "manual" });
+      const body = await response.text();
+
+      assert.equal(response.status, 403);
+      assert.match(body, /Unable to continue/);
+      assert.doesNotMatch(body, /198\.51\.100\.7/);
+    });
+
+    test("unknown, non-staff, and malformed account ids return 404", async () => {
+      mockSession = adminSession;
+
+      for (const accountId of [
+        "ffffffff-0000-0000-0000-000000000000",
+        "c0000000-0000-0000-0000-000000000001",
+        encodeURIComponent("1' OR '1'='1"),
+        "x".repeat(65)
+      ]) {
+        const response = await fetch(`${baseUrl}/staff/${accountId}/audit`, { redirect: "manual" });
+        const body = await response.text();
+        assert.equal(response.status, 404, `expected 404 for ${accountId}`);
+        assert.doesNotMatch(body, /198\.51\.100/);
+      }
+    });
+  });
 });
 
 describe("GET/POST /staff/invite (create / invite user)", () => {

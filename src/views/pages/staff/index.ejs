@@ -40,6 +40,7 @@
           <div>
             <h2 class="staff-card__title" id="staff-directory-heading"><%= staffCount %> staff record<%= staffCount === 1 ? "" : "s" %></h2>
             <p class="staff-card__subtitle">Sorted alphabetically by email address.</p>
+            <p class="staff-card__subtitle" id="staff-login-history-hint">Select an email address to view that account's login history.</p>
           </div>
         </header>
 
@@ -60,7 +61,7 @@
                   <tr>
                     <th scope="row" class="staff-table__identity">
                       <span class="staff-table__avatar" aria-hidden="true"><%= member.email.charAt(0).toUpperCase() %></span>
-                      <span class="staff-table__email"><%= member.email %></span>
+                      <a class="staff-table__email staff-table__email-link" href="<%= member.auditHref %>" aria-describedby="staff-login-history-hint"><%= member.email %></a>
                     </th>
                     <td data-label="Status">
                       <% if (member.status) { %>

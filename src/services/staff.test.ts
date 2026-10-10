@@ -5,7 +5,10 @@ import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase
 import {
   STAFF_MANAGEMENT_ROLES,
   canManageStaff,
+  getStaffUser,
   hasManageUsersPermission,
+  isValidStaffAccountId,
+  listStaffLoginAuditEvents,
   listStaffUsers,
   resetStaffSchemaCacheForTests
 } from "./staff";
@@ -169,6 +172,196 @@ test("listStaffUsers reads an existing last-login column when the schema provide
   } finally {
     await query(`ALTER TABLE users DROP COLUMN last_login_at`);
     resetStaffSchemaCacheForTests();
+  }
+});
+
+async function insertAuditEvent(event: {
+  id: string;
+  occurredAt: string;
+  eventName?: string;
+  accountId?: string | null;
+  loginIdentifier?: string | null;
+  success: boolean;
+  failureCategory?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<void> {
+  await query(
+    `INSERT INTO staff_login_audit
+      (id, occurred_at, event_name, account_id, login_identifier, success, failure_category, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      event.id,
+      event.occurredAt,
+      event.eventName ?? (event.success ? "staff_login_succeeded" : "staff_login_failed"),
+      event.accountId ?? null,
+      event.loginIdentifier ?? null,
+      event.success,
+      event.failureCategory ?? null,
+      event.ipAddress ?? null,
+      event.userAgent ?? null
+    ]
+  );
+}
+
+const STAFF_ONLY_ID = "b0000000-0000-0000-0000-000000000001";
+const MULTI_ROLE_ID = "b0000000-0000-0000-0000-000000000002";
+
+test("listStaffUsers derives last login from the latest successful staff_login_audit event", async () => {
+  await insertAuditEvent({ id: "evt-1", occurredAt: "2025-01-01T08:00:00.000Z", accountId: STAFF_ONLY_ID, success: true });
+  await insertAuditEvent({ id: "evt-2", occurredAt: "2025-03-01T08:00:00.000Z", accountId: STAFF_ONLY_ID, success: true });
+  // Later failures must not count as a login.
+  await insertAuditEvent({
+    id: "evt-3",
+    occurredAt: "2025-04-01T08:00:00.000Z",
+    accountId: STAFF_ONLY_ID,
+    success: false,
+    failureCategory: "unauthorized"
+  });
+  // Another user's events must never leak into this user's last login.
+  await insertAuditEvent({ id: "evt-4", occurredAt: "2025-06-01T08:00:00.000Z", accountId: MULTI_ROLE_ID, success: true });
+
+  try {
+    const staff = await listStaffUsers();
+    const staffOnly = staff.find((member) => member.email === "staff.only@ridematrix.com");
+    const multiRole = staff.find((member) => member.email === "multi.role@ridematrix.com");
+    const admin = staff.find((member) => member.email === "admin@ridematrix.com");
+
+    assert.equal(staffOnly?.lastLoginAt, "2025-03-01T08:00:00.000Z");
+    assert.equal(multiRole?.lastLoginAt, "2025-06-01T08:00:00.000Z");
+    assert.equal(admin?.lastLoginAt, null);
+  } finally {
+    await query(`DELETE FROM staff_login_audit`);
+  }
+});
+
+test("listStaffUsers falls back to normalized email only for audit events without an account id", async () => {
+  await insertAuditEvent({
+    id: "evt-email-1",
+    occurredAt: "2025-02-01T08:00:00.000Z",
+    accountId: null,
+    loginIdentifier: "  STAFF.Only@RideMatrix.com ",
+    success: true
+  });
+  // An event attributed to a different account id must not match by email.
+  await insertAuditEvent({
+    id: "evt-email-2",
+    occurredAt: "2025-09-01T08:00:00.000Z",
+    accountId: "some-other-account",
+    loginIdentifier: "staff.only@ridematrix.com",
+    success: true
+  });
+
+  try {
+    const staff = await listStaffUsers();
+    const staffOnly = staff.find((member) => member.email === "staff.only@ridematrix.com");
+    assert.equal(staffOnly?.lastLoginAt, "2025-02-01T08:00:00.000Z");
+  } finally {
+    await query(`DELETE FROM staff_login_audit`);
+  }
+});
+
+test("listStaffUsers uses the most recent of the users last-login column and the audit table", async () => {
+  await query(`ALTER TABLE users ADD COLUMN last_login_at TIMESTAMPTZ`);
+  await query(`UPDATE users SET last_login_at = $1 WHERE email = 'staff.only@ridematrix.com'`, [
+    "2025-05-01T10:00:00.000Z"
+  ]);
+  await query(`UPDATE users SET last_login_at = $1 WHERE email = 'multi.role@ridematrix.com'`, [
+    "2025-01-01T10:00:00.000Z"
+  ]);
+  await insertAuditEvent({ id: "evt-mix-1", occurredAt: "2025-04-01T08:00:00.000Z", accountId: STAFF_ONLY_ID, success: true });
+  await insertAuditEvent({ id: "evt-mix-2", occurredAt: "2025-07-01T08:00:00.000Z", accountId: MULTI_ROLE_ID, success: true });
+  resetStaffSchemaCacheForTests();
+
+  try {
+    const staff = await listStaffUsers();
+    assert.equal(
+      staff.find((member) => member.email === "staff.only@ridematrix.com")?.lastLoginAt,
+      "2025-05-01T10:00:00.000Z"
+    );
+    assert.equal(
+      staff.find((member) => member.email === "multi.role@ridematrix.com")?.lastLoginAt,
+      "2025-07-01T08:00:00.000Z"
+    );
+  } finally {
+    await query(`DELETE FROM staff_login_audit`);
+    await query(`ALTER TABLE users DROP COLUMN last_login_at`);
+    resetStaffSchemaCacheForTests();
+  }
+});
+
+test("listStaffUsers ignores malformed audit timestamps instead of failing", async () => {
+  await insertAuditEvent({ id: "evt-bad", occurredAt: "not-a-date", accountId: STAFF_ONLY_ID, success: true });
+
+  try {
+    const staff = await listStaffUsers();
+    assert.equal(staff.find((member) => member.email === "staff.only@ridematrix.com")?.lastLoginAt, null);
+  } finally {
+    await query(`DELETE FROM staff_login_audit`);
+  }
+});
+
+test("getStaffUser validates ids and returns only internal staff users", async () => {
+  assert.equal(isValidStaffAccountId(STAFF_ONLY_ID), true);
+  assert.equal(isValidStaffAccountId("../etc/passwd"), false);
+  assert.equal(isValidStaffAccountId("1' OR '1'='1"), false);
+  assert.equal(isValidStaffAccountId(""), false);
+  assert.equal(isValidStaffAccountId("x".repeat(65)), false);
+
+  assert.equal((await getStaffUser(STAFF_ONLY_ID))?.email, "staff.only@ridematrix.com");
+  assert.equal(await getStaffUser("b0000000-0000-0000-0000-000000000003"), null, "customer-only users are not staff");
+  assert.equal(await getStaffUser("ffffffff-0000-0000-0000-000000000000"), null);
+  assert.equal(await getStaffUser("1' OR '1'='1"), null);
+});
+
+test("listStaffLoginAuditEvents returns only the selected account's events, newest first", async () => {
+  await insertAuditEvent({
+    id: "evt-a",
+    occurredAt: "2025-01-01T08:00:00.000Z",
+    accountId: STAFF_ONLY_ID,
+    loginIdentifier: "staff.only@ridematrix.com",
+    success: true,
+    ipAddress: "203.0.113.5",
+    userAgent: "UA-1"
+  });
+  await insertAuditEvent({
+    id: "evt-b",
+    occurredAt: "2025-01-02T08:00:00.000Z",
+    accountId: STAFF_ONLY_ID,
+    success: false,
+    failureCategory: "unauthorized"
+  });
+  await insertAuditEvent({
+    id: "evt-c",
+    occurredAt: "2025-01-03T08:00:00.000Z",
+    accountId: null,
+    loginIdentifier: "Staff.Only@ridematrix.com",
+    success: false,
+    failureCategory: "invalid_credentials"
+  });
+  await insertAuditEvent({ id: "evt-other", occurredAt: "2025-01-04T08:00:00.000Z", accountId: MULTI_ROLE_ID, success: true });
+  await insertAuditEvent({
+    id: "evt-anon",
+    occurredAt: "2025-01-05T08:00:00.000Z",
+    accountId: null,
+    loginIdentifier: null,
+    success: false,
+    failureCategory: "unauthorized"
+  });
+
+  try {
+    const events = await listStaffLoginAuditEvents({ id: STAFF_ONLY_ID, email: "staff.only@ridematrix.com" });
+    assert.deepEqual(
+      events.map((event) => event.id),
+      ["evt-c", "evt-b", "evt-a"]
+    );
+    assert.equal(events[2].success, true);
+    assert.equal(events[2].ipAddress, "203.0.113.5");
+    assert.equal(events[2].userAgent, "UA-1");
+    assert.equal(events[1].failureCategory, "unauthorized");
+    assert.equal("loginIdentifier" in events[0], false);
+  } finally {
+    await query(`DELETE FROM staff_login_audit`);
   }
 });
 
