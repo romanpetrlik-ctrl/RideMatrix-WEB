@@ -149,6 +149,8 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     const setupAudit = await listSetupAuditEvents(10);
     const formData = {
       installerEmail: session.user?.email || "",
+      name: "",
+      surname: "",
       legalName: overview.operator?.legalName || "",
       tradingName: overview.operator?.tradingName || "",
       licenceHolderName: overview.operator?.licenceHolderName || "",
@@ -294,7 +296,9 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
       await bootstrapRealInstallerSuperuser({
         actor: toActor(session),
-        installerEmail: normalizeText(req.body.installerEmail)
+        installerEmail: normalizeText(req.body.installerEmail),
+        name: req.body.name,
+        surname: req.body.surname
       });
 
       const overview = await getSetupOverview();
@@ -312,7 +316,9 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
           [error.message],
           null,
           {
-            installerEmail: normalizeText(req.body.installerEmail)
+            installerEmail: normalizeText(req.body.installerEmail),
+            name: typeof req.body.name === "string" ? req.body.name : "",
+            surname: typeof req.body.surname === "string" ? req.body.surname : ""
           }
         );
       }

@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
-import { describeUserStatusColumn, normalizeUserEmail, resolveInvitedUserStatus } from "./staff-users";
+import { describeUserStatusColumn, normalizeUserEmail, resolveInvitedUserStatus, updateStaffDisplayName } from "./staff-users";
+import { normalizeStaffDisplayName } from "./staff";
 
 type Queryable = Pool | PoolClient;
 
@@ -688,6 +689,8 @@ async function resolveRoleIdByKey(roleKey: string, runner: Queryable): Promise<n
 export async function bootstrapRealInstallerSuperuser(input: {
   actor: SetupActor;
   installerEmail: string;
+  name?: unknown;
+  surname?: unknown;
 }): Promise<void> {
   const actor = normalizeActor(input.actor);
   const installerEmail = normalizeUserEmail(input.installerEmail);
@@ -716,6 +719,7 @@ export async function bootstrapRealInstallerSuperuser(input: {
   }
 
   await withTransaction(async (client) => {
+    await query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [INITIAL_BOOTSTRAP_KEY], client);
     const bootstrap = await readBootstrap(client);
     if (bootstrap?.status === "completed") {
       if (bootstrap.installerUserId !== actor.userId) {
@@ -724,12 +728,27 @@ export async function bootstrapRealInstallerSuperuser(input: {
       return;
     }
 
+    let displayName: string;
+    try {
+      const name = normalizeStaffDisplayName(input.name);
+      const surname = normalizeStaffDisplayName(input.surname);
+      if (!name || !surname) {
+        throw new SetupValidationError("Name and Surname are required for the initial administrator.");
+      }
+      displayName = normalizeStaffDisplayName(`${name} ${surname}`)!;
+    } catch (error) {
+      throw new SetupValidationError(error instanceof Error ? error.message : "Enter a valid Name and Surname.");
+    }
+
     const superuserRoleId = await resolveRoleIdByKey("superuser", client);
     if (!superuserRoleId) {
       throw new MissingAuthRoleError(["superuser"]);
     }
 
     const user = await resolveUserByIdOrEmail(actor.userId, installerEmail, client);
+    if (String(user.id) !== actor.userId || normalizeUserEmail(user.email) !== installerEmail) {
+      throw new SetupValidationError("The installer account must match the authenticated account ID and email.");
+    }
     await query(
       `INSERT INTO user_roles (user_id, role_id)
        VALUES ($1, $2)
@@ -737,6 +756,15 @@ export async function bootstrapRealInstallerSuperuser(input: {
       [user.id, superuserRoleId],
       client
     );
+
+    const profileSaved = await updateStaffDisplayName(String(user.id), displayName, {
+      email: actor.email,
+      roles: [...actor.roles, "superuser"],
+      permissions: []
+    }, client);
+    if (!profileSaved) {
+      throw new SetupValidationError("The administrator profile could not be saved.");
+    }
 
     const now = new Date().toISOString();
     await query(

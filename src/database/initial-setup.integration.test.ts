@@ -125,8 +125,12 @@ test("bootstrap requires the authenticated installer email and remains auditable
 
   await bootstrapRealInstallerSuperuser({
     actor: installerActor,
-    installerEmail: installerActor.email
+    installerEmail: installerActor.email,
+    name: "  Initial ",
+    surname: " Installer  "
   });
+  const profile = await query(`SELECT display_name FROM staff_profiles WHERE account_id = $1`, [installerActor.userId]);
+  assert.equal(profile.rows[0].display_name, "Initial Installer");
 
   const assignments = await query<{ count: number }>(
     `SELECT COUNT(*)::int AS count

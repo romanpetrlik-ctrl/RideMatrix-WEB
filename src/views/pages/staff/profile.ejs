@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell staff-page">
+      <div class="staff-page__header">
+        <div class="staff-page__heading">
+          <h1 class="staff-page__title">Edit staff name</h1>
+          <p class="staff-page__subtitle"><%= member.email %></p>
+        </div>
+        <a class="staff-button" href="/staff">Back to staff directory</a>
+      </div>
+      <% if (errors.length > 0) { %>
+        <section class="staff-notice staff-notice--critical" role="alert">
+          <% errors.forEach((error) => { %><p><%= error %></p><% }) %>
+        </section>
+      <% } %>
+      <section class="staff-card staff-form-card">
+        <form class="staff-form" method="post" action="/staff/<%= encodeURIComponent(member.id) %>/profile">
+          <%- locals.csrfField || "" %>
+          <div class="staff-field">
+            <label class="staff-field__label" for="displayName">Display name (optional)</label>
+            <input class="staff-field__input" type="text" id="displayName" name="displayName" value="<%= displayName %>" maxlength="100" autocomplete="name" />
+            <p class="staff-field__hint">Enter a known colleague's name or an approved shared-account label. Leave blank to show “Name not provided”. This does not change email, roles, or login details.</p>
+          </div>
+          <div class="staff-page__actions">
+            <button class="button button--execute staff-button staff-button--primary" type="submit">Save name</button>
+          </div>
+        </form>
+      </section>
+    </main>
+    <%- include("../../partials/footer") %>
+  </body>
+</html>
