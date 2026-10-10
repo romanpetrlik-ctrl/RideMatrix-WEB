@@ -3,7 +3,6 @@ import { SessionAccount, getSessionAccount, submitAccessRequest } from "../servi
 import {
   canManageStaff,
   getStaffUser,
-  isValidStaffAccountId,
   listStaffLoginAuditEvents,
   listStaffUsers,
   STAFF_LOGIN_AUDIT_PAGE_LIMIT
@@ -253,7 +252,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       }
 
       const accountId = req.params.accountId;
-      const member = isValidStaffAccountId(accountId) ? await getStaffUser(accountId) : null;
+      const member = await getStaffUser(accountId);
 
       if (!member) {
         return res.status(404).render("pages/unavailable", {

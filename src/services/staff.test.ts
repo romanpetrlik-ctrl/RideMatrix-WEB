@@ -292,10 +292,25 @@ test("listStaffUsers uses the most recent of the users last-login column and the
 
 test("listStaffUsers ignores malformed audit timestamps instead of failing", async () => {
   await insertAuditEvent({ id: "evt-bad", occurredAt: "not-a-date", accountId: STAFF_ONLY_ID, success: true });
+  await insertAuditEvent({ id: "evt-bad-2", occurredAt: "2025-13-45T99:00:00.000Z", accountId: STAFF_ONLY_ID, success: true });
+  await insertAuditEvent({ id: "evt-bad-3", occurredAt: "9999-99-99", accountId: MULTI_ROLE_ID, success: true });
+  await insertAuditEvent({ id: "evt-good", occurredAt: "2025-02-01T08:00:00.000Z", accountId: MULTI_ROLE_ID, success: true });
 
   try {
     const staff = await listStaffUsers();
     assert.equal(staff.find((member) => member.email === "staff.only@ridematrix.com")?.lastLoginAt, null);
+    assert.equal(
+      staff.find((member) => member.email === "multi.role@ridematrix.com")?.lastLoginAt,
+      "2025-02-01T08:00:00.000Z"
+    );
+
+    const events = await listStaffLoginAuditEvents({ id: MULTI_ROLE_ID, email: "multi.role@ridematrix.com" });
+    assert.deepEqual(
+      events.map((event) => event.id),
+      ["evt-good", "evt-bad-3"],
+      "malformed timestamps are listed after valid events"
+    );
+    assert.equal(events[1].occurredAt, null);
   } finally {
     await query(`DELETE FROM staff_login_audit`);
   }

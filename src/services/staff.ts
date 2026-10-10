@@ -112,26 +112,41 @@ function latestTimestamp(...values: Array<string | Date | null | undefined>): st
 }
 
 /**
- * SQL predicate matching `staff_login_audit` rows (alias `a`) that belong to
- * the user aliased as `u`: by account id, or — only for events recorded
- * without an account id — by normalized email address.
+ * Canonical `Date#toISOString()` shape written by `logStaffLogin`. Values in
+ * this shape sort chronologically as text, so they can be compared and
+ * ordered without a `::timestamptz` cast that would throw on malformed rows.
  */
-const AUDIT_BELONGS_TO_USER_SQL = `(
-  a.account_id = u.id::text
-  OR (a.account_id IS NULL AND lower(btrim(a.login_identifier)) = lower(btrim(u.email)))
-)`;
+const CANONICAL_AUDIT_TIMESTAMP_PATTERN =
+  "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$";
+
+/**
+ * SQL predicate matching `staff_login_audit` rows (alias `a`) that belong to
+ * one user: by account id, or — only for events recorded without an account
+ * id — by normalized email address. Shared by the directory and history
+ * queries so both always agree on ownership.
+ */
+function auditBelongsToUserSql(accountIdExpr: string, emailExpr: string): string {
+  return `(
+    a.account_id = ${accountIdExpr}
+    OR (a.account_id IS NULL AND lower(btrim(a.login_identifier)) = lower(btrim(${emailExpr})))
+  )`;
+}
 
 async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<StaffRecord[]> {
   const lastLoginColumn = await resolveLastLoginColumn(runner);
   const lastLoginSelect = lastLoginColumn
     ? `u."${lastLoginColumn}"`
     : "NULL::timestamp";
-  const params: unknown[] = [Array.from(STAFF_MANAGEMENT_ROLES)];
+  const params: unknown[] = [
+    Array.from(STAFF_MANAGEMENT_ROLES),
+    STAFF_LOGIN_SUCCEEDED,
+    CANONICAL_AUDIT_TIMESTAMP_PATTERN
+  ];
   let accountFilter = "";
 
   if (accountId !== undefined) {
     params.push(accountId);
-    accountFilter = "AND u.id::text = $2";
+    accountFilter = "AND u.id::text = $4";
   }
 
   const result = await runner.query<{
@@ -150,12 +165,12 @@ async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<S
        u.created_at,
        ${lastLoginSelect} AS last_login_at,
        (
-         SELECT max(a.occurred_at::timestamptz)
+         SELECT max(a.occurred_at)
          FROM staff_login_audit a
          WHERE a.success = TRUE
-           AND a.event_name = '${STAFF_LOGIN_SUCCEEDED}'
-           AND a.occurred_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
-           AND ${AUDIT_BELONGS_TO_USER_SQL}
+           AND a.event_name = $2
+           AND a.occurred_at ~ $3
+           AND ${auditBelongsToUserSql("u.id::text", "u.email")}
        ) AS audit_last_login_at,
        array_agg(DISTINCT r.key ORDER BY r.key) AS roles
      FROM users u
@@ -243,11 +258,10 @@ export async function listStaffLoginAuditEvents(
   }>(
     `SELECT a.id, a.occurred_at, a.event_name, a.success, a.failure_category, a.ip_address, a.user_agent
      FROM staff_login_audit a
-     WHERE a.account_id = $1
-        OR (a.account_id IS NULL AND lower(btrim(a.login_identifier)) = lower(btrim($2)))
-     ORDER BY a.occurred_at DESC, a.id DESC
+     WHERE ${auditBelongsToUserSql("$1", "$2")}
+     ORDER BY (a.occurred_at ~ $4) DESC, a.occurred_at DESC, a.id DESC
      LIMIT $3`,
-    [String(staff.id), staff.email, STAFF_LOGIN_AUDIT_PAGE_LIMIT]
+    [String(staff.id), staff.email, STAFF_LOGIN_AUDIT_PAGE_LIMIT, CANONICAL_AUDIT_TIMESTAMP_PATTERN]
   );
 
   return result.rows.map((row) => ({
