@@ -41,41 +41,6 @@ none of those exist, the field is safely omitted (rendered as `Never`) instead o
 inventing data. No password, token, login-code, or other sensitive column is ever
 selected or rendered.
 
-### Display names and maintenance
-
-The verified `SessionAccount` contract (`src/services/api.ts`) provides only id,
-email and roles, and the repository's auth schema contract has no staff-name field.
-Customer names belong to separate customer profiles and are not a staff identity
-source. No production database was inspected, no auth name columns are assumed,
-and names are never guessed from email addresses.
-
-Migration `0011_staff_profiles` adds a RideMatrix-owned table with a text
-`account_id` primary key and an optional `display_name`. It does not alter external
-auth tables or add foreign keys to them; text ids support both UUID and text auth
-identifiers. There is no name backfill. Existing accounts remain listed once each,
-with the same roles and email-based sort order.
-
-The smallest maintenance policy is admin-managed display names, not separate given
-name/surname fields or self-service profiles. Users with the existing create/invite
-rights (`superuser`, `manage_users`, or `manage_user_roles`) can:
-
-- Set an optional display name when creating/inviting a staff account. The profile
-  is saved in the same transaction as the account and roles; invitation delivery
-  still uses the existing email/login-code flow.
-- Select **Edit name** in the directory to use `GET/POST /staff/:accountId/profile`.
-  Only existing internal staff accounts are eligible. Email, roles and credentials
-  cannot be changed through this form.
-
-Names are trimmed, limited to 100 characters, checked for string type and control
-characters, and escaped by EJS. Blank names clear the field. Mutations retain
-session authorization and application CSRF protection, and protected responses
-use no-store headers.
-
-The directory shows the stored name above its email link. Missing/blank names show
-**Name not provided** and a neutral `?` avatar; email stays visible and links to the
-existing login history. Names may identify a colleague or an approved shared
-account; they are administrator-entered labels, not verified legal identities.
-
 ### Superuser indicator
 
 Accounts holding the `superuser` role key show it first, as a badge reading
@@ -113,6 +78,56 @@ session did include `superuser`, and the Staff directory and auth session agreed
 whether access had been granted, so it looked like a denial. The page now says
 "Access granted" with the granting role and states that no system settings are
 configurable yet. The authorization check is unchanged.
+
+### Display names and maintenance
+
+The verified `SessionAccount` contract (`src/services/api.ts`) provides only id,
+email and roles, and the repository's auth schema contract has no staff-name field.
+Customer names belong to separate customer profiles and are not a staff identity
+source. No production database was inspected, no auth name columns are assumed,
+and names are never guessed from email addresses.
+
+Migration `0011_staff_profiles` adds a RideMatrix-owned table with a text
+`account_id` primary key and an optional `display_name`. It does not alter external
+auth tables or add foreign keys to them; text ids support both UUID and text auth
+identifiers. There is no name backfill. Existing accounts remain listed once each,
+with the same roles and email-based sort order.
+
+The smallest maintenance policy is admin-managed display names, not separate given
+name/surname fields or self-service profiles. Users with the existing create/invite
+rights (`superuser`, `manage_users`, or `manage_user_roles`) can:
+
+- Set an optional display name when creating/inviting a staff account. The profile
+  is saved in the same transaction as the account and roles; invitation delivery
+  still uses the existing email/login-code flow.
+- Select **Edit name** in the directory to use `GET/POST /staff/:accountId/profile`.
+  Only existing internal staff accounts are eligible. Email, roles and credentials
+  cannot be changed through this form.
+- During initial installation, confirm the signed-in administrator on
+  `/setup/bootstrap-superuser` and enter required **Name** and **Surname**. These
+  are trimmed and joined into the same `display_name` (100 characters total,
+  including the space), not stored in separate fields or auth tables. The profile
+  write uses `updateStaffDisplayName` within the bootstrap transaction after the
+  superuser grant. The database ID and email must match the authenticated account;
+  mismatches and validation errors leave no partial account, role or profile writes.
+  Entered values are escaped and preserved when validation re-renders the wizard.
+
+Completed bootstraps, including older installations without names, are unchanged:
+repeat requests do not require names, fabricate names or overwrite the profile.
+Concurrent bootstrap requests are serialized to avoid duplicate audit events.
+Missing names can still be set through **Edit name**; test accounts are not named
+automatically. This setup extension builds on PR #125, now merged into `main`,
+and reuses its single `0011_staff_profiles` migration.
+
+Names are trimmed, limited to 100 characters, checked for string type and control
+characters, and escaped by EJS. Blank names clear the field. Mutations retain
+session authorization and application CSRF protection, and protected responses
+use no-store headers.
+
+The directory shows the stored name above its email link. Missing/blank names show
+**Name not provided** and a neutral `?` avatar; email stays visible and links to the
+existing login history. Names may identify a colleague or an approved shared
+account; they are administrator-entered labels, not verified legal identities.
 
 ## Authorization
 

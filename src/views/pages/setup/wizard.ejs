@@ -56,7 +56,8 @@
       <% if (requestedPath === stepPaths.bootstrap_superuser) { %>
         <section class="panel">
           <h2>Confirm your administrator account</h2>
-          <p>In this step, enter the email address that will be used to create the system administrator account (superuser).</p>
+          <p>Confirm the email address of your signed-in account and enter your Name and Surname to set up the system administrator (superuser).</p>
+          <p>Your Name and Surname will appear together in the Staff directory. Together they must be 100 characters or fewer.</p>
           <p>This email address should not be shared with another user of the system. The superuser has, apart from limited technical exceptions, full rights across the entire system.</p>
           <p>The email address used to create the superuser is permanently recorded in the system. After the setup wizard has been completed, it cannot be changed through the normal application interface.</p>
           <p>This address is used for secure administrator sign-in. It is separate from the address used as the sender of production emails.</p>
@@ -65,6 +66,14 @@
             <div class="setup-form__field">
               <label for="installerEmail">Administrator email address *</label>
               <input id="installerEmail" name="installerEmail" type="email" required value="<%= formData.installerEmail %>" />
+            </div>
+            <div class="setup-form__field">
+              <label for="name">Name *</label>
+              <input id="name" name="name" type="text" autocomplete="given-name" required maxlength="100" value="<%= formData.name %>" />
+            </div>
+            <div class="setup-form__field">
+              <label for="surname">Surname *</label>
+              <input id="surname" name="surname" type="text" autocomplete="family-name" required maxlength="100" value="<%= formData.surname %>" />
             </div>
             <div class="setup-form__actions">
               <button type="submit">Confirm administrator account</button>

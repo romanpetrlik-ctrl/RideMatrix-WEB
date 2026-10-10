@@ -100,6 +100,11 @@ RideMatrix-WEB is the server-rendered web application layer for RideMatrix opera
 - **Known limitation:** Autocomplete localization/region behavior is intentionally **not finalized**.
 - **Implemented:** Initial System Setup wizard for operator profile, both addresses, PHO licence, document upload, and one-time completion state.
 - **Implemented:** Setup bootstrap grants `superuser` only to the currently authenticated installer email and logs setup audit events.
+  - The first `/setup/bootstrap-superuser` step requires **Name** and **Surname** for a new bootstrap. Each is trimmed and validated using the staff-name rules; their combined name (including the separating space) must fit the 100-character display-name limit and contain no control characters.
+  - Names are joined as `Name Surname` and saved through `updateStaffDisplayName` into RideMatrix-owned `staff_profiles`, keyed by the verified authenticated account ID, in the same transaction as the superuser grant, bootstrap state, and audit. Auth tables receive no name columns or name writes.
+  - Validation re-renders entered values safely. Repeated/concurrent bootstrap requests do not overwrite profiles or duplicate audit events. An account ID/email mismatch is rejected atomically; sign in with an auth account whose ID is present in the shared auth database before retrying.
+  - Existing completed bootstraps do not require names or backfill them; missing profiles continue to show **Name not provided** and can be maintained through Staff → **Edit name**. Other staff invitation names remain optional.
+  - This setup extension builds on [PR #125](https://github.com/romanpetrlik-ctrl/RideMatrix-WEB/pull/125), now merged into `main`; it reuses the single `0011_staff_profiles` migration, not a duplicate migration.
 - **Implemented:** Setup completion provisions selected production test accounts and deactivates legacy `test.superuser` / `test.admin` access roles.
 - **Constraint:** WEB can enforce test-account sink policy checks before requesting access codes, but actual e-mail and magic-link transport delivery remains owned by external auth/API infrastructure.
 - **Known behavior:** `House number / name` may be legitimately empty when Google does not provide it; future UX should support explicit confirmation to continue without it, rather than fabricating values.

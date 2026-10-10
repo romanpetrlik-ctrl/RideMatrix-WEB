@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import test, { after, before, describe } from "node:test";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { initializeDatabase, query } from "../database/connection";
 import { createTestDatabaseContext, safeCleanupTestDatabase, TestDatabaseContext } from "../database/test-helper";
 import { createCsrfProtection } from "../middleware/csrf";
@@ -31,6 +32,7 @@ describe("admin-managed staff display names", () => {
     app.set("view engine", "ejs");
     app.set("views", `${process.cwd()}/src/views`);
     app.use(express.urlencoded({ extended: true }));
+    app.use(rateLimit({ windowMs: 60_000, limit: 1000 }));
     app.use(createCsrfProtection({ cookieSecure: false }));
     app.use(createStaffRouter({
       appTitle: "RideMatrix Test",
@@ -109,6 +111,14 @@ describe("admin-managed staff display names", () => {
   });
 
   test("name mutations require CSRF, session authorization and a staff target", async () => {
+    await postForm(`/staff/${accountId}/profile`, { displayName: "Keep this name" });
+    const multipart = new FormData();
+    multipart.set("displayName", "Tampered");
+    assert.equal((await fetch(`${baseUrl}/staff/${accountId}/profile`, {
+      method: "POST", body: multipart, redirect: "manual"
+    })).status, 403);
+    assert.equal((await getStaffUser(accountId))?.displayName, "Keep this name");
+    await postForm(`/staff/${accountId}/profile`, { displayName: "" });
     assert.equal((await fetch(`${baseUrl}/staff/${accountId}/profile`, {
       method: "POST", body: new URLSearchParams({ displayName: "Tampered" }), redirect: "manual"
     })).status, 403);
