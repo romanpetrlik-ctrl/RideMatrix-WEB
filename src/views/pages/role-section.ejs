@@ -11,7 +11,12 @@
     <section class="panel">
       <h1>${roleLabel}</h1>
       <p><strong>Signed in as:</strong> ${email}</p>
-      <p>This module is available to your authorized internal account.</p>
+      <p class="notice" role="status"><strong>Access granted.</strong> Your current session includes the ${grantedByLabel} role required for this workspace.</p>
+      ${module.key === "system-settings" ? `
+        <div class="notice notice--warning">
+          <strong>Not yet available:</strong> no system settings are configurable here yet. This workspace is a placeholder; access is not the problem.
+        </div>
+      ` : ""}
       ${module.key === "manage-vps" ? `
         <div class="notice notice--warning">
           <strong>Safety notice:</strong> reboot and recovery are placeholders and cannot execute VPS actions.

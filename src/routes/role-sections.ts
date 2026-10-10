@@ -1,6 +1,7 @@
 import { Router, type Response } from "express";
 import { getSessionAccount } from "../services/api";
 import { noStoreProtectedResponse } from "../middleware/no-store";
+import { getInternalRoleLabel } from "../services/staff-users";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
@@ -30,8 +31,25 @@ export function canAccessWorkspace(roles: string[], key: string): boolean {
   return availableWorkspaceModules(roles).some((module) => module.key === key);
 }
 
-function renderUnavailable(res: Response, appTitle: string) {
-  return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle });
+/**
+ * Session role keys that grant the workspace. Matching is exact against the
+ * `roles.key` values returned by the auth service's `/auth/session`; display
+ * labels (e.g. "System Control") or case variants never grant access.
+ */
+export function grantingRoles(roles: string[], module: WorkspaceModule): string[] {
+  return module.allowedRoles.filter((role) => roles.includes(role));
+}
+
+export function describeRequiredRoles(module: WorkspaceModule): string {
+  return module.allowedRoles.map((role) => `${getInternalRoleLabel(role)} (${role})`).join(" or ");
+}
+
+function renderUnavailable(res: Response, appTitle: string, module: WorkspaceModule) {
+  return res.status(403).render("pages/unavailable", {
+    title: "Unavailable",
+    appTitle,
+    message: `Your current session does not include the ${describeRequiredRoles(module)} role required for ${module.title}.`
+  });
 }
 
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
@@ -44,11 +62,14 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         const session = await getSessionAccount(req.headers.cookie);
         if (!session.authenticated || !session.user) return res.redirect("/access");
         const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-        if (!canAccessWorkspace(roles, module.key)) return renderUnavailable(res, options.appTitle);
+        if (!canAccessWorkspace(roles, module.key)) return renderUnavailable(res, options.appTitle, module);
 
         return res.render("pages/role-section", {
           title: module.title, appTitle: options.appTitle, email: session.user.email,
-          roleLabel: module.title, module
+          roleLabel: module.title, module,
+          grantedByLabel: grantingRoles(roles, module)
+            .map((role) => `${getInternalRoleLabel(role)} (${role})`)
+            .join(", ")
         });
       } catch (error) {
         next(error);

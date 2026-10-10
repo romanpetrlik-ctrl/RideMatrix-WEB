@@ -2650,6 +2650,18 @@ button:visited,
   white-space: nowrap;
 }
 
+.staff-role-badge--superuser {
+  border: 2px solid #8a5a00;
+  background: #fff4cc;
+  color: #5c3b00;
+  font-weight: 700;
+}
+
+.staff-role-badge--superuser abbr {
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+
 .staff-empty-state {
   display: grid;
   justify-items: start;
