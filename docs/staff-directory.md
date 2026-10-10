@@ -28,7 +28,7 @@ into an array rather than joining out one row per role.
 | Name        | RideMatrix-owned `staff_profiles.display_name`; `Name not provided` if absent |
 | Email       | `users.email`                                                      |
 | Status      | `users.status`                                                     |
-| Roles       | `roles.key` via `user_roles`, one pill per assigned role            |
+| Roles       | `roles.key` via `user_roles`, one pill per assigned role; `superuser` is listed first as `SU · System Control` |
 | Created     | `users.created_at`, formatted; shown as `—` if absent               |
 | Last login  | Detected at runtime (see below); shown as `Never` if unavailable    |
 
@@ -75,6 +75,44 @@ The directory shows the stored name above its email link. Missing/blank names sh
 **Name not provided** and a neutral `?` avatar; email stays visible and links to the
 existing login history. Names may identify a colleague or an approved shared
 account; they are administrator-entered labels, not verified legal identities.
+
+### Superuser indicator
+
+Accounts holding the `superuser` role key show it first, as a badge reading
+**`SU · System Control`** (`<abbr title="Superuser">SU</abbr>`), with a thicker border
+and amber background (`.staff-role-badge--superuser`). The text marker carries the
+meaning, so it does not depend on colour. This is display only and never changes role
+assignments.
+
+## Role source of truth for authorization
+
+The Staff directory reads role assignments directly from `users` / `user_roles` /
+`roles.key`. Route authorization never uses that display: every protected route asks
+the external auth service for the current session (`GET /auth/session`,
+`getSessionAccount()` in `src/services/api.ts`) and checks `session.user.roles`.
+
+- **Source of truth:** the auth service owns the `user_roles` assignments and returns
+  their `roles.key` values in the session. The web app treats the session role list
+  as authoritative and does not add roles from its own database read.
+- **Contract:** `session.user.roles` must be an array of exact role keys (for example
+  `superuser`). Display labels (`System Control`), case variants (`SUPERUSER`), padded
+  values, or role objects do not match and are denied.
+- `/settings` and `/vps` require `superuser`; `/tech-support` requires `tech_support`
+  (`workspaceModules` in `src/routes/role-sections.ts`). A denied request returns the
+  `403` page with the missing role named; a granted request says which session role
+  granted access.
+
+### `/settings` access investigation (production)
+
+The reported page for `bookings@romanairporttransfers.co.uk`, showing **System
+settings** and "This module is available to your authorized internal account", is the
+page that renders only **after** `canAccessWorkspace(roles, "system-settings")`
+succeeds. A denied request renders the `403` "Unable to continue" page instead. So the
+session did include `superuser`, and the Staff directory and auth session agreed.
+`/settings` is still a placeholder with no settings, and the old wording did not say
+whether access had been granted, so it looked like a denial. The page now says
+"Access granted" with the granting role and states that no system settings are
+configurable yet. The authorization check is unchanged.
 
 ## Authorization
 

@@ -82,6 +82,28 @@ function getRoleLabel(role: string): string {
   }
 }
 
+export type StaffRoleBadge = {
+  label: string;
+  isSuperuser: boolean;
+};
+
+/**
+ * Display badges for the Staff directory. The `superuser` role is listed first
+ * and flagged so the directory can mark it with a visible "SU" text marker.
+ * Display only: authorization always uses the auth session roles.
+ */
+export function buildStaffRoleBadges(roles: string[]): StaffRoleBadge[] {
+  const ordered = [
+    ...roles.filter((role) => role === SUPERUSER_ROLE),
+    ...roles.filter((role) => role !== SUPERUSER_ROLE)
+  ];
+
+  return ordered.map((role) => ({
+    label: getRoleLabel(role),
+    isSuperuser: role === SUPERUSER_ROLE
+  }));
+}
+
 function formatDate(value: string | null): string {
   if (!value) {
     return "—";
@@ -229,6 +251,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
         staff: staff.map((member) => ({
           ...member,
           roleLabels: member.roles.map(getRoleLabel),
+          roleBadges: buildStaffRoleBadges(member.roles),
           formattedCreatedAt: formatDate(member.createdAt),
           formattedLastLoginAt: formatDateTime(member.lastLoginAt),
           auditHref: `/staff/${encodeURIComponent(member.id)}/audit`

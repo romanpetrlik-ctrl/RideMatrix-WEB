@@ -77,10 +77,15 @@
                       <% } %>
                     </td>
                     <td data-label="Roles">
-                      <% if (member.roleLabels.length > 0) { %>
+                      <% const roleBadges = member.roleBadges || member.roleLabels.map((label) => ({ label, isSuperuser: false })); %>
+                      <% if (roleBadges.length > 0) { %>
                         <ul class="staff-role-badges">
-                          <% member.roleLabels.forEach((roleLabel) => { %>
-                            <li><span class="staff-role-badge"><%= roleLabel %></span></li>
+                          <% roleBadges.forEach((badge) => { %>
+                            <% if (badge.isSuperuser) { %>
+                              <li><span class="staff-role-badge staff-role-badge--superuser" data-staff-superuser title="Superuser: full system access"><abbr title="Superuser">SU</abbr> · <%= badge.label %></span></li>
+                            <% } else { %>
+                              <li><span class="staff-role-badge"><%= badge.label %></span></li>
+                            <% } %>
                           <% }) %>
                         </ul>
                       <% } else { %>
