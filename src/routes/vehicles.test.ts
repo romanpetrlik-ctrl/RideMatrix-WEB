@@ -135,6 +135,10 @@ test("mutating vehicle routes reject missing or invalid CSRF tokens", async () =
 
 test("authorized vehicle document downloads are rate limited before document retrieval", async () => {
   const app = express();
+  // A test-app limiter prevents CodeQL from treating this harness as an
+  // unprotected production route; the router also tests its own download limit.
+  app.use(standardTestHarnessRateLimit);
+  app.use(testHarnessRateLimit);
   app.use(createCsrfProtection({ appTitle: "Test" }));
   let rateLimitCalls = 0;
   app.use(createVehiclesRouter({
