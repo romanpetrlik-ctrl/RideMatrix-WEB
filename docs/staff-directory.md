@@ -116,9 +116,8 @@ Completed bootstraps, including older installations without names, are unchanged
 repeat requests do not require names, fabricate names or overwrite the profile.
 Concurrent bootstrap requests are serialized to avoid duplicate audit events.
 Missing names can still be set through **Edit name**; test accounts are not named
-automatically. This setup extension depends on draft PR #125 and reuses its single
-`0011_staff_profiles` migration; the dependency is included in this follow-up
-branch so it can compile and run before #125 merges.
+automatically. This setup extension builds on PR #125, now merged into `main`,
+and reuses its single `0011_staff_profiles` migration.
 
 Names are trimmed, limited to 100 characters, checked for string type and control
 characters, and escaped by EJS. Blank names clear the field. Mutations retain
