@@ -40,8 +40,12 @@ export function grantingRoles(roles: string[], module: WorkspaceModule): string[
   return module.allowedRoles.filter((role) => roles.includes(role));
 }
 
+function formatRoleLabel(role: string): string {
+  return `${getInternalRoleLabel(role)} (${role})`;
+}
+
 export function describeRequiredRoles(module: WorkspaceModule): string {
-  return module.allowedRoles.map((role) => `${getInternalRoleLabel(role)} (${role})`).join(" or ");
+  return module.allowedRoles.map(getInternalRoleLabel).join(" or ");
 }
 
 function renderUnavailable(res: Response, appTitle: string, module: WorkspaceModule) {
@@ -68,7 +72,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           title: module.title, appTitle: options.appTitle, email: session.user.email,
           roleLabel: module.title, module,
           grantedByLabel: grantingRoles(roles, module)
-            .map((role) => `${getInternalRoleLabel(role)} (${role})`)
+            .map(formatRoleLabel)
             .join(", ")
         });
       } catch (error) {

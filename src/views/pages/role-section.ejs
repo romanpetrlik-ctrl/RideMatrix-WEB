@@ -11,7 +11,7 @@
     <section class="panel">
       <h1>${roleLabel}</h1>
       <p><strong>Signed in as:</strong> ${email}</p>
-      <p class="notice" role="status"><strong>Access granted.</strong> Your current session includes the ${grantedByLabel} role required for this workspace.</p>
+      <p class="notice" role="status"><strong>Access granted.</strong> Granted by your current session role(s): ${grantedByLabel}.</p>
       ${module.key === "system-settings" ? `
         <div class="notice notice--warning">
           <strong>Not yet available:</strong> no system settings are configurable here yet. This workspace is a placeholder; access is not the problem.

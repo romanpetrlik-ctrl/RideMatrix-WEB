@@ -82,7 +82,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(response.status, 403);
     const body = await response.text();
     assert.match(body, /Unable to continue/);
-    assert.match(body, /does not include the System Control \(superuser\) role required for System settings/);
+    assert.match(body, /does not include the System Control role required for System settings/);
+    assert.doesNotMatch(body, /\(superuser\)/);
     assert.doesNotMatch(body, /Access granted/);
   });
 

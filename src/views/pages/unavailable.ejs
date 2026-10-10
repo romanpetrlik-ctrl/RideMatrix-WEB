@@ -4,7 +4,7 @@
   body: `
     <section class="panel">
       <h1>Unable to continue</h1>
-      ${typeof message !== "undefined" && message ? `<p>${message}</p>` : ""}
+      ${typeof message !== "undefined" && message ? `<p>${escapeFn(message)}</p>` : ""}
     </section>
   `
 }) %>
