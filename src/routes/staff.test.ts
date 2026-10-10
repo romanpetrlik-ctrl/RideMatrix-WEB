@@ -284,6 +284,41 @@ describe("GET /staff (staff directory)", () => {
       assert.doesNotMatch(body, /other@ridematrix\.com/);
     });
 
+    test("embedded details reuse protected account-scoped history without the navigation shell", async () => {
+      mockSession = adminSession;
+      const response = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`);
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("cache-control") || "", /no-store/);
+      assert.match(body, /User details/);
+      assert.match(body, /driver@ridematrix\.com/);
+      assert.match(body, /Created/);
+      assert.match(body, /Driver/);
+      assert.match(body, /2 login events/);
+      assert.match(body, /198\.51\.100\.7/);
+      assert.doesNotMatch(body, /Other-Agent|192\.0\.2\.99|other@ridematrix\.com/);
+      assert.doesNotMatch(body, /Back to staff directory|currentUserEmail/);
+      assert.doesNotMatch(body, /<script>alert\("ua"\)<\/script>/);
+
+      mockSession = { authenticated: false };
+      const signedOut = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`, { redirect: "manual" });
+      assert.equal(signedOut.status, 302);
+      assert.equal(signedOut.headers.get("location"), "/access");
+      assert.match(signedOut.headers.get("cache-control") || "", /no-store/);
+
+      mockSession = { authenticated: true, user: { id: DRIVER_ID, email: "driver@ridematrix.com", roles: ["driver"] } };
+      const forbidden = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`);
+      assert.equal(forbidden.status, 403);
+      assert.match(forbidden.headers.get("cache-control") || "", /no-store/);
+      assert.doesNotMatch(await forbidden.text(), /198\.51\.100\.7/);
+
+      mockSession = adminSession;
+      const missing = await fetch(`${baseUrl}/staff/unknown/audit?dialog=1`);
+      assert.equal(missing.status, 404);
+      assert.doesNotMatch(await missing.text(), /198\.51\.100\.7/);
+    });
+
     test("user-controlled audit values are HTML-escaped", async () => {
       mockSession = adminSession;
 

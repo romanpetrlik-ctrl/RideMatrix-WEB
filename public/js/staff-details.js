@@ -41,13 +41,22 @@
     });
   });
 
-  close.addEventListener("click", function () {
-    dialog.close();
-  });
-  dialog.addEventListener("close", function () {
+  function clearDetails() {
     frame.removeAttribute("src");
     if (trigger && trigger.isConnected) trigger.focus();
     trigger = null;
+  }
+  function dismiss() {
+    dialog.close();
+    clearDetails();
+  }
+  close.addEventListener("click", dismiss);
+  dialog.addEventListener("cancel", function (event) {
+    event.preventDefault();
+    dismiss();
+  });
+  dialog.addEventListener("close", function () {
+    if (!dialog.open) clearDetails();
   });
   frame.addEventListener("load", function () {
     if (!dialog.open) return;
@@ -56,7 +65,7 @@
     detailDocument.addEventListener("keydown", function (event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        dialog.close();
+        dismiss();
       }
     });
   });
