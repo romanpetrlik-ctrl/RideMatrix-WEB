@@ -2,6 +2,7 @@
 <html lang="en">
   <%- include("../../partials/head", { title, appTitle }) %>
   <body>
+    <% if (!dialogMode) { %>
     <%- include("../../partials/system-status-bar", {
       appTitle,
       systemStatus: "System status: Healthy",
@@ -12,17 +13,20 @@
     <%- include("../../partials/header", {
       appTitle
     }) %>
+    <% } %>
 
-    <main class="container rm-page-shell staff-page staff-audit-page">
+    <main class="container rm-page-shell staff-page staff-audit-page<%= dialogMode ? ' staff-audit-page--dialog' : '' %>">
       <div class="staff-page__header">
         <div class="staff-page__heading">
           <p class="staff-page__eyebrow">Administration</p>
-          <h1 class="staff-page__title">Login history</h1>
+          <h1 class="staff-page__title"><%= dialogMode ? "User details" : "Login history" %></h1>
           <p class="staff-page__subtitle"><%= member.email %></p>
         </div>
+        <% if (!dialogMode) { %>
         <div class="staff-page__actions">
           <a class="button staff-button" href="/staff">Back to staff directory</a>
         </div>
+        <% } %>
       </div>
 
       <section class="staff-stats" aria-label="Account summary">
@@ -103,6 +107,6 @@
       </section>
     </main>
 
-    <%- include("../../partials/footer") %>
+    <% if (!dialogMode) { %><%- include("../../partials/footer") %><% } %>
   </body>
 </html>

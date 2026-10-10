@@ -265,6 +265,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
 
       return res.render("pages/staff/audit", {
         title: "Login history",
+        dialogMode: req.query.dialog === "1",
         appTitle: options.appTitle,
         email: session.user.email,
         member: {

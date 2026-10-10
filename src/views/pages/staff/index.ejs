@@ -41,6 +41,7 @@
             <h2 class="staff-card__title" id="staff-directory-heading"><%= staffCount %> staff record<%= staffCount === 1 ? "" : "s" %></h2>
             <p class="staff-card__subtitle">Sorted alphabetically by email address.</p>
             <p class="staff-card__subtitle" id="staff-login-history-hint">Select an email address to view that account's login history.</p>
+            <p class="staff-card__subtitle" id="staff-details-hint">Double-click a row or select View details to open user details and login history.</p>
           </div>
         </header>
 
@@ -54,11 +55,12 @@
                   <th scope="col">Roles</th>
                   <th scope="col" class="staff-table__cell--date">Created</th>
                   <th scope="col" class="staff-table__cell--date">Last login</th>
+                  <th scope="col">Details</th>
                 </tr>
               </thead>
               <tbody>
                 <% staff.forEach((member) => { %>
-                  <tr>
+                  <tr data-staff-row>
                     <th scope="row" class="staff-table__identity">
                       <span class="staff-table__avatar" aria-hidden="true"><%= member.email.charAt(0).toUpperCase() %></span>
                       <a class="staff-table__email staff-table__email-link" href="<%= member.auditHref %>" aria-describedby="staff-login-history-hint"><%= member.email %></a>
@@ -83,6 +85,9 @@
                     </td>
                     <td data-label="Created" class="staff-table__cell--date"><%= member.formattedCreatedAt %></td>
                     <td data-label="Last login" class="staff-table__cell--date"><%= member.formattedLastLoginAt %></td>
+                    <td data-label="Details">
+                      <a class="staff-button" href="<%= member.auditHref %>" data-staff-details aria-describedby="staff-details-hint">View details<span class="sr-only"> for <%= member.email %></span></a>
+                    </td>
                   </tr>
                 <% }) %>
               </tbody>
@@ -98,6 +103,14 @@
       </section>
     </main>
 
+    <dialog class="staff-details-dialog" id="staff-details-dialog" aria-labelledby="staff-details-title">
+      <header class="staff-details-dialog__header">
+        <h2 id="staff-details-title">User details and login history</h2>
+        <button class="staff-button" type="button" data-staff-details-close autofocus>Close</button>
+      </header>
+      <iframe title="Selected staff user details and login history" referrerpolicy="no-referrer" sandbox="allow-same-origin"></iframe>
+    </dialog>
+    <script src="/js/staff-details.js" defer></script>
     <%- include("../../partials/footer") %>
   </body>
 </html>

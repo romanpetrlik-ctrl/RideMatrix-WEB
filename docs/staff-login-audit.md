@@ -59,3 +59,22 @@ authorization as `/staff` (`canManageStaff`: `admin`/`superuser` or the
 returns 403 to unauthorized users, and returns 404 for malformed ids, unknown
 users, and accounts without an internal staff role. Only the selected
 account's events are queried, and all values are HTML-escaped.
+
+### Desktop user-details dialog
+
+Double-click a non-interactive part of a staff row, or single-click **View
+details**, to open a native modal dialog. The focusable View details action
+also supports Enter and Space. Email links remain standalone history links;
+row double-click ignores links, buttons, and other controls.
+
+The dialog embeds the same protected `GET /staff/:accountId/audit?dialog=1`
+page, with the navigation shell omitted. It reuses the account lookup,
+authorization, account-scoped history query, escaping, and no-store middleware
+from the login-audit implementation (PR #121); no login persistence or Last
+Login aggregation is duplicated. Without JavaScript, View details opens the
+standalone page.
+
+Focus starts on the visible Close button, stays within the native modal, and
+returns to the selected row's View details action on dismissal. Escape closes
+the dialog, including when focus is inside its detail frame. Closing unloads
+the protected frame. This is a desktop interaction, not a mobile redesign.
