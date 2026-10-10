@@ -1,6 +1,12 @@
 import { Request, Response, Router } from "express";
 import { SessionAccount, getSessionAccount, submitAccessRequest } from "../services/api";
-import { canManageStaff, listStaffUsers } from "../services/staff";
+import {
+  canManageStaff,
+  getStaffUser,
+  listStaffLoginAuditEvents,
+  listStaffUsers,
+  STAFF_LOGIN_AUDIT_PAGE_LIMIT
+} from "../services/staff";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import {
   AssignableRole,
@@ -99,6 +105,36 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatAuditTimestamp(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short"
+  }).format(new Date(value));
+}
+
+function getFailureCategoryLabel(category: string): string {
+  switch (category) {
+    case "invalid_credentials":
+      return "Invalid credentials";
+    case "disabled_account":
+      return "Disabled account";
+    case "unauthorized":
+      return "Unauthorized";
+    case "blocked":
+      return "Blocked";
+    case "system_failure":
+      return "System failure";
+    default:
+      return category;
+  }
+}
+
 export function createStaffRouter(options: StaffRouterOptions): Router {
   const router = Router();
   router.use(noStoreProtectedResponse);
@@ -191,7 +227,58 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
           ...member,
           roleLabels: member.roles.map(getRoleLabel),
           formattedCreatedAt: formatDate(member.createdAt),
+          formattedLastLoginAt: formatDateTime(member.lastLoginAt),
+          auditHref: `/staff/${encodeURIComponent(member.id)}/audit`
+        }))
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/staff/:accountId/audit", async (req, res, next) => {
+    try {
+      const session = await loadSession(req.headers.cookie);
+
+      if (!session.authenticated || !session.user) {
+        return res.redirect("/access");
+      }
+
+      const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+      const authorized = await canManageStaff(roles);
+
+      if (!authorized) {
+        return renderUnavailable(res);
+      }
+
+      const accountId = req.params.accountId;
+      const member = await getStaffUser(accountId);
+
+      if (!member) {
+        return res.status(404).render("pages/unavailable", {
+          title: "Unavailable",
+          appTitle: options.appTitle
+        });
+      }
+
+      const events = await listStaffLoginAuditEvents(member);
+
+      return res.render("pages/staff/audit", {
+        title: "Login history",
+        appTitle: options.appTitle,
+        email: session.user.email,
+        member: {
+          ...member,
+          roleLabels: member.roles.map(getRoleLabel),
+          formattedCreatedAt: formatDate(member.createdAt),
           formattedLastLoginAt: formatDateTime(member.lastLoginAt)
+        },
+        eventLimit: STAFF_LOGIN_AUDIT_PAGE_LIMIT,
+        events: events.map((event) => ({
+          ...event,
+          formattedOccurredAt: event.occurredAt ? formatAuditTimestamp(event.occurredAt) : "Unknown time",
+          outcomeLabel: event.success ? "Succeeded" : "Failed",
+          failureLabel: event.failureCategory ? getFailureCategoryLabel(event.failureCategory) : null
         }))
       });
     } catch (error) {

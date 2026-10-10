@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle
+    }) %>
+
+    <main class="container rm-page-shell staff-page staff-audit-page">
+      <div class="staff-page__header">
+        <div class="staff-page__heading">
+          <p class="staff-page__eyebrow">Administration</p>
+          <h1 class="staff-page__title">Login history</h1>
+          <p class="staff-page__subtitle"><%= member.email %></p>
+        </div>
+        <div class="staff-page__actions">
+          <a class="button staff-button" href="/staff">Back to staff directory</a>
+        </div>
+      </div>
+
+      <section class="staff-stats" aria-label="Account summary">
+        <div class="staff-stat-card">
+          <span class="staff-stat-card__label">Last login</span>
+          <strong class="staff-stat-card__value staff-audit-page__value"><%= member.formattedLastLoginAt %></strong>
+          <span class="staff-stat-card__hint">Latest successful internal sign-in</span>
+        </div>
+        <div class="staff-stat-card">
+          <span class="staff-stat-card__label">Status</span>
+          <strong class="staff-stat-card__value staff-audit-page__value"><%= member.status || "—" %></strong>
+          <span class="staff-stat-card__hint">Created <%= member.formattedCreatedAt %></span>
+        </div>
+        <div class="staff-stat-card">
+          <span class="staff-stat-card__label">Roles</span>
+          <strong class="staff-stat-card__value staff-audit-page__value"><%= member.roleLabels.join(", ") || "—" %></strong>
+          <span class="staff-stat-card__hint">Assigned internal roles</span>
+        </div>
+      </section>
+
+      <section class="staff-card" aria-labelledby="staff-audit-heading">
+        <header class="staff-card__header">
+          <div>
+            <h2 class="staff-card__title" id="staff-audit-heading"><%= events.length %> login event<%= events.length === 1 ? "" : "s" %></h2>
+            <p class="staff-card__subtitle">Newest first, showing up to <%= eventLimit %> events. Times are shown in UTC.</p>
+          </div>
+        </header>
+
+        <% if (events.length > 0) { %>
+          <div class="staff-table-wrapper">
+            <table class="staff-table staff-audit-table">
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  <th scope="col">Outcome</th>
+                  <th scope="col">Event</th>
+                  <th scope="col">Failure category</th>
+                  <th scope="col">IP address</th>
+                  <th scope="col">User agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% events.forEach((event) => { %>
+                  <tr>
+                    <th scope="row" data-label="Time">
+                      <% if (event.occurredAt) { %>
+                        <time datetime="<%= event.occurredAt %>"><%= event.formattedOccurredAt %></time>
+                      <% } else { %>
+                        <%= event.formattedOccurredAt %>
+                      <% } %>
+                    </th>
+                    <td data-label="Outcome">
+                      <span class="status-pill status-pill--<%= event.success ? "succeeded" : "failed" %>"><%= event.outcomeLabel %></span>
+                    </td>
+                    <td data-label="Event"><code><%= event.eventName %></code></td>
+                    <td data-label="Failure category">
+                      <% if (event.failureLabel) { %><%= event.failureLabel %><% } else { %><span class="staff-table__muted">—</span><% } %>
+                    </td>
+                    <td data-label="IP address">
+                      <% if (event.ipAddress) { %><%= event.ipAddress %><% } else { %><span class="staff-table__muted">—</span><% } %>
+                    </td>
+                    <td data-label="User agent" class="staff-audit-table__user-agent">
+                      <% if (event.userAgent) { %><%= event.userAgent %><% } else { %><span class="staff-table__muted">—</span><% } %>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } else { %>
+          <div class="staff-empty-state">
+            <h2 class="staff-empty-state__title">No login events recorded</h2>
+            <p class="staff-empty-state__text">
+              No sign-in attempts have been recorded for this account in the staff login audit.
+            </p>
+          </div>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>
