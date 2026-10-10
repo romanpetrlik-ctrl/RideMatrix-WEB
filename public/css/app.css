@@ -2960,3 +2960,79 @@ button:visited,
     width: 100%;
   }
 }
+
+.staff-page .staff-table__email-link {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.staff-page .staff-table__email-link:hover,
+.staff-page .staff-table__email-link:focus-visible {
+  color: var(--staff-blue);
+}
+
+.staff-audit-page .staff-audit-page__value {
+  font-size: 1.1rem;
+  word-break: break-word;
+}
+
+.staff-audit-page .status-pill--succeeded {
+  background: rgba(34, 197, 94, 0.12);
+  color: #177842;
+}
+
+.staff-audit-page .status-pill--failed {
+  background: rgba(174, 32, 18, 0.1);
+  color: var(--rm-brown-red);
+}
+
+.staff-audit-page .staff-audit-table__user-agent {
+  max-width: 28rem;
+  word-break: break-word;
+  font-size: 0.85rem;
+}
+
+.staff-details-dialog {
+  width: 1100px;
+  max-width: calc(100vw - 64px);
+  padding: 0;
+  border: 1px solid var(--staff-border, #d1d5db);
+  border-radius: 12px;
+}
+
+.staff-details-dialog::backdrop {
+  background: rgb(0 0 0 / 50%);
+}
+
+.staff-details-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 24px;
+}
+
+.staff-details-dialog__header h2 {
+  margin: 0;
+}
+
+.staff-details-dialog iframe {
+  display: block;
+  width: 100%;
+  height: min(650px, calc(100vh - 160px));
+  border: 0;
+}
+
+.staff-audit-page--dialog {
+  padding-top: 16px;
+}
+
+.staff-list-page [data-staff-row] {
+  cursor: pointer;
+}
+
+.staff-list-page [data-staff-row]:focus-within {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
