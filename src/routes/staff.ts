@@ -9,6 +9,7 @@ import {
   STAFF_LOGIN_AUDIT_PAGE_LIMIT
 } from "../services/staff";
 import { noStoreProtectedResponse } from "../middleware/no-store";
+import { requireCsrfToken } from "../middleware/csrf";
 import {
   AssignableRole,
   DuplicateStaffUserEmailError,
@@ -358,7 +359,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
     }
   });
 
-  router.post("/staff/:accountId/profile", async (req, res, next) => {
+  router.post<{ accountId: string }>("/staff/:accountId/profile", requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
     try {
       const resolved = await resolveActor(req);
       if (resolved === "unauthenticated") return res.redirect("/access");

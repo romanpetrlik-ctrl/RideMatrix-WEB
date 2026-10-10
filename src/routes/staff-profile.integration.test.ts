@@ -111,6 +111,14 @@ describe("admin-managed staff display names", () => {
   });
 
   test("name mutations require CSRF, session authorization and a staff target", async () => {
+    await postForm(`/staff/${accountId}/profile`, { displayName: "Keep this name" });
+    const multipart = new FormData();
+    multipart.set("displayName", "Tampered");
+    assert.equal((await fetch(`${baseUrl}/staff/${accountId}/profile`, {
+      method: "POST", body: multipart, redirect: "manual"
+    })).status, 403);
+    assert.equal((await getStaffUser(accountId))?.displayName, "Keep this name");
+    await postForm(`/staff/${accountId}/profile`, { displayName: "" });
     assert.equal((await fetch(`${baseUrl}/staff/${accountId}/profile`, {
       method: "POST", body: new URLSearchParams({ displayName: "Tampered" }), redirect: "manual"
     })).status, 403);
