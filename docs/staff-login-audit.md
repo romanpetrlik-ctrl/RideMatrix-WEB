@@ -60,6 +60,11 @@ returns 403 to unauthorized users, and returns 404 for malformed ids, unknown
 users, and accounts without an internal staff role. Only the selected
 account's events are queried, and all values are HTML-escaped.
 
+Login IP capture behind a reverse proxy is controlled by `TRUSTED_PROXY_IPS`;
+see [Reverse proxy IP configuration](./reverse-proxy-ip.md). Historical IP
+values cannot be corrected retroactively. Correct IPs are recorded only for new
+events after the proxy and application are configured and verified.
+
 ### Desktop user-details dialog
 
 Double-click a non-interactive part of a staff row, or single-click **View
