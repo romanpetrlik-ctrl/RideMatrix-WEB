@@ -869,20 +869,22 @@ export const MIGRATIONS: Migration[] = [
           ));
 
       ALTER TABLE vehicle_documents
-        ADD COLUMN IF NOT EXISTS license_id TEXT REFERENCES vehicle_licensing_authorities(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS license_id TEXT REFERENCES vehicle_licensing_authorities(id) ON DELETE RESTRICT,
         ADD COLUMN IF NOT EXISTS byte_size BIGINT,
         ADD COLUMN IF NOT EXISTS checksum TEXT;
       UPDATE vehicle_documents
         SET byte_size = octet_length(content)
         WHERE byte_size IS NULL AND content IS NOT NULL;
-      UPDATE vehicle_documents
-        SET checksum = md5(content)
-        WHERE checksum IS NULL AND content IS NOT NULL;
       ALTER TABLE vehicle_documents
         DROP CONSTRAINT IF EXISTS vehicle_documents_byte_size_check;
       ALTER TABLE vehicle_documents
         ADD CONSTRAINT vehicle_documents_byte_size_check
           CHECK (byte_size IS NULL OR byte_size >= 0);
+      ALTER TABLE vehicle_documents
+        DROP CONSTRAINT IF EXISTS vehicle_documents_checksum_check;
+      ALTER TABLE vehicle_documents
+        ADD CONSTRAINT vehicle_documents_checksum_check
+          CHECK (checksum IS NULL OR checksum ~ '^[0-9a-f]{64}$');
 
       DROP INDEX IF EXISTS idx_vehicle_documents_latest_type;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicle_documents_latest_type_license

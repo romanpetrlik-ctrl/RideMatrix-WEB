@@ -30,7 +30,7 @@ export type VehicleLicenseType = (typeof VEHICLE_LICENSE_TYPES)[number];
 
 export type LicenseInput = {
   licensingAuthorityId: string;
-  licenseType?: VehicleLicenseType;
+  licenseType?: VehicleLicenseType | null;
   vehicleLicenseBadge?: string | null;
   licenseReference?: string | null;
   validFrom: string;
@@ -79,6 +79,15 @@ export async function listLicensingAuthorities(client?: Queryable): Promise<Lice
        FROM licensing_authorities
       WHERE active = TRUE
       ORDER BY preference_order, lower(name), id`
+  );
+  return result.rows.map(authorityFromRow);
+}
+
+export async function listLicensingAuthoritiesForManagement(client?: Queryable): Promise<LicensingAuthority[]> {
+  const result = await db(client).query(
+    `SELECT id, name, authority_type, active, preference_order
+       FROM licensing_authorities
+      ORDER BY active DESC, preference_order, lower(name), id`
   );
   return result.rows.map(authorityFromRow);
 }
@@ -146,17 +155,24 @@ function normalizeVehicleLicenseBadge(value: unknown): string | null {
   return badge;
 }
 
-function validateVehicleLicenseInput(input: LicenseInput): asserts input is LicenseInput & { licenseType: VehicleLicenseType } {
-  if (!VEHICLE_LICENSE_TYPES.includes(input.licenseType as VehicleLicenseType)) {
+function validateVehicleLicenseInput<T extends LicenseInput>(
+  input: T,
+  allowUnspecifiedType = false
+): asserts input is T & { licenseType: VehicleLicenseType | null | undefined } {
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (input.licenseType && !VEHICLE_LICENSE_TYPES.includes(input.licenseType as VehicleLicenseType)) {
+    throw new Error("Select Hackney Carriage or Private Hire as the vehicle licence type.");
+  }
+  if (!allowUnspecifiedType && !input.licenseType) {
     throw new Error("Select Hackney Carriage or Private Hire as the vehicle licence type.");
   }
   if (!input.licensingAuthorityId.trim()) throw new Error("Select a licensing authority.");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.validFrom) || Number.isNaN(Date.parse(`${input.validFrom}T00:00:00Z`))) {
+  if (!validDate(input.validFrom)) {
     throw new Error("Enter a valid licence start date.");
   }
-  if (input.validUntil && (!/^\d{4}-\d{2}-\d{2}$/.test(input.validUntil)
-    || Number.isNaN(Date.parse(`${input.validUntil}T00:00:00Z`))
-    || input.validUntil <= input.validFrom)) {
+  if (input.validUntil && (!validDate(input.validUntil) || input.validUntil <= input.validFrom)) {
     throw new Error("Licence end date must be after its start date.");
   }
   normalizeVehicleLicenseBadge(input.vehicleLicenseBadge);
@@ -199,24 +215,27 @@ export async function listVehicleLicenses(vehicleId: string, client?: Queryable)
 
 export async function saveVehicleLicense(
   vehicleId: string,
-  input: LicenseInput,
+  input: LicenseInput & { clearVehicleLicenseBadge?: boolean },
   licenseId?: string,
   client?: Queryable
 ): Promise<string | null> {
-  validateVehicleLicenseInput(input);
+  validateVehicleLicenseInput(input, Boolean(licenseId));
   const runner = db(client);
   const badge = normalizeVehicleLicenseBadge(input.vehicleLicenseBadge);
   const now = new Date().toISOString();
   if (licenseId) {
     const result = await runner.query(
       `UPDATE vehicle_licensing_authorities
-          SET licensing_authority_id=$3, license_type=$4, vehicle_license_badge=$5,
+          SET licensing_authority_id=$3,
+              license_type=CASE WHEN $4::text IS NULL THEN license_type ELSE $4::text END,
+              vehicle_license_badge=CASE WHEN $11::boolean THEN NULL
+                WHEN $5::text IS NULL THEN vehicle_license_badge ELSE $5::text END,
               license_reference=$6, valid_from=$7, valid_until=$8, notes=$9,
               active=TRUE, revoked_at=NULL, updated_at=$10
         WHERE id=$1 AND vehicle_id=$2`,
       [licenseId, vehicleId, input.licensingAuthorityId, input.licenseType, badge,
         input.licenseReference?.trim() || null, input.validFrom, input.validUntil || null,
-        input.notes?.trim() || null, now]
+        input.notes?.trim() || null, now, Boolean(input.clearVehicleLicenseBadge)]
     );
     return result.rowCount ? licenseId : null;
   }
@@ -267,7 +286,13 @@ async function activeLicenseIds(
       ? [entityId, atTime, vehicleLicenseType]
       : [entityId, atTime]
   );
-  return new Map(result.rows.map((row: any) => [row.licensing_authority_id, row.license_reference ?? null]));
+  const licenses = new Map<string, string | null>();
+  for (const row of result.rows as any[]) {
+    if (!licenses.has(row.licensing_authority_id)) {
+      licenses.set(row.licensing_authority_id, row.license_reference ?? null);
+    }
+  }
+  return licenses;
 }
 
 export async function resolveCompatibleLicensingAuthorities(
@@ -280,11 +305,11 @@ export async function resolveCompatibleLicensingAuthorities(
 ): Promise<CompatibleAuthority[]> {
   const runner = db(client);
   const instant = new Date(atTime).toISOString();
-  const [operator, driver, vehicle] = await Promise.all([
-    activeLicenseIds("operator_licensing_authorities", "operator_id", operatorId, instant, runner),
-    activeLicenseIds("driver_licensing_authorities", "driver_id", driverId, instant, runner),
-    activeLicenseIds("vehicle_licensing_authorities", "vehicle_id", vehicleId, instant, runner, vehicleLicenseType)
-  ]);
+  const operator = await activeLicenseIds("operator_licensing_authorities", "operator_id", operatorId, instant, runner);
+  const driver = await activeLicenseIds("driver_licensing_authorities", "driver_id", driverId, instant, runner);
+  const vehicle = await activeLicenseIds(
+    "vehicle_licensing_authorities", "vehicle_id", vehicleId, instant, runner, vehicleLicenseType
+  );
   const ids = [...operator.keys()].filter((id) => driver.has(id) && vehicle.has(id));
   if (!ids.length) return [];
   const result = await runner.query(
@@ -313,6 +338,9 @@ export async function assignBookingWithLicensing(input: {
   source?: string;
   reason?: string | null;
 }, client?: Queryable): Promise<CompatibleAuthority> {
+  if (input.vehicleLicenseType && !VEHICLE_LICENSE_TYPES.includes(input.vehicleLicenseType)) {
+    throw new Error("Select a valid vehicle licence type.");
+  }
   const work = async (runner: Queryable) => {
     const booking = await runner.query<{ service_date: string }>(
       "SELECT service_date FROM customer_bookings WHERE id = $1 FOR UPDATE",
@@ -368,6 +396,43 @@ export async function assignBookingWithLicensing(input: {
         input.vehicleLicenseType || null, vehicleLicenseBadge]
     );
     return selected;
+  };
+  if (client) return work(client);
+  return withTransaction(work);
+}
+
+export async function unassignBookingVehicle(input: {
+  bookingId: string;
+  actorId?: string | null;
+  source?: string;
+  reason?: string | null;
+}, client?: Queryable): Promise<void> {
+  const work = async (runner: Queryable) => {
+    const booking = await runner.query<{ operator_id: string | null; driver_id: string | null }>(
+      "SELECT operator_id, driver_id FROM customer_bookings WHERE id = $1 FOR UPDATE",
+      [input.bookingId]
+    );
+    if (!booking.rows[0]) throw new Error("Booking was not found.");
+    const unassignedAt = new Date().toISOString();
+    await runner.query(
+      `UPDATE customer_bookings
+          SET vehicle_id=NULL, licensing_authority_id=NULL, vehicle_license_type=NULL,
+              vehicle_license_badge=NULL, assignment_status='pending',
+              assignment_review_required=TRUE, assigned_at=$2, assigned_by=$3,
+              assignment_source=$4, assignment_reason=$5
+        WHERE id=$1`,
+      [input.bookingId, unassignedAt, input.actorId || null, input.source || "dispatch",
+        input.reason || "Vehicle removed from assignment."]
+    );
+    await runner.query(
+      `INSERT INTO booking_assignment_audit
+        (id, booking_id, operator_id, driver_id, vehicle_id, licensing_authority_id,
+         assigned_at, actor_id, source, action, reason, vehicle_license_type, vehicle_license_badge)
+       VALUES ($1,$2,$3,$4,NULL,NULL,$5,$6,$7,'vehicle_unassigned',$8,NULL,NULL)`,
+      [randomUUID(), input.bookingId, booking.rows[0].operator_id, booking.rows[0].driver_id,
+        unassignedAt, input.actorId || null, input.source || "dispatch",
+        input.reason || "Vehicle removed from assignment."]
+    );
   };
   if (client) return work(client);
   return withTransaction(work);

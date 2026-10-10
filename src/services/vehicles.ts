@@ -13,6 +13,8 @@ export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
+export const VEHICLE_DOCUMENT_DOWNLOAD_LIMIT = 120;
+export const VEHICLE_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const VEHICLE_MUTATION_LIMIT = 120;
 export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
@@ -349,7 +351,23 @@ export async function createVehicleDocument(input: {
   if (!VEHICLE_DOCUMENT_TYPES.includes(input.documentType as VehicleDocumentType)) throw new Error("Select a valid compliance document type.");
   if (!input.expiresOn || getDocumentStatus(input.expiresOn) === "Expired") throw new Error("Enter a valid current or future expiry date.");
   if (!input.content?.length) throw new Error("Upload a non-empty vehicle document.");
+  if (input.content.length > VEHICLE_DOCUMENT_MAX_BYTES) throw new Error("Vehicle documents must not exceed 10 MB.");
+  validateVehicleDocumentUpload({
+    originalname: input.originalFilename || "",
+    mimetype: input.mimeType || "",
+    buffer: input.content
+  });
+  if (input.documentType === "hackney_ph_badge" && !input.licenseId) {
+    throw new Error("Select the vehicle licence that this badge document belongs to.");
+  }
   return withVehicleTransaction(client, async (runner) => {
+    if (input.licenseId) {
+      const license = await runner.query(
+        "SELECT 1 FROM vehicle_licensing_authorities WHERE id=$1 AND vehicle_id=$2",
+        [input.licenseId, input.vehicleId]
+      );
+      if (!license.rows[0]) throw new Error("Select a licence belonging to this vehicle.");
+    }
     const id = randomUUID();
     const now = new Date().toISOString();
     const byteSize = input.content!.length;
@@ -382,6 +400,9 @@ export async function getVehicleDocument(id: string, client?: Queryable) {
 }
 export async function consumeVehicleDocumentUploadRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
   return consumeVehicleRateLimit(rateLimitKey, VEHICLE_DOCUMENT_UPLOAD_LIMIT, client);
+}
+export async function consumeVehicleDocumentDownloadRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
+  return consumeVehicleRateLimit(rateLimitKey, VEHICLE_DOCUMENT_DOWNLOAD_LIMIT, client);
 }
 export async function consumeVehicleMutationRateLimit(rateLimitKey: string, client?: Queryable): Promise<boolean> {
   return consumeVehicleRateLimit(rateLimitKey, VEHICLE_MUTATION_LIMIT, client);

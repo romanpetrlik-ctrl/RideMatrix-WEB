@@ -36,9 +36,10 @@
         </dl></article>
         <article class="vehicle-card"><h2>Vehicle licences</h2><p>Licence type and Vehicle licence badge belong to each authority-specific licence. They are separate from vehicle class, licence reference, and driver badge.</p>
           <% licenses.forEach((license) => { %><form method="post" action="/vehicles/<%= vehicle.id %>/licenses" class="vehicle-document-form"><%- locals.csrfField || "" %><input type="hidden" name="licenseId" value="<%= license.id %>">
-            <label>Licensing authority<select name="licensingAuthorityId" required><% authorities.forEach((authority) => { %><option value="<%= authority.id %>" <%= license.licensingAuthorityId === authority.id ? "selected" : "" %>><%= authority.name %></option><% }) %></select></label>
-            <label>Vehicle licence type<select name="licenseType" required><% licenseTypes.forEach((type) => { %><option value="<%= type %>" <%= license.licenseType === type ? "selected" : "" %>><%= type === "hackney_carriage" ? "Hackney Carriage" : "Private Hire" %></option><% }) %></select></label>
+            <label>Licensing authority<select name="licensingAuthorityId" required><% authorities.forEach((authority) => { %><option value="<%= authority.id %>" <%= license.licensingAuthorityId === authority.id ? "selected" : "" %>><%= authority.name %><%= authority.active ? "" : " (inactive)" %></option><% }) %></select></label>
+            <label>Vehicle licence type<select name="licenseType"><option value="" <%= license.licenseType ? "" : "selected" %>>Type not set (preserve existing)</option><% licenseTypes.forEach((type) => { %><option value="<%= type %>" <%= license.licenseType === type ? "selected" : "" %>><%= type === "hackney_carriage" ? "Hackney Carriage" : "Private Hire" %></option><% }) %></select></label>
             <label>Vehicle licence badge<input name="vehicleLicenseBadge" maxlength="64" value="<%= license.vehicleLicenseBadge || '' %>" aria-label="Vehicle licence badge"></label>
+            <label><input type="checkbox" name="clearVehicleLicenseBadge" value="1"> Clear current Vehicle licence badge</label>
             <label>Licence reference<input name="licenseReference" value="<%= license.licenseReference || '' %>"></label>
             <label>Valid from<input name="validFrom" type="date" required value="<%= String(license.validFrom).slice(0, 10) %>"></label>
             <label>Valid until<input name="validUntil" type="date" value="<%= license.validUntil ? String(license.validUntil).slice(0, 10) : '' %>"></label>

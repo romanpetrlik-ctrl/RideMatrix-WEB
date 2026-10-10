@@ -7,7 +7,7 @@ import { getSessionAccount, SessionAccount } from "../services/api";
 import { resolveHelpContent } from "../services/help";
 import { canManageStaff } from "../services/staff";
 import {
-  listLicensingAuthorities,
+  listLicensingAuthoritiesForManagement,
   listVehicleLicenses,
   saveVehicleLicense,
   VEHICLE_LICENSE_TYPES
@@ -16,7 +16,8 @@ import {
   assignVehicleDriver, createVehicle, createVehicleDocument, getDocumentStatus, getVehicleById, getVehicleDocument,
   getVehicleDriverSummary, listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicles,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
-  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleDriverAssignmentError,
+  consumeVehicleDocumentDownloadRateLimit,
+  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_MAX_BYTES, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleDriverAssignmentError,
   VehicleInput, VehicleNotFoundError, VehicleValidationError
 } from "../services/vehicles";
 
@@ -24,8 +25,9 @@ type Options = {
   appTitle: string;
   loadSession?: (cookie?: string) => Promise<SessionAccount>;
   consumeUploadRateLimit?: (key: string) => Promise<boolean>;
+  consumeDownloadRateLimit?: (key: string) => Promise<boolean>;
 };
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES } });
 const text = (value: unknown) => String(value ?? "").trim();
 function input(body: any): VehicleInput {
   const year = text(body.year);
@@ -70,6 +72,12 @@ export function createVehiclesRouter(options: Options): Router {
     standardHeaders: true,
     legacyHeaders: false
   });
+  const localDocumentDownloadRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
   async function guard(req: any, res: any): Promise<boolean> {
     const session = await loadSession(req.headers.cookie);
     if (!session.authenticated || !session.user) { res.redirect("/access"); return false; }
@@ -107,6 +115,18 @@ export function createVehiclesRouter(options: Options): Router {
       const userId = text(res.locals.vehicleUser?.id);
       const allowed = await consumeVehicleMutationRateLimit(`vehicle-mutation:${userId}`);
       if (!allowed) return res.status(429).send("Too many vehicle updates. Try again later.");
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
+  async function limitDocumentDownloads(req: any, res: any, next: any) {
+    try {
+      const userId = text(res.locals.vehicleUser?.id);
+      const consumeRateLimit = options.consumeDownloadRateLimit || consumeVehicleDocumentDownloadRateLimit;
+      if (!(await consumeRateLimit(`vehicle-document-download:${userId}`))) {
+        return res.status(429).send("Too many document downloads. Try again later.");
+      }
       return next();
     } catch (error) {
       return next(error);
@@ -167,7 +187,7 @@ export function createVehiclesRouter(options: Options): Router {
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
       return res.render("pages/vehicles/detail", { title: vehicle.registration, appTitle: options.appTitle, email: res.locals.vehicleUser.email,
         vehicle, documents: await listVehicleDocuments(vehicle.id), licenses: await listVehicleLicenses(vehicle.id),
-        authorities: await listLicensingAuthorities(), licenseTypes: VEHICLE_LICENSE_TYPES,
+        authorities: await listLicensingAuthoritiesForManagement(), licenseTypes: VEHICLE_LICENSE_TYPES,
         driverAssignments: await listVehicleDriverAssignments(vehicle.id),
         drivers: await listDrivers(), baggageCategories: await listBaggageCategories(), documentTypes: VEHICLE_DOCUMENT_TYPES,
         helpFor: resolveHelpContent, notice: text(req.query.notice) });
@@ -184,6 +204,7 @@ export function createVehiclesRouter(options: Options): Router {
           licensingAuthorityId: text(req.body.licensingAuthorityId),
           licenseType: text(req.body.licenseType) as typeof VEHICLE_LICENSE_TYPES[number],
           vehicleLicenseBadge: text(req.body.vehicleLicenseBadge) || null,
+          clearVehicleLicenseBadge: text(req.body.clearVehicleLicenseBadge) === "1",
           licenseReference: text(req.body.licenseReference) || null,
           validFrom: text(req.body.validFrom),
           validUntil: text(req.body.validUntil) || null,
@@ -192,7 +213,8 @@ export function createVehiclesRouter(options: Options): Router {
         if (licenseId && !saved) return res.sendStatus(404);
         return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=license-saved`);
       } catch (error) {
-        if (error instanceof Error && (error.message.includes("licence") || error.message.includes("license") || error.message.includes("authority"))) {
+        if ((error as { code?: string }).code === "23503"
+          || (error instanceof Error && (error.message.includes("licence") || error.message.includes("license") || error.message.includes("authority")))) {
           return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=license-invalid`);
         }
         throw error;
@@ -272,10 +294,9 @@ export function createVehiclesRouter(options: Options): Router {
       return res.redirect(`${detailUrl}?notice=document-added`);
     } catch (error) { return next(error); }
   });
-  router.get("/vehicles/documents/:documentId", async (req, res, next) => {
+  router.get("/vehicles/documents/:documentId", requireAuthorizedVehicleManager, localDocumentDownloadRateLimit, limitDocumentDownloads, async (req, res, next) => {
     try {
-      if (!(await guard(req, res))) return;
-      const document = await getVehicleDocument(req.params.documentId);
+      const document = await getVehicleDocument(text(req.params.documentId));
       if (!document || !document.content) return res.sendStatus(404);
       const disposition = text(req.query.download) === "1" ? "attachment" : "inline";
       res.setHeader("Content-Disposition", `${disposition}; filename="${safeDownloadName(document)}"`);

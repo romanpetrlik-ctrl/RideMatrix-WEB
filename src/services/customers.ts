@@ -92,9 +92,11 @@ export async function listRecentBookingsForCustomer(
     serviceDate: booking.service_date,
     pickup: booking.pickup,
     dropoff: booking.dropoff,
-    status: booking.status
-    ,licensingAuthorityId: booking.licensing_authority_id,
+    status: booking.status,
+    licensingAuthorityId: booking.licensing_authority_id,
     licensingAuthorityName: booking.licensing_authority_name,
+    vehicleLicenseType: booking.vehicle_license_type,
+    vehicleLicenseBadge: booking.vehicle_license_badge,
     isTestBooking: Boolean(booking.is_test_booking),
     testReason: booking.test_reason
   }));
@@ -371,11 +373,14 @@ async function loadBookings(
     status: BookingRecord["status"];
     licensing_authority_id: string | null;
     licensing_authority_name: string | null;
+    vehicle_license_type: string | null;
+    vehicle_license_badge: string | null;
     is_test_booking: boolean;
     test_reason: string | null;
   }>(
     `SELECT b.id, b.customer_id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
            b.licensing_authority_id, a.name AS licensing_authority_name,
+           b.vehicle_license_type, b.vehicle_license_badge,
            COALESCE(b.is_test_booking, FALSE) AS is_test_booking,
            b.test_reason
      FROM customer_bookings b
@@ -435,7 +440,9 @@ async function loadBookings(
       licensingAuthorityId: null,
       licensingAuthorityName: null,
       isTestBooking: false,
-      testReason: null
+      testReason: null,
+      vehicleLicenseType: null,
+      vehicleLicenseBadge: null
     });
     grouped.set(booking.customer_id, list);
   }
