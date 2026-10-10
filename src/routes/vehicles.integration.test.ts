@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -174,6 +175,48 @@ describe("vehicle management end-to-end workflow", () => {
     assert.equal(missing.status, 404);
   });
 
+  test("admins create and edit distinct vehicle licence types and badges", async () => {
+    signIn(["admin"]);
+    const existingVehicle = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0];
+    const vehicleId = existingVehicle?.id || await createVehicle("AB12 CDE", "active");
+    const authorityId = "test-vehicle-authority";
+    const now = new Date().toISOString();
+    await query(
+      `INSERT INTO licensing_authorities (id, name, active, preference_order, created_at, updated_at)
+       VALUES ($1, 'Test vehicle authority', TRUE, 1, $2, $2) ON CONFLICT (id) DO NOTHING`,
+      [authorityId, now]
+    );
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const created = await postForm(`/vehicles/${vehicleId}/licenses`, [
+      ["_csrf", detail.token], ["licensingAuthorityId", authorityId], ["licenseType", "hackney_carriage"],
+      ["vehicleLicenseBadge", "HC-VEH-1"], ["licenseReference", "REF-HC-1"], ["validFrom", "2026-01-01"]
+    ], detail.cookie);
+    assert.equal(created.headers.get("location"), `/vehicles/${vehicleId}?notice=license-saved`);
+    const row = (await query<{ id: string }>(
+      "SELECT id FROM vehicle_licensing_authorities WHERE vehicle_id=$1 AND license_type='hackney_carriage'",
+      [vehicleId]
+    )).rows[0];
+    assert.ok(row?.id);
+
+    const reloaded = await openForm(`/vehicles/${vehicleId}`);
+    assert.match(reloaded.body, /Vehicle licence badge/);
+    assert.match(reloaded.body, /HC-VEH-1/);
+    const changed = await postForm(`/vehicles/${vehicleId}/licenses`, [
+      ["_csrf", reloaded.token], ["licenseId", row.id], ["licensingAuthorityId", authorityId],
+      ["licenseType", "private_hire"], ["vehicleLicenseBadge", "PH-VEH-2"],
+      ["licenseReference", "REF-PH-2"], ["validFrom", "2026-02-01"]
+    ], reloaded.cookie);
+    assert.equal(changed.headers.get("location"), `/vehicles/${vehicleId}?notice=license-saved`);
+    const saved = await query<{ license_type: string; vehicle_license_badge: string; license_reference: string }>(
+      "SELECT license_type, vehicle_license_badge, license_reference FROM vehicle_licensing_authorities WHERE id=$1",
+      [row.id]
+    );
+    assert.deepEqual(saved.rows[0], {
+      license_type: "private_hire", vehicle_license_badge: "PH-VEH-2", license_reference: "REF-PH-2"
+    });
+    assert.match((await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text()), /PH-VEH-2/);
+  });
+
   test("detail page manages driver assignments and preserves assignment history", async () => {
     signIn(["admin"]);
     const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
@@ -251,12 +294,53 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match(download.headers.get("cache-control") || "", /no-store/);
     assert.match(download.headers.get("content-disposition") || "", /^attachment; filename="insurance[a-z0-9._ -]*\.pdf"$/i);
 
+    const licenseId = (await query<{ id: string }>(
+      "SELECT id FROM vehicle_licensing_authorities WHERE vehicle_id=$1 AND license_type='private_hire'",
+      [id]
+    )).rows[0].id;
+    const firstBadgeDocument = Buffer.from("%PDF-1.7 vehicle badge original");
+    response = await upload(
+      { documentType: "hackney_ph_badge", licenseId, expiresOn: "2099-01-01" },
+      new Blob([firstBadgeDocument], { type: "application/pdf" }),
+      "vehicle-badge.pdf"
+    );
+    assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-added`);
+    const originalDocumentId = (await query<{ id: string }>(
+      "SELECT id FROM vehicle_documents WHERE vehicle_id=$1 AND license_id=$2 AND document_type='hackney_ph_badge'",
+      [id, licenseId]
+    )).rows[0].id;
+    const replacementBytes = Buffer.from("%PDF-1.7 vehicle badge replacement");
+    response = await upload(
+      { documentType: "hackney_ph_badge", licenseId, expiresOn: "2099-01-01" },
+      new Blob([replacementBytes], { type: "application/pdf" }),
+      "vehicle-badge-replacement.pdf"
+    );
+    assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-added`);
+    const history = await query<{ id: string; is_latest: boolean; byte_size: string | number; checksum: string; uploaded_by: string }>(
+      `SELECT id, is_latest, byte_size, checksum, uploaded_by FROM vehicle_documents
+       WHERE vehicle_id=$1 AND license_id=$2 AND document_type='hackney_ph_badge' ORDER BY uploaded_at, id`,
+      [id, licenseId]
+    );
+    assert.equal(history.rows.length, 2);
+    assert.equal(history.rows.find((item) => item.id === originalDocumentId)?.is_latest, false);
+    const current = history.rows.find((item) => item.is_latest);
+    assert.ok(current);
+    assert.equal(Number(current.byte_size), replacementBytes.length);
+    assert.equal(current.checksum, createHash("sha256").update(replacementBytes).digest("hex"));
+    assert.equal(current.uploaded_by, ADMIN_USER_ID);
+    const previousDownload = await fetch(`${baseUrl}/vehicles/documents/${originalDocumentId}?download=1`);
+    assert.equal(previousDownload.status, 200);
+    assert.deepEqual(Buffer.from(await previousDownload.arrayBuffer()), firstBadgeDocument);
+
     signIn(["driver"]);
     const denied = await fetch(`${baseUrl}/vehicles/documents/${documentId}`, { redirect: "manual" });
     assert.equal(denied.status, 403);
     const deniedUpload = await upload({ documentType: "insurance", expiresOn: "2099-01-01" }, pdf, "insurance.pdf");
     assert.equal(deniedUpload.status, 403);
-    const docs = await query<{ count: number }>("SELECT count(*)::int AS count FROM vehicle_documents WHERE vehicle_id = $1", [id]);
+    const docs = await query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM vehicle_documents WHERE vehicle_id = $1 AND document_type='insurance'",
+      [id]
+    );
     assert.equal(docs.rows[0].count, 1);
   });
 

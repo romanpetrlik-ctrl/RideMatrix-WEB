@@ -100,7 +100,7 @@ test("mutating vehicle routes reject missing or invalid CSRF tokens", async () =
   const address = server.address() as { port: number };
   const baseUrl = `http://127.0.0.1:${address.port}`;
   try {
-    for (const pathname of ["/vehicles/new", "/vehicles/v1/edit", "/vehicles/v1/driver"]) {
+    for (const pathname of ["/vehicles/new", "/vehicles/v1/edit", "/vehicles/v1/driver", "/vehicles/v1/licenses"]) {
       const missing = await fetch(`${baseUrl}${pathname}`, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -128,6 +128,33 @@ test("mutating vehicle routes reject missing or invalid CSRF tokens", async () =
       redirect: "manual"
     });
     assert.equal(upload.status, 403, "document upload should reject missing CSRF after authorization and rate limit");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("authorized vehicle document downloads are rate limited before document retrieval", async () => {
+  const app = express();
+  // A test-app limiter prevents CodeQL from treating this harness as an
+  // unprotected production route; the router also tests its own download limit.
+  app.use(standardTestHarnessRateLimit);
+  app.use(testHarnessRateLimit);
+  app.use(createCsrfProtection({ appTitle: "Test" }));
+  let rateLimitCalls = 0;
+  app.use(createVehiclesRouter({
+    appTitle: "Test",
+    loadSession: async () => session(true),
+    consumeDownloadRateLimit: async () => {
+      rateLimitCalls += 1;
+      return false;
+    }
+  }));
+  const server = app.listen(0);
+  const address = server.address() as { port: number };
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/vehicles/documents/doc-1`, { redirect: "manual" });
+    assert.equal(response.status, 429);
+    assert.equal(rateLimitCalls, 1);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

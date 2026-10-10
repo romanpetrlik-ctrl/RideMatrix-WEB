@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import test from "node:test";
 import ejs from "ejs";
@@ -6,6 +7,7 @@ import { BAGGAGE_CATEGORIES } from "../database/seed";
 import { resolveHelpContent } from "./help";
 import {
   consumeVehicleDocumentUploadRateLimit,
+  consumeVehicleDocumentDownloadRateLimit,
   consumeVehicleMutationRateLimit,
   createVehicleDocument,
   createVehicle,
@@ -207,30 +209,59 @@ test("vehicle edits preserve zero-valued legacy year and baggage capacity", asyn
   assert.ok(calls.some(({ sql, params }) => sql.includes("INSERT INTO vehicle_baggage_capacities") && params[2] === 0));
 });
 
-test("document replacement preserves history and only latest documents are returned", async () => {
-  const calls: string[] = [];
+test("document replacement preserves per-licence history, metadata, and the current marker", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const bytes = Buffer.from("%PDF-1.7");
   const client: any = {
-    async query(sql: string) {
-      calls.push(sql);
-      if (sql.includes("SELECT id, document_type")) {
-        return { rows: [{ id: "new-doc", document_type: "insurance", expires_on: "2099-02-15", mime_type: "application/pdf" }] };
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT d.id")) {
+        return { rows: [{ id: "new-doc", document_type: "hackney_ph_badge", expires_on: "2099-02-15", mime_type: "application/pdf", is_latest: true }] };
       }
       if (sql.includes("SELECT * FROM vehicle_documents")) {
         return { rows: [{ id: "new-doc", content: Buffer.from("ok") }] };
       }
-      return { rows: [] };
+      if (sql.includes("SELECT 1 FROM vehicle_licensing_authorities")) return { rows: [{ "?column?": 1 }] };
+      return { rows: [], rowCount: 1 };
     }
   };
   await createVehicleDocument({
-    vehicleId: "v1", documentType: "insurance", expiresOn: "2099-02-15",
-    originalFilename: "insurance.pdf", mimeType: "application/pdf", content: Buffer.from("%PDF-1.7")
+    vehicleId: "v1", licenseId: "license-1", documentType: "hackney_ph_badge", expiresOn: "2099-02-15",
+    originalFilename: "license.pdf", mimeType: "application/pdf", content: bytes, uploadedBy: "admin-1"
   }, client);
   await listVehicleDocuments("v1", client);
   await getVehicleDocument("new-doc", client);
-  assert.ok(calls.some((call) => call.includes("SET is_latest = FALSE")));
-  assert.ok(calls.some((call) => call.includes("is_latest)")));
-  assert.ok(calls.some((call) => call.includes("WHERE vehicle_id=$1 AND is_latest = TRUE")));
-  assert.ok(calls.some((call) => call.includes("WHERE id=$1 AND is_latest = TRUE")));
+  const supersede = calls.find(({ sql }) => sql.includes("SET is_latest = FALSE"));
+  assert.ok(supersede);
+  assert.match(supersede.sql, /license_id IS NOT DISTINCT FROM \$4/);
+  assert.equal(supersede.params[3], "license-1");
+  const insert = calls.find(({ sql }) => sql.includes("INSERT INTO vehicle_documents"));
+  assert.ok(insert);
+  assert.ok(insert.sql.includes("byte_size, checksum"));
+  assert.equal(insert.params[9], bytes.length);
+  assert.equal(insert.params[10], createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(insert.params[12], "admin-1");
+  assert.ok(calls.some(({ sql }) => sql.includes("WHERE d.vehicle_id=$1")));
+  assert.ok(calls.some(({ sql }) => sql.includes("WHERE id=$1")));
+});
+
+test("document metadata rejects empty content and remains scoped to the selected licence", async () => {
+  await assert.rejects(createVehicleDocument({
+    vehicleId: "v1", documentType: "insurance", expiresOn: "2099-01-01", content: Buffer.alloc(0)
+  }, { query: async () => ({ rows: [] }) } as any), /non-empty/);
+});
+
+test("vehicle document download rate limiting uses the shared atomic database counter", async () => {
+  let params: unknown[] = [];
+  const client: any = {
+    async query(_sql: string, values: unknown[]) {
+      params = values;
+      return { rows: [{ allowed: false }] };
+    }
+  };
+  assert.equal(await consumeVehicleDocumentDownloadRateLimit("vehicle-document-download:u1", client), false);
+  assert.equal(params[0], "vehicle-document-download:u1");
+  assert.equal(params[1], 120);
 });
 
 test("baggage seed catalogue keeps required keys, weights, and nullable dimensions", () => {

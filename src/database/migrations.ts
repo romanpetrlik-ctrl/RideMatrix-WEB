@@ -846,6 +846,63 @@ export const MIGRATIONS: Migration[] = [
         ))
       );
     `
+  },
+  {
+    id: "0012_vehicle_license_badges_and_document_metadata",
+    sql: `
+      ALTER TABLE vehicle_licensing_authorities
+        ADD COLUMN IF NOT EXISTS license_type TEXT,
+        ADD COLUMN IF NOT EXISTS vehicle_license_badge TEXT;
+      ALTER TABLE vehicle_licensing_authorities
+        DROP CONSTRAINT IF EXISTS vehicle_licensing_authorities_license_type_check;
+      ALTER TABLE vehicle_licensing_authorities
+        ADD CONSTRAINT vehicle_licensing_authorities_license_type_check
+          CHECK (license_type IS NULL OR license_type IN ('hackney_carriage', 'private_hire'));
+      ALTER TABLE vehicle_licensing_authorities
+        DROP CONSTRAINT IF EXISTS vehicle_licensing_authorities_badge_check;
+      ALTER TABLE vehicle_licensing_authorities
+        ADD CONSTRAINT vehicle_licensing_authorities_badge_check
+          CHECK (vehicle_license_badge IS NULL OR (
+            vehicle_license_badge = btrim(vehicle_license_badge)
+            AND char_length(vehicle_license_badge) BETWEEN 1 AND 64
+            AND vehicle_license_badge !~ '[[:cntrl:]]'
+          ));
+
+      ALTER TABLE vehicle_documents
+        ADD COLUMN IF NOT EXISTS license_id TEXT REFERENCES vehicle_licensing_authorities(id) ON DELETE RESTRICT,
+        ADD COLUMN IF NOT EXISTS byte_size BIGINT,
+        ADD COLUMN IF NOT EXISTS checksum TEXT;
+      UPDATE vehicle_documents
+        SET byte_size = octet_length(content)
+        WHERE byte_size IS NULL AND content IS NOT NULL;
+      ALTER TABLE vehicle_documents
+        DROP CONSTRAINT IF EXISTS vehicle_documents_byte_size_check;
+      ALTER TABLE vehicle_documents
+        ADD CONSTRAINT vehicle_documents_byte_size_check
+          CHECK (byte_size IS NULL OR byte_size >= 0);
+      ALTER TABLE vehicle_documents
+        DROP CONSTRAINT IF EXISTS vehicle_documents_checksum_check;
+      ALTER TABLE vehicle_documents
+        ADD CONSTRAINT vehicle_documents_checksum_check
+          CHECK (checksum IS NULL OR checksum ~ '^[0-9a-f]{64}$');
+
+      DROP INDEX IF EXISTS idx_vehicle_documents_latest_type;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicle_documents_latest_type_license
+        ON vehicle_documents(vehicle_id, document_type, COALESCE(license_id, ''))
+        WHERE is_latest = TRUE;
+
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS vehicle_license_type TEXT,
+        ADD COLUMN IF NOT EXISTS vehicle_license_badge TEXT;
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_vehicle_license_type_check;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT customer_bookings_vehicle_license_type_check
+          CHECK (vehicle_license_type IS NULL OR vehicle_license_type IN ('hackney_carriage', 'private_hire'));
+      ALTER TABLE booking_assignment_audit
+        ADD COLUMN IF NOT EXISTS vehicle_license_type TEXT,
+        ADD COLUMN IF NOT EXISTS vehicle_license_badge TEXT;
+    `
   }
 ];
 

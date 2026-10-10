@@ -39,6 +39,8 @@
                   <th scope="col">Pickup</th>
                   <th scope="col">Dropoff</th>
                   <th scope="col">Licensing authority</th>
+                  <th scope="col">Vehicle licence type</th>
+                  <th scope="col">Vehicle licence badge</th>
                   <th scope="col">Status</th>
                 </tr>
               </thead>
@@ -55,6 +57,8 @@
                     <td><%= booking.pickup %></td>
                     <td><%= booking.dropoff %></td>
                     <td><%= booking.licensingAuthorityName || "Unassigned / unresolved" %></td>
+                    <td><%= booking.vehicleLicenseType === "hackney_carriage" ? "Hackney Carriage" : booking.vehicleLicenseType === "private_hire" ? "Private Hire" : "—" %></td>
+                    <td><%= booking.vehicleLicenseBadge || "—" %></td>
                     <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
                   </tr>
                 <% }) %>
