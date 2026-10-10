@@ -13,6 +13,8 @@ import {
   getDocumentStatus,
   listVehicleClasses,
   listVehicleDocuments,
+  listVehicles,
+  normalizeVehicleStatusFilter,
   validateVehicleDocumentUpload,
   VEHICLE_DEFAULT_PER_PAGE
 } from "./vehicles";
@@ -226,4 +228,33 @@ test("document preview modal renders accessible Print, Download, and Close actio
   assert.match(rendered, />Download</);
   assert.match(rendered, />Close</);
   assert.match(rendered, /\/vehicles\/documents\/doc-1\?download=1/);
+});
+
+test("vehicle directory status filter only accepts known statuses and is passed as a bound parameter", async () => {
+  assert.equal(normalizeVehicleStatusFilter("active"), "active");
+  assert.equal(normalizeVehicleStatusFilter(" Maintenance "), "maintenance");
+  assert.equal(normalizeVehicleStatusFilter("' OR 1=1 --"), "");
+  assert.equal(normalizeVehicleStatusFilter(["active"]), "");
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      return sql.includes("count(*)") ? { rows: [{ count: "0" }] } : { rows: [] };
+    }
+  };
+  const result = await listVehicles({ search: "ab", status: "active", client });
+  assert.equal(result.status, "active");
+  assert.deepEqual(calls[0].params, ["ab", "active"]);
+  assert.deepEqual(calls[1].params.slice(0, 2), ["ab", "active"]);
+  assert.ok(calls.every((call) => call.sql.includes("v.status = $2")));
+  const unfiltered = await listVehicles({ status: "bogus", client });
+  assert.equal(unfiltered.status, "");
+  assert.equal(calls[2].params[1], "");
+});
+
+test("vehicle joins compare auth user ids as text so UUID users.id columns are supported", async () => {
+  const calls: string[] = [];
+  const client: any = { async query(sql: string) { calls.push(sql); return sql.includes("count(*)") ? { rows: [{ count: "0" }] } : { rows: [] }; } };
+  await listVehicles({ client });
+  assert.match(calls[1], /JOIN users u ON u\.id::text = a\.driver_id/);
 });

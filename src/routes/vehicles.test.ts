@@ -143,7 +143,7 @@ test("unauthenticated users cannot view/download vehicle documents or driver det
   const server = app.listen(0);
   const address = server.address() as { port: number };
   try {
-    for (const pathname of ["/vehicles/documents/doc-1", "/vehicles/v1/driver-details"]) {
+    for (const pathname of ["/vehicles/documents/doc-1", "/vehicles/v1/driver-details", "/vehicles", "/vehicles?status=active", "/vehicles/v1", "/vehicles/v1/driver-history"]) {
       const response = await fetch(`http://127.0.0.1:${address.port}${pathname}`, { redirect: "manual" });
       assert.equal(response.status, 302);
       assert.equal(response.headers.get("location"), "/access");

@@ -1,19 +1,29 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import ejs from "ejs";
 
 const vehiclePagination = fs.readFileSync("src/views/partials/vehicles-pagination.ejs", "utf8");
 const customerPagination = fs.readFileSync("src/views/partials/customers-pagination.ejs", "utf8");
 const css = fs.readFileSync("public/css/app.css", "utf8");
 
 test("vehicle pagination uses the shared link classes and preserves navigation parameters", () => {
-  assert.match(vehiclePagination, /<a class="pagination-bar__link" href="\/vehicles\?q=<%= encodeURIComponent\(search\) %>&page=<%= page - 1 %>">Previous<\/a>/);
-  assert.match(vehiclePagination, /<a class="pagination-bar__link<%= n === page \? ' pagination-bar__link--active' : '' %>" href="\/vehicles\?q=<%= encodeURIComponent\(search\) %>&page=<%= n %>" aria-current="<%= n === page \? 'page' : 'false' %>"><%= n %><\/a>/);
-  assert.match(vehiclePagination, /<a class="pagination-bar__link" href="\/vehicles\?q=<%= encodeURIComponent\(search\) %>&page=<%= page \+ 1 %>">Next<\/a>/);
+  assert.match(vehiclePagination, /<a class="pagination-bar__link" href="\/vehicles\?q=<%= encodeURIComponent\(search\) %><%= locals\.status \? `&status=\$\{encodeURIComponent\(status\)\}` : "" %>&page=<%= page - 1 %>">Previous<\/a>/);
+  assert.match(vehiclePagination, /<a class="pagination-bar__link<%= n === page \? ' pagination-bar__link--active' : '' %>" href="\/vehicles\?q=<%= encodeURIComponent\(search\) %><%= locals\.status \? `&status=\$\{encodeURIComponent\(status\)\}` : "" %>&page=<%= n %>" aria-current="<%= n === page \? 'page' : 'false' %>"><%= n %><\/a>/);
+  assert.match(vehiclePagination, /<a class="pagination-bar__link" href="\/vehicles\?q=<%= encodeURIComponent\(search\) %><%= locals\.status \? `&status=\$\{encodeURIComponent\(status\)\}` : "" %>&page=<%= page \+ 1 %>">Next<\/a>/);
   assert.doesNotMatch(vehiclePagination, /is-active/);
   assert.match(vehiclePagination, /if \(page > 1\)/);
   assert.match(vehiclePagination, /if \(page < totalPages\)/);
   assert.match(vehiclePagination, /aria-current="<%= n === page \? 'page' : 'false' %>"/);
+});
+
+test("vehicle pagination keeps the active status filter on every page link", () => {
+  const html = ejs.render(vehiclePagination, { page: 2, totalPages: 3, total: 40, startRecord: 16, endRecord: 30, search: "ab", status: "active" });
+  const hrefs = Array.from(html.matchAll(/href="([^"]+)"/g), (match) => match[1].replace(/&amp;/g, "&"));
+  assert.equal(hrefs.length, 5);
+  assert.ok(hrefs.every((href) => href.startsWith("/vehicles?q=ab&status=active&page=")));
+  const unfiltered = ejs.render(vehiclePagination, { page: 1, totalPages: 2, total: 20, startRecord: 1, endRecord: 15, search: "", status: "" });
+  assert.doesNotMatch(unfiltered, /status=/);
 });
 
 test("customer pagination uses the same active-state convention", () => {

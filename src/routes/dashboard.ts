@@ -66,7 +66,7 @@ export const operationalMenuRows: OperationalMenuRow[] = [
   {
     category: "Vehicles",
     actions: [
-      { label: "Active vehicles", href: "/dashboard?tile=vehicles-active" },
+      { label: "Active vehicles", href: "/vehicles?status=active" },
       { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },
       { label: "All vehicles", href: "/vehicles" },
       { label: "Settings", href: "/settings" }

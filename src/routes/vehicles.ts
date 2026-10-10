@@ -7,10 +7,11 @@ import { getSessionAccount, SessionAccount } from "../services/api";
 import { resolveHelpContent } from "../services/help";
 import { canManageStaff } from "../services/staff";
 import {
-  assignVehicleDriver, createVehicle, createVehicleDocument, getVehicleById, getVehicleDocument,
+  assignVehicleDriver, createVehicle, createVehicleDocument, getDocumentStatus, getVehicleById, getVehicleDocument,
   getVehicleDriverSummary, listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicles,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
-  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleInput
+  VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_STATUS_OPTIONS, VehicleDriverAssignmentError,
+  VehicleInput, VehicleNotFoundError, VehicleValidationError
 } from "../services/vehicles";
 
 type Options = {
@@ -36,6 +37,13 @@ function input(body: any): VehicleInput {
     wheelchairAccessible: body.wheelchairAccessible === "on",
     notes: text(body.notes) || null, baggageCapacities };
 }
+// Re-renders submitted values with the same shape the form uses for stored vehicles.
+function formVehicle(value: VehicleInput, id?: string) {
+  return { ...value, id, classes: (value.classKeys || []).map((key) => ({ key })),
+    capacities: Object.entries(value.baggageCapacities || {}).filter(([, quantity]) => quantity != null)
+      .map(([categoryKey, maxQuantity]) => ({ categoryKey, maxQuantity })) };
+}
+const SAFE_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 function safeDownloadName(document: any): string {
   const fallback = `${text(document.document_type) || "vehicle-document"}.pdf`;
   return (text(document.original_filename) || fallback).replace(/[^a-z0-9._ -]/gi, "_");
@@ -100,7 +108,7 @@ export function createVehiclesRouter(options: Options): Router {
     }
   }
   const renderForm = async (res: any, data: any, status = 200) => res.status(status).render("pages/vehicles/form", {
-    title: data.vehicle ? "Edit vehicle" : "New vehicle", appTitle: options.appTitle,
+    title: data.vehicle?.id ? "Edit vehicle" : "New vehicle", appTitle: options.appTitle,
     classes: await listVehicleClasses(), baggageCategories: await listBaggageCategories(),
     statuses: VEHICLE_STATUS_OPTIONS, fuelTypes: VEHICLE_FUEL_TYPES, helpFor: resolveHelpContent, ...data
   });
@@ -110,9 +118,10 @@ export function createVehiclesRouter(options: Options): Router {
     try {
       if (!(await guard(req, res))) return;
       const search = text(req.query.q), page = Number(req.query.page || 1), perPage = Number(req.query.perPage || VEHICLE_DEFAULT_PER_PAGE);
-      const result = await listVehicles({ search, page, perPage });
-      return res.render("pages/vehicles/index", { title: "Vehicles", appTitle: options.appTitle, email: res.locals.vehicleUser.email,
-        search, ...result, startRecord: result.total ? (result.page - 1) * result.perPage + 1 : 0,
+      const result = await listVehicles({ search, status: req.query.status, page, perPage });
+      return res.render("pages/vehicles/index", { title: result.status === "active" ? "Active vehicles" : "Vehicles", appTitle: options.appTitle,
+        email: res.locals.vehicleUser.email, search, statuses: VEHICLE_STATUS_OPTIONS, notice: text(req.query.notice), ...result,
+        startRecord: result.total ? (result.page - 1) * result.perPage + 1 : 0,
         endRecord: Math.min(result.total, result.page * result.perPage) });
     } catch (error) { return next(error); }
   });
@@ -122,8 +131,11 @@ export function createVehiclesRouter(options: Options): Router {
   router.post("/vehicles/new", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const value = input(req.body);
-      try { await createVehicle(value); return res.redirect("/vehicles?notice=created"); }
-      catch (error) { return renderForm(res, { vehicle: value, errors: [(error as Error).message] }, 400); }
+      try { const vehicle = await createVehicle(value); return res.redirect(`/vehicles/${encodeURIComponent(vehicle.id)}?notice=created`); }
+      catch (error) {
+        if (!(error instanceof VehicleValidationError)) throw error;
+        return renderForm(res, { vehicle: formVehicle(value), errors: [error.message] }, 400);
+      }
     } catch (error) { return next(error); }
   });
   router.get("/vehicles/:vehicleId/edit", async (req, res, next) => {
@@ -132,7 +144,15 @@ export function createVehiclesRouter(options: Options): Router {
   router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
     try {
       const vehicleId = text(req.params.vehicleId);
-      const value = input(req.body); await updateVehicle(vehicleId, value); return res.redirect(`/vehicles/${vehicleId}?notice=updated`);
+      const value = input(req.body);
+      try {
+        const vehicle = await updateVehicle(vehicleId, value);
+        if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+        return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=updated`);
+      } catch (error) {
+        if (!(error instanceof VehicleValidationError)) throw error;
+        return renderForm(res, { vehicle: formVehicle(value, vehicleId), errors: [error.message] }, 400);
+      }
     } catch (error) { return next(error); }
   });
   router.get("/vehicles/:vehicleId", async (req, res, next) => {
@@ -147,7 +167,18 @@ export function createVehiclesRouter(options: Options): Router {
     } catch (error) { return next(error); }
   });
   router.post("/vehicles/:vehicleId/driver", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
-    try { const vehicleId = text(req.params.vehicleId); await assignVehicleDriver(vehicleId, text(req.body.driverId)); return res.redirect(`/vehicles/${vehicleId}?notice=driver-updated`); } catch (error) { next(error); }
+    try {
+      const vehicleId = text(req.params.vehicleId);
+      try {
+        const outcome = await assignVehicleDriver(vehicleId, text(req.body.driverId));
+        const notice = outcome === "unchanged" ? "driver-unchanged" : outcome === "unassigned" ? "driver-unassigned" : "driver-updated";
+        return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=${notice}`);
+      } catch (error) {
+        if (error instanceof VehicleNotFoundError) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+        if (!(error instanceof VehicleDriverAssignmentError)) throw error;
+        return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=driver-invalid`);
+      }
+    } catch (error) { next(error); }
   });
   router.get("/vehicles/:vehicleId/driver-details", async (req, res, next) => {
     try {
@@ -173,7 +204,8 @@ export function createVehiclesRouter(options: Options): Router {
       if (!(await guard(req, res))) return;
       const vehicle = await getVehicleById(req.params.vehicleId);
       if (!vehicle) return res.sendStatus(404);
-      return res.render("pages/vehicles/operations", { title: "Driver assignment history", appTitle: options.appTitle, email: res.locals.vehicleUser.email, vehicle });
+      return res.render("pages/vehicles/operations", { title: "Driver assignment history", appTitle: options.appTitle, email: res.locals.vehicleUser.email, vehicle,
+        driverAssignments: await listVehicleDriverAssignments(vehicle.id) });
     } catch (error) { return next(error); }
   });
   // CodeQL may not identify the custom PostgreSQL-backed limiter below as a
@@ -183,12 +215,20 @@ export function createVehiclesRouter(options: Options): Router {
   router.post("/vehicles/:vehicleId/documents", requireAuthorizedVehicleManager, localDocumentUploadRateLimit, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
     try {
       const file = req.file;
-      if (!file || !text(req.body.documentType)) return res.redirect(`/vehicles/${req.params.vehicleId}?notice=document-required`);
-      validateVehicleDocumentUpload(file);
-      await createVehicleDocument({ vehicleId: text(req.params.vehicleId), documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
+      const vehicleId = text(req.params.vehicleId);
+      const vehicle = await getVehicleById(vehicleId);
+      if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const detailUrl = `/vehicles/${encodeURIComponent(vehicle.id)}`;
+      if (!file || !text(req.body.documentType)) return res.redirect(`${detailUrl}?notice=document-required`);
+      try { validateVehicleDocumentUpload(file); } catch { return res.redirect(`${detailUrl}?notice=document-invalid-file`); }
+      if (!(VEHICLE_DOCUMENT_TYPES as readonly string[]).includes(text(req.body.documentType))) return res.redirect(`${detailUrl}?notice=document-invalid-type`);
+      const expiresOn = text(req.body.expiresOn);
+      const expiryStatus = /^\d{4}-\d{2}-\d{2}$/.test(expiresOn) ? getDocumentStatus(expiresOn) : "Missing";
+      if (expiryStatus === "Missing" || expiryStatus === "Expired") return res.redirect(`${detailUrl}?notice=document-invalid-expiry`);
+      await createVehicleDocument({ vehicleId: vehicle.id, documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
         issuedOn: text(req.body.issuedOn), expiresOn: text(req.body.expiresOn), originalFilename: file.originalname, mimeType: file.mimetype,
         content: file.buffer, uploadedBy: res.locals.vehicleUser.id });
-      return res.redirect(`/vehicles/${req.params.vehicleId}?notice=document-added`);
+      return res.redirect(`${detailUrl}?notice=document-added`);
     } catch (error) { return next(error); }
   });
   router.get("/vehicles/documents/:documentId", async (req, res, next) => {
@@ -198,7 +238,8 @@ export function createVehiclesRouter(options: Options): Router {
       if (!document || !document.content) return res.sendStatus(404);
       const disposition = text(req.query.download) === "1" ? "attachment" : "inline";
       res.setHeader("Content-Disposition", `${disposition}; filename="${safeDownloadName(document)}"`);
-      res.type(document.mime_type || "application/octet-stream").send(document.content);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.type(SAFE_DOCUMENT_MIME_TYPES.has(text(document.mime_type)) ? text(document.mime_type) : "application/octet-stream").send(document.content);
     } catch (error) { next(error); }
   });
   return router;

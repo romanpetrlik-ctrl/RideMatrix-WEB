@@ -91,7 +91,7 @@ test("drivers and vehicles operational actions use existing destinations or dash
   const rows = new Map(operationalMenuRows.map((row) => [row.category, row.actions]));
   assert.deepEqual(rows.get("Drivers"), [{ label: "All drivers", href: "/dashboard?tile=drivers-all" }]);
   assert.deepEqual(rows.get("Vehicles"), [
-    { label: "Active vehicles", href: "/dashboard?tile=vehicles-active" },
+    { label: "Active vehicles", href: "/vehicles?status=active" },
     { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },
     { label: "All vehicles", href: "/vehicles" },
     { label: "Settings", href: "/settings" }
@@ -101,6 +101,16 @@ test("drivers and vehicles operational actions use existing destinations or dash
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "Live map").length, 1);
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "All vehicles").length, 1);
   assert.equal(rows.get("Vehicles")?.filter((action) => action.label === "Settings").length, 1);
+});
+
+test("vehicle directory actions open the real vehicle routes instead of dashboard placeholders", () => {
+  const vehicleActions = operationalMenuRows.find((row) => row.category === "Vehicles")?.actions || [];
+  for (const label of ["Active vehicles", "All vehicles"]) {
+    const href = vehicleActions.find((action) => action.label === label)?.href || "";
+    assert.match(href, /^\/vehicles(\?|$)/, `${label} should open the vehicle directory`);
+    assert.doesNotMatch(href, /\/dashboard/);
+  }
+  assert.equal(findSelectedOperationalAction("vehicles-active"), undefined);
 });
 
 test("operational dashboard links resolve to their selected-action notices", () => {
