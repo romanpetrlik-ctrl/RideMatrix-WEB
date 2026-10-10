@@ -119,6 +119,8 @@ function latestTimestamp(...values: Array<string | Date | null | undefined>): st
 const CANONICAL_AUDIT_TIMESTAMP_PATTERN =
   "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$";
 
+const CANONICAL_AUDIT_TIMESTAMP_REGEX = new RegExp(CANONICAL_AUDIT_TIMESTAMP_PATTERN);
+
 /**
  * SQL predicate matching `staff_login_audit` rows (alias `a`) that belong to
  * one user: by account id, or — only for events recorded without an account
@@ -266,7 +268,7 @@ export async function listStaffLoginAuditEvents(
 
   return result.rows.map((row) => ({
     id: row.id,
-    occurredAt: toIsoOrNull(row.occurred_at),
+    occurredAt: CANONICAL_AUDIT_TIMESTAMP_REGEX.test(row.occurred_at) ? toIsoOrNull(row.occurred_at) : null,
     eventName: row.event_name,
     success: Boolean(row.success),
     failureCategory: row.failure_category,
