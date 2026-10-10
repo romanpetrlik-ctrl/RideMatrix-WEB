@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import test, { after, before, beforeEach } from "node:test";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { initializeDatabase, query } from "../database/connection";
 import { createTestDatabaseContext, safeCleanupTestDatabase, TestDatabaseContext } from "../database/test-helper";
 import { createCsrfProtection } from "../middleware/csrf";
@@ -34,6 +35,7 @@ before(async () => {
   app.set("view engine", "ejs");
   app.set("views", `${process.cwd()}/src/views`);
   app.use(express.urlencoded({ extended: true }));
+  app.use(rateLimit({ windowMs: 60_000, limit: 1000 }));
   app.use(createCsrfProtection({ cookieSecure: false }));
   app.use(createSetupRouter({ appTitle: "RideMatrix Test", loadSession: async () => session }));
   app.use(createStaffRouter({ appTitle: "RideMatrix Test", loadSession: async () => session }));
