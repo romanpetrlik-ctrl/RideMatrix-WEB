@@ -19,15 +19,18 @@ import { createSystemStatusBarViewModelMiddleware } from "./middleware/system-st
 import { createLayoutContextMiddleware } from "./middleware/layout-context";
 import { createSetupGateMiddleware } from "./middleware/setup-gate";
 import { initializeDatabase } from "./database/connection";
+import { configureTrustedProxies } from "./config/trusted-proxies";
 
 dotenv.config();
 
 async function startServer() {
+  const app = express();
+  configureTrustedProxies(app, process.env.TRUSTED_PROXY_IPS);
+
   // Fail fast when the database cannot be opened or migrated, instead of
   // surfacing the problem on the first customer request.
   await initializeDatabase();
 
-  const app = express();
   const port = Number(process.env.PORT || 5080);
   const appTitle = process.env.APP_TITLE || "RideMatrix";
 
