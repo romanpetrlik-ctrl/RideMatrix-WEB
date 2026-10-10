@@ -14,6 +14,7 @@ test("staff desktop dialog supports double-click, keyboard, focus, and standalon
   }
   const root = process.cwd();
   const member = {
+    id: "selected", displayName: "Known colleague",
     email: "selected@example.com", status: "Active", roleLabels: ["Driver"],
     formattedCreatedAt: "1 Jan 2025", formattedLastLoginAt: "Never",
     auditHref: "/staff/selected/audit"
@@ -55,6 +56,11 @@ test("staff desktop dialog supports double-click, keyboard, focus, and standalon
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.route("https://**/*", (route) => route.abort());
     await page.goto(origin);
+    const identity = page.locator(".staff-table__identity");
+    assert.equal(await identity.locator(".staff-table__name").textContent(), member.displayName);
+    const nameBox = await identity.locator(".staff-table__name").boundingBox();
+    const emailBox = await identity.locator(".staff-table__email").boundingBox();
+    assert.ok(nameBox && emailBox && nameBox.y + nameBox.height <= emailBox.y, "email is beneath the name");
     const action = page.locator("[data-staff-details]");
     const dialog = page.locator("#staff-details-dialog");
     const close = page.getByRole("button", { name: "Close", exact: true });

@@ -50,7 +50,7 @@
             <table class="staff-table">
               <thead>
                 <tr>
-                  <th scope="col">Email</th>
+                  <th scope="col">Name / Email</th>
                   <th scope="col">Status</th>
                   <th scope="col">Roles</th>
                   <th scope="col" class="staff-table__cell--date">Created</th>
@@ -62,8 +62,12 @@
                 <% staff.forEach((member) => { %>
                   <tr data-staff-row>
                     <th scope="row" class="staff-table__identity">
-                      <span class="staff-table__avatar" aria-hidden="true"><%= member.email.charAt(0).toUpperCase() %></span>
-                      <a class="staff-table__email staff-table__email-link" href="<%= member.auditHref %>" aria-describedby="staff-login-history-hint"><%= member.email %></a>
+                      <% const displayName = member.displayName && member.displayName.trim(); %>
+                      <span class="staff-table__avatar" aria-hidden="true"><%= displayName ? displayName.charAt(0).toUpperCase() : "?" %></span>
+                      <span class="staff-table__identity-text">
+                        <strong class="staff-table__name"><%= displayName || "Name not provided" %></strong>
+                        <a class="staff-table__email staff-table__email-link" href="<%= member.auditHref %>" aria-describedby="staff-login-history-hint"><%= member.email %></a>
+                      </span>
                     </th>
                     <td data-label="Status">
                       <% if (member.status) { %>
@@ -87,6 +91,7 @@
                     <td data-label="Last login" class="staff-table__cell--date"><%= member.formattedLastLoginAt %></td>
                     <td data-label="Details">
                       <a class="staff-button" href="<%= member.auditHref %>" data-staff-details aria-describedby="staff-details-hint">View details</a>
+                      <a class="staff-button" href="/staff/<%= encodeURIComponent(member.id) %>/profile">Edit name</a>
                     </td>
                   </tr>
                 <% }) %>

@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
+import { isValidStaffAccountId, normalizeStaffDisplayName, STAFF_MANAGEMENT_ROLES } from "./staff";
 
 /**
  * Internal staff-user administration on top of the existing authentication
@@ -376,6 +377,7 @@ export async function findUserByEmail(
 
 export type CreateStaffUserInput = {
   email: string;
+  displayName?: string | null;
   roles: string[];
   actor: StaffUserActor;
 };
@@ -388,6 +390,7 @@ export type CreateStaffUserInput = {
  */
 export async function createStaffUser(input: CreateStaffUserInput): Promise<CreatedStaffUser> {
   const email = normalizeUserEmail(input.email);
+  const displayName = normalizeStaffDisplayName(input.displayName);
 
   if (!isValidUserEmail(email)) {
     throw new Error("A valid email address is required.");
@@ -451,6 +454,14 @@ export async function createStaffUser(input: CreateStaffUserInput): Promise<Crea
         );
       }
 
+      if (displayName) {
+        await query(
+          `INSERT INTO staff_profiles (account_id, display_name) VALUES ($1, $2)`,
+          [String(user.id), displayName],
+          client
+        );
+      }
+
       return {
         id: user.id,
         email: user.email,
@@ -465,4 +476,31 @@ export async function createStaffUser(input: CreateStaffUserInput): Promise<Crea
 
     throw error;
   }
+}
+
+export async function updateStaffDisplayName(
+  accountId: string,
+  value: unknown,
+  actor: StaffUserActor,
+  runner?: Queryable
+): Promise<boolean> {
+  if (!canManageStaffUsers(actor)) {
+    throw new Error("Staff-user management rights are required.");
+  }
+  if (!isValidStaffAccountId(accountId)) return false;
+  const displayName = normalizeStaffDisplayName(value);
+  const result = await query(
+    `INSERT INTO staff_profiles (account_id, display_name)
+     SELECT u.id::text, $2
+     FROM users u
+     WHERE u.id::text = $1 AND EXISTS (
+       SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = u.id AND r.key = ANY($3::text[])
+     )
+     ON CONFLICT (account_id) DO UPDATE SET display_name = EXCLUDED.display_name
+     RETURNING account_id`,
+    [accountId, displayName, [...STAFF_MANAGEMENT_ROLES]],
+    runner
+  );
+  return result.rows.length > 0;
 }

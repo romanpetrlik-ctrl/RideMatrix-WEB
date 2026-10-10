@@ -7,8 +7,10 @@ import {
   createStaffUser,
   describeUserStatusColumn,
   resolveInvitedUserStatus,
-  selectInvitedStatusLabel
+  selectInvitedStatusLabel,
+  updateStaffDisplayName
 } from "./staff-users";
+import { getStaffUser, listStaffUsers } from "./staff";
 
 const ACTOR: StaffUserActor = {
   email: "admin@ridematrix.com",
@@ -94,6 +96,7 @@ describe("createStaffUser against a production-shaped user_status enum", () => {
   test("an invitation is created with the enum's invited status", async () => {
     const created = await createStaffUser({
       email: "Enum.Invite@Example.com",
+      displayName: "Known colleague",
       roles: ["staff"],
       actor: ACTOR
     });
@@ -102,6 +105,7 @@ describe("createStaffUser against a production-shaped user_status enum", () => {
     assert.equal(created.status, "invited");
     assert.deepEqual(created.roles, ["staff"]);
     assert.equal(await statusOf("enum.invite@example.com"), "invited");
+    assert.equal((await getStaffUser(created.id))?.displayName, "Known colleague");
   });
 });
 
@@ -156,6 +160,43 @@ describe("createStaffUser against a text status column", () => {
     });
 
     assert.equal(created.status, "Pending");
+    assert.equal((await getStaffUser(created.id))?.displayName, null);
+  });
+
+  test("names are stored separately, updated and cleared without changing auth accounts", async () => {
+    const created = await createStaffUser({
+      email: "named.staff@example.com", displayName: "  Žaneta O’Neill  ", roles: ["staff"], actor: ACTOR
+    });
+    assert.equal((await getStaffUser(created.id))?.displayName, "Žaneta O’Neill");
+    assert.equal(await updateStaffDisplayName(created.id, "  Operations team  ", ACTOR), true);
+    assert.equal((await getStaffUser(created.id))?.displayName, "Operations team");
+    const listed = await listStaffUsers();
+    assert.equal(listed.find((member) => member.id === created.id)?.displayName, "Operations team");
+    assert.deepEqual(listed.map((member) => member.email), listed.map((member) => member.email).sort());
+    assert.equal(await updateStaffDisplayName(created.id, "   ", ACTOR), true);
+    assert.equal((await getStaffUser(created.id))?.displayName, null);
+    assert.equal(await statusOf(created.email), "Pending");
+    assert.deepEqual((await getStaffUser(created.id))?.roles, ["staff"]);
+    const columns = await query(`SELECT column_name FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'display_name'`);
+    assert.equal(columns.rows.length, 0, "external auth schema remains unchanged");
+  });
+
+  test("profile changes require management rights and an existing internal staff account", async () => {
+    await assert.rejects(updateStaffDisplayName("a0000000-0000-0000-0000-000000000002", "Name", {
+      email: "driver@example.com", roles: ["driver"], permissions: []
+    }));
+    for (const id of ["invalid'input", "ffffffff-0000-0000-0000-000000000000", "a0000000-0000-0000-0000-000000000002"]) {
+      assert.equal(await updateStaffDisplayName(id, "Name", ACTOR), false);
+    }
+  });
+
+  test("invalid display names cannot create an account", async () => {
+    await assert.rejects(createStaffUser({
+      email: "invalid.name@example.com", displayName: "X".repeat(101), roles: ["staff"], actor: ACTOR
+    }));
+    const result = await query(`SELECT id FROM users WHERE email = $1`, ["invalid.name@example.com"]);
+    assert.equal(result.rows.length, 0);
   });
 
   test("an unknown role leaves neither a user nor role assignments behind", async () => {

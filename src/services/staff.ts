@@ -34,6 +34,7 @@ const LAST_LOGIN_COLUMN_CANDIDATES = [
 export type StaffRecord = {
   id: string;
   email: string;
+  displayName: string | null;
   status: string | null;
   roles: string[];
   createdAt: string | null;
@@ -82,6 +83,18 @@ const STAFF_ACCOUNT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function isValidStaffAccountId(value: unknown): value is string {
   return typeof value === "string" && STAFF_ACCOUNT_ID_PATTERN.test(value);
+}
+
+export function normalizeStaffDisplayName(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) {
+    throw new Error("Enter a display name without control characters.");
+  }
+  const name = value.trim();
+  if (name.length > 100) {
+    throw new Error("Display name must be 100 characters or fewer.");
+  }
+  return name || null;
 }
 
 function toIsoOrNull(value: string | Date | null | undefined): string | null {
@@ -154,6 +167,7 @@ async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<S
   const result = await runner.query<{
     id: string;
     email: string;
+    display_name: string | null;
     status: string | null;
     created_at: string | Date | null;
     last_login_at: string | Date | null;
@@ -163,6 +177,7 @@ async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<S
     `SELECT
        u.id,
        u.email,
+       p.display_name,
        u.status,
        u.created_at,
        ${lastLoginSelect} AS last_login_at,
@@ -176,6 +191,7 @@ async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<S
        ) AS audit_last_login_at,
        array_agg(DISTINCT r.key ORDER BY r.key) AS roles
      FROM users u
+     LEFT JOIN staff_profiles p ON p.account_id = u.id::text
      JOIN user_roles ur ON ur.user_id = u.id
      JOIN roles r ON r.id = ur.role_id
      WHERE u.id IN (
@@ -185,7 +201,7 @@ async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<S
        WHERE r2.key = ANY($1)
      )
      ${accountFilter}
-     GROUP BY u.id
+     GROUP BY u.id, p.display_name
      ORDER BY lower(u.email) ASC`,
     params
   );
@@ -193,6 +209,7 @@ async function queryStaffUsers(runner: Queryable, accountId?: string): Promise<S
   return result.rows.map((row) => ({
     id: String(row.id),
     email: row.email,
+    displayName: row.display_name?.trim() || null,
     status: row.status,
     roles: row.roles,
     createdAt: toIsoOrNull(row.created_at),

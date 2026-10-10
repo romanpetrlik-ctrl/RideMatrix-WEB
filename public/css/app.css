@@ -2620,6 +2620,16 @@ button:visited,
   color: var(--staff-navy);
 }
 
+.staff-page .staff-table__identity-text {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.staff-page .staff-table__name {
+  overflow-wrap: anywhere;
+}
+
 .staff-table__muted {
   color: var(--staff-text-soft);
 }
