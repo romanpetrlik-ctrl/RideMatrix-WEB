@@ -108,7 +108,6 @@ export async function createLicensingAuthority(
 }
 
 const LICENSE_TABLES = {
-  operator: ["operator_licensing_authorities", "operator_id"],
   driver: ["driver_licensing_authorities", "driver_id"],
   vehicle: ["vehicle_licensing_authorities", "vehicle_id"]
 } as const;
@@ -265,135 +264,331 @@ export async function revokeLicense(
   );
 }
 
-async function activeLicenseIds(
-  table: "operator_licensing_authorities" | "driver_licensing_authorities" | "vehicle_licensing_authorities",
-  column: string,
-  entityId: string,
-  atTime: string,
-  client: Queryable,
-  vehicleLicenseType?: VehicleLicenseType
-): Promise<Map<string, string | null>> {
-  const result = await client.query(
-    `SELECT l.licensing_authority_id, l.license_reference
-       FROM ${table} l
-       JOIN licensing_authorities a ON a.id = l.licensing_authority_id
-      WHERE l.${column} = $1 AND a.active = TRUE AND l.active = TRUE
-        AND l.revoked_at IS NULL AND l.valid_from <= $2
-        AND (l.valid_until IS NULL OR l.valid_until > $2)
-        ${table === "vehicle_licensing_authorities" && vehicleLicenseType ? "AND l.license_type = $3" : ""}
-      ORDER BY l.valid_from DESC, l.id`,
-    table === "vehicle_licensing_authorities" && vehicleLicenseType
-      ? [entityId, atTime, vehicleLicenseType]
-      : [entityId, atTime]
-  );
-  const licenses = new Map<string, string | null>();
-  for (const row of result.rows as any[]) {
-    if (!licenses.has(row.licensing_authority_id)) {
-      licenses.set(row.licensing_authority_id, row.license_reference ?? null);
-    }
+export type BookingAssignmentPage = {
+  booking: {
+    id: string;
+    customerId: string;
+    customerName: string;
+    reference: string;
+    serviceDate: string;
+    pickup: string;
+    dropoff: string;
+    status: string;
+    driverId: string | null;
+    driverEmail: string | null;
+    vehicleId: string | null;
+    vehicleRegistration: string | null;
+    licensingAuthorityId: string | null;
+    licensingAuthorityName: string | null;
+    vehicleLicenseType: VehicleLicenseType | null;
+    vehicleLicenseBadge: string | null;
+  };
+  drivers: Array<{ id: string; email: string }>;
+  vehicleLicenses: Array<{
+    id: string;
+    vehicleId: string;
+    registration: string;
+    licensingAuthorityId: string;
+    licensingAuthorityName: string;
+    licenseType: VehicleLicenseType;
+    vehicleLicenseBadge: string | null;
+  }>;
+  commonAuthorities: LicensingAuthority[];
+  auditHistory: Array<{
+    action: string;
+    assignedAt: string;
+    licensingAuthorityName: string | null;
+    vehicleLicenseType: VehicleLicenseType | null;
+    vehicleLicenseBadge: string | null;
+  }>;
+};
+
+export class BookingAssignmentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BookingAssignmentError";
   }
-  return licenses;
 }
 
-export async function resolveCompatibleLicensingAuthorities(
-  operatorId: string,
-  driverId: string,
-  vehicleId: string,
-  atTime: Date | string = new Date(),
-  client?: Queryable,
-  vehicleLicenseType?: VehicleLicenseType
-): Promise<CompatibleAuthority[]> {
+function serviceDate(value: string): string {
+  const day = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(day) ? new Date(`${day}T00:00:00Z`) : null;
+  if (!date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== day) {
+    throw new BookingAssignmentError("Booking service date is invalid.");
+  }
+  return day;
+}
+
+const OPERATOR_ASSIGNMENT_LICENCES = `
+  SELECT ol.id, ol.licence_number, ol.licensing_authority_id
+    FROM system_setup_state s
+    JOIN operators o ON o.id = s.operator_id
+    JOIN operator_licences ol ON ol.operator_id = o.id
+    JOIN licensing_authorities a ON a.id = ol.licensing_authority_id AND a.active = TRUE
+   WHERE s.setup_key = 'initial_system_setup' AND s.status = 'completed'
+     AND ol.licence_type = 'pho' AND ol.status = 'active'
+     AND ol.valid_from <= $1::date AND (ol.valid_to IS NULL OR ol.valid_to > $1::date)
+     AND EXISTS (
+       SELECT 1 FROM operator_licence_documents d
+        WHERE d.licence_id = ol.id AND d.is_latest = TRUE
+          AND d.content IS NOT NULL
+     )`;
+
+export async function getBookingAssignmentPage(
+  bookingId: string,
+  customerId: string,
+  selection: { driverId?: string; vehicleLicenseId?: string; vehicleLicenseType?: VehicleLicenseType } = {},
+  client?: Queryable
+): Promise<BookingAssignmentPage | null> {
   const runner = db(client);
-  const instant = new Date(atTime).toISOString();
-  const operator = await activeLicenseIds("operator_licensing_authorities", "operator_id", operatorId, instant, runner);
-  const driver = await activeLicenseIds("driver_licensing_authorities", "driver_id", driverId, instant, runner);
-  const vehicle = await activeLicenseIds(
-    "vehicle_licensing_authorities", "vehicle_id", vehicleId, instant, runner, vehicleLicenseType
+  const result = await runner.query<any>(
+    `SELECT b.id, b.customer_id, c.given_name, c.surname, b.reference, b.service_date,
+            b.pickup, b.dropoff, b.status, b.driver_id, du.email AS driver_email,
+            b.vehicle_id, v.registration, b.licensing_authority_id, a.name AS authority_name,
+            b.vehicle_license_type, b.vehicle_license_badge
+       FROM customer_bookings b
+       JOIN customers c ON c.id = b.customer_id
+       LEFT JOIN users du ON du.id::text = b.driver_id
+       LEFT JOIN vehicles v ON v.id = b.vehicle_id
+       LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
+      WHERE b.id = $1 AND b.customer_id = $2`,
+    [bookingId, customerId]
   );
-  const ids = [...operator.keys()].filter((id) => driver.has(id) && vehicle.has(id));
-  if (!ids.length) return [];
-  const result = await runner.query(
-    `SELECT id, name, authority_type, active, preference_order
-       FROM licensing_authorities WHERE id = ANY($1::text[]) AND active = TRUE`,
-    [ids]
+  const row = result.rows[0];
+  if (!row) return null;
+  const date = serviceDate(row.service_date);
+  const operators = await runner.query<{ id: string; licensing_authority_id: string }>(
+    OPERATOR_ASSIGNMENT_LICENCES, [date]
   );
-  return result.rows.map((row: any) => ({
-    ...authorityFromRow(row),
-    operatorLicenseReference: operator.get(row.id) ?? null,
-    driverLicenseReference: driver.get(row.id) ?? null,
-    vehicleLicenseReference: vehicle.get(row.id) ?? null
-  })).sort((a: CompatibleAuthority, b: CompatibleAuthority) =>
-    a.preferenceOrder - b.preferenceOrder || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+  const authorityIds = [...new Set(operators.rows.map((licence) => licence.licensing_authority_id))];
+
+  let drivers: BookingAssignmentPage["drivers"] = [];
+  let vehicleLicenses: BookingAssignmentPage["vehicleLicenses"] = [];
+  if (authorityIds.length) {
+    const driverResult = await runner.query<{ id: string; email: string }>(
+      `SELECT DISTINCT u.id::text AS id, u.email
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id AND r.key = 'driver'
+         JOIN driver_licensing_authorities dl ON dl.driver_id = u.id::text
+        WHERE lower(u.status::text) = 'active' AND dl.licensing_authority_id = ANY($1::text[])
+          AND dl.active = TRUE AND dl.revoked_at IS NULL
+          AND dl.valid_from <= $2 AND (dl.valid_until IS NULL OR dl.valid_until > $2)
+        ORDER BY email, id`,
+      [authorityIds, date]
+    );
+    drivers = driverResult.rows;
+    const vehicleResult = await runner.query<any>(
+      `SELECT vl.id, v.id AS vehicle_id, v.registration, vl.licensing_authority_id,
+              a.name AS authority_name, vl.license_type, vl.vehicle_license_badge
+         FROM vehicles v
+         JOIN vehicle_licensing_authorities vl ON vl.vehicle_id = v.id
+         JOIN licensing_authorities a ON a.id = vl.licensing_authority_id AND a.active = TRUE
+        WHERE v.status = 'active' AND vl.licensing_authority_id = ANY($1::text[])
+          AND vl.active = TRUE AND vl.revoked_at IS NULL
+          AND vl.license_type = ANY($3::text[])
+          AND vl.valid_from <= $2 AND (vl.valid_until IS NULL OR vl.valid_until > $2)
+        ORDER BY v.registration, a.preference_order, a.name, vl.license_type, vl.id`,
+      [authorityIds, date, VEHICLE_LICENSE_TYPES]
+    );
+    vehicleLicenses = vehicleResult.rows.map((license: any) => ({
+      id: license.id,
+      vehicleId: license.vehicle_id,
+      registration: license.registration,
+      licensingAuthorityId: license.licensing_authority_id,
+      licensingAuthorityName: license.authority_name,
+      licenseType: license.license_type,
+      vehicleLicenseBadge: license.vehicle_license_badge ?? null
+    }));
+  }
+
+  let commonAuthorities: LicensingAuthority[] = [];
+  if (selection.driverId && selection.vehicleLicenseId && selection.vehicleLicenseType
+    && VEHICLE_LICENSE_TYPES.includes(selection.vehicleLicenseType)) {
+    const common = await runner.query<any>(
+      `SELECT DISTINCT a.id, a.name, a.authority_type, a.active, a.preference_order
+         FROM licensing_authorities a
+         JOIN operator_licences ol ON ol.licensing_authority_id = a.id
+         JOIN system_setup_state s ON s.operator_id = ol.operator_id
+         JOIN operators o ON o.id = s.operator_id
+         JOIN driver_licensing_authorities dl
+           ON dl.licensing_authority_id = a.id AND dl.driver_id = $2
+         JOIN vehicle_licensing_authorities vl
+           ON vl.licensing_authority_id = a.id AND vl.id = $3
+         JOIN vehicles v ON v.id = vl.vehicle_id AND v.status = 'active'
+        WHERE a.active = TRUE AND s.setup_key = 'initial_system_setup' AND s.status = 'completed'
+          AND ol.licence_type = 'pho' AND ol.status = 'active'
+          AND ol.valid_from <= $1::date AND (ol.valid_to IS NULL OR ol.valid_to > $1::date)
+          AND EXISTS (SELECT 1 FROM operator_licence_documents d
+            WHERE d.licence_id = ol.id AND d.is_latest = TRUE
+              AND d.content IS NOT NULL)
+          AND lower((SELECT u.status::text FROM users u WHERE u.id::text = dl.driver_id)) = 'active'
+          AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id::text = dl.driver_id AND r.key = 'driver')
+          AND dl.active = TRUE AND dl.revoked_at IS NULL
+          AND dl.valid_from <= $1::text AND (dl.valid_until IS NULL OR dl.valid_until > $1::text)
+          AND vl.license_type = $4 AND vl.active = TRUE AND vl.revoked_at IS NULL
+          AND vl.valid_from <= $1::text AND (vl.valid_until IS NULL OR vl.valid_until > $1::text)
+        ORDER BY a.preference_order, a.name, a.id`,
+      [date, selection.driverId, selection.vehicleLicenseId, selection.vehicleLicenseType]
+    );
+    commonAuthorities = common.rows.map(authorityFromRow);
+  }
+  const audit = await runner.query<any>(
+    `SELECT aa.action, aa.assigned_at, a.name AS authority_name,
+            aa.vehicle_license_type, aa.vehicle_license_badge
+       FROM booking_assignment_audit aa
+       LEFT JOIN licensing_authorities a ON a.id = aa.licensing_authority_id
+      WHERE aa.booking_id = $1
+      ORDER BY aa.assigned_at, aa.id`,
+    [bookingId]
   );
+
+  return {
+    booking: {
+      id: row.id,
+      customerId: row.customer_id,
+      customerName: `${row.given_name} ${row.surname}`,
+      reference: row.reference,
+      serviceDate: date,
+      pickup: row.pickup,
+      dropoff: row.dropoff,
+      status: row.status,
+      driverId: row.driver_id ?? null,
+      driverEmail: row.driver_email ?? null,
+      vehicleId: row.vehicle_id ?? null,
+      vehicleRegistration: row.registration ?? null,
+      licensingAuthorityId: row.licensing_authority_id ?? null,
+      licensingAuthorityName: row.authority_name ?? null,
+      vehicleLicenseType: row.vehicle_license_type ?? null,
+      vehicleLicenseBadge: row.vehicle_license_badge ?? null
+    },
+    drivers,
+    vehicleLicenses,
+    commonAuthorities,
+    auditHistory: audit.rows.map((entry: any) => ({
+      action: entry.action,
+      assignedAt: entry.assigned_at,
+      licensingAuthorityName: entry.authority_name ?? null,
+      vehicleLicenseType: entry.vehicle_license_type ?? null,
+      vehicleLicenseBadge: entry.vehicle_license_badge ?? null
+    }))
+  };
 }
 
 export async function assignBookingWithLicensing(input: {
   bookingId: string;
-  operatorId: string;
   driverId: string;
-  vehicleId: string;
-  vehicleLicenseType?: VehicleLicenseType | null;
-  atTime?: Date | string;
-  actorId?: string | null;
+  vehicleLicenseId: string;
+  licensingAuthorityId: string;
+  vehicleLicenseType: VehicleLicenseType;
+  actorId: string;
   source?: string;
   reason?: string | null;
 }, client?: Queryable): Promise<CompatibleAuthority> {
-  if (input.vehicleLicenseType && !VEHICLE_LICENSE_TYPES.includes(input.vehicleLicenseType)) {
-    throw new Error("Select a valid vehicle licence type.");
+  if (!VEHICLE_LICENSE_TYPES.includes(input.vehicleLicenseType)) {
+    throw new BookingAssignmentError("Select a valid vehicle licence type.");
   }
+  if (!input.licensingAuthorityId.trim()) throw new BookingAssignmentError("Select a common licensing authority.");
+  if (!input.actorId.trim()) throw new BookingAssignmentError("Authenticated actor is required for assignment.");
   const work = async (runner: Queryable) => {
     const booking = await runner.query<{ service_date: string }>(
       "SELECT service_date FROM customer_bookings WHERE id = $1 FOR UPDATE",
       [input.bookingId]
     );
-    if (!booking.rows[0]) throw new Error("Booking was not found.");
-    const vehicle = await runner.query<{ status: string }>(
-      "SELECT status FROM vehicles WHERE id = $1",
-      [input.vehicleId]
+    if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
+    const date = serviceDate(booking.rows[0].service_date);
+    const setup = await runner.query<{ operator_id: string }>(
+      `SELECT operator_id FROM system_setup_state
+        WHERE setup_key = 'initial_system_setup' AND status = 'completed'
+        FOR SHARE`,
+      []
     );
-    if (!vehicle.rows[0] || vehicle.rows[0].status !== "active") {
-      throw new Error("Vehicle is not operationally available for assignment.");
+    const operatorId = setup.rows[0]?.operator_id;
+    if (!operatorId) throw new BookingAssignmentError("The configured operator setup is not complete.");
+
+    const operator = await runner.query<{ id: string; licence_number: string | null }>(
+      `${OPERATOR_ASSIGNMENT_LICENCES}
+         AND ol.operator_id = $2 AND ol.licensing_authority_id = $3
+       ORDER BY ol.valid_from DESC, ol.id
+       LIMIT 1 FOR SHARE OF ol`,
+      [date, operatorId, input.licensingAuthorityId]
+    );
+    if (!operator.rows[0]) {
+      throw new BookingAssignmentError("The configured operator has no active, documented licence from that authority on the service date.");
     }
-    const authorities = await resolveCompatibleLicensingAuthorities(
-      input.operatorId, input.driverId, input.vehicleId, input.atTime || booking.rows[0].service_date,
-      runner, input.vehicleLicenseType || undefined
+    const driver = await runner.query(
+      `SELECT u.id
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id AND r.key = 'driver'
+        WHERE u.id::text = $1 AND lower(u.status::text) = 'active'
+        FOR SHARE OF u`,
+      [input.driverId]
     );
-    const selected = selectDeterministicAuthority(authorities);
-    if (!selected) throw new Error("No common active licensing authority for operator, driver, and vehicle.");
+    if (!driver.rows[0]) throw new BookingAssignmentError("Select an active driver account.");
+    const driverLicense = await runner.query(
+      `SELECT id FROM driver_licensing_authorities
+        WHERE driver_id = $1 AND licensing_authority_id = $2
+          AND active = TRUE AND revoked_at IS NULL
+          AND valid_from <= $3 AND (valid_until IS NULL OR valid_until > $3)
+        ORDER BY valid_from DESC, id LIMIT 1 FOR SHARE`,
+      [input.driverId, input.licensingAuthorityId, date]
+    );
+    if (!driverLicense.rows[0]) {
+      throw new BookingAssignmentError("The selected driver has no active licence from the selected authority on the service date.");
+    }
+    const vehicleLicense = await runner.query<{
+      vehicle_id: string;
+      vehicle_license_badge: string | null;
+      registration: string;
+      authority_name: string;
+    }>(
+      `SELECT vl.vehicle_id, vl.vehicle_license_badge, v.registration, a.name AS authority_name
+         FROM vehicle_licensing_authorities vl
+         JOIN vehicles v ON v.id = vl.vehicle_id AND v.status = 'active'
+         JOIN licensing_authorities a ON a.id = vl.licensing_authority_id AND a.active = TRUE
+        WHERE vl.id = $1 AND vl.licensing_authority_id = $2 AND vl.license_type = $3
+          AND vl.active = TRUE AND vl.revoked_at IS NULL
+          AND vl.valid_from <= $4 AND (vl.valid_until IS NULL OR vl.valid_until > $4)
+        FOR SHARE OF vl, v, a`,
+      [input.vehicleLicenseId, input.licensingAuthorityId, input.vehicleLicenseType, date]
+    );
+    if (!vehicleLicense.rows[0]) {
+      throw new BookingAssignmentError("The selected vehicle licence is inactive, invalid on the service date, or does not match the chosen authority and type.");
+    }
+    const selected = {
+      id: input.licensingAuthorityId,
+      name: vehicleLicense.rows[0].authority_name,
+      authorityType: null,
+      active: true,
+      preferenceOrder: 0,
+      operatorLicenseReference: operator.rows[0].licence_number,
+      driverLicenseReference: null,
+      vehicleLicenseReference: null
+    };
     const assignedAt = new Date().toISOString();
-    let vehicleLicenseBadge: string | null = null;
-    if (input.vehicleLicenseType) {
-      const license = await runner.query<{ vehicle_license_badge: string | null }>(
-        `SELECT vehicle_license_badge
-           FROM vehicle_licensing_authorities
-          WHERE vehicle_id=$1 AND licensing_authority_id=$2 AND license_type=$3
-            AND active=TRUE AND revoked_at IS NULL
-            AND valid_from <= $4 AND (valid_until IS NULL OR valid_until > $4)
-          ORDER BY valid_from DESC, id
-          LIMIT 1`,
-        [input.vehicleId, selected.id, input.vehicleLicenseType, input.atTime || booking.rows[0].service_date]
-      );
-      vehicleLicenseBadge = license.rows[0]?.vehicle_license_badge ?? null;
-    }
+    const vehicleId = vehicleLicense.rows[0].vehicle_id;
+    const vehicleLicenseBadge = vehicleLicense.rows[0].vehicle_license_badge ?? null;
     await runner.query(
       `UPDATE customer_bookings
           SET operator_id = $2, driver_id = $3, vehicle_id = $4, licensing_authority_id = $5,
-              vehicle_license_type = $10, vehicle_license_badge = $11,
+              vehicle_license_type = $6, vehicle_license_badge = $7,
               assignment_status = 'assigned', assignment_review_required = FALSE,
-              assigned_at = $6, assigned_by = $7, assignment_source = $8, assignment_reason = $9
+              assigned_at = $8, assigned_by = $9, assignment_source = $10, assignment_reason = $11
         WHERE id = $1`,
-      [input.bookingId, input.operatorId, input.driverId, input.vehicleId, selected.id, assignedAt,
-        input.actorId || null, input.source || "dispatch", input.reason || null,
-        input.vehicleLicenseType || null, vehicleLicenseBadge]
+      [input.bookingId, operatorId, input.driverId, vehicleId, selected.id,
+        input.vehicleLicenseType, vehicleLicenseBadge, assignedAt, input.actorId,
+        input.source || "dispatch", input.reason || null]
     );
     await runner.query(
       `INSERT INTO booking_assignment_audit
         (id, booking_id, operator_id, driver_id, vehicle_id, licensing_authority_id,
          assigned_at, actor_id, source, action, reason, vehicle_license_type, vehicle_license_badge)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'assigned', $10, $11, $12)`,
-      [randomUUID(), input.bookingId, input.operatorId, input.driverId, input.vehicleId,
-        selected.id, assignedAt, input.actorId || null, input.source || "dispatch", input.reason || null,
-        input.vehicleLicenseType || null, vehicleLicenseBadge]
+      [randomUUID(), input.bookingId, operatorId, input.driverId, vehicleId,
+        selected.id, assignedAt, input.actorId, input.source || "dispatch", input.reason || null,
+        input.vehicleLicenseType, vehicleLicenseBadge]
     );
     return selected;
   };
@@ -403,16 +598,17 @@ export async function assignBookingWithLicensing(input: {
 
 export async function unassignBookingVehicle(input: {
   bookingId: string;
-  actorId?: string | null;
+  actorId: string;
   source?: string;
   reason?: string | null;
 }, client?: Queryable): Promise<void> {
+  if (!input.actorId.trim()) throw new BookingAssignmentError("Authenticated actor is required for assignment changes.");
   const work = async (runner: Queryable) => {
     const booking = await runner.query<{ operator_id: string | null; driver_id: string | null }>(
       "SELECT operator_id, driver_id FROM customer_bookings WHERE id = $1 FOR UPDATE",
       [input.bookingId]
     );
-    if (!booking.rows[0]) throw new Error("Booking was not found.");
+    if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
     const unassignedAt = new Date().toISOString();
     await runner.query(
       `UPDATE customer_bookings
@@ -421,7 +617,7 @@ export async function unassignBookingVehicle(input: {
               assignment_review_required=TRUE, assigned_at=$2, assigned_by=$3,
               assignment_source=$4, assignment_reason=$5
         WHERE id=$1`,
-      [input.bookingId, unassignedAt, input.actorId || null, input.source || "dispatch",
+      [input.bookingId, unassignedAt, input.actorId, input.source || "dispatch",
         input.reason || "Vehicle removed from assignment."]
     );
     await runner.query(
@@ -430,7 +626,7 @@ export async function unassignBookingVehicle(input: {
          assigned_at, actor_id, source, action, reason, vehicle_license_type, vehicle_license_badge)
        VALUES ($1,$2,$3,$4,NULL,NULL,$5,$6,$7,'vehicle_unassigned',$8,NULL,NULL)`,
       [randomUUID(), input.bookingId, booking.rows[0].operator_id, booking.rows[0].driver_id,
-        unassignedAt, input.actorId || null, input.source || "dispatch",
+        unassignedAt, input.actorId, input.source || "dispatch",
         input.reason || "Vehicle removed from assignment."]
     );
   };

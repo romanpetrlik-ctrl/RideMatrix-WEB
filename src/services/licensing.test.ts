@@ -84,52 +84,55 @@ test("editing a vehicle licence is scoped to that vehicle and preserves the expl
   assert.equal(calls[0].params[3], null);
 });
 
-test("server-side booking assignment snapshots the matching type and badge and updates only that booking", async () => {
+test("server-side assignment derives operator and service date and requires an exact authority and licence type", async () => {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client: any = {
     async query(sql: string, params: unknown[] = []) {
       calls.push({ sql, params });
       if (sql.includes("SELECT service_date FROM customer_bookings")) return { rows: [{ service_date: "2026-07-01" }] };
-      if (sql.includes("SELECT status FROM vehicles")) return { rows: [{ status: "active" }] };
-      if (sql.includes("FROM operator_licensing_authorities")) return { rows: [{ licensing_authority_id: "auth-1", license_reference: "OP-1" }] };
-      if (sql.includes("FROM driver_licensing_authorities")) return { rows: [{ licensing_authority_id: "auth-1", license_reference: "DR-1" }] };
-      if (sql.includes("FROM vehicle_licensing_authorities") && sql.includes("SELECT l.licensing_authority_id")) {
-        return { rows: [{ licensing_authority_id: "auth-1", license_reference: "VH-1" }] };
+      if (sql.includes("SELECT operator_id FROM system_setup_state")) return { rows: [{ operator_id: "configured-operator" }] };
+      if (sql.includes("FROM system_setup_state s") && sql.includes("operator_licence_documents")) {
+        return { rows: [{ id: "operator-licence", licence_number: "OP-1", licensing_authority_id: "auth-1" }] };
       }
-      if (sql.includes("SELECT id, name, authority_type")) return { rows: [{
-        id: "auth-1", name: "Council", authority_type: null, active: true, preference_order: 1
+      if (sql.includes("JOIN user_roles ur")) return { rows: [{ id: "driver-1" }] };
+      if (sql.includes("FROM driver_licensing_authorities")) return { rows: [{ id: "driver-licence" }] };
+      if (sql.includes("FROM vehicle_licensing_authorities vl")) return { rows: [{
+        vehicle_id: params[0] === "lic-hc" ? "vehicle-1" : "vehicle-2",
+        vehicle_license_badge: params[2] === "hackney_carriage" ? "HC-1" : null,
+        registration: "TEST-1",
+        authority_name: "Council"
       }] };
-      if (sql.includes("SELECT vehicle_license_badge")) {
-        return { rows: [{ vehicle_license_badge: params[2] === "hackney_carriage" ? "HC-1" : null }] };
-      }
       return { rows: [], rowCount: 1 };
     }
   };
 
   await assignBookingWithLicensing({
-    bookingId: "booking-1", operatorId: "operator-1", driverId: "driver-1",
-    vehicleId: "vehicle-1", vehicleLicenseType: "hackney_carriage", actorId: "admin-1"
+    bookingId: "booking-1", driverId: "driver-1", vehicleLicenseId: "lic-hc",
+    licensingAuthorityId: "auth-1", vehicleLicenseType: "hackney_carriage", actorId: "admin-1"
   }, client);
   await assignBookingWithLicensing({
-    bookingId: "booking-1", operatorId: "operator-1", driverId: "driver-1",
-    vehicleId: "vehicle-2", vehicleLicenseType: "private_hire", actorId: "admin-1"
+    bookingId: "booking-1", driverId: "driver-1", vehicleLicenseId: "lic-ph",
+    licensingAuthorityId: "auth-1", vehicleLicenseType: "private_hire", actorId: "admin-1"
   }, client);
   const updates = calls.filter(({ sql }) => sql.includes("UPDATE customer_bookings"));
   assert.equal(updates.length, 2);
-  assert.match(updates[0].sql, /vehicle_license_type = \$10, vehicle_license_badge = \$11/);
-  assert.equal(updates[0].params[9], "hackney_carriage");
-  assert.equal(updates[0].params[10], "HC-1");
+  assert.match(updates[0].sql, /vehicle_license_type = \$6, vehicle_license_badge = \$7/);
+  assert.equal(updates[0].params[1], "configured-operator");
+  assert.equal(updates[0].params[5], "hackney_carriage");
+  assert.equal(updates[0].params[6], "HC-1");
   assert.equal(updates[1].params[3], "vehicle-2");
-  assert.equal(updates[1].params[9], "private_hire");
-  assert.equal(updates[1].params[10], null, "missing badge is not invented");
+  assert.equal(updates[1].params[5], "private_hire");
+  assert.equal(updates[1].params[6], null, "missing badge is not invented");
   assert.ok(updates.every(({ sql }) => /WHERE id = \$1/.test(sql)), "only the currently assigned booking is updated");
   assert.ok(calls.some(({ sql, params }) =>
     sql.includes("INSERT INTO booking_assignment_audit") && params.includes("HC-1")
   ));
-  const filteredVehicleLookup = calls.find(({ sql }) =>
-    sql.includes("FROM vehicle_licensing_authorities") && sql.includes("SELECT l.licensing_authority_id")
-  );
-  assert.equal(filteredVehicleLookup?.params[2], "hackney_carriage");
+  assert.ok(calls.some(({ sql, params }) =>
+    sql.includes("operator_licences") && sql.includes("operator_licence_documents")
+      && params.includes("configured-operator") && params.includes("2026-07-01")
+  ));
+  assert.ok(calls.every(({ sql }) => !sql.includes("operator_licensing_authorities")),
+    "legacy operator licence records are not a source of truth");
 });
 
 test("booking vehicle removal clears its current badge snapshot and writes an audit record", async () => {

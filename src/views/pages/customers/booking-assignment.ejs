@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+
+    <main class="container rm-page-shell customer-detail-page">
+      <p><a href="/customers/<%= encodeURIComponent(page.booking.customerId) %>/bookings">Back to customer bookings</a></p>
+      <% if (notice === "assigned") { %>
+        <section class="notice notice--warning" role="status">Booking assignment saved.</section>
+      <% } else if (notice === "unassigned") { %>
+        <section class="notice notice--warning" role="status">Vehicle unassigned. Earlier assignment audit records are retained.</section>
+      <% } %>
+      <% if (errorMessage) { %>
+        <section class="notice notice--critical" role="alert"><%= errorMessage %></section>
+      <% } %>
+
+      <section class="panel">
+        <h1>Assign booking <%= page.booking.reference %></h1>
+        <p><strong>Customer:</strong> <%= page.booking.customerName %></p>
+        <p><strong>Service date:</strong> <%= page.booking.serviceDate %></p>
+        <p><strong>Pickup:</strong> <%= page.booking.pickup %> <strong>Dropoff:</strong> <%= page.booking.dropoff %></p>
+
+        <h2>Current saved assignment</h2>
+        <dl>
+          <dt>Driver</dt>
+          <dd><%= page.booking.driverEmail || "—" %></dd>
+          <dt>Vehicle</dt>
+          <dd><%= page.booking.vehicleRegistration || "—" %></dd>
+          <dt>Licensing authority</dt>
+          <dd><%= page.booking.licensingAuthorityName || "Unassigned / unresolved" %></dd>
+          <dt>Vehicle licence type</dt>
+          <dd><%= page.booking.vehicleLicenseType === "hackney_carriage" ? "Hackney Carriage" : page.booking.vehicleLicenseType === "private_hire" ? "Private Hire" : "—" %></dd>
+          <dt>Vehicle licence badge</dt>
+          <dd><%= page.booking.vehicleLicenseBadge || (page.booking.vehicleLicenseType ? "Missing vehicle licence badge" : "—") %></dd>
+        </dl>
+
+        <h2>Choose a valid assignment</h2>
+        <p>The operator is resolved from completed system setup. Driver, operator and selected vehicle licence must share the exact authority on this booking’s stored service date.</p>
+        <form method="get" action="/customers/<%= encodeURIComponent(page.booking.customerId) %>/bookings/<%= encodeURIComponent(page.booking.id) %>/assignment">
+          <div class="form-field">
+            <label for="driverId">Driver</label>
+            <select id="driverId" name="driverId" required>
+              <option value="">Select a driver</option>
+              <% page.drivers.forEach((driver) => { %>
+                <option value="<%= driver.id %>" <%= selection.driverId === driver.id ? "selected" : "" %>><%= driver.email %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="vehicleLicenseType">Vehicle licence type</label>
+            <select id="vehicleLicenseType" name="vehicleLicenseType" required>
+              <option value="">Select Hackney Carriage or Private Hire</option>
+              <option value="hackney_carriage" <%= selection.vehicleLicenseType === "hackney_carriage" ? "selected" : "" %>>Hackney Carriage</option>
+              <option value="private_hire" <%= selection.vehicleLicenseType === "private_hire" ? "selected" : "" %>>Private Hire</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="vehicleLicenseId">Vehicle and exact licence</label>
+            <select id="vehicleLicenseId" name="vehicleLicenseId" required>
+              <option value="">Select an active, date-valid vehicle licence</option>
+              <% page.vehicleLicenses.forEach((license) => { %>
+                <option value="<%= license.id %>" <%= selection.vehicleLicenseId === license.id ? "selected" : "" %>>
+                  <%= license.registration %> — <%= license.licenseType === "hackney_carriage" ? "Hackney Carriage" : "Private Hire" %> — <%= license.licensingAuthorityName %> — <%= license.vehicleLicenseBadge || "Missing badge" %>
+                </option>
+              <% }) %>
+            </select>
+          </div>
+          <button class="button button--secondary" type="submit">Show common licensing authorities</button>
+        </form>
+
+        <% if (selection.driverId && selection.vehicleLicenseId && selection.vehicleLicenseType) { %>
+          <% if (page.commonAuthorities.length > 0) { %>
+            <form method="post" action="/customers/<%= encodeURIComponent(page.booking.customerId) %>/bookings/<%= encodeURIComponent(page.booking.id) %>/assignment">
+              <%- locals.csrfField || "" %>
+              <input type="hidden" name="action" value="assign">
+              <input type="hidden" name="driverId" value="<%= selection.driverId %>">
+              <input type="hidden" name="vehicleLicenseId" value="<%= selection.vehicleLicenseId %>">
+              <input type="hidden" name="vehicleLicenseType" value="<%= selection.vehicleLicenseType %>">
+              <div class="form-field">
+                <label for="licensingAuthorityId">Exact common licensing authority</label>
+                <select id="licensingAuthorityId" name="licensingAuthorityId" required>
+                  <option value="">Select the authority for this booking</option>
+                  <% page.commonAuthorities.forEach((authority) => { %>
+                    <option value="<%= authority.id %>"><%= authority.name %></option>
+                  <% }) %>
+                </select>
+              </div>
+              <p>Only authorities with active, date-valid operator, driver and selected vehicle licences are offered.</p>
+              <button class="button button--primary" type="submit">Save assignment</button>
+            </form>
+          <% } else { %>
+            <p role="status">No exact common licensing authority is valid for these selections on the service date.</p>
+          <% } %>
+        <% } %>
+
+        <% if (page.booking.vehicleId) { %>
+          <form method="post" action="/customers/<%= encodeURIComponent(page.booking.customerId) %>/bookings/<%= encodeURIComponent(page.booking.id) %>/assignment">
+            <%- locals.csrfField || "" %>
+            <input type="hidden" name="action" value="unassign">
+            <button class="button button--secondary" type="submit">Unassign vehicle</button>
+          </form>
+        <% } %>
+
+        <h2>Assignment history</h2>
+        <% if (page.auditHistory.length) { %>
+          <ol>
+            <% page.auditHistory.forEach((entry) => { %>
+              <li>
+                <strong><%= entry.action === "vehicle_unassigned" ? "Vehicle unassigned" : "Assigned" %></strong>
+                — <%= entry.licensingAuthorityName || "Authority unavailable" %>
+                — <%= entry.vehicleLicenseType === "hackney_carriage" ? "Hackney Carriage" : entry.vehicleLicenseType === "private_hire" ? "Private Hire" : "No vehicle licence type" %>
+                — <%= entry.vehicleLicenseBadge || (entry.vehicleLicenseType ? "Missing vehicle licence badge" : "No vehicle badge") %>
+                — <%= entry.assignedAt %>
+              </li>
+            <% }) %>
+          </ol>
+        <% } else { %>
+          <p>No assignment history.</p>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

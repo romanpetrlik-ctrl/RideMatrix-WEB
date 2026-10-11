@@ -42,6 +42,7 @@
                   <th scope="col">Vehicle licence type</th>
                   <th scope="col">Vehicle licence badge</th>
                   <th scope="col">Status</th>
+                  <th scope="col">Assignment</th>
                 </tr>
               </thead>
               <tbody>
@@ -58,8 +59,15 @@
                     <td><%= booking.dropoff %></td>
                     <td><%= booking.licensingAuthorityName || "Unassigned / unresolved" %></td>
                     <td><%= booking.vehicleLicenseType === "hackney_carriage" ? "Hackney Carriage" : booking.vehicleLicenseType === "private_hire" ? "Private Hire" : "—" %></td>
-                    <td><%= booking.vehicleLicenseBadge || "—" %></td>
+                    <td><%= booking.vehicleLicenseBadge || (booking.vehicleLicenseType ? "Missing vehicle licence badge" : "—") %></td>
                     <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
+                    <td>
+                      <% if (booking.isOperational) { %>
+                        <a href="/customers/<%= encodeURIComponent(customer.id) %>/bookings/<%= encodeURIComponent(booking.id) %>/assignment">Assign / view</a>
+                      <% } else { %>
+                        Imported history — read only
+                      <% } %>
+                    </td>
                   </tr>
                 <% }) %>
               </tbody>

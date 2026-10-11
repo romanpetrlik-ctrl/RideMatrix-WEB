@@ -24,6 +24,30 @@ describe("vehicle licence booking assignment", () => {
     const authority = await createLicensingAuthority({
     id: "test-assignment-authority", name: "Assignment Test Authority", preferenceOrder: 1
     });
+    const operatorId = "test-assignment-operator";
+    await query(
+      `INSERT INTO operators (id, legal_name, license_holder_name, created_at, updated_at)
+       VALUES ($1,'Assignment Operator','Assignment Operator',$2,$2)`,
+      [operatorId, now]
+    );
+    await query(
+      `INSERT INTO system_setup_state (id, operator_id, setup_key, status, completed_at)
+       VALUES ('test-assignment-setup',$1,'initial_system_setup','completed',$2)`,
+      [operatorId, now]
+    );
+    await query(
+      `INSERT INTO operator_licences
+         (id, operator_id, licence_type, licence_number, licensing_authority_id, valid_from, status, created_at, updated_at)
+       VALUES ('test-assignment-operator-licence',$1,'pho','OP-TEST',$2,'2020-01-01','active',$3,$3)`,
+      [operatorId, authority.id, now]
+    );
+    await query(
+      `INSERT INTO operator_licence_documents
+         (id, licence_id, original_filename, mime_type, byte_size, checksum, content, is_latest, uploaded_at)
+       VALUES ('test-assignment-operator-document','test-assignment-operator-licence','licence.pdf',
+         'application/pdf',8,$1,$2,TRUE,$3)`,
+      ["a".repeat(64), Buffer.from("%PDF-1.7"), now]
+    );
     const vehicle = await createVehicle({
     registration: "TEST LICENCE 1", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
     fuelType: "ICE", passengerCapacity: 4, status: "active"
@@ -41,9 +65,6 @@ describe("vehicle licence booking assignment", () => {
      VALUES ($1,$2,'TEST-LICENCE','2026-11-15','A','B','Scheduled',1.00,$3)`,
     [bookingId, customerId, now]
     );
-    await addLicense("operator", "test-assignment-operator", {
-    licensingAuthorityId: authority.id, validFrom: "2020-01-01"
-    });
     await addLicense("driver", DRIVER_ID, {
     licensingAuthorityId: authority.id, validFrom: "2020-01-01"
     });
@@ -59,8 +80,8 @@ describe("vehicle licence booking assignment", () => {
     assert.ok(privateHireLicenseId);
 
   await assignBookingWithLicensing({
-    bookingId, operatorId: "test-assignment-operator", driverId: DRIVER_ID,
-    vehicleId: vehicle.id, vehicleLicenseType: "hackney_carriage", actorId: "test-admin"
+    bookingId, driverId: DRIVER_ID, vehicleLicenseId: vehicleLicenseId!, licensingAuthorityId: authority.id,
+    vehicleLicenseType: "hackney_carriage", actorId: "test-admin"
   });
   let snapshot = await query<{ vehicle_license_type: string; vehicle_license_badge: string }>(
     "SELECT vehicle_license_type, vehicle_license_badge FROM customer_bookings WHERE id=$1", [bookingId]
@@ -79,12 +100,12 @@ describe("vehicle licence booking assignment", () => {
     assert.equal(snapshot.rows[0].vehicle_license_badge, "HC-SNAPSHOT-1", "vehicle edits do not rewrite the booking snapshot");
 
   await assignBookingWithLicensing({
-    bookingId, operatorId: "test-assignment-operator", driverId: DRIVER_ID,
-    vehicleId: vehicle.id, vehicleLicenseType: "hackney_carriage", actorId: "test-admin"
+    bookingId, driverId: DRIVER_ID, vehicleLicenseId: vehicleLicenseId!, licensingAuthorityId: authority.id,
+    vehicleLicenseType: "hackney_carriage", actorId: "test-admin"
   });
   await assignBookingWithLicensing({
-    bookingId, operatorId: "test-assignment-operator", driverId: DRIVER_ID,
-    vehicleId: vehicle.id, vehicleLicenseType: "private_hire", actorId: "test-admin"
+    bookingId, driverId: DRIVER_ID, vehicleLicenseId: privateHireLicenseId!, licensingAuthorityId: authority.id,
+    vehicleLicenseType: "private_hire", actorId: "test-admin"
   });
   snapshot = await query(
     "SELECT vehicle_license_type, vehicle_license_badge FROM customer_bookings WHERE id=$1", [bookingId]
@@ -98,8 +119,8 @@ describe("vehicle licence booking assignment", () => {
     vehicleLicenseBadge: null, validFrom: "2020-01-01"
     }, privateHireLicenseId, undefined);
     await assignBookingWithLicensing({
-      bookingId, operatorId: "test-assignment-operator", driverId: DRIVER_ID,
-      vehicleId: vehicle.id, vehicleLicenseType: "private_hire", actorId: "test-admin"
+      bookingId, driverId: DRIVER_ID, vehicleLicenseId: privateHireLicenseId!, licensingAuthorityId: authority.id,
+      vehicleLicenseType: "private_hire", actorId: "test-admin"
     });
     snapshot = await query(
       "SELECT vehicle_license_type, vehicle_license_badge FROM customer_bookings WHERE id=$1", [bookingId]
@@ -110,8 +131,8 @@ describe("vehicle licence booking assignment", () => {
       vehicleLicenseBadge: null, clearVehicleLicenseBadge: true, validFrom: "2020-01-01"
     }, privateHireLicenseId);
     await assignBookingWithLicensing({
-      bookingId, operatorId: "test-assignment-operator", driverId: DRIVER_ID,
-      vehicleId: vehicle.id, vehicleLicenseType: "private_hire", actorId: "test-admin"
+      bookingId, driverId: DRIVER_ID, vehicleLicenseId: privateHireLicenseId!, licensingAuthorityId: authority.id,
+      vehicleLicenseType: "private_hire", actorId: "test-admin"
     });
     snapshot = await query(
       "SELECT vehicle_license_type, vehicle_license_badge FROM customer_bookings WHERE id=$1", [bookingId]
