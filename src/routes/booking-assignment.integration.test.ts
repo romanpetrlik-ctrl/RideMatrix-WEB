@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import path from "node:path";
 import { createCsrfProtection } from "../middleware/csrf";
 import { initializeDatabase, query } from "../database/connection";
@@ -56,6 +57,7 @@ function createServer() {
   app.set("views", path.join(process.cwd(), "src/views"));
   app.set("view engine", "ejs");
   app.use(express.urlencoded({ extended: false }));
+  app.use(rateLimit({ windowMs: 60_000, limit: 1_000, standardHeaders: true, legacyHeaders: false }));
   app.use(createCsrfProtection({ appTitle: "Assignment Test", cookieSecure: false }));
   app.use(createCustomersRouter({
     appTitle: "Assignment Test",
