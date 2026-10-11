@@ -38,7 +38,7 @@
           <dt>Vehicle licence type</dt>
           <dd><%= page.booking.vehicleLicenseType === "hackney_carriage" ? "Hackney Carriage" : page.booking.vehicleLicenseType === "private_hire" ? "Private Hire" : "—" %></dd>
           <dt>Vehicle licence badge</dt>
-          <dd><%= page.booking.vehicleLicenseBadge || "Missing vehicle licence badge" %></dd>
+          <dd><%= page.booking.vehicleLicenseBadge || (page.booking.vehicleLicenseType ? "Missing vehicle licence badge" : "—") %></dd>
         </dl>
 
         <h2>Choose a valid assignment</h2>

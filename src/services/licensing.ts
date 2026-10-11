@@ -108,7 +108,6 @@ export async function createLicensingAuthority(
 }
 
 const LICENSE_TABLES = {
-  operator: ["operator_licensing_authorities", "operator_id"],
   driver: ["driver_licensing_authorities", "driver_id"],
   vehicle: ["vehicle_licensing_authorities", "vehicle_id"]
 } as const;
