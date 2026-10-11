@@ -2360,11 +2360,12 @@ button:visited,
 .vehicle-page { padding-bottom: 3rem; }
 .vehicle-page__header, .vehicle-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin:1.5rem 0; }
 .vehicle-page__header h1 { margin-bottom:.25rem; }
-.vehicle-toolbar { display:grid; grid-template-columns:auto minmax(15rem,1fr) auto minmax(15rem,1fr) auto; }
+.vehicle-toolbar { display:grid; grid-template-columns:minmax(20rem,2fr) minmax(12rem,1fr) auto; align-items:end; justify-content:stretch; width:100%; }
 .vehicle-status-tabs { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 1rem; }
-.vehicle-toolbar label { display:flex; align-items:center; gap:.5rem; margin:0; }
+.vehicle-toolbar__field { display:grid; gap:.35rem; min-width:0; }
+.vehicle-toolbar__field label { margin:0; font-weight:600; }
 .vehicle-toolbar input[name="q"], .vehicle-toolbar select[name="status"] { box-sizing:border-box; width:100%; min-width:0; max-width:none; margin:0; }
-.vehicle-toolbar button { margin:0; }
+.vehicle-toolbar button { margin:0; align-self:end; white-space:nowrap; }
 .vehicle-card { background:#fff; border:1px solid #e1dfdd; border-radius:8px; padding:1.25rem; margin:1rem 0; min-width:0; }
 .vehicle-table { width:100%; border-collapse:collapse; min-width:760px; }
 .vehicle-table th, .vehicle-table td { padding:.8rem; border-bottom:1px solid #e1dfdd; text-align:left; }
@@ -2432,7 +2433,8 @@ button:visited,
 }
 @media (max-width: 760px) { .vehicle-detail-grid { grid-template-columns:1fr; } }
 @media (max-width: 900px) {
-  .vehicle-toolbar { grid-template-columns:auto minmax(0,1fr); }
+  .vehicle-toolbar { grid-template-columns:minmax(0,1fr); }
+  .vehicle-toolbar__field--status { max-width:none; }
   .vehicle-toolbar button { grid-column:1 / -1; width:100%; }
 }
 

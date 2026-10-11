@@ -50,7 +50,7 @@ describe("vehicle licence booking assignment", () => {
     );
     const vehicle = await createVehicle({
     registration: "TEST LICENCE 1", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
     });
     const customerId = "test-license-booking-customer";
     await query(

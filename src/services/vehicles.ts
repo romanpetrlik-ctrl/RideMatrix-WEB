@@ -10,6 +10,7 @@ const text = (value: unknown): string => String(value ?? "").trim();
 export const VEHICLE_DEFAULT_PER_PAGE = 15;
 export const VEHICLE_STATUS_OPTIONS = ["active", "inactive", "maintenance"] as const;
 export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
+export const VEHICLE_LICENSE_TYPES = ["hackney_carriage", "private_hire"] as const;
 export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
@@ -18,6 +19,7 @@ export const VEHICLE_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const VEHICLE_MUTATION_LIMIT = 120;
 export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
+export type VehicleLicenseType = (typeof VEHICLE_LICENSE_TYPES)[number];
 export type VehicleDocumentType = (typeof VEHICLE_DOCUMENT_TYPES)[number];
 
 export type VehicleClass = { key: string; label: string };
@@ -31,6 +33,7 @@ export type Vehicle = {
   id: string; registration: string; make: string; model: string; year: number | null;
   colour: string | null; registeredKeeperDetails: string | null;
   fuelType: VehicleFuelType; passengerCapacity: number; status: VehicleStatus;
+  vehicleLicenseType: VehicleLicenseType | null; vehicleLicenseBadge: string | null;
   wheelchairAccessible: boolean; notes: string | null; classes: VehicleClass[];
   driverId: string | null; driverEmail: string | null; capacities: VehicleCapacity[];
   documentsCount: number;
@@ -39,7 +42,7 @@ export type VehicleInput = {
   registration: string; make: string; model: string; classKeys?: string[];
   vehicleClassKey?: string; fuelType: VehicleFuelType; passengerCapacity: number;
   status: VehicleStatus; colour?: string | null; registeredKeeperDetails?: string | null;
-  year?: number | null; notes?: string | null;
+  year?: number | null; vehicleLicenseType?: VehicleLicenseType | null; vehicleLicenseBadge?: string | null; notes?: string | null;
   baggageCapacities?: Record<string, number | null>;
 };
 
@@ -49,6 +52,7 @@ function mapVehicle(row: any): Vehicle {
     year: row.year == null ? null : Number(row.year), colour: row.colour,
     registeredKeeperDetails: row.registered_keeper_details, fuelType: row.fuel_type,
     passengerCapacity: Number(row.passenger_capacity), status: row.status,
+    vehicleLicenseType: row.vehicle_license_type, vehicleLicenseBadge: row.vehicle_license_badge,
     wheelchairAccessible: Boolean(row.wheelchair_accessible), notes: row.notes,
     classes: row.classes || [], driverId: row.driver_id, driverEmail: row.driver_email,
     capacities: row.capacities || [], documentsCount: Number(row.documents_count || 0)
@@ -180,11 +184,15 @@ function normalizedClasses(input: VehicleInput): string[] {
 }
 function validateVehicleInput(input: VehicleInput): string[] {
   const errors: string[] = [];
+  const vehicleLicenseType = text(input.vehicleLicenseType);
+  const badge = text(input.vehicleLicenseBadge);
   if (!text(input.registration) || !text(input.make) || !text(input.model)) errors.push("Registration, make, and model are required.");
   if (normalizedClasses(input).length === 0) errors.push("Select at least one vehicle class assignment.");
   if (!VEHICLE_FUEL_TYPES.includes(input.fuelType)) errors.push("Select a valid fuel type.");
   if (!Number.isInteger(input.passengerCapacity) || input.passengerCapacity < 1) errors.push("Passenger capacity must be a positive integer.");
   if (!VEHICLE_STATUS_OPTIONS.includes(input.status)) errors.push("Select a valid vehicle status.");
+  if (!VEHICLE_LICENSE_TYPES.includes(vehicleLicenseType as VehicleLicenseType)) errors.push("Select Hackney Carriage or Private Hire as the vehicle licence type.");
+  if (badge && (badge.length > 64 || /[\x00-\x1F\x7F]/.test(badge))) errors.push("Vehicle licence badge number must be 64 characters or fewer.");
   for (const [key, quantity] of Object.entries(input.baggageCapacities || {})) {
     if (quantity != null && (!Number.isInteger(quantity) || quantity < 0)) errors.push(`Capacity for ${key} must be a non-negative integer.`);
   }
@@ -236,12 +244,13 @@ export async function createVehicle(input: VehicleInput, client?: Queryable): Pr
     await runner.query(
       `INSERT INTO vehicles
         (id, registration, make, model, year, colour, registered_keeper_details, fuel_type,
-         passenger_capacity, wheelchair_accessible, status, notes, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
+         passenger_capacity, wheelchair_accessible, status, vehicle_license_type, vehicle_license_badge, notes, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15)`,
       [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year ?? null,
         text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
         input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
-        input.status, text(input.notes) || null, new Date().toISOString()]
+        input.status, text(input.vehicleLicenseType), text(input.vehicleLicenseBadge) || null,
+        text(input.notes) || null, new Date().toISOString()]
     );
     await persistAssignments(id, input, runner);
     return (await getVehicleById(id, runner))!;
@@ -255,11 +264,13 @@ export async function updateVehicle(id: string, input: VehicleInput, client?: Qu
     const updated = await runner.query(
       `UPDATE vehicles SET registration=$2, make=$3, model=$4, year=$5, colour=$6,
          registered_keeper_details=$7, fuel_type=$8, passenger_capacity=$9,
-         wheelchair_accessible=$10, status=$11, notes=$12, updated_at=$13 WHERE id=$1`,
+         wheelchair_accessible=$10, status=$11, vehicle_license_type=$12, vehicle_license_badge=$13,
+         notes=$14, updated_at=$15 WHERE id=$1`,
       [id, text(input.registration).toUpperCase(), text(input.make), text(input.model), input.year ?? null,
         text(input.colour) || null, text(input.registeredKeeperDetails) || null, input.fuelType,
         input.passengerCapacity, normalizedClasses(input).includes("wheelchair_accessible"),
-        input.status, text(input.notes) || null, new Date().toISOString()]
+        input.status, text(input.vehicleLicenseType), text(input.vehicleLicenseBadge) || null,
+        text(input.notes) || null, new Date().toISOString()]
     );
     if (updated.rowCount === 0) return null;
     await persistAssignments(id, input, runner);

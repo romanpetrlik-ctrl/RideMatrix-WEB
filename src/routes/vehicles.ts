@@ -41,6 +41,8 @@ function input(body: any): VehicleInput {
     year: year ? Number(year) : null, colour: text(body.colour) || null,
     classKeys: rawClasses.map(text).filter(Boolean), fuelType: text(body.fuelType) as any,
     passengerCapacity: Number(body.passengerCapacity), status: text(body.status) as any,
+    vehicleLicenseType: text(body.vehicleLicenseType) as any,
+    vehicleLicenseBadge: text(body.vehicleLicenseBadge) || null,
     registeredKeeperDetails: text(body.registeredKeeperDetails) || null,
     notes: text(body.notes) || null, baggageCapacities };
 }

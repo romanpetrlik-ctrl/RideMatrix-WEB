@@ -136,19 +136,19 @@ async function setupFixtures(): Promise<void> {
 
   vehicleMain = (await createVehicle({
     registration: "ASSIGN-MAIN", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
   })).id;
   vehicleA = (await createVehicle({
     registration: "ASSIGN-A", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
   })).id;
   vehicleB = (await createVehicle({
     registration: "ASSIGN-B", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
   })).id;
   vehicleMissingBadge = (await createVehicle({
     registration: "ASSIGN-NO-BADGE", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "private_hire"
   })).id;
 
   vehicleLicenceA = (await saveVehicleLicense(vehicleMain, {

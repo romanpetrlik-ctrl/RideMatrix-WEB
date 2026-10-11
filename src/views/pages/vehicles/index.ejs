@@ -12,7 +12,17 @@
         <a href="/vehicles" aria-current="<%= status === '' ? 'page' : 'false' %>" class="button button--small <%= status === '' ? 'button--primary' : 'button--secondary' %>">All vehicles</a>
         <% statuses.forEach((item) => { %><a href="/vehicles?status=<%= item %>" aria-current="<%= status === item ? 'page' : 'false' %>" class="button button--small <%= status === item ? 'button--primary' : 'button--secondary' %>"><%= item === "active" ? "Active vehicles" : item[0].toUpperCase() + item.slice(1) %></a><% }) %>
       </nav>
-      <form class="vehicle-toolbar" method="get" action="/vehicles"><label for="vehicle-search">Search</label><input id="vehicle-search" name="q" value="<%= search %>" placeholder="Registration, make, model, class"><label for="vehicle-status">Status</label><select id="vehicle-status" name="status"><option value="">All statuses</option><% statuses.forEach((item) => { %><option value="<%= item %>" <%= status === item ? "selected" : "" %>><%= item[0].toUpperCase() + item.slice(1) %></option><% }) %></select><button class="button button--secondary" type="submit">Search</button></form>
+      <form class="vehicle-toolbar" method="get" action="/vehicles">
+        <div class="vehicle-toolbar__field">
+          <label for="vehicle-search">Search</label>
+          <input id="vehicle-search" name="q" value="<%= search %>" placeholder="Registration, make, model, class">
+        </div>
+        <div class="vehicle-toolbar__field vehicle-toolbar__field--status">
+          <label for="vehicle-status">Status</label>
+          <select id="vehicle-status" name="status"><option value="">All statuses</option><% statuses.forEach((item) => { %><option value="<%= item %>" <%= status === item ? "selected" : "" %>><%= item[0].toUpperCase() + item.slice(1) %></option><% }) %></select>
+        </div>
+        <button class="button button--secondary" type="submit">Search</button>
+      </form>
       <section class="vehicle-card">
         <%- include("../../partials/vehicles-pagination", { page, totalPages, total, startRecord, endRecord, search, status }) %>
         <% if (vehicles.length) { %><div class="vehicle-table-wrapper"><table class="vehicle-table"><thead><tr><th>Registration</th><th>Vehicle</th><th>Class assignment</th><th>Passengers</th><th>Driver</th><th>Status</th><th>Documents</th><th></th></tr></thead><tbody>
