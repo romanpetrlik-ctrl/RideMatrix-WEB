@@ -56,8 +56,8 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.deepEqual(years, Array.from({ length: currentYear - 2004 }, (_, index) => currentYear - index));
   assert.match(yearOptions, /<option value="" selected>Not set<\/option>/);
   assert.match(html, /name="vehicleLicenseType" required/);
-  assert.match(html, /<option value="hackney_carriage">Hackney Carriage<\/option>/);
-  assert.match(html, /<option value="private_hire">Private Hire<\/option>/);
+  assert.match(html, /<option value="hackney_carriage"[^>]*>Hackney Carriage<\/option>/);
+  assert.match(html, /<option value="private_hire"[^>]*>Private Hire<\/option>/);
   assert.match(html, /name="vehicleLicenseBadge"/);
 
   const capacities = /<select name="capacity_xl_suitcase">([\s\S]*?)<\/select>/.exec(html)?.[1];
