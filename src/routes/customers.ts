@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { rateLimit } from "express-rate-limit";
 import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
@@ -39,6 +40,14 @@ import {
 } from "../services/phone-numbers";
 import { getMapService, isValidGeoPoint, readMapConfiguration, toMapView, type MapView } from "../services/maps";
 import { isChildWindowLayout } from "../middleware/layout-context";
+import {
+  BookingAssignmentError,
+  assignBookingWithLicensing,
+  getBookingAssignmentPage,
+  unassignBookingVehicle,
+  VEHICLE_LICENSE_TYPES,
+  type VehicleLicenseType
+} from "../services/licensing";
 
 type CustomersRouterOptions = {
   appTitle: string;
@@ -367,7 +376,7 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
 async function requireAdminSession(
   cookieHeader: string | undefined,
   loadSession: (cookieHeader?: string) => Promise<SessionAccount>
-): Promise<{ email: string }> {
+): Promise<{ id: string; email: string }> {
   const session = await loadSession(cookieHeader);
 
   if (!session.authenticated || !session.user) {
@@ -381,6 +390,7 @@ async function requireAdminSession(
   }
 
   return {
+    id: session.user.id,
     email: session.user.email
   };
 }
@@ -593,6 +603,25 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const loadCustomersList = options.listCustomers ?? listCustomers;
   const loadCustomerCount = options.getCustomerCount ?? getCustomerCount;
   const loadRecentBookingsForCustomerList = options.listRecentBookingsForCustomer ?? listRecentBookingsForCustomer;
+  const bookingAssignmentRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+  const requireBookingAssignmentAdmin = async (req: any, res: any, next: any) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
+      res.locals.bookingAssignmentSession = session;
+      return next();
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") return res.redirect("/access");
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      return next(error);
+    }
+  };
 
   router.get("/customers/phone-preview", async (req, res, next) => {
     try {
@@ -1103,6 +1132,141 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       return next(error);
     }
   });
+
+  const renderBookingAssignmentPage = async (
+    res: any,
+    session: { email: string },
+    customerId: string,
+    bookingId: string,
+    selection: { driverId?: string; vehicleLicenseId?: string; vehicleLicenseType?: VehicleLicenseType },
+    notice?: string,
+    errorMessage?: string,
+    statusCode = 200
+  ) => {
+    const page = await getBookingAssignmentPage(bookingId, customerId, selection);
+    if (!page) {
+      return res.status(404).render("pages/unavailable", {
+        title: "Unavailable",
+        appTitle: options.appTitle
+      });
+    }
+    return res.status(statusCode).render("pages/customers/booking-assignment", {
+      title: `Assign booking ${page.booking.reference}`,
+      appTitle: options.appTitle,
+      email: session.email,
+      page,
+      selection,
+      notice,
+      errorMessage
+    });
+  };
+  const assignmentCsrfGuard = requireCsrfToken({ appTitle: options.appTitle });
+
+  router.get("/customers/:customerId/bookings/:bookingId/assignment", async (req, res, next) => {
+    try {
+      const session = await requireAdminSession(req.headers.cookie, loadSession);
+      const requestedType = typeof req.query.vehicleLicenseType === "string"
+        && VEHICLE_LICENSE_TYPES.includes(req.query.vehicleLicenseType as VehicleLicenseType)
+        ? req.query.vehicleLicenseType as VehicleLicenseType
+        : undefined;
+      return await renderBookingAssignmentPage(
+        res,
+        session,
+        req.params.customerId,
+        req.params.bookingId,
+        {
+          driverId: typeof req.query.driverId === "string" ? req.query.driverId : undefined,
+          vehicleLicenseId: typeof req.query.vehicleLicenseId === "string" ? req.query.vehicleLicenseId : undefined,
+          vehicleLicenseType: requestedType
+        },
+        typeof req.query.notice === "string" ? req.query.notice : undefined
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "unauthenticated") return res.redirect("/access");
+      if (error instanceof Error && error.message === "forbidden") {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      return next(error);
+    }
+  });
+
+  router.post(
+    "/customers/:customerId/bookings/:bookingId/assignment",
+    requireBookingAssignmentAdmin,
+    bookingAssignmentRateLimit,
+    assignmentCsrfGuard,
+    async (req, res, next) => {
+      try {
+        const session = res.locals.bookingAssignmentSession as { id: string; email: string };
+        const customerId = typeof req.params.customerId === "string" ? req.params.customerId : "";
+        const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
+        if (!await getBookingAssignmentPage(bookingId, customerId)) {
+          return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+        }
+        const action = typeof req.body?.action === "string" ? req.body.action : "assign";
+        if (action === "unassign") {
+          await unassignBookingVehicle({
+            bookingId,
+            actorId: session.id,
+            source: "customer-booking-management"
+          });
+          return res.redirect(
+            `/customers/${encodeURIComponent(customerId)}/bookings/${encodeURIComponent(bookingId)}/assignment?notice=unassigned`
+          );
+        }
+        if (action !== "assign") {
+          return res.status(400).send("Invalid booking assignment action.");
+        }
+        const driverId = typeof req.body?.driverId === "string" ? req.body.driverId.trim() : "";
+        const vehicleLicenseId = typeof req.body?.vehicleLicenseId === "string" ? req.body.vehicleLicenseId.trim() : "";
+        const licensingAuthorityId = typeof req.body?.licensingAuthorityId === "string"
+          ? req.body.licensingAuthorityId.trim()
+          : "";
+        const vehicleLicenseType = typeof req.body?.vehicleLicenseType === "string"
+          ? req.body.vehicleLicenseType
+          : "";
+        await assignBookingWithLicensing({
+          bookingId,
+          driverId,
+          vehicleLicenseId,
+          licensingAuthorityId,
+          vehicleLicenseType: vehicleLicenseType as VehicleLicenseType,
+          actorId: session.id,
+          source: "customer-booking-management"
+        });
+        return res.redirect(
+          `/customers/${encodeURIComponent(customerId)}/bookings/${encodeURIComponent(bookingId)}/assignment?notice=assigned`
+        );
+      } catch (error) {
+        if (error instanceof BookingAssignmentError) {
+          try {
+            const session = res.locals.bookingAssignmentSession as { id: string; email: string };
+            const requestedType = typeof req.body?.vehicleLicenseType === "string"
+              && VEHICLE_LICENSE_TYPES.includes(req.body.vehicleLicenseType as VehicleLicenseType)
+              ? req.body.vehicleLicenseType as VehicleLicenseType
+              : undefined;
+            return await renderBookingAssignmentPage(
+              res,
+              session,
+              typeof req.params.customerId === "string" ? req.params.customerId : "",
+              typeof req.params.bookingId === "string" ? req.params.bookingId : "",
+              {
+                driverId: typeof req.body?.driverId === "string" ? req.body.driverId : undefined,
+                vehicleLicenseId: typeof req.body?.vehicleLicenseId === "string" ? req.body.vehicleLicenseId : undefined,
+                vehicleLicenseType: requestedType
+              },
+              undefined,
+              error.message,
+              400
+            );
+          } catch (renderError) {
+            return next(renderError);
+          }
+        }
+        return next(error);
+      }
+    }
+  );
 
   router.get("/customers/:customerId/delete", async (req, res, next) => {
     try {

@@ -29,6 +29,7 @@ export type BookingRecord = {
   licensingAuthorityName: string | null;
   vehicleLicenseType: string | null;
   vehicleLicenseBadge: string | null;
+  isOperational?: boolean;
   isTestBooking: boolean;
   testReason: string | null;
 };
@@ -49,18 +50,20 @@ export async function listRecentBookingsForCustomer(
     licensing_authority_name: string | null;
     vehicle_license_type: string | null;
     vehicle_license_badge: string | null;
+    is_operational: boolean;
     is_test_booking: boolean;
     test_reason: string | null;
   }>(
     `SELECT id, reference, service_date, pickup, dropoff, status,
           licensing_authority_id, licensing_authority_name, vehicle_license_type,
-          vehicle_license_badge, is_test_booking, test_reason
+          vehicle_license_badge, is_test_booking, test_reason, is_operational
      FROM (
       SELECT b.id, b.reference, b.service_date, b.pickup, b.dropoff, b.status,
               b.licensing_authority_id, a.name AS licensing_authority_name,
               b.vehicle_license_type, b.vehicle_license_badge,
               COALESCE(b.is_test_booking, FALSE) AS is_test_booking,
-              b.test_reason
+              b.test_reason,
+              TRUE AS is_operational
        FROM customer_bookings b
        LEFT JOIN licensing_authorities a ON a.id = b.licensing_authority_id
        WHERE b.customer_id = $1
@@ -77,7 +80,8 @@ export async function listRecentBookingsForCustomer(
          NULL,
          NULL,
          FALSE,
-         NULL
+         NULL,
+         FALSE
        FROM imported_bookings
        WHERE customer_id = $1
      ) AS customer_booking_history
@@ -97,6 +101,7 @@ export async function listRecentBookingsForCustomer(
     licensingAuthorityName: booking.licensing_authority_name,
     vehicleLicenseType: booking.vehicle_license_type,
     vehicleLicenseBadge: booking.vehicle_license_badge,
+    isOperational: Boolean(booking.is_operational),
     isTestBooking: Boolean(booking.is_test_booking),
     testReason: booking.test_reason
   }));
@@ -403,6 +408,7 @@ async function loadBookings(
       licensingAuthorityName: booking.licensing_authority_name,
       vehicleLicenseType: booking.vehicle_license_type,
       vehicleLicenseBadge: booking.vehicle_license_badge,
+      isOperational: true,
       isTestBooking: Boolean(booking.is_test_booking),
       testReason: booking.test_reason
     });
@@ -442,7 +448,8 @@ async function loadBookings(
       isTestBooking: false,
       testReason: null,
       vehicleLicenseType: null,
-      vehicleLicenseBadge: null
+      vehicleLicenseBadge: null,
+      isOperational: false
     });
     grouped.set(booking.customer_id, list);
   }
