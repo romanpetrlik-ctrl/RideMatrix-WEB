@@ -122,7 +122,14 @@ test("vehicle validation requires operational fields and non-negative baggage ca
       fuelType: "EV", passengerCapacity: 0, status: "active", vehicleLicenseType: "hackney_carriage",
       baggageCapacities: { xl_suitcase: -1 }
     }, { query: async () => ({ rows: [] }) } as any),
-    /positive integer.*non-negative integer/
+    /integer between 1 and 8.*non-negative integer/
+  );
+  await assert.rejects(
+    createVehicle({
+      registration: "AB1", make: "Make", model: "Model", classKeys: ["executive"],
+      fuelType: "EV", passengerCapacity: 9, status: "active", vehicleLicenseType: "hackney_carriage"
+    }, { query: async () => ({ rows: [] }) } as any),
+    /integer between 1 and 8/
   );
 });
 
