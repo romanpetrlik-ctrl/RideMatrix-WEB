@@ -36,7 +36,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   }
   for (const name of [
     "registration", "make", "model", "fuelType", "passengerCapacity", "status",
-    "classKeys", "year", "colour", "registeredKeeperDetails",
+    "classKeys", "vehicleLicenseType", "vehicleLicenseBadge", "year", "colour", "registeredKeeperDetails",
     "capacity_xl_suitcase", "capacity_l_suitcase", "capacity_cabin_bag", "capacity_backpack", "notes"
   ]) {
     assert.match(html, new RegExp(`name="${name}"`), `expected the ${name} field`);
@@ -53,8 +53,12 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.ok(yearOptions);
   const years = Array.from(yearOptions.matchAll(/<option value="(\d{4})"/g), (match) => Number(match[1]));
   const currentYear = new Date().getFullYear();
-  assert.deepEqual(years, Array.from({ length: currentYear - 2004 }, (_, index) => 2005 + index));
+  assert.deepEqual(years, Array.from({ length: currentYear - 2004 }, (_, index) => currentYear - index));
   assert.match(yearOptions, /<option value="" selected>Not set<\/option>/);
+  assert.match(html, /name="vehicleLicenseType" required/);
+  assert.match(html, /<option value="hackney_carriage"[^>]*>Hackney Carriage<\/option>/);
+  assert.match(html, /<option value="private_hire"[^>]*>Private Hire<\/option>/);
+  assert.match(html, /name="vehicleLicenseBadge"/);
 
   const capacities = /<select name="capacity_xl_suitcase">([\s\S]*?)<\/select>/.exec(html)?.[1];
   assert.ok(capacities);
@@ -68,11 +72,15 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
       { categoryKey: "xl_suitcase", maxQuantity: 0 },
       { categoryKey: "l_suitcase", maxQuantity: 10 }
     ],
+    vehicleLicenseType: "private_hire",
+    vehicleLicenseBadge: "PH-777",
     classes: [{ key: "wheelchair_accessible", label: "Wheelchair Accessible" }]
   });
   assert.match(legacyHtml, /<option value="2000" selected>2000 \(legacy\)<\/option>/);
   assert.match(legacyHtml, /<option value="0" selected>0 \(legacy\)<\/option>/);
   assert.match(legacyHtml, /<option value="10" selected>10 \(legacy\)<\/option>/);
+  assert.match(legacyHtml, /<option value="private_hire" selected>Private Hire<\/option>/);
+  assert.match(legacyHtml, /name="vehicleLicenseBadge" maxlength="64" value="PH-777"/);
   assert.match(legacyHtml, /name="classKeys" value="wheelchair_accessible" checked/);
 
   const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8");

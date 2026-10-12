@@ -77,6 +77,7 @@ describe("vehicle management end-to-end workflow", () => {
   function vehicleFields(token: string, registration: string, status: string): Array<[string, string]> {
     return [["_csrf", token], ["registration", registration], ["make", "Toyota"], ["model", "Prius"], ["year", "2022"],
       ["fuelType", "HYBRID"], ["passengerCapacity", "4"], ["status", status], ["classKeys", "standard_sedan_hatchback"],
+      ["vehicleLicenseType", "hackney_carriage"], ["vehicleLicenseBadge", "HC-001"],
       ["capacity_xl_suitcase", "1"], ["capacity_cabin_bag", "2"]];
   }
 
@@ -158,11 +159,14 @@ describe("vehicle management end-to-end workflow", () => {
 
     const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
     const edit = await openForm(`/vehicles/${id}/edit`);
-    assert.match(edit.body, /name="year"[^>]*value="2022"/);
+    assert.match(edit.body, /<option value="2022" selected>2022<\/option>/);
     const invalid = await postForm(`/vehicles/${id}/edit`, [["_csrf", edit.token], ["registration", ""], ["make", "Toyota"],
-      ["model", "Prius"], ["fuelType", "HYBRID"], ["passengerCapacity", "4"], ["status", "active"], ["classKeys", "standard_sedan_hatchback"]], edit.cookie);
+      ["model", "Prius"], ["year", "2021"], ["fuelType", "HYBRID"], ["passengerCapacity", "4"], ["status", "active"],
+      ["vehicleLicenseType", "hackney_carriage"], ["classKeys", "standard_sedan_hatchback"]], edit.cookie);
     assert.equal(invalid.status, 400);
-    assert.match(await invalid.text(), /Registration, make, and model are required/);
+    const invalidBody = await invalid.text();
+    assert.match(invalidBody, /Registration, make, and model are required/);
+    assert.match(invalidBody, /<option value="2021" selected>2021<\/option>/);
 
     const updated = await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "maintenance"), edit.cookie);
     assert.equal(updated.status, 302);
@@ -170,6 +174,11 @@ describe("vehicle management end-to-end workflow", () => {
     const activeBody = await (await fetch(`${baseUrl}/vehicles?status=active`)).text();
     assert.doesNotMatch(activeBody, /AB12 CDE/);
     await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "active"), edit.cookie);
+    const persisted = await query<{ vehicle_license_type: string; vehicle_license_badge: string }>(
+      "SELECT vehicle_license_type, vehicle_license_badge FROM vehicles WHERE id=$1",
+      [id]
+    );
+    assert.deepEqual(persisted.rows[0], { vehicle_license_type: "hackney_carriage", vehicle_license_badge: "HC-001" });
 
     const missing = await postForm("/vehicles/does-not-exist/edit", vehicleFields(edit.token, "ZZ1", "active"), edit.cookie);
     assert.equal(missing.status, 404);

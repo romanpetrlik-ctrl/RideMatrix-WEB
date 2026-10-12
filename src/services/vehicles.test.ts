@@ -45,7 +45,7 @@ test("vehicle management uses a fifteen-row default and exposes catalogue classe
   assert.deepEqual(await listVehicleClasses(client), [{ key: "executive", label: "Executive" }]);
   const vehicle = await createVehicle({
     registration: " ab1 ", make: "Make", model: "Model", vehicleClassKey: "executive",
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
   }, client);
   assert.equal(vehicle.registration, "AB1");
   assert.ok(queries.some((query) => query.includes("INSERT INTO vehicles")));
@@ -54,10 +54,20 @@ test("vehicle management uses a fifteen-row default and exposes catalogue classe
 test("vehicle creation rejects incomplete records", async () => {
   await assert.rejects(
     createVehicle({ registration: "", make: "Make", model: "Model", vehicleClassKey: "executive",
-      fuelType: "ICE", passengerCapacity: 4, status: "active" }, {
+      fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage" }, {
       query: async () => ({ rows: [] })
     } as any),
     /required/
+  );
+});
+
+test("vehicle creation rejects missing licence type", async () => {
+  await assert.rejects(
+    createVehicle({
+      registration: "AB1", make: "Make", model: "Model", classKeys: ["executive"],
+      fuelType: "ICE", passengerCapacity: 4, status: "active"
+    }, { query: async () => ({ rows: [] }) } as any),
+    /vehicle licence type/
   );
 });
 
@@ -109,7 +119,7 @@ test("vehicle validation requires operational fields and non-negative baggage ca
   await assert.rejects(
     createVehicle({
       registration: "AB1", make: "Make", model: "Model", classKeys: ["executive"],
-      fuelType: "EV", passengerCapacity: 0, status: "active",
+      fuelType: "EV", passengerCapacity: 0, status: "active", vehicleLicenseType: "hackney_carriage",
       baggageCapacities: { xl_suitcase: -1 }
     }, { query: async () => ({ rows: [] }) } as any),
     /positive integer.*non-negative integer/
@@ -140,7 +150,7 @@ test("vehicle creation uses a transaction and rolls back partial writes", async 
   await assert.rejects(
     createVehicle({
       registration: "AB1", make: "Make", model: "Model", classKeys: ["executive"],
-      fuelType: "ICE", passengerCapacity: 4, status: "active",
+      fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage",
       baggageCapacities: { xl_suitcase: 1 }
     }, pool),
     /capacity failure/
@@ -169,13 +179,13 @@ test("wheelchair accessibility is synchronized from class assignment", async () 
   };
   await createVehicle({
     registration: "AB1", make: "Make", model: "Model", classKeys: ["executive", "wheelchair_accessible"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
   }, client);
   assert.ok(params.some((values) => values[1] === true));
   params.length = 0;
   await createVehicle({
     registration: "AB2", make: "Make", model: "Model", classKeys: ["executive"],
-    fuelType: "ICE", passengerCapacity: 4, status: "active"
+    fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "private_hire"
   }, client);
   assert.ok(params.some((values) => values[1] === false));
 });
@@ -201,11 +211,14 @@ test("vehicle edits preserve zero-valued legacy year and baggage capacity", asyn
   await updateVehicle("v1", {
     registration: "AB1", make: "Make", model: "Model", year: 0,
     classKeys: ["wheelchair_accessible"], fuelType: "ICE", passengerCapacity: 4, status: "active",
+    vehicleLicenseType: "hackney_carriage", vehicleLicenseBadge: "HC-100",
     baggageCapacities: { xl_suitcase: 0 }
   }, client);
 
   const vehicleUpdate = calls.find(({ sql }) => sql.startsWith("UPDATE vehicles SET registration"));
   assert.equal(vehicleUpdate?.params[4], 0);
+  assert.equal(vehicleUpdate?.params[11], "hackney_carriage");
+  assert.equal(vehicleUpdate?.params[12], "HC-100");
   assert.ok(calls.some(({ sql, params }) => sql.includes("INSERT INTO vehicle_baggage_capacities") && params[2] === 0));
 });
 

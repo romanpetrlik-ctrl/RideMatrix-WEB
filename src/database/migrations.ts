@@ -903,6 +903,28 @@ export const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS vehicle_license_type TEXT,
         ADD COLUMN IF NOT EXISTS vehicle_license_badge TEXT;
     `
+  },
+  {
+    id: "0013_vehicle_licence_fields",
+    sql: `
+      ALTER TABLE vehicles
+        ADD COLUMN IF NOT EXISTS vehicle_license_type TEXT,
+        ADD COLUMN IF NOT EXISTS vehicle_license_badge TEXT;
+      ALTER TABLE vehicles
+        DROP CONSTRAINT IF EXISTS vehicles_vehicle_license_type_check;
+      ALTER TABLE vehicles
+        ADD CONSTRAINT vehicles_vehicle_license_type_check
+          CHECK (vehicle_license_type IS NULL OR vehicle_license_type IN ('hackney_carriage', 'private_hire'));
+      ALTER TABLE vehicles
+        DROP CONSTRAINT IF EXISTS vehicles_vehicle_license_badge_check;
+      ALTER TABLE vehicles
+        ADD CONSTRAINT vehicles_vehicle_license_badge_check
+          CHECK (vehicle_license_badge IS NULL OR (
+            vehicle_license_badge = btrim(vehicle_license_badge)
+            AND char_length(vehicle_license_badge) BETWEEN 1 AND 64
+            AND vehicle_license_badge !~ '[[:cntrl:]]'
+          ));
+    `
   }
 ];
 
