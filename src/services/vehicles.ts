@@ -192,7 +192,7 @@ function validateVehicleInput(input: VehicleInput): string[] {
   if (!Number.isInteger(input.passengerCapacity) || input.passengerCapacity < 1) errors.push("Passenger capacity must be a positive integer.");
   if (!VEHICLE_STATUS_OPTIONS.includes(input.status)) errors.push("Select a valid vehicle status.");
   if (!VEHICLE_LICENSE_TYPES.includes(vehicleLicenseType as VehicleLicenseType)) errors.push("Select Hackney Carriage or Private Hire as the vehicle licence type.");
-  if (badge && (badge.length > 64 || /[\x00-\x1F\x7F]/.test(badge))) errors.push("Vehicle licence badge number must be 64 characters or fewer.");
+  if (badge && (badge.length > 64 || /[\x00-\x1F\x7F]/.test(badge))) errors.push("Vehicle licence badge number must be 64 characters or fewer and contain no control characters.");
   for (const [key, quantity] of Object.entries(input.baggageCapacities || {})) {
     if (quantity != null && (!Number.isInteger(quantity) || quantity < 0)) errors.push(`Capacity for ${key} must be a non-negative integer.`);
   }
