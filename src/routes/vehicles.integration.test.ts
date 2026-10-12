@@ -81,9 +81,33 @@ describe("vehicle management end-to-end workflow", () => {
       ["capacity_xl_suitcase", "1"], ["capacity_cabin_bag", "2"]];
   }
 
+  const documentFieldByType = {
+    v5c: "document_v5c",
+    council_mechanical_check: "document_council_mechanical_check",
+    hire_reward_insurance: "document_hire_reward_insurance",
+    hc_phv_license_issued: "document_hc_phv_license_issued",
+    mot: "document_mot"
+  } as const;
+
+  async function postVehicleMultipart(pathname: string, fields: Array<[string, string]>, cookie: string, includeAllDocuments = true): Promise<Response> {
+    const body = new FormData();
+    for (const [key, value] of fields) body.append(key, value);
+    if (includeAllDocuments) {
+      for (const [type, fieldName] of Object.entries(documentFieldByType)) {
+        body.append(fieldName, new Blob([Buffer.from("%PDF-1.7 test")], { type: "application/pdf" }), `${type}.pdf`);
+      }
+    }
+    return fetch(`${baseUrl}${pathname}`, {
+      method: "POST",
+      headers: { cookie },
+      body,
+      redirect: "manual"
+    });
+  }
+
   async function createVehicle(registration: string, status: string): Promise<string> {
     const form = await openForm("/vehicles/new");
-    const response = await postForm("/vehicles/new", vehicleFields(form.token, registration, status), form.cookie);
+    const response = await postVehicleMultipart("/vehicles/new", vehicleFields(form.token, registration, status), form.cookie);
     assert.equal(response.status, 302);
     const location = response.headers.get("location") || "";
     const match = /^\/vehicles\/([^/?]+)\?notice=created$/.exec(location);
@@ -151,7 +175,7 @@ describe("vehicle management end-to-end workflow", () => {
   test("create and edit show validation errors instead of failing", async () => {
     signIn(["admin"]);
     const form = await openForm("/vehicles/new");
-    const duplicate = await postForm("/vehicles/new", vehicleFields(form.token, "AB12 CDE", "active"), form.cookie);
+    const duplicate = await postVehicleMultipart("/vehicles/new", vehicleFields(form.token, "AB12 CDE", "active"), form.cookie);
     assert.equal(duplicate.status, 400);
     const duplicateBody = await duplicate.text();
     assert.match(duplicateBody, /already exists/);
@@ -182,6 +206,87 @@ describe("vehicle management end-to-end workflow", () => {
 
     const missing = await postForm("/vehicles/does-not-exist/edit", vehicleFields(edit.token, "ZZ1", "active"), edit.cookie);
     assert.equal(missing.status, 404);
+  });
+
+  test("vehicle create/edit forms render all mandatory vehicle document controls", async () => {
+    signIn(["admin"]);
+    const createForm = await openForm("/vehicles/new");
+    for (const label of ["V5C", "Council Mechanical Check", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
+      assert.match(createForm.body, new RegExp(label));
+    }
+    for (const field of Object.values(documentFieldByType)) {
+      assert.match(createForm.body, new RegExp(`name="${field}"[^>]*required`));
+    }
+    const vehicleId = await createVehicle("DOC RNDR", "active");
+    const editForm = await openForm(`/vehicles/${vehicleId}/edit`);
+    for (const field of Object.values(documentFieldByType)) {
+      assert.match(editForm.body, new RegExp(`name="${field}"`));
+      assert.doesNotMatch(editForm.body, new RegExp(`name="${field}"[^>]*required`));
+    }
+  });
+
+  test("vehicle creation requires all mandatory document uploads and shows inline messages", async () => {
+    signIn(["admin"]);
+    const form = await openForm("/vehicles/new");
+    const response = await postVehicleMultipart(
+      "/vehicles/new",
+      vehicleFields(form.token, "NODOCS", "active"),
+      form.cookie,
+      false
+    );
+    assert.equal(response.status, 400);
+    const body = await response.text();
+    assert.match(body, /Upload all required vehicle documents before saving\./);
+    assert.match(body, /V5C document is required\./);
+    assert.match(body, /Hire &amp; Reward Insurance document is required\./);
+  });
+
+  test("edit mode shows existing vehicle documents and supports per-document replacement", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC RPLC", "active");
+    const before = await query<{ document_type: string; original_filename: string; is_latest: boolean; byte_size: string | number; storage_key: string; uploaded_at: string }>(
+      `SELECT document_type, original_filename, is_latest, byte_size, storage_key, uploaded_at
+       FROM vehicle_documents WHERE vehicle_id=$1 ORDER BY document_type, uploaded_at`,
+      [vehicleId]
+    );
+    assert.equal(before.rows.length, 5);
+    assert.ok(before.rows.every((row) => row.is_latest === true));
+    assert.ok(before.rows.every((row) => Number(row.byte_size) > 0));
+    assert.ok(before.rows.every((row) => row.storage_key.includes(`/documents/${row.document_type}/`)));
+
+    const edit = await openForm(`/vehicles/${vehicleId}/edit`);
+    assert.match(edit.body, /Uploaded: <strong>v5c\.pdf<\/strong>/);
+    assert.match(edit.body, /Uploaded: <strong>mot\.pdf<\/strong>/);
+
+    const body = new FormData();
+    for (const [key, value] of vehicleFields(edit.token, "DOC RPLC", "maintenance")) body.append(key, value);
+    body.append(documentFieldByType.mot, new Blob([Buffer.from("%PDF-1.7 replacement")], { type: "application/pdf" }), "mot-replacement.pdf");
+    const update = await fetch(`${baseUrl}/vehicles/${vehicleId}/edit`, {
+      method: "POST",
+      headers: { cookie: edit.cookie },
+      body,
+      redirect: "manual"
+    });
+    assert.equal(update.status, 302);
+    assert.equal(update.headers.get("location"), `/vehicles/${vehicleId}?notice=updated`);
+
+    const motHistory = await query<{ original_filename: string; is_latest: boolean }>(
+      `SELECT original_filename, is_latest
+       FROM vehicle_documents
+       WHERE vehicle_id=$1 AND document_type='mot'
+       ORDER BY uploaded_at, id`,
+      [vehicleId]
+    );
+    assert.equal(motHistory.rows.length, 2);
+    assert.deepEqual(motHistory.rows.map((row) => row.is_latest), [false, true]);
+    assert.equal(motHistory.rows[1].original_filename, "mot-replacement.pdf");
+    const unchanged = await query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM vehicle_documents
+       WHERE vehicle_id=$1 AND document_type<>'mot'`,
+      [vehicleId]
+    );
+    assert.equal(unchanged.rows[0].count, 4);
   });
 
   test("admins create and edit distinct vehicle licence types and badges", async () => {

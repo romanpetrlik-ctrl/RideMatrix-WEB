@@ -6,7 +6,7 @@
     <%- include("../../partials/header", { appTitle }) %>
     <main class="container rm-page-shell vehicle-page"><section class="vehicle-card vehicle-form"><h1><%= title %></h1>
       <% if (errors.length) { %><div class="notice notice--critical"><% errors.forEach((error) => { %><p><%= error %></p><% }) %></div><% } %>
-      <form method="post" action="<%= vehicle?.id ? `/vehicles/${encodeURIComponent(vehicle.id)}/edit` : '/vehicles/new' %>"><%- locals.csrfField || "" %>
+      <form method="post" action="<%= vehicle?.id ? `/vehicles/${encodeURIComponent(vehicle.id)}/edit` : '/vehicles/new' %>" enctype="multipart/form-data"><%- locals.csrfField || "" %>
         <div class="vehicle-form__grid">
           <section class="vehicle-form__section" aria-labelledby="vehicle-basic-heading">
             <h2 class="vehicle-form__section-heading" id="vehicle-basic-heading">Basic details</h2>
@@ -39,6 +39,20 @@
           <section class="vehicle-form__section" aria-labelledby="vehicle-notes-heading">
             <h2 class="vehicle-form__section-heading" id="vehicle-notes-heading">Notes</h2>
             <label class="vehicle-form__single-field"><span class="vehicle-form__label">Vehicle notes</span><textarea name="notes"><%= vehicle?.notes || '' %></textarea></label>
+          </section>
+          <section class="vehicle-form__section" aria-labelledby="vehicle-documents-heading">
+            <h2 class="vehicle-form__section-heading" id="vehicle-documents-heading">Vehicle documents</h2>
+            <div class="vehicle-form__fields">
+              <% const documentErrorsByType = documentErrors || {}; const isCreateForm = !vehicle?.id; %>
+              <% (vehicleDocumentLabels || []).forEach((item) => { const existing = (documents || []).find((entry) => entry.type === item.type); const hasError = Boolean(documentErrorsByType[item.type]); %>
+                <label>
+                  <span class="vehicle-form__label"><%= item.label %></span>
+                  <input name="<%= item.fieldName %>" type="file" accept=".pdf,.jpg,.jpeg,.png" <%= isCreateForm ? "required" : "" %>>
+                  <% if (existing?.fileName) { %><span class="form-help">Uploaded: <strong><%= existing.fileName %></strong><%= existing.uploadedAt ? ` (${String(existing.uploadedAt)})` : " (selected for upload)" %></span><% } else { %><span class="form-help">No file uploaded yet.</span><% } %>
+                  <% if (hasError) { %><span class="form-help notice--critical"><%= documentErrorsByType[item.type] %></span><% } %>
+                </label>
+              <% }) %>
+            </div>
           </section>
         </div><button class="button button--primary" type="submit">Save vehicle</button> <a class="button button--secondary" href="<%= vehicle?.id ? `/vehicles/${encodeURIComponent(vehicle.id)}` : '/vehicles' %>">Cancel</a>
       </form>
