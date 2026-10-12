@@ -73,6 +73,22 @@ describe("vehicle management end-to-end workflow", () => {
       redirect: "manual"
     });
   }
+  async function postMultipartForm(
+    pathname: string,
+    fields: Array<[string, string]>,
+    cookie: string,
+    files: Array<{ name: string; filename: string; blob: Blob }> = []
+  ): Promise<Response> {
+    const body = new FormData();
+    for (const [key, value] of fields) body.append(key, value);
+    for (const file of files) body.append(file.name, file.blob, file.filename);
+    return fetch(`${baseUrl}${pathname}`, {
+      method: "POST",
+      headers: { cookie },
+      body,
+      redirect: "manual"
+    });
+  }
 
   function vehicleFields(token: string, registration: string, status: string): Array<[string, string]> {
     return [["_csrf", token], ["registration", registration], ["make", "Toyota"], ["model", "Prius"], ["year", "2022"],
@@ -80,10 +96,21 @@ describe("vehicle management end-to-end workflow", () => {
       ["vehicleLicenseType", "hackney_carriage"], ["vehicleLicenseBadge", "HC-001"],
       ["capacity_xl_suitcase", "1"], ["capacity_cabin_bag", "2"]];
   }
+  function requiredVehicleDocumentFiles(suffix: string): Array<{ name: string; filename: string; blob: Blob }> {
+    const pdf = (value: string) => new Blob([Buffer.from(`%PDF-1.7 ${value}`)], { type: "application/pdf" });
+    return [
+      { name: "requiredDocument_v5c", filename: `v5c-${suffix}.pdf`, blob: pdf(`v5c-${suffix}`) },
+      { name: "requiredDocument_mec", filename: `mec-${suffix}.pdf`, blob: pdf(`mec-${suffix}`) },
+      { name: "requiredDocument_insurance", filename: `insurance-${suffix}.pdf`, blob: pdf(`insurance-${suffix}`) },
+      { name: "requiredDocument_hackney_ph_badge", filename: `hcphv-${suffix}.pdf`, blob: pdf(`hcphv-${suffix}`) },
+      { name: "requiredDocument_mot", filename: `mot-${suffix}.pdf`, blob: pdf(`mot-${suffix}`) }
+    ];
+  }
 
   async function createVehicle(registration: string, status: string): Promise<string> {
     const form = await openForm("/vehicles/new");
-    const response = await postForm("/vehicles/new", vehicleFields(form.token, registration, status), form.cookie);
+    const files = status === "active" ? requiredVehicleDocumentFiles(registration.replace(/\s+/g, "-")) : [];
+    const response = await postMultipartForm("/vehicles/new", vehicleFields(form.token, registration, status), form.cookie, files);
     assert.equal(response.status, 302);
     const location = response.headers.get("location") || "";
     const match = /^\/vehicles\/([^/?]+)\?notice=created$/.exec(location);
@@ -146,12 +173,32 @@ describe("vehicle management end-to-end workflow", () => {
     const ignoredStatus = await (await fetch(`${baseUrl}/vehicles?status=bogus`)).text();
     assert.match(ignoredStatus, /MA1 NT/);
     assert.match(ignoredStatus, /AB12 CDE/);
+
+    const requiredDocs = await query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM vehicle_documents
+       WHERE vehicle_id = $1 AND is_latest = TRUE
+         AND document_type = ANY($2::text[])`,
+      [activeId, ["v5c", "mec", "insurance", "hackney_ph_badge", "mot"]]
+    );
+    assert.equal(requiredDocs.rows[0].count, 5);
   });
 
   test("create and edit show validation errors instead of failing", async () => {
     signIn(["admin"]);
+    const missingDocsForm = await openForm("/vehicles/new");
+    const missingDocs = await postForm("/vehicles/new", vehicleFields(missingDocsForm.token, "NO DOCS", "active"), missingDocsForm.cookie);
+    assert.equal(missingDocs.status, 400);
+    const missingDocsBody = await missingDocs.text();
+    assert.match(missingDocsBody, /V5C is required for active vehicles/);
+    assert.match(missingDocsBody, /Council Mechanical Check is required for active vehicles/);
+
     const form = await openForm("/vehicles/new");
-    const duplicate = await postForm("/vehicles/new", vehicleFields(form.token, "AB12 CDE", "active"), form.cookie);
+    const duplicate = await postMultipartForm(
+      "/vehicles/new",
+      vehicleFields(form.token, "AB12 CDE", "active"),
+      form.cookie,
+      requiredVehicleDocumentFiles("duplicate")
+    );
     assert.equal(duplicate.status, 400);
     const duplicateBody = await duplicate.text();
     assert.match(duplicateBody, /already exists/);
@@ -168,20 +215,42 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match(invalidBody, /Registration, make, and model are required/);
     assert.match(invalidBody, /<option value="2021" selected>2021<\/option>/);
 
-    const updated = await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "maintenance"), edit.cookie);
+    const updated = await postMultipartForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "maintenance"), edit.cookie);
     assert.equal(updated.status, 302);
     assert.equal(updated.headers.get("location"), `/vehicles/${id}?notice=updated`);
     const activeBody = await (await fetch(`${baseUrl}/vehicles?status=active`)).text();
     assert.doesNotMatch(activeBody, /AB12 CDE/);
-    await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "active"), edit.cookie);
+    await postMultipartForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "active"), edit.cookie);
     const persisted = await query<{ vehicle_license_type: string; vehicle_license_badge: string }>(
       "SELECT vehicle_license_type, vehicle_license_badge FROM vehicles WHERE id=$1",
       [id]
     );
     assert.deepEqual(persisted.rows[0], { vehicle_license_type: "hackney_carriage", vehicle_license_badge: "HC-001" });
 
-    const missing = await postForm("/vehicles/does-not-exist/edit", vehicleFields(edit.token, "ZZ1", "active"), edit.cookie);
+    const missing = await postMultipartForm("/vehicles/does-not-exist/edit", vehicleFields(edit.token, "ZZ1", "active"), edit.cookie);
     assert.equal(missing.status, 404);
+  });
+
+  test("vehicle details renders required document rows, statuses, and upload/replace actions", async () => {
+    signIn(["admin"]);
+    const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
+    const detailBody = await (await fetch(`${baseUrl}/vehicles/${id}`)).text();
+    for (const label of ["V5C", "Council Mechanical Check", "Hire & Reward Insurance", "HC/PHV License issued", "MOT"]) {
+      assert.match(detailBody, new RegExp(label));
+    }
+    assert.match(detailBody, /Vehicle documents/);
+    assert.match(detailBody, /Status: Uploaded/);
+    assert.match(detailBody, />Replace</);
+    assert.match(detailBody, />View</);
+    assert.match(detailBody, />Download</);
+  });
+
+  test("vehicle details shows missing states and upload actions when required documents are absent", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("MS1 SS", "inactive");
+    const detailBody = await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text();
+    assert.equal((detailBody.match(/Status: Missing/g) || []).length, 5);
+    assert.equal((detailBody.match(/>Upload</g) || []).length, 5);
   });
 
   test("admins create and edit distinct vehicle licence types and badges", async () => {
@@ -224,6 +293,29 @@ describe("vehicle management end-to-end workflow", () => {
       license_type: "private_hire", vehicle_license_badge: "PH-VEH-2", license_reference: "REF-PH-2"
     });
     assert.match((await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text()), /PH-VEH-2/);
+  });
+
+  test("edit flow replaces individual required documents without re-uploading all files", async () => {
+    signIn(["admin"]);
+    const vehicleId = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
+    const edit = await openForm(`/vehicles/${vehicleId}/edit`);
+    const replacement = new Blob([Buffer.from("%PDF-1.7 replacement mot")], { type: "application/pdf" });
+    const response = await postMultipartForm(
+      `/vehicles/${vehicleId}/edit`,
+      vehicleFields(edit.token, "AB12 CDE", "active"),
+      edit.cookie,
+      [{ name: "requiredDocument_mot", filename: "mot-replacement.pdf", blob: replacement }]
+    );
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), `/vehicles/${vehicleId}?notice=updated`);
+    const motHistory = await query<{ id: string; is_latest: boolean }>(
+      `SELECT id, is_latest FROM vehicle_documents
+       WHERE vehicle_id = $1 AND document_type = 'mot'
+       ORDER BY uploaded_at, id`,
+      [vehicleId]
+    );
+    assert.ok(motHistory.rows.length >= 2);
+    assert.equal(motHistory.rows.filter((row) => row.is_latest).length, 1);
   });
 
   test("detail page manages driver assignments and preserves assignment history", async () => {
@@ -292,7 +384,7 @@ describe("vehicle management end-to-end workflow", () => {
 
     const detailBody = await (await fetch(`${baseUrl}/vehicles/${id}?notice=document-added`)).text();
     assert.match(detailBody, /Document uploaded\./);
-    assert.match(detailBody, /Status: Valid/);
+    assert.match(detailBody, /Status: Uploaded/);
     const documentId = /href="\/vehicles\/documents\/([^"?]+)\?download=1"/.exec(detailBody)?.[1];
     assert.ok(documentId);
 
@@ -342,6 +434,8 @@ describe("vehicle management end-to-end workflow", () => {
     assert.deepEqual(Buffer.from(await previousDownload.arrayBuffer()), firstBadgeDocument);
 
     signIn(["driver"]);
+    const detailDenied = await fetch(`${baseUrl}/vehicles/${id}`, { redirect: "manual" });
+    assert.equal(detailDenied.status, 403);
     const denied = await fetch(`${baseUrl}/vehicles/documents/${documentId}`, { redirect: "manual" });
     assert.equal(denied.status, 403);
     const deniedUpload = await upload({ documentType: "insurance", expiresOn: "2099-01-01" }, pdf, "insurance.pdf");
@@ -350,7 +444,7 @@ describe("vehicle management end-to-end workflow", () => {
       "SELECT count(*)::int AS count FROM vehicle_documents WHERE vehicle_id = $1 AND document_type='insurance'",
       [id]
     );
-    assert.equal(docs.rows[0].count, 1);
+    assert.equal(docs.rows[0].count, 2);
   });
 
   test("dashboard Active vehicles destination is the filtered vehicle directory", async () => {

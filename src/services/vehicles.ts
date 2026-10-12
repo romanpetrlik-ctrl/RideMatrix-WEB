@@ -11,7 +11,14 @@ export const VEHICLE_DEFAULT_PER_PAGE = 15;
 export const VEHICLE_STATUS_OPTIONS = ["active", "inactive", "maintenance"] as const;
 export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_LICENSE_TYPES = ["hackney_carriage", "private_hire"] as const;
-export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge"] as const;
+export const VEHICLE_DOCUMENT_TYPES = ["v5c", "insurance", "mot", "mec", "hackney_ph_badge"] as const;
+export const REQUIRED_VEHICLE_DOCUMENT_DEFINITIONS = [
+  { type: "v5c", label: "V5C" },
+  { type: "mec", label: "Council Mechanical Check" },
+  { type: "insurance", label: "Hire & Reward Insurance" },
+  { type: "hackney_ph_badge", label: "HC/PHV License issued" },
+  { type: "mot", label: "MOT" }
+] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
 export const VEHICLE_DOCUMENT_DOWNLOAD_LIMIT = 120;
@@ -21,6 +28,15 @@ export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
 export type VehicleLicenseType = (typeof VEHICLE_LICENSE_TYPES)[number];
 export type VehicleDocumentType = (typeof VEHICLE_DOCUMENT_TYPES)[number];
+export type RequiredVehicleDocumentType = (typeof REQUIRED_VEHICLE_DOCUMENT_DEFINITIONS)[number]["type"];
+export type VehicleRequiredDocument = {
+  id: string;
+  documentType: RequiredVehicleDocumentType;
+  label: string;
+  originalFilename: string | null;
+  uploadedAt: string;
+  mimeType: string | null;
+};
 
 export type VehicleClass = { key: string; label: string };
 export type BaggageCategory = {
@@ -37,6 +53,7 @@ export type Vehicle = {
   wheelchairAccessible: boolean; notes: string | null; classes: VehicleClass[];
   driverId: string | null; driverEmail: string | null; capacities: VehicleCapacity[];
   documentsCount: number;
+  requiredDocuments: Record<RequiredVehicleDocumentType, VehicleRequiredDocument | null>;
 };
 export type VehicleInput = {
   registration: string; make: string; model: string; classKeys?: string[];
@@ -55,8 +72,20 @@ function mapVehicle(row: any): Vehicle {
     vehicleLicenseType: row.vehicle_license_type, vehicleLicenseBadge: row.vehicle_license_badge,
     wheelchairAccessible: Boolean(row.wheelchair_accessible), notes: row.notes,
     classes: row.classes || [], driverId: row.driver_id, driverEmail: row.driver_email,
-    capacities: row.capacities || [], documentsCount: Number(row.documents_count || 0)
+    capacities: row.capacities || [], documentsCount: Number(row.documents_count || 0),
+    requiredDocuments: emptyRequiredDocuments()
   };
+}
+
+function emptyRequiredDocuments(): Record<RequiredVehicleDocumentType, VehicleRequiredDocument | null> {
+  return REQUIRED_VEHICLE_DOCUMENT_DEFINITIONS.reduce((acc, definition) => {
+    acc[definition.type] = null;
+    return acc;
+  }, {} as Record<RequiredVehicleDocumentType, VehicleRequiredDocument | null>);
+}
+
+export function getRequiredVehicleDocumentLabel(type: RequiredVehicleDocumentType): string {
+  return REQUIRED_VEHICLE_DOCUMENT_DEFINITIONS.find((definition) => definition.type === type)?.label || type;
 }
 
 export async function listVehicleClasses(client?: Queryable): Promise<VehicleClass[]> {
@@ -174,7 +203,10 @@ export async function getVehicleById(id: string, client?: Queryable): Promise<Ve
      LEFT JOIN vehicle_driver_assignments a ON a.vehicle_id = v.id AND a.unassigned_at IS NULL
      LEFT JOIN users u ON u.id::text = a.driver_id WHERE v.id = $1`, [id]
   );
-  return result.rows[0] ? mapVehicle(result.rows[0]) : null;
+  if (!result.rows[0]) return null;
+  const vehicle = mapVehicle(result.rows[0]);
+  vehicle.requiredDocuments = await listLatestRequiredVehicleDocuments(vehicle.id, client);
+  return vehicle;
 }
 
 function normalizedClasses(input: VehicleInput): string[] {
@@ -353,6 +385,34 @@ export async function listVehicleDocuments(vehicleId: string, client?: Queryable
     [vehicleId]
   );
   return result.rows.map((row) => ({ ...row, status: getDocumentStatus(row.expires_on) }));
+}
+
+export async function listLatestRequiredVehicleDocuments(
+  vehicleId: string,
+  client?: Queryable
+): Promise<Record<RequiredVehicleDocumentType, VehicleRequiredDocument | null>> {
+  const documents = emptyRequiredDocuments();
+  const result = await db(client).query(
+    `SELECT d.id, d.document_type, d.original_filename, d.uploaded_at, d.mime_type
+     FROM vehicle_documents d
+     WHERE d.vehicle_id = $1
+       AND d.is_latest = TRUE
+       AND d.document_type = ANY($2::text[])`,
+    [vehicleId, REQUIRED_VEHICLE_DOCUMENT_DEFINITIONS.map((definition) => definition.type)]
+  );
+  for (const row of result.rows) {
+    const type = text(row.document_type) as RequiredVehicleDocumentType;
+    if (!(type in documents)) continue;
+    documents[type] = {
+      id: row.id,
+      documentType: type,
+      label: getRequiredVehicleDocumentLabel(type),
+      originalFilename: row.original_filename || null,
+      uploadedAt: row.uploaded_at,
+      mimeType: row.mime_type || null
+    };
+  }
+  return documents;
 }
 export async function createVehicleDocument(input: {
   vehicleId: string; documentType: string; documentNumber?: string; issuedOn?: string;

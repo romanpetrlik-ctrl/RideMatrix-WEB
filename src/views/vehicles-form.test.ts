@@ -24,6 +24,13 @@ async function renderVehicleForm(vehicle: any = null): Promise<string> {
       { key: "cabin_bag", label: "CB cabin bag" },
       { key: "backpack", label: "BP backpack" }
     ],
+    requiredDocumentFields: [
+      { type: "v5c", label: "V5C", fieldName: "requiredDocument_v5c" },
+      { type: "mec", label: "Council Mechanical Check", fieldName: "requiredDocument_mec" },
+      { type: "insurance", label: "Hire & Reward Insurance", fieldName: "requiredDocument_insurance" },
+      { type: "hackney_ph_badge", label: "HC/PHV License issued", fieldName: "requiredDocument_hackney_ph_badge" },
+      { type: "mot", label: "MOT", fieldName: "requiredDocument_mot" }
+    ],
     helpFor: (key: string) => ({ title: key, body: `Information about ${key}.` })
   });
 }
@@ -31,16 +38,25 @@ async function renderVehicleForm(vehicle: any = null): Promise<string> {
 test("vehicle form renders grouped fields and responsive, scoped control styles", async () => {
   const html = await renderVehicleForm();
 
-  for (const heading of ["Basic details", "Vehicle class assignment", "Registered operator", "Baggage capacity (maximum quantity)", "Notes"]) {
+  for (const heading of ["Basic details", "Vehicle class assignment", "Registered operator", "Baggage capacity (maximum quantity)", "Notes", "Vehicle documents"]) {
     assert.ok(html.includes(heading), `expected the ${heading} section`);
   }
   for (const name of [
     "registration", "make", "model", "fuelType", "passengerCapacity", "status",
     "classKeys", "vehicleLicenseType", "vehicleLicenseBadge", "year", "colour", "registeredKeeperDetails",
-    "capacity_xl_suitcase", "capacity_l_suitcase", "capacity_cabin_bag", "capacity_backpack", "notes"
+    "capacity_xl_suitcase", "capacity_l_suitcase", "capacity_cabin_bag", "capacity_backpack", "notes",
+    "requiredDocument_v5c", "requiredDocument_mec", "requiredDocument_insurance",
+    "requiredDocument_hackney_ph_badge", "requiredDocument_mot"
   ]) {
     assert.match(html, new RegExp(`name="${name}"`), `expected the ${name} field`);
   }
+  assert.match(html, /enctype="multipart\/form-data"/);
+  assert.match(html, /V5C/);
+  assert.match(html, /Council Mechanical Check/);
+  assert.match(html, /Hire &amp; Reward Insurance/);
+  assert.match(html, /HC\/PHV License issued/);
+  assert.match(html, /MOT/);
+  assert.match(html, /Missing/);
   assert.match(html, /name="_csrf" value="test-token"/);
   assert.match(html, /class="help-button" type="button" aria-haspopup="dialog"/);
   assert.match(html, /aria-label="Help: vehicle\.fuelType"/);
@@ -74,7 +90,14 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
     ],
     vehicleLicenseType: "private_hire",
     vehicleLicenseBadge: "PH-777",
-    classes: [{ key: "wheelchair_accessible", label: "Wheelchair Accessible" }]
+    classes: [{ key: "wheelchair_accessible", label: "Wheelchair Accessible" }],
+    requiredDocuments: {
+      v5c: { originalFilename: "v5c.pdf", uploadedAt: "2026-09-01T00:00:00.000Z" },
+      mec: null,
+      insurance: null,
+      hackney_ph_badge: null,
+      mot: null
+    }
   });
   assert.match(legacyHtml, /<option value="2000" selected>2000 \(legacy\)<\/option>/);
   assert.match(legacyHtml, /<option value="0" selected>0 \(legacy\)<\/option>/);
@@ -82,6 +105,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(legacyHtml, /<option value="private_hire" selected>Private Hire<\/option>/);
   assert.match(legacyHtml, /name="vehicleLicenseBadge" maxlength="64" value="PH-777"/);
   assert.match(legacyHtml, /name="classKeys" value="wheelchair_accessible" checked/);
+  assert.match(legacyHtml, /Uploaded: v5c\.pdf \(2026-09-01\)/);
 
   const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8");
   assert.match(css, /\.vehicle-form input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\),\s*\.vehicle-form select,\s*\.vehicle-form textarea\s*\{[\s\S]*width:100%;[\s\S]*max-width:none;/);

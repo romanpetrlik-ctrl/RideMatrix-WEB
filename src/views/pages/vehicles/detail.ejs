@@ -7,7 +7,7 @@
     <main class="container rm-page-shell vehicle-page vehicle-detail-page">
       <header class="vehicle-page__header"><div><h1><%= vehicle.registration %></h1><p><%= vehicle.make %> <%= vehicle.model %></p></div><div><span class="status-pill status-pill--<%= vehicle.status %>"><%= vehicle.status[0].toUpperCase() + vehicle.status.slice(1) %></span> <a class="button button--primary" href="/vehicles/<%= encodeURIComponent(vehicle.id) %>/edit">Edit</a></div></header>
       <% const noticeMessage = new Map([
-        ["created", ["Vehicle created. Add compliance documents and assign a driver below.", false]],
+        ["created", ["Vehicle created. Add vehicle documents and assign a driver below.", false]],
         ["updated", ["Vehicle updated.", false]],
         ["driver-updated", ["Driver assignment saved.", false]],
         ["driver-unassigned", ["Driver unassigned from this vehicle.", false]],
@@ -57,23 +57,41 @@
             <button class="button button--secondary" type="submit">Add licence</button>
           </form>
         </article>
-        <article class="vehicle-card"><h2>Compliance documents</h2>
-          <% if (documents.length) { documents.forEach((document) => { const label = document.document_type === "hackney_ph_badge" ? "Hackney / PH badge" : document.document_type.toUpperCase(); %>
-            <div class="vehicle-document-row"><strong><%= label %><%= document.is_latest ? " · Current" : " · Replaced" %></strong>
-              <span>Licence: <%= document.license_type === "hackney_carriage" ? "Hackney Carriage" : document.license_type === "private_hire" ? "Private Hire" : "Vehicle-level" %></span>
-              <span>Status: <%= document.status %></span><span>Expires: <%= document.expires_on || "—" %></span>
-              <span>Uploaded: <%= document.uploaded_at %> · <%= document.uploaded_by || "Unknown user" %></span>
-              <span>Size: <%= document.byte_size ?? "Unknown" %> bytes · SHA-256: <%= document.checksum || "Unavailable for legacy upload" %></span>
-              <%- include("../../partials/document-preview", { id: document.id, label, href: `/vehicles/documents/${document.id}`, mimeType: document.mime_type }) %>
+        <article class="vehicle-card"><h2>Vehicle documents</h2>
+          <% requiredDocumentFields.forEach((requiredDocument) => { const uploaded = vehicle.requiredDocuments?.[requiredDocument.type]; %>
+            <div class="vehicle-document-row">
+              <strong><%= requiredDocument.label %></strong>
+              <% if (uploaded) { %>
+                <span>Status: Uploaded</span>
+                <span>Filename: <%= uploaded.originalFilename || "Unknown filename" %></span>
+                <span>Uploaded: <%= String(uploaded.uploadedAt).slice(0, 10) %></span>
+                <span>
+                  <a href="/vehicles/documents/<%= uploaded.id %>">View</a> ·
+                  <a href="/vehicles/documents/<%= uploaded.id %>?download=1">Download</a>
+                </span>
+                <% if (canEditDocuments) { %>
+                  <form method="post" action="/vehicles/<%= vehicle.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form">
+                    <%- locals.csrfField || "" %>
+                    <input type="hidden" name="documentType" value="<%= requiredDocument.type %>">
+                    <input type="hidden" name="expiresOn" value="2099-12-31">
+                    <label>Replace file<input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+                    <button class="button button--secondary" type="submit">Replace</button>
+                  </form>
+                <% } %>
+              <% } else { %>
+                <span>Status: Missing</span>
+                <% if (canEditDocuments) { %>
+                  <form method="post" action="/vehicles/<%= vehicle.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form">
+                    <%- locals.csrfField || "" %>
+                    <input type="hidden" name="documentType" value="<%= requiredDocument.type %>">
+                    <input type="hidden" name="expiresOn" value="2099-12-31">
+                    <label>Upload file<input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+                    <button class="button button--secondary" type="submit">Upload</button>
+                  </form>
+                <% } %>
+              <% } %>
             </div>
-          <% }) } else { %><p>No compliance documents have been uploaded.</p><% } %>
-          <form method="post" action="/vehicles/<%= vehicle.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form"><%- locals.csrfField || "" %>
-            <label>Type<select name="documentType" required><% documentTypes.forEach((type) => { %><option value="<%= type %>"><%= type === "hackney_ph_badge" ? "Hackney / PH badge" : type.toUpperCase() %></option><% }) %></select></label>
-            <label>Vehicle licence<select name="licenseId"><option value="">Vehicle-level document</option><% licenses.forEach((license) => { %><option value="<%= license.id %>"><%= license.licenseType === "hackney_carriage" ? "Hackney Carriage" : license.licenseType === "private_hire" ? "Private Hire" : "Type not set" %> · <%= license.licensingAuthorityName %></option><% }) %></select></label>
-            <label>Number<input name="documentNumber"></label><label>Expires<input name="expiresOn" type="date" required></label>
-            <label>File<input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
-            <button class="button button--secondary" type="submit">Upload / replace</button>
-          </form>
+          <% }) %>
         </article>
       </section>
       <section class="vehicle-operations"><a class="button button--secondary" href="/vehicles/<%= vehicle.id %>/bookings">Assigned bookings</a><a class="button button--secondary" href="/vehicles/<%= vehicle.id %>/driver-history">Driver assignment history</a></section>
