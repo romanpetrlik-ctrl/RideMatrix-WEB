@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
+import path from "node:path";
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../database/connection";
 
@@ -11,7 +12,8 @@ export const VEHICLE_DEFAULT_PER_PAGE = 15;
 export const VEHICLE_STATUS_OPTIONS = ["active", "inactive", "maintenance"] as const;
 export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_LICENSE_TYPES = ["hackney_carriage", "private_hire"] as const;
-export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge"] as const;
+export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge", "v5c", "council_mechanical_check", "hire_reward_insurance", "hc_phv_license_issued"] as const;
+export const VEHICLE_RECORD_DOCUMENT_TYPES = ["v5c", "council_mechanical_check", "hire_reward_insurance", "hc_phv_license_issued", "mot"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
 export const VEHICLE_DOCUMENT_DOWNLOAD_LIMIT = 120;
@@ -21,6 +23,7 @@ export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
 export type VehicleLicenseType = (typeof VEHICLE_LICENSE_TYPES)[number];
 export type VehicleDocumentType = (typeof VEHICLE_DOCUMENT_TYPES)[number];
+export type VehicleRecordDocumentType = (typeof VEHICLE_RECORD_DOCUMENT_TYPES)[number];
 
 export type VehicleClass = { key: string; label: string };
 export type BaggageCategory = {
@@ -354,13 +357,48 @@ export async function listVehicleDocuments(vehicleId: string, client?: Queryable
   );
   return result.rows.map((row) => ({ ...row, status: getDocumentStatus(row.expires_on) }));
 }
+
+export async function listLatestVehicleRecordDocuments(vehicleId: string, client?: Queryable) {
+  const result = await db(client).query(
+    `SELECT document_type, storage_key, original_filename, mime_type, uploaded_at
+       FROM vehicle_documents
+      WHERE vehicle_id = $1
+        AND is_latest = TRUE
+        AND document_type = ANY($2::text[])`,
+    [vehicleId, [...VEHICLE_RECORD_DOCUMENT_TYPES]]
+  );
+  const entries = new Map(result.rows.map((row) => [row.document_type, row]));
+  return VEHICLE_RECORD_DOCUMENT_TYPES.map((type) => {
+    const row = entries.get(type);
+    return {
+      documentType: type,
+      storageKey: row?.storage_key || null,
+      originalFilename: row?.original_filename || null,
+      mimeType: row?.mime_type || null,
+      uploadedAt: row?.uploaded_at || null
+    };
+  });
+}
+
+function sanitizeOriginalFilename(name: string): string {
+  const base = path.basename(text(name));
+  const cleaned = base.replace(/[\x00-\x1F\x7F]/g, "").trim();
+  if (!cleaned || cleaned === "." || cleaned === "..") return "document";
+  return cleaned.slice(0, 255);
+}
+
+function buildVehicleDocumentStorageKey(vehicleId: string, documentType: string, originalFilename: string): string {
+  const extension = sanitizeOriginalFilename(originalFilename).match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || "bin";
+  return `vehicles/${encodeURIComponent(vehicleId)}/documents/${documentType}/${randomUUID()}.${extension}`;
+}
+
 export async function createVehicleDocument(input: {
   vehicleId: string; documentType: string; documentNumber?: string; issuedOn?: string;
   expiresOn?: string; originalFilename?: string; mimeType?: string; content?: Buffer; uploadedBy?: string;
-  licenseId?: string | null;
+  licenseId?: string | null; storageKey?: string;
 }, client?: Queryable) {
   if (!VEHICLE_DOCUMENT_TYPES.includes(input.documentType as VehicleDocumentType)) throw new Error("Select a valid compliance document type.");
-  if (!input.expiresOn || getDocumentStatus(input.expiresOn) === "Expired") throw new Error("Enter a valid current or future expiry date.");
+  if (input.expiresOn && getDocumentStatus(input.expiresOn) === "Expired") throw new Error("Enter a valid current or future expiry date.");
   if (!input.content?.length) throw new Error("Upload a non-empty vehicle document.");
   if (input.content.length > VEHICLE_DOCUMENT_MAX_BYTES) throw new Error("Vehicle documents must not exceed 10 MB.");
   validateVehicleDocumentUpload({
@@ -383,6 +421,8 @@ export async function createVehicleDocument(input: {
     const now = new Date().toISOString();
     const byteSize = input.content!.length;
     const checksum = createHash("sha256").update(input.content!).digest("hex");
+    const originalFilename = sanitizeOriginalFilename(input.originalFilename || "");
+    const storageKey = text(input.storageKey) || buildVehicleDocumentStorageKey(input.vehicleId, input.documentType, originalFilename);
     await runner.query(
       `UPDATE vehicle_documents
        SET is_latest = FALSE, superseded_at = $3
@@ -393,11 +433,11 @@ export async function createVehicleDocument(input: {
     await runner.query(
       `INSERT INTO vehicle_documents
         (id, vehicle_id, license_id, document_type, document_number, issued_on, expires_on,
-         original_filename, mime_type, byte_size, checksum, content, uploaded_by, uploaded_at, is_latest)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE)`,
+         original_filename, mime_type, storage_key, byte_size, checksum, content, uploaded_by, uploaded_at, is_latest)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE)`,
       [id, input.vehicleId, input.licenseId || null, input.documentType, text(input.documentNumber) || null,
-        input.issuedOn || null, input.expiresOn, input.originalFilename || null, input.mimeType || null,
-        byteSize, checksum, input.content, input.uploadedBy || null, now]
+        input.issuedOn || null, input.expiresOn || null, originalFilename || null, input.mimeType || null,
+        storageKey, byteSize, checksum, input.content, input.uploadedBy || null, now]
     );
     return id;
   });

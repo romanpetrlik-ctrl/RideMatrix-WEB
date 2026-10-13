@@ -250,10 +250,11 @@ test("document replacement preserves per-licence history, metadata, and the curr
   assert.equal(supersede.params[3], "license-1");
   const insert = calls.find(({ sql }) => sql.includes("INSERT INTO vehicle_documents"));
   assert.ok(insert);
-  assert.ok(insert.sql.includes("byte_size, checksum"));
-  assert.equal(insert.params[9], bytes.length);
-  assert.equal(insert.params[10], createHash("sha256").update(bytes).digest("hex"));
-  assert.equal(insert.params[12], "admin-1");
+  assert.ok(insert.sql.includes("storage_key, byte_size, checksum"));
+  assert.match(String(insert.params[9]), /^vehicles\/v1\/documents\/hackney_ph_badge\/[a-f0-9-]+\.pdf$/);
+  assert.equal(insert.params[10], bytes.length);
+  assert.equal(insert.params[11], createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(insert.params[13], "admin-1");
   assert.ok(calls.some(({ sql }) => sql.includes("WHERE d.vehicle_id=$1")));
   assert.ok(calls.some(({ sql }) => sql.includes("WHERE id=$1")));
 });
@@ -262,6 +263,29 @@ test("document metadata rejects empty content and remains scoped to the selected
   await assert.rejects(createVehicleDocument({
     vehicleId: "v1", documentType: "insurance", expiresOn: "2099-01-01", content: Buffer.alloc(0)
   }, { query: async () => ({ rows: [] }) } as any), /non-empty/);
+});
+
+test("vehicle record documents can be stored without an expiry date", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const content = Buffer.from("%PDF-1.7");
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      return { rows: [] };
+    }
+  };
+  await createVehicleDocument({
+    vehicleId: "v1",
+    documentType: "v5c",
+    originalFilename: "../../vehicle-v5c.pdf",
+    mimeType: "application/pdf",
+    content,
+    uploadedBy: "admin-1"
+  }, client);
+  const insert = calls.find(({ sql }) => sql.includes("INSERT INTO vehicle_documents"));
+  assert.ok(insert);
+  assert.equal(insert.params[7], "vehicle-v5c.pdf");
+  assert.equal(insert.params[6], null);
 });
 
 test("vehicle document download rate limiting uses the shared atomic database counter", async () => {
