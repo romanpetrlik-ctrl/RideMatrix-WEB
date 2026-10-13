@@ -115,14 +115,21 @@ test("vehicle mutation rate limiting uses the distributed database counter separ
   assert.equal(params[1], 120);
 });
 
-test("vehicle validation requires operational fields and non-negative baggage capacities", async () => {
+test("vehicle validation requires passenger capacity 1-8 and non-negative baggage capacities", async () => {
   await assert.rejects(
     createVehicle({
       registration: "AB1", make: "Make", model: "Model", classKeys: ["executive"],
       fuelType: "EV", passengerCapacity: 0, status: "active", vehicleLicenseType: "hackney_carriage",
       baggageCapacities: { xl_suitcase: -1 }
     }, { query: async () => ({ rows: [] }) } as any),
-    /positive integer.*non-negative integer/
+    /between 1 and 8.*non-negative integer/
+  );
+  await assert.rejects(
+    createVehicle({
+      registration: "AB2", make: "Make", model: "Model", classKeys: ["executive"],
+      fuelType: "EV", passengerCapacity: 9, status: "active", vehicleLicenseType: "hackney_carriage"
+    }, { query: async () => ({ rows: [] }) } as any),
+    /between 1 and 8/
   );
 });
 

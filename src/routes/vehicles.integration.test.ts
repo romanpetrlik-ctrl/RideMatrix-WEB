@@ -186,6 +186,9 @@ describe("vehicle management end-to-end workflow", () => {
   test("create and edit show validation errors instead of failing", async () => {
     signIn(["admin"]);
     const missingDocsForm = await openForm("/vehicles/new");
+    assert.match(missingDocsForm.body, /<select name="passengerCapacity" required>/);
+    assert.match(missingDocsForm.body, /<option value="" selected>Select passenger capacity<\/option>/);
+    assert.match(missingDocsForm.body, /<option value="1"[^>]*>1<\/option>[\s\S]*<option value="8"[^>]*>8<\/option>/);
     const missingDocs = await postForm("/vehicles/new", vehicleFields(missingDocsForm.token, "NO DOCS", "active"), missingDocsForm.cookie);
     assert.equal(missingDocs.status, 400);
     const missingDocsBody = await missingDocs.text();
@@ -207,6 +210,7 @@ describe("vehicle management end-to-end workflow", () => {
     const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
     const edit = await openForm(`/vehicles/${id}/edit`);
     assert.match(edit.body, /<option value="2022" selected>2022<\/option>/);
+    assert.match(edit.body, /<option value="4" selected>4<\/option>/);
     const invalid = await postForm(`/vehicles/${id}/edit`, [["_csrf", edit.token], ["registration", ""], ["make", "Toyota"],
       ["model", "Prius"], ["year", "2021"], ["fuelType", "HYBRID"], ["passengerCapacity", "4"], ["status", "active"],
       ["vehicleLicenseType", "hackney_carriage"], ["classKeys", "standard_sedan_hatchback"]], edit.cookie);
@@ -214,6 +218,13 @@ describe("vehicle management end-to-end workflow", () => {
     const invalidBody = await invalid.text();
     assert.match(invalidBody, /Registration, make, and model are required/);
     assert.match(invalidBody, /<option value="2021" selected>2021<\/option>/);
+    assert.match(invalidBody, /<option value="4" selected>4<\/option>/);
+
+    const outOfRange = await postForm(`/vehicles/${id}/edit`, [["_csrf", edit.token], ["registration", "AB12 CDE"], ["make", "Toyota"],
+      ["model", "Prius"], ["year", "2022"], ["fuelType", "HYBRID"], ["passengerCapacity", "9"], ["status", "active"],
+      ["vehicleLicenseType", "hackney_carriage"], ["classKeys", "standard_sedan_hatchback"]], edit.cookie);
+    assert.equal(outOfRange.status, 400);
+    assert.match(await outOfRange.text(), /Passenger capacity must be an integer between 1 and 8/);
 
     const updated = await postMultipartForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "maintenance"), edit.cookie);
     assert.equal(updated.status, 302);

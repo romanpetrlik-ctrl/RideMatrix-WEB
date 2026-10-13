@@ -221,7 +221,9 @@ function validateVehicleInput(input: VehicleInput): string[] {
   if (!text(input.registration) || !text(input.make) || !text(input.model)) errors.push("Registration, make, and model are required.");
   if (normalizedClasses(input).length === 0) errors.push("Select at least one vehicle class assignment.");
   if (!VEHICLE_FUEL_TYPES.includes(input.fuelType)) errors.push("Select a valid fuel type.");
-  if (!Number.isInteger(input.passengerCapacity) || input.passengerCapacity < 1) errors.push("Passenger capacity must be a positive integer.");
+  if (!Number.isInteger(input.passengerCapacity) || input.passengerCapacity < 1 || input.passengerCapacity > 8) {
+    errors.push("Passenger capacity must be an integer between 1 and 8.");
+  }
   if (!VEHICLE_STATUS_OPTIONS.includes(input.status)) errors.push("Select a valid vehicle status.");
   if (!VEHICLE_LICENSE_TYPES.includes(vehicleLicenseType as VehicleLicenseType)) errors.push("Select Hackney Carriage or Private Hire as the vehicle licence type.");
   if (badge && (badge.length > 64 || /[\x00-\x1F\x7F]/.test(badge))) errors.push("Vehicle licence badge number must be 64 characters or fewer and contain no control characters.");

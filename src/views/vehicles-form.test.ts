@@ -75,6 +75,13 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(html, /<option value="hackney_carriage"[^>]*>Hackney Carriage<\/option>/);
   assert.match(html, /<option value="private_hire"[^>]*>Private Hire<\/option>/);
   assert.match(html, /name="vehicleLicenseBadge"/);
+  assert.match(html, /<select name="passengerCapacity" required>/);
+  assert.match(html, /<option value="" selected>Select passenger capacity<\/option>/);
+  assert.deepEqual(
+    Array.from((/<select name="passengerCapacity" required>([\s\S]*?)<\/select>/.exec(html)?.[1] || "").matchAll(/<option value="(\d+)"/g), (match) => Number(match[1])),
+    [1, 2, 3, 4, 5, 6, 7, 8]
+  );
+  assert.doesNotMatch(html, /name="passengerCapacity" type="number"/);
 
   const capacities = /<select name="capacity_xl_suitcase">([\s\S]*?)<\/select>/.exec(html)?.[1];
   assert.ok(capacities);
@@ -84,6 +91,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   const legacyHtml = await renderVehicleForm({
     id: "vehicle-1",
     year: 2000,
+    passengerCapacity: 6,
     capacities: [
       { categoryKey: "xl_suitcase", maxQuantity: 0 },
       { categoryKey: "l_suitcase", maxQuantity: 10 }
@@ -105,6 +113,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(legacyHtml, /<option value="private_hire" selected>Private Hire<\/option>/);
   assert.match(legacyHtml, /name="vehicleLicenseBadge" maxlength="64" value="PH-777"/);
   assert.match(legacyHtml, /name="classKeys" value="wheelchair_accessible" checked/);
+  assert.match(legacyHtml, /<option value="6" selected>6<\/option>/);
   assert.match(legacyHtml, /Uploaded: v5c\.pdf \(2026-09-01\)/);
 
   const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8");
