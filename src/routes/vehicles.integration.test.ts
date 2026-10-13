@@ -74,9 +74,9 @@ describe("vehicle management end-to-end workflow", () => {
     });
   }
 
-  function vehicleFields(token: string, registration: string, status: string): Array<[string, string]> {
+  function vehicleFields(token: string, registration: string, status: string, passengerCapacity = "4"): Array<[string, string]> {
     return [["_csrf", token], ["registration", registration], ["make", "Toyota"], ["model", "Prius"], ["year", "2022"],
-      ["fuelType", "HYBRID"], ["passengerCapacity", "4"], ["status", status], ["classKeys", "standard_sedan_hatchback"],
+      ["fuelType", "HYBRID"], ["passengerCapacity", passengerCapacity], ["status", status], ["classKeys", "standard_sedan_hatchback"],
       ["vehicleLicenseType", "hackney_carriage"], ["vehicleLicenseBadge", "HC-001"],
       ["capacity_xl_suitcase", "1"], ["capacity_cabin_bag", "2"]];
   }
@@ -140,6 +140,8 @@ describe("vehicle management end-to-end workflow", () => {
   test("admins can create, list, search, and filter active vehicles", async () => {
     signIn(["admin"]);
     const activeId = await createVehicle("ab12 cde", "active");
+    const createdCapacity = await query<{ passenger_capacity: number }>("SELECT passenger_capacity FROM vehicles WHERE id=$1", [activeId]);
+    assert.equal(createdCapacity.rows[0].passenger_capacity, 4);
     await createVehicle("MA1 NT", "maintenance");
     await createVehicle("IN4 CTV", "inactive");
 
@@ -184,25 +186,32 @@ describe("vehicle management end-to-end workflow", () => {
     const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
     const edit = await openForm(`/vehicles/${id}/edit`);
     assert.match(edit.body, /<option value="2022" selected>2022<\/option>/);
+    assert.match(edit.body, /<option value="4" selected>4<\/option>/);
+    const missingPassengerCapacity = await postForm(`/vehicles/${id}/edit`, [["_csrf", edit.token], ["registration", "AB12 CDE"], ["make", "Toyota"],
+      ["model", "Prius"], ["year", "2021"], ["fuelType", "HYBRID"], ["passengerCapacity", ""], ["status", "active"],
+      ["vehicleLicenseType", "hackney_carriage"], ["classKeys", "standard_sedan_hatchback"]], edit.cookie);
+    assert.equal(missingPassengerCapacity.status, 400);
+    assert.match(await missingPassengerCapacity.text(), /Passenger capacity must be an integer between 1 and 8/);
     const invalid = await postForm(`/vehicles/${id}/edit`, [["_csrf", edit.token], ["registration", ""], ["make", "Toyota"],
-      ["model", "Prius"], ["year", "2021"], ["fuelType", "HYBRID"], ["passengerCapacity", "4"], ["status", "active"],
+      ["model", "Prius"], ["year", "2021"], ["fuelType", "HYBRID"], ["passengerCapacity", "6"], ["status", "active"],
       ["vehicleLicenseType", "hackney_carriage"], ["classKeys", "standard_sedan_hatchback"]], edit.cookie);
     assert.equal(invalid.status, 400);
     const invalidBody = await invalid.text();
     assert.match(invalidBody, /Registration, make, and model are required/);
     assert.match(invalidBody, /<option value="2021" selected>2021<\/option>/);
+    assert.match(invalidBody, /<option value="6" selected>6<\/option>/);
 
-    const updated = await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "maintenance"), edit.cookie);
+    const updated = await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "maintenance", "7"), edit.cookie);
     assert.equal(updated.status, 302);
     assert.equal(updated.headers.get("location"), `/vehicles/${id}?notice=updated`);
     const activeBody = await (await fetch(`${baseUrl}/vehicles?status=active`)).text();
     assert.doesNotMatch(activeBody, /AB12 CDE/);
-    await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "active"), edit.cookie);
-    const persisted = await query<{ vehicle_license_type: string; vehicle_license_badge: string }>(
-      "SELECT vehicle_license_type, vehicle_license_badge FROM vehicles WHERE id=$1",
+    await postForm(`/vehicles/${id}/edit`, vehicleFields(edit.token, "AB12 CDE", "active", "5"), edit.cookie);
+    const persisted = await query<{ vehicle_license_type: string; vehicle_license_badge: string; passenger_capacity: number }>(
+      "SELECT vehicle_license_type, vehicle_license_badge, passenger_capacity FROM vehicles WHERE id=$1",
       [id]
     );
-    assert.deepEqual(persisted.rows[0], { vehicle_license_type: "hackney_carriage", vehicle_license_badge: "HC-001" });
+    assert.deepEqual(persisted.rows[0], { vehicle_license_type: "hackney_carriage", vehicle_license_badge: "HC-001", passenger_capacity: 5 });
 
     const missing = await postForm("/vehicles/does-not-exist/edit", vehicleFields(edit.token, "ZZ1", "active"), edit.cookie);
     assert.equal(missing.status, 404);

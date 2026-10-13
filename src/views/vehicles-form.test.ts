@@ -78,6 +78,11 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(html, /<option value="hackney_carriage"[^>]*>Hackney Carriage<\/option>/);
   assert.match(html, /<option value="private_hire"[^>]*>Private Hire<\/option>/);
   assert.match(html, /name="vehicleLicenseBadge"/);
+  const passengerCapacityOptions = /<select id="passengerCapacity" name="passengerCapacity" required>([\s\S]*?)<\/select>/.exec(html)?.[1];
+  assert.ok(passengerCapacityOptions);
+  assert.match(passengerCapacityOptions, /<option value="" selected>Select passenger capacity<\/option>/);
+  assert.deepEqual(Array.from(passengerCapacityOptions.matchAll(/<option value="(\d+)"/g), (match) => Number(match[1])), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.doesNotMatch(html, /name="passengerCapacity" type="number"/);
 
   const capacities = /<select name="capacity_xl_suitcase">([\s\S]*?)<\/select>/.exec(html)?.[1];
   assert.ok(capacities);
@@ -98,6 +103,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(legacyHtml, /<option value="2000" selected>2000 \(legacy\)<\/option>/);
   assert.match(legacyHtml, /<option value="0" selected>0 \(legacy\)<\/option>/);
   assert.match(legacyHtml, /<option value="10" selected>10 \(legacy\)<\/option>/);
+  assert.match(legacyHtml, /<option value="" selected>Select passenger capacity<\/option>/);
   assert.match(legacyHtml, /<option value="private_hire" selected>Private Hire<\/option>/);
   assert.match(legacyHtml, /name="vehicleLicenseBadge" maxlength="64" value="PH-777"/);
   assert.match(legacyHtml, /name="classKeys" value="wheelchair_accessible" checked/);
