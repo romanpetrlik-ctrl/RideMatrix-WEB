@@ -362,7 +362,7 @@ export async function listVehicleDocuments(vehicleId: string, client?: Queryable
 
 export async function listLatestVehicleRecordDocuments(vehicleId: string, client?: Queryable) {
   const result = await db(client).query(
-    `SELECT document_type, storage_key, original_filename, mime_type, uploaded_at
+    `SELECT id, document_type, storage_key, original_filename, mime_type, uploaded_at
        FROM vehicle_documents
       WHERE vehicle_id = $1
         AND is_latest = TRUE
@@ -373,6 +373,7 @@ export async function listLatestVehicleRecordDocuments(vehicleId: string, client
   return VEHICLE_RECORD_DOCUMENT_TYPES.map((type) => {
     const row = entries.get(type);
     return {
+      id: row?.id || null,
       documentType: type,
       storageKey: row?.storage_key || null,
       originalFilename: row?.original_filename || null,

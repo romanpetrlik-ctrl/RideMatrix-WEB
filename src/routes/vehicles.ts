@@ -66,12 +66,14 @@ function safeDownloadName(document: any): string {
   return (text(document.original_filename) || fallback).replace(/[^a-z0-9._ -]/gi, "_");
 }
 type VehicleDocumentState = {
+  id?: string | null;
   type: VehicleRecordDocumentType;
   label: string;
   fieldName: string;
   fileName: string | null;
   uploadedAt: string | null;
   storageKey: string | null;
+  mimeType?: string | null;
 };
 function latestFile(files: any, fieldName: string): Express.Multer.File | null {
   const match = files?.[fieldName];
@@ -187,12 +189,14 @@ export function createVehiclesRouter(options: Options): Router {
       }
       const current = byType.get(item.type);
       return {
+        id: (current as any)?.id || null,
         type: item.type,
         label: item.label,
         fieldName: item.fieldName,
         fileName: current?.originalFilename || null,
         uploadedAt: current?.uploadedAt || null,
-        storageKey: current?.storageKey || null
+        storageKey: current?.storageKey || null,
+        mimeType: (current as any)?.mimeType || null
       };
     });
   };
@@ -291,6 +295,15 @@ export function createVehiclesRouter(options: Options): Router {
       const value = input(req.body);
       const existingDocuments = await listLatestVehicleRecordDocuments(vehicleId);
       const documentErrors = validateVehicleDocuments(req.files, false);
+      if (value.status === "active") {
+        for (const item of VEHICLE_DOCUMENT_LABELS) {
+          const uploaded = latestFile(req.files, item.fieldName);
+          const existing = existingDocuments.find((entry) => entry.documentType === item.type);
+          if (!uploaded && !existing?.storageKey) {
+            documentErrors[item.type] = `${item.label} document is required for active vehicles.`;
+          }
+        }
+      }
       if (Object.keys(documentErrors).length) {
         return renderForm(res, {
           vehicle: formVehicle(value, vehicleId),
@@ -320,8 +333,14 @@ export function createVehiclesRouter(options: Options): Router {
       if (!(await guard(req, res))) return;
       const vehicle = await getVehicleById(req.params.vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const requiredDocuments = buildVehicleDocumentState(await listLatestVehicleRecordDocuments(vehicle.id)).map((entry) => ({
+        ...entry,
+        status: entry.fileName ? "Uploaded" : "Missing"
+      }));
       return res.render("pages/vehicles/detail", { title: vehicle.registration, appTitle: options.appTitle, email: res.locals.vehicleUser.email,
         vehicle, documents: await listVehicleDocuments(vehicle.id), licenses: await listVehicleLicenses(vehicle.id),
+        requiredDocuments,
+        canManageVehicleDocuments: true,
         authorities: await listLicensingAuthoritiesForManagement(), licenseTypes: VEHICLE_LICENSE_TYPES,
         driverAssignments: await listVehicleDriverAssignments(vehicle.id),
         drivers: await listDrivers(), baggageCategories: await listBaggageCategories(), documentTypes: VEHICLE_DOCUMENT_TYPES,
@@ -426,6 +445,30 @@ export function createVehiclesRouter(options: Options): Router {
       await createVehicleDocument({ vehicleId: vehicle.id, documentType: text(req.body.documentType), documentNumber: text(req.body.documentNumber),
         issuedOn: text(req.body.issuedOn), expiresOn: text(req.body.expiresOn), originalFilename: file.originalname, mimeType: file.mimetype,
         content: file.buffer, uploadedBy: res.locals.vehicleUser.id, licenseId: licenseId || null });
+      return res.redirect(`${detailUrl}?notice=document-added`);
+    } catch (error) { return next(error); }
+  });
+  router.post("/vehicles/:vehicleId/record-documents/:documentType", requireAuthorizedVehicleManager, localDocumentUploadRateLimit, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+    try {
+      const file = req.file;
+      const vehicleId = text(req.params.vehicleId);
+      const documentType = text(req.params.documentType);
+      const vehicle = await getVehicleById(vehicleId);
+      if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const detailUrl = `/vehicles/${encodeURIComponent(vehicle.id)}`;
+      if (!(VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(documentType)) {
+        return res.redirect(`${detailUrl}?notice=document-invalid-type`);
+      }
+      if (!file) return res.redirect(`${detailUrl}?notice=document-required`);
+      try { validateVehicleDocumentUpload(file); } catch { return res.redirect(`${detailUrl}?notice=document-invalid-file`); }
+      await createVehicleDocument({
+        vehicleId: vehicle.id,
+        documentType,
+        originalFilename: file.originalname,
+        mimeType: file.mimetype,
+        content: file.buffer,
+        uploadedBy: res.locals.vehicleUser.id
+      });
       return res.redirect(`${detailUrl}?notice=document-added`);
     } catch (error) { return next(error); }
   });
