@@ -166,6 +166,14 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match(searched, /MA1 NT/);
     assert.doesNotMatch(searched, /AB12 CDE/);
 
+    const registrationNoSpacing = await (await fetch(`${baseUrl}/vehicles?status=active&q=ab12cde`)).text();
+    assert.match(registrationNoSpacing, /AB12 CDE/);
+    assert.doesNotMatch(registrationNoSpacing, /No active vehicles found/);
+
+    const classSearch = await (await fetch(`${baseUrl}/vehicles?status=active&q=standard_sedan`)).text();
+    assert.match(classSearch, /AB12 CDE/);
+    assert.doesNotMatch(classSearch, /No active vehicles found/);
+
     const noMatch = await (await fetch(`${baseUrl}/vehicles?status=active&q=ma1`)).text();
     assert.match(noMatch, /No active vehicles found/);
 
