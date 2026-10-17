@@ -925,6 +925,36 @@ export const MIGRATIONS: Migration[] = [
             AND vehicle_license_badge !~ '[[:cntrl:]]'
           ));
     `
+  },
+  {
+    id: "0014_entity_documents_docuvault",
+    sql: `
+      CREATE TABLE IF NOT EXISTS entity_documents (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('vehicle', 'driver', 'operator')),
+        entity_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size BIGINT NOT NULL CHECK (byte_size > 0),
+        checksum TEXT NOT NULL CHECK (checksum ~ '^[0-9a-f]{64}$'),
+        storage_path TEXT NOT NULL UNIQUE,
+        uploaded_by TEXT,
+        uploaded_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_documents_entity
+        ON entity_documents (entity_type, entity_id, category, uploaded_at DESC);
+
+      CREATE TABLE IF NOT EXISTS document_access_events (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES entity_documents(id) ON DELETE CASCADE,
+        action TEXT NOT NULL CHECK (action IN ('upload', 'view', 'download')),
+        actor_id TEXT,
+        occurred_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_document_access_events_document
+        ON document_access_events (document_id, occurred_at DESC);
+    `
   }
 ];
 
