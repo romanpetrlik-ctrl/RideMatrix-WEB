@@ -8,6 +8,17 @@ const separatorPattern = /[\/\\]+/g;
 
 export type DocumentEntityType = "driver" | "vehicle" | "operator";
 
+function resolveVaultPath(relativePath: string, vaultRoot: string): string {
+  const normalizedRoot = path.resolve(vaultRoot);
+  const candidate = text(relativePath).replace(/\x00/g, "");
+  const normalizedPath = path.resolve(normalizedRoot, candidate);
+  const relativeToRoot = path.relative(normalizedRoot, normalizedPath);
+  if (!candidate || relativeToRoot === "" || relativeToRoot === "." || relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
+    throw new Error("Invalid vault path.");
+  }
+  return normalizedPath;
+}
+
 function normalizeSegment(value: string): string {
   const ascii = value.normalize("NFKD").replace(/[^\x00-\x7F]/g, "");
   const slug = ascii.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -64,25 +75,13 @@ export function buildEntityVaultRelativePath(input: {
   return path.posix.join(dir, category, `${randomUUID()}.${extension}`);
 }
 
-export async function writeVaultFile(relativePath: string, content: Buffer): Promise<void> {
-  if (relativePath.includes("..")) throw new Error("Invalid vault path.");
-  const absolutePath = path.join(DOCUMENT_VAULT_ROOT, relativePath);
-  const normalizedRoot = path.resolve(DOCUMENT_VAULT_ROOT);
-  const normalizedPath = path.resolve(absolutePath);
-  if (!normalizedPath.startsWith(`${normalizedRoot}${path.sep}`) && normalizedPath !== normalizedRoot) {
-    throw new Error("Invalid vault path.");
-  }
+export async function writeVaultFile(relativePath: string, content: Buffer, vaultRoot = DOCUMENT_VAULT_ROOT): Promise<void> {
+  const normalizedPath = resolveVaultPath(relativePath, vaultRoot);
   await mkdir(path.dirname(normalizedPath), { recursive: true });
   await writeFile(normalizedPath, content);
 }
 
-export async function readVaultFile(relativePath: string): Promise<Buffer> {
-  if (relativePath.includes("..")) throw new Error("Invalid vault path.");
-  const absolutePath = path.join(DOCUMENT_VAULT_ROOT, relativePath);
-  const normalizedRoot = path.resolve(DOCUMENT_VAULT_ROOT);
-  const normalizedPath = path.resolve(absolutePath);
-  if (!normalizedPath.startsWith(`${normalizedRoot}${path.sep}`) && normalizedPath !== normalizedRoot) {
-    throw new Error("Invalid vault path.");
-  }
+export async function readVaultFile(relativePath: string, vaultRoot = DOCUMENT_VAULT_ROOT): Promise<Buffer> {
+  const normalizedPath = resolveVaultPath(relativePath, vaultRoot);
   return readFile(normalizedPath);
 }
