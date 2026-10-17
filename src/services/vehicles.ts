@@ -7,6 +7,7 @@ import { getPool } from "../database/connection";
 type Queryable = Pool | PoolClient;
 const db = (client?: Queryable): Queryable => client || getPool();
 const text = (value: unknown): string => String(value ?? "").trim();
+const normalizeRegistrationSearch = (value: unknown): string => text(value).replace(/[^a-z0-9]/gi, "").toLowerCase();
 
 export const VEHICLE_DEFAULT_PER_PAGE = 15;
 export const VEHICLE_STATUS_OPTIONS = ["active", "inactive", "maintenance"] as const;
@@ -139,17 +140,21 @@ export function normalizeVehicleStatusFilter(value: unknown): VehicleStatus | ""
   return VEHICLE_STATUS_OPTIONS.includes(status as VehicleStatus) ? (status as VehicleStatus) : "";
 }
 
-const vehicleDirectoryWhere = `($1 = '' OR v.registration ILIKE '%' || $1 || '%' OR v.make ILIKE '%' || $1 || '%'
-       OR v.model ILIKE '%' || $1 || '%' OR EXISTS (
+const vehicleDirectoryWhere = `($1 = '' OR v.registration ILIKE '%' || $1 || '%'
+      OR ($3 <> '' AND regexp_replace(v.registration, '[^a-zA-Z0-9]+', '', 'g') ILIKE '%' || $3 || '%')
+      OR v.make ILIKE '%' || $1 || '%'
+      OR v.model ILIKE '%' || $1 || '%' OR EXISTS (
          SELECT 1 FROM vehicle_class_assignments vca JOIN vehicle_classes vc ON vc.key = vca.vehicle_class_key
-         WHERE vca.vehicle_id = v.id AND vca.unassigned_at IS NULL AND vc.label ILIKE '%' || $1 || '%'))
+         WHERE vca.vehicle_id = v.id AND vca.unassigned_at IS NULL
+           AND (vc.label ILIKE '%' || $1 || '%' OR vc.key ILIKE '%' || $1 || '%')))
      AND ($2 = '' OR v.status = $2)`;
 
 export async function getVehicleCount(search = "", client?: Queryable, status: unknown = ""): Promise<number> {
+  const normalizedSearch = normalizeRegistrationSearch(search);
   const result = await db(client).query<{ count: string }>(
     `SELECT count(*)::text AS count FROM vehicles v
      WHERE ${vehicleDirectoryWhere}`,
-    [text(search), normalizeVehicleStatusFilter(status)]
+    [text(search), normalizeVehicleStatusFilter(status), normalizedSearch]
   );
   return Number(result.rows[0]?.count || 0);
 }
@@ -160,13 +165,14 @@ export async function listVehicles(params: { search?: string; status?: unknown; 
   const total = await getVehicleCount(params.search, params.client, status);
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const page = Math.max(1, Math.min(totalPages, Math.trunc(Number(params.page)) || 1));
+  const normalizedSearch = normalizeRegistrationSearch(params.search);
   const result = await db(params.client).query(
     `SELECT ${vehicleSelect} FROM vehicles v
      LEFT JOIN vehicle_driver_assignments a ON a.vehicle_id = v.id AND a.unassigned_at IS NULL
      LEFT JOIN users u ON u.id::text = a.driver_id
      WHERE ${vehicleDirectoryWhere}
-     ORDER BY lower(v.registration) LIMIT $3 OFFSET $4`,
-    [text(params.search), status, perPage, (page - 1) * perPage]
+     ORDER BY lower(v.registration) LIMIT $4 OFFSET $5`,
+    [text(params.search), status, normalizedSearch, perPage, (page - 1) * perPage]
   );
   return { vehicles: result.rows.map(mapVehicle), status, page, perPage, total, totalPages };
 }

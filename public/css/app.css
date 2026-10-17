@@ -2358,21 +2358,20 @@ button:visited,
 
 /* Vehicle management */
 .vehicle-page { padding-bottom: 3rem; }
-.vehicle-page__header, .vehicle-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin:1.5rem 0; }
+.vehicle-page__header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin:1.5rem 0; }
 .vehicle-page__header h1 { margin-bottom:.25rem; }
 .vehicle-toolbar {
   display: grid;
-  grid-template-columns: minmax(320px, 1.4fr) 260px auto;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 260px) auto;
   align-items: end;
   gap: 16px;
   width: 100%;
+  margin: 1.5rem 0;
 }
 .vehicle-status-tabs { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 1rem; }
 .vehicle-toolbar__field { display:grid; gap:0; min-width:0; }
 .vehicle-toolbar__field--search {
-  width: 100%;
-  max-width: 640px;
-  justify-self: start;
+  min-width: 0;
 }
 .vehicle-toolbar__field label {
   margin: 0 0 8px;
@@ -2399,12 +2398,15 @@ button:visited,
   outline: none;
   box-shadow: var(--rm-control-focus-shadow);
 }
-.vehicle-toolbar button {
+.vehicle-toolbar__actions {
+  display: grid;
+  align-items: end;
+}
+.vehicle-toolbar__actions button {
   width: auto;
   min-height: 44px;
   height: 44px;
   margin: 0;
-  align-self: end;
   white-space: nowrap;
 }
 .vehicle-card { background:#fff; border:1px solid #e1dfdd; border-radius:8px; padding:1.25rem; margin:1rem 0; min-width:0; }
@@ -2475,12 +2477,12 @@ button:visited,
 @media (max-width: 760px) { .vehicle-detail-grid { grid-template-columns:1fr; } }
 @media (max-width: 1023px) {
   .vehicle-toolbar {
-    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
     align-items: end;
   }
-  .vehicle-toolbar button {
+  .vehicle-toolbar__actions {
     grid-column: 1 / -1;
-    justify-self: start;
+    justify-items: start;
   }
 }
 @media (max-width: 767px) {
@@ -2493,10 +2495,9 @@ button:visited,
     max-width: none;
     width: 100%;
   }
-  .vehicle-toolbar button {
+  .vehicle-toolbar__actions button {
     grid-column: 1 / -1;
     width: 100%;
-    justify-self: stretch;
   }
 }
 

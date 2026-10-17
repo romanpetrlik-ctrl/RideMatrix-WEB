@@ -349,12 +349,27 @@ test("vehicle directory status filter only accepts known statuses and is passed 
   };
   const result = await listVehicles({ search: "ab", status: "active", client });
   assert.equal(result.status, "active");
-  assert.deepEqual(calls[0].params, ["ab", "active"]);
-  assert.deepEqual(calls[1].params.slice(0, 2), ["ab", "active"]);
+  assert.deepEqual(calls[0].params, ["ab", "active", "ab"]);
+  assert.deepEqual(calls[1].params.slice(0, 3), ["ab", "active", "ab"]);
   assert.ok(calls.every((call) => call.sql.includes("v.status = $2")));
   const unfiltered = await listVehicles({ status: "bogus", client });
   assert.equal(unfiltered.status, "");
   assert.equal(calls[2].params[1], "");
+});
+
+test("vehicle directory search also matches registration without spacing and class keys", async () => {
+  const queries: Array<{ sql: string; params: unknown[] }> = [];
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      queries.push({ sql, params });
+      return sql.includes("count(*)") ? { rows: [{ count: "0" }] } : { rows: [] };
+    }
+  };
+  await listVehicles({ search: "AB12CDE", status: "active", client });
+  assert.equal(queries[0].params[2], "ab12cde");
+  assert.equal(queries[1].params[2], "ab12cde");
+  assert.match(queries[0].sql, /regexp_replace\(v\.registration, '\[\^a-zA-Z0-9\]\+', '', 'g'\)/);
+  assert.match(queries[0].sql, /vc\.key ILIKE '%' \|\| \$1 \|\| '%'/);
 });
 
 test("vehicle joins compare auth user ids as text so UUID users.id columns are supported", async () => {
