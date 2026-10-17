@@ -34,6 +34,31 @@
           <dt>Linked driver <%- include("../../partials/help-button", { key: "vehicle.linkedDriver", helpFor }) %></dt><dd><%= vehicle.driverEmail || "Unassigned" %> <% if (vehicle.driverId) { %><a href="/vehicles/<%= vehicle.id %>/driver-details">View driver details</a><% } else { %><span class="muted">View driver details unavailable until a driver is assigned.</span><% } %></dd>
           <dt>Wheelchair accessible <%- include("../../partials/help-button", { key: "vehicle.wheelchairAccessible", helpFor }) %></dt><dd><%= vehicle.wheelchairAccessible ? "Yes" : "No" %></dd><dt>Status</dt><dd><%= vehicle.status %></dd>
         </dl></article>
+        <article class="vehicle-card"><h2>Vehicle documents</h2>
+          <div class="vehicle-document-list">
+            <% (requiredDocuments || []).forEach((document) => { %>
+              <div class="vehicle-document-row">
+                <strong><%= document.label %></strong>
+                <span>Status: <%= document.status %></span>
+                <% if (document.fileName) { %>
+                  <span>Uploaded: <strong><%= document.fileName %></strong><%= document.uploadedAt ? ` (${String(document.uploadedAt)})` : "" %></span>
+                  <% if (canManageVehicleDocuments && document.id) { %>
+                    <span><a href="/vehicles/documents/<%= document.id %>">View</a> · <a href="/vehicles/documents/<%= document.id %>?download=1">Download</a></span>
+                  <% } %>
+                <% } else { %>
+                  <span>Missing</span>
+                <% } %>
+                <% if (canManageVehicleDocuments) { %>
+                  <form method="post" action="/vehicles/<%= vehicle.id %>/record-documents/<%= document.type %>" enctype="multipart/form-data" class="vehicle-document-form">
+                    <%- locals.csrfField || "" %>
+                    <label><span class="sr-only"><%= document.label %> upload</span><input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+                    <button class="button button--secondary" type="submit"><%= document.fileName ? "Replace" : "Upload" %></button>
+                  </form>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
+        </article>
         <article class="vehicle-card"><h2>Vehicle licences</h2><p>Licence type and Vehicle licence badge belong to each authority-specific licence. They are separate from vehicle class, licence reference, and driver badge.</p>
           <% licenses.forEach((license) => { %><form method="post" action="/vehicles/<%= vehicle.id %>/licenses" class="vehicle-document-form"><%- locals.csrfField || "" %><input type="hidden" name="licenseId" value="<%= license.id %>">
             <label>Licensing authority<select name="licensingAuthorityId" required><% authorities.forEach((authority) => { %><option value="<%= authority.id %>" <%= license.licensingAuthorityId === authority.id ? "selected" : "" %>><%= authority.name %><%= authority.active ? "" : " (inactive)" %></option><% }) %></select></label>

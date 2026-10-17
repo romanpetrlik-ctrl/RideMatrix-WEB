@@ -250,6 +250,23 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match(body, /Hire &amp; Reward Insurance document is required\./);
   });
 
+  test("active vehicle edit requires missing mandatory documents with per-document errors", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC ACTIVE", "maintenance");
+    await query(
+      `UPDATE vehicle_documents
+       SET is_latest = FALSE, superseded_at = now()
+       WHERE vehicle_id = $1 AND document_type = 'v5c'`,
+      [vehicleId]
+    );
+    const edit = await openForm(`/vehicles/${vehicleId}/edit`);
+    const response = await postForm(`/vehicles/${vehicleId}/edit`, vehicleFields(edit.token, "DOC ACTIVE", "active"), edit.cookie);
+    assert.equal(response.status, 400);
+    const body = await response.text();
+    assert.match(body, /Fix the vehicle document upload errors before saving\./);
+    assert.match(body, /V5C document is required for active vehicles\./);
+  });
+
   test("edit mode shows existing vehicle documents and supports per-document replacement", async () => {
     signIn(["admin"]);
     const vehicleId = await createVehicle("DOC RPLC", "active");
@@ -296,6 +313,27 @@ describe("vehicle management end-to-end workflow", () => {
       [vehicleId]
     );
     assert.equal(unchanged.rows[0].count, 4);
+  });
+
+  test("detail page renders all required vehicle document rows with uploaded/missing states", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC STATE", "active");
+    await query(
+      `UPDATE vehicle_documents
+       SET is_latest = FALSE, superseded_at = now()
+       WHERE vehicle_id = $1 AND document_type = 'mot'`,
+      [vehicleId]
+    );
+    const detailBody = await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text();
+    for (const label of ["V5C", "Council Mechanical Check", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
+      assert.match(detailBody, new RegExp(label));
+    }
+    assert.match(detailBody, /Status: Uploaded/);
+    assert.match(detailBody, /Status: Missing/);
+    assert.match(detailBody, /record-documents\/v5c/);
+    assert.match(detailBody, /record-documents\/mot/);
+    assert.match(detailBody, /Replace/);
+    assert.match(detailBody, /Upload/);
   });
 
   test("admins create and edit distinct vehicle licence types and badges", async () => {
@@ -394,6 +432,17 @@ describe("vehicle management end-to-end workflow", () => {
       return fetch(`${baseUrl}/vehicles/${id}/documents`, { method: "POST", headers: { cookie: detail.cookie }, body, redirect: "manual" });
     };
     const pdf = new Blob([Buffer.from("%PDF-1.7 test")], { type: "application/pdf" });
+    const uploadRequiredDocument = (documentType: string, file: Blob, filename: string) => {
+      const body = new FormData();
+      body.append("_csrf", detail.token);
+      body.append("document", file, filename);
+      return fetch(`${baseUrl}/vehicles/${id}/record-documents/${documentType}`, {
+        method: "POST",
+        headers: { cookie: detail.cookie },
+        body,
+        redirect: "manual"
+      });
+    };
 
     let response = await upload({ documentType: "insurance", expiresOn: "2099-01-01" }, new Blob(["<html>"], { type: "text/html" }), "x.html");
     assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-invalid-file`);
@@ -403,12 +452,24 @@ describe("vehicle management end-to-end workflow", () => {
     assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-invalid-type`);
     response = await upload({ documentType: "insurance", documentNumber: "POL-1", expiresOn: "2099-01-01" }, pdf, "insurance\".pdf");
     assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-added`);
+    response = await uploadRequiredDocument("mot", new Blob([Buffer.from("%PDF-1.7 mot replacement")], { type: "application/pdf" }), "mot-replacement.pdf");
+    assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-added`);
+    const latestMot = (await query<{ original_filename: string }>(
+      `SELECT original_filename FROM vehicle_documents
+       WHERE vehicle_id=$1 AND document_type='mot' AND is_latest=TRUE`,
+      [id]
+    )).rows[0];
+    assert.equal(latestMot.original_filename, "mot-replacement.pdf");
 
     const detailBody = await (await fetch(`${baseUrl}/vehicles/${id}?notice=document-added`)).text();
     assert.match(detailBody, /Document uploaded\./);
     assert.match(detailBody, /Status: Valid/);
-    const documentId = /href="\/vehicles\/documents\/([^"?]+)\?download=1"/.exec(detailBody)?.[1];
-    assert.ok(documentId);
+    const insuranceDocument = (await query<{ id: string }>(
+      "SELECT id FROM vehicle_documents WHERE vehicle_id=$1 AND document_type='insurance' AND is_latest=TRUE",
+      [id]
+    )).rows[0];
+    assert.ok(insuranceDocument?.id);
+    const documentId = insuranceDocument.id;
 
     const download = await fetch(`${baseUrl}/vehicles/documents/${documentId}?download=1`);
     assert.equal(download.status, 200);
