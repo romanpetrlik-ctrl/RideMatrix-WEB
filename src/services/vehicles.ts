@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type { Pool, PoolClient } from "pg";
+import {
+  DOCUMENT_ALLOWED_MIME,
+  DOCUMENT_MAX_FILE_SIZE_BYTES,
+  DOCUMENT_MAX_FILES_PER_CATEGORY
+} from "../config/documents";
 import { getPool } from "../database/connection";
+import { buildEntityVaultRelativePath, readVaultFile, sanitizeOriginalFilename as sanitizeVaultFilename, writeVaultFile } from "./document-vault";
 
 type Queryable = Pool | PoolClient;
 const db = (client?: Queryable): Queryable => client || getPool();
@@ -18,8 +24,9 @@ export const VEHICLE_RECORD_DOCUMENT_TYPES = ["v5c", "council_mechanical_check",
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
 export const VEHICLE_DOCUMENT_DOWNLOAD_LIMIT = 120;
-export const VEHICLE_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const VEHICLE_DOCUMENT_MAX_BYTES = DOCUMENT_MAX_FILE_SIZE_BYTES;
 export const VEHICLE_MUTATION_LIMIT = 120;
+export const VEHICLE_RECORD_DOCUMENT_CATEGORIES = VEHICLE_RECORD_DOCUMENT_TYPES;
 export type VehicleStatus = (typeof VEHICLE_STATUS_OPTIONS)[number];
 export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
 export type VehicleLicenseType = (typeof VEHICLE_LICENSE_TYPES)[number];
@@ -389,6 +396,132 @@ export async function listLatestVehicleRecordDocuments(vehicleId: string, client
   });
 }
 
+export type VehicleEntityDocument = {
+  id: string;
+  entity_type: "vehicle";
+  entity_id: string;
+  category: string;
+  original_filename: string;
+  mime_type: string;
+  byte_size: number;
+  checksum: string;
+  storage_path: string;
+  uploaded_by: string | null;
+  uploaded_at: string;
+};
+
+export async function listVehicleEntityDocuments(vehicleId: string, category?: string, client?: Queryable): Promise<VehicleEntityDocument[]> {
+  const result = await db(client).query<VehicleEntityDocument>(
+    `SELECT id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at
+       FROM entity_documents
+      WHERE entity_type = 'vehicle' AND entity_id = $1
+        AND ($2 = '' OR category = $2)
+      ORDER BY category, uploaded_at DESC, id DESC`,
+    [vehicleId, text(category)]
+  );
+  return result.rows.map((row) => ({ ...row, byte_size: Number(row.byte_size) }));
+}
+
+export async function getVehicleEntityDocument(documentId: string, client?: Queryable): Promise<VehicleEntityDocument | null> {
+  const result = await db(client).query<VehicleEntityDocument>(
+    `SELECT id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at
+       FROM entity_documents
+      WHERE id = $1 AND entity_type = 'vehicle'`,
+    [documentId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { ...row, byte_size: Number(row.byte_size) };
+}
+
+export async function logVehicleDocumentAccess(input: {
+  documentId: string;
+  action: "upload" | "view" | "download";
+  actorId?: string | null;
+}, client?: Queryable): Promise<void> {
+  await db(client).query(
+    `INSERT INTO document_access_events (id, document_id, action, actor_id, occurred_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [randomUUID(), input.documentId, input.action, text(input.actorId) || null, new Date().toISOString()]
+  );
+}
+
+function normalizeDocumentCategory(value: string): VehicleRecordDocumentType {
+  const category = text(value).toLowerCase();
+  if (!VEHICLE_RECORD_DOCUMENT_CATEGORIES.includes(category as VehicleRecordDocumentType)) {
+    throw new Error("Select a valid record document category.");
+  }
+  return category as VehicleRecordDocumentType;
+}
+
+export async function saveVehicleEntityDocument(input: {
+  vehicleId: string;
+  category: string;
+  file: VehicleDocumentUpload;
+  uploadedBy?: string;
+}, client?: Queryable): Promise<VehicleEntityDocument> {
+  const category = normalizeDocumentCategory(input.category);
+  validateVehicleDocumentUpload(input.file);
+  if (!input.file.buffer?.length) throw new Error("Upload a non-empty document.");
+  if (input.file.buffer.length > VEHICLE_DOCUMENT_MAX_BYTES) throw new Error("Document exceeds maximum file size.");
+  const existing = await db(client).query<{ count: string }>(
+    `SELECT count(*)::text AS count
+       FROM entity_documents
+      WHERE entity_type='vehicle' AND entity_id=$1 AND category=$2`,
+    [input.vehicleId, category]
+  );
+  const existingCount = Number(existing.rows[0]?.count || 0);
+  if (existingCount >= DOCUMENT_MAX_FILES_PER_CATEGORY) {
+    throw new Error(`Maximum files reached for ${category}.`);
+  }
+  const vehicle = await db(client).query<{ registration: string; vehicle_license_type: string | null }>(
+    "SELECT registration, vehicle_license_type FROM vehicles WHERE id=$1",
+    [input.vehicleId]
+  );
+  if (!vehicle.rows[0]) throw new Error("Vehicle not found.");
+  const uploadedAt = new Date().toISOString();
+  const storagePath = buildEntityVaultRelativePath({
+    entityType: "vehicle",
+    uploadedAt,
+    entityId: input.vehicleId,
+    registrationOrBadge: vehicle.rows[0].registration || input.vehicleId,
+    vehicleLicenseType: vehicle.rows[0].vehicle_license_type,
+    category,
+    originalFilename: input.file.originalname
+  });
+  await writeVaultFile(storagePath, input.file.buffer);
+  const id = randomUUID();
+  const originalFilename = sanitizeVaultFilename(input.file.originalname || "");
+  const checksum = createHash("sha256").update(input.file.buffer).digest("hex");
+  await db(client).query(
+    `INSERT INTO entity_documents
+       (id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at)
+     VALUES ($1, 'vehicle', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [id, input.vehicleId, category, originalFilename, text(input.file.mimetype).toLowerCase(), input.file.buffer.length, checksum, storagePath, text(input.uploadedBy) || null, uploadedAt]
+  );
+  await logVehicleDocumentAccess({ documentId: id, action: "upload", actorId: input.uploadedBy || null }, client);
+  return {
+    id,
+    entity_type: "vehicle",
+    entity_id: input.vehicleId,
+    category,
+    original_filename: originalFilename,
+    mime_type: text(input.file.mimetype).toLowerCase(),
+    byte_size: input.file.buffer.length,
+    checksum,
+    storage_path: storagePath,
+    uploaded_by: text(input.uploadedBy) || null,
+    uploaded_at: uploadedAt
+  };
+}
+
+export async function readVehicleEntityDocumentContent(documentId: string, client?: Queryable): Promise<{ document: VehicleEntityDocument; content: Buffer } | null> {
+  const document = await getVehicleEntityDocument(documentId, client);
+  if (!document) return null;
+  const content = await readVaultFile(document.storage_path);
+  return { document, content };
+}
+
 function sanitizeOriginalFilename(name: string): string {
   const base = path.basename(text(name));
   const cleaned = base.replace(/[\x00-\x1F\x7F]/g, "").trim();
@@ -492,5 +625,8 @@ const DOCUMENT_FORMATS = {
 export function validateVehicleDocumentUpload(file: VehicleDocumentUpload): void {
   const extension = file.originalname.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] || "";
   const format = DOCUMENT_FORMATS[extension as keyof typeof DOCUMENT_FORMATS];
-  if (!format || file.mimetype !== format.mime || !format.signature(file.buffer)) throw new Error("Only valid PDF, JPEG, and PNG documents are accepted.");
+  const mime = text(file.mimetype).toLowerCase();
+  if (!format || mime !== format.mime || !format.signature(file.buffer) || !DOCUMENT_ALLOWED_MIME.includes(mime)) {
+    throw new Error("Only allowed document types are accepted.");
+  }
 }
