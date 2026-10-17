@@ -4,8 +4,12 @@ import test from "node:test";
 import ejs from "ejs";
 
 const requiredDocuments = [
-  { id: "doc-v5c", type: "v5c", label: "V5C", status: "Uploaded", fileName: "v5c.pdf", uploadedAt: "2026-01-01T00:00:00.000Z" },
-  { id: null, type: "mot", label: "MOT", status: "Missing", fileName: null, uploadedAt: null }
+  {
+    type: "v5c",
+    label: "V5C",
+    files: [{ id: "doc-v5c", original_filename: "v5c.pdf", uploaded_at: "2026-01-01T00:00:00.000Z" }]
+  },
+  { type: "mot", label: "MOT", files: [] }
 ];
 
 async function renderDetail(canManageVehicleDocuments: boolean): Promise<string> {
@@ -30,6 +34,8 @@ async function renderDetail(canManageVehicleDocuments: boolean): Promise<string>
     },
     requiredDocuments,
     canManageVehicleDocuments,
+    maxFilesPerCategory: 5,
+    uploadStatuses: [],
     documents: [],
     licenses: [],
     authorities: [],
@@ -50,19 +56,17 @@ test("vehicle detail required document rows show uploaded/missing states and man
   assert.match(html, /Status: Uploaded/);
   assert.match(html, /Status: Missing/);
   assert.match(html, /Uploaded: <strong>v5c\.pdf<\/strong>/);
-  assert.match(html, /href="\/vehicles\/documents\/doc-v5c"/);
-  assert.match(html, /href="\/vehicles\/documents\/doc-v5c\?download=1"/);
-  assert.match(html, /record-documents\/v5c/);
-  assert.match(html, /record-documents\/mot/);
-  assert.match(html, />Replace</);
-  assert.match(html, />Upload</);
+  assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/view"/);
+  assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/download"/);
+  assert.match(html, /record-documents\/upload/);
+  assert.match(html, /name="category" value="v5c"/);
+  assert.match(html, /name="category" value="mot"/);
+  assert.match(html, />Upload documents</);
 });
 
 test("vehicle detail hides upload and replace actions when user cannot manage documents", async () => {
   const html = await renderDetail(false);
-  assert.doesNotMatch(html, /record-documents\/v5c/);
-  assert.doesNotMatch(html, /record-documents\/mot/);
-  assert.doesNotMatch(html, />Replace</);
-  assert.doesNotMatch(html, />Upload</);
-  assert.doesNotMatch(html, /href="\/vehicles\/documents\/doc-v5c"/);
+  assert.doesNotMatch(html, /record-documents\/upload/);
+  assert.doesNotMatch(html, />Upload documents</);
+  assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/view"/);
 });

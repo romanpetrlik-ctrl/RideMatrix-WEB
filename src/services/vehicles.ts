@@ -627,6 +627,6 @@ export function validateVehicleDocumentUpload(file: VehicleDocumentUpload): void
   const format = DOCUMENT_FORMATS[extension as keyof typeof DOCUMENT_FORMATS];
   const mime = text(file.mimetype).toLowerCase();
   if (!format || mime !== format.mime || !format.signature(file.buffer) || !DOCUMENT_ALLOWED_MIME.includes(mime)) {
-    throw new Error("Only allowed document types are accepted.");
+    throw new Error("Only valid PDF, JPEG, and PNG documents are accepted.");
   }
 }

@@ -1,3 +1,5 @@
+import process from "node:process";
+
 const text = (value: unknown): string => String(value ?? "").trim();
 
 function numberFromEnv(value: string, fallback: number): number {

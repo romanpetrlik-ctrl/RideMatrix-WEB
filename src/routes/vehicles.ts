@@ -30,6 +30,7 @@ type Options = {
   consumeDownloadRateLimit?: (key: string) => Promise<boolean>;
 };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES } });
+const formUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES } });
 const multiUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES, files: DOCUMENT_MAX_FILES_PER_CATEGORY }
@@ -154,6 +155,10 @@ export function createVehiclesRouter(options: Options): Router {
     ...data
   });
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
+  const parseVehicleFormBody = (req: any, res: any, next: any) => {
+    if (!req.is("multipart/form-data")) return next();
+    return formUpload.any()(req, res, next);
+  };
   const buildRequiredDocumentGroups = async (vehicleId: string) => {
     const uploaded = await listVehicleEntityDocuments(vehicleId);
     const byType = new Map<string, any[]>();
@@ -201,7 +206,7 @@ export function createVehiclesRouter(options: Options): Router {
       });
     } catch (error) { next(error); }
   });
-  router.post("/vehicles/new", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/new", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, parseVehicleFormBody, csrfGuard, async (req, res, next) => {
     try {
       const value = input(req.body);
       try {
@@ -226,7 +231,7 @@ export function createVehiclesRouter(options: Options): Router {
       }
     } catch (error) { next(error); }
   });
-  router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, csrfGuard, async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/edit", requireAuthorizedVehicleManager, localVehicleMutationRateLimit, vehicleMutationRateLimit, parseVehicleFormBody, csrfGuard, async (req, res, next) => {
     try {
       const vehicleId = text(req.params.vehicleId);
       const value = input(req.body);

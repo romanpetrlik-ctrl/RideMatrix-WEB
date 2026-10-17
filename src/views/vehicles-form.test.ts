@@ -6,13 +6,6 @@ import test from "node:test";
 import { chromium } from "playwright-core";
 
 async function renderVehicleForm(vehicle: any = null): Promise<string> {
-  const vehicleDocumentLabels = [
-    { type: "v5c", label: "V5C", fieldName: "document_v5c" },
-    { type: "council_mechanical_check", label: "Council Mechanical Check", fieldName: "document_council_mechanical_check" },
-    { type: "hire_reward_insurance", label: "Hire & Reward Insurance", fieldName: "document_hire_reward_insurance" },
-    { type: "hc_phv_license_issued", label: "HC/PHV License issued", fieldName: "document_hc_phv_license_issued" },
-    { type: "mot", label: "MOT", fieldName: "document_mot" }
-  ];
   return ejs.renderFile(path.join(process.cwd(), "src/views/pages/vehicles/form.ejs"), {
     title: "New vehicle",
     appTitle: "RideMatrix Test",
@@ -31,9 +24,6 @@ async function renderVehicleForm(vehicle: any = null): Promise<string> {
       { key: "cabin_bag", label: "CB cabin bag" },
       { key: "backpack", label: "BP backpack" }
     ],
-    vehicleDocumentLabels,
-    documents: vehicleDocumentLabels.map((item) => ({ type: item.type, fileName: null, uploadedAt: null })),
-    documentErrors: {},
     helpFor: (key: string) => ({ title: key, body: `Information about ${key}.` })
   });
 }
@@ -47,19 +37,12 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   for (const name of [
     "registration", "make", "model", "fuelType", "passengerCapacity", "status",
     "classKeys", "vehicleLicenseType", "vehicleLicenseBadge", "year", "colour", "registeredKeeperDetails",
-    "capacity_xl_suitcase", "capacity_l_suitcase", "capacity_cabin_bag", "capacity_backpack", "notes",
-    "document_v5c", "document_council_mechanical_check", "document_hire_reward_insurance", "document_hc_phv_license_issued", "document_mot"
+    "capacity_xl_suitcase", "capacity_l_suitcase", "capacity_cabin_bag", "capacity_backpack", "notes"
   ]) {
     assert.match(html, new RegExp(`name="${name}"`), `expected the ${name} field`);
   }
-  assert.match(html, /name="document_v5c"[^>]*required/);
-  assert.match(html, /name="document_hc_phv_license_issued"[^>]*required/);
-  assert.match(html, /enctype="multipart\/form-data"/);
-  assert.match(html, />V5C</);
-  assert.match(html, />Council Mechanical Check</);
-  assert.match(html, />Hire &amp; Reward Insurance</);
-  assert.match(html, />HC\/PHV License issued</);
-  assert.match(html, />MOT</);
+  assert.doesNotMatch(html, /enctype="multipart\/form-data"/);
+  assert.match(html, /Save record first\./);
   assert.match(html, /name="_csrf" value="test-token"/);
   assert.match(html, /class="help-button" type="button" aria-haspopup="dialog"/);
   assert.match(html, /aria-label="Help: vehicle\.fuelType"/);
@@ -107,7 +90,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(legacyHtml, /<option value="private_hire" selected>Private Hire<\/option>/);
   assert.match(legacyHtml, /name="vehicleLicenseBadge" maxlength="64" value="PH-777"/);
   assert.match(legacyHtml, /name="classKeys" value="wheelchair_accessible" checked/);
-  assert.doesNotMatch(legacyHtml, /name="document_v5c"[^>]*required/);
+  assert.match(legacyHtml, /Record is saved\. Upload documents from the vehicle detail page\./);
 
   const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8");
   assert.match(css, /\.vehicle-form input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\),\s*\.vehicle-form select,\s*\.vehicle-form textarea\s*\{[\s\S]*width:100%;[\s\S]*max-width:none;/);
