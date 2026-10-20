@@ -30,7 +30,7 @@ type Options = {
   consumeDownloadRateLimit?: (key: string) => Promise<boolean>;
 };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES } });
-const formUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES } });
+const formUpload = multer({ fileFilter: (_req, _file, callback) => callback(null, false) });
 const multiUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES, files: DOCUMENT_MAX_FILES_PER_CATEGORY }
