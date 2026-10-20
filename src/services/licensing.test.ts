@@ -84,6 +84,22 @@ test("editing a vehicle licence is scoped to that vehicle and preserves the expl
   assert.equal(calls[0].params[3], null);
 });
 
+test("vehicle licence save accepts an unspecified licensing authority", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      return { rows: [], rowCount: 1 };
+    }
+  };
+  await saveVehicleLicense("vehicle-1", {
+    licensingAuthorityId: "   ", licenseType: "hackney_carriage",
+    vehicleLicenseBadge: "HC-NULL", validFrom: "2026-01-01"
+  }, undefined, client);
+  assert.match(calls[0].sql, /INSERT INTO vehicle_licensing_authorities/);
+  assert.equal(calls[0].params[2], null);
+});
+
 test("server-side assignment derives operator and service date and requires an exact authority and licence type", async () => {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client: any = {

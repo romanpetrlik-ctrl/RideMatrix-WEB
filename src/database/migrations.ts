@@ -955,6 +955,13 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_document_access_events_document
         ON document_access_events (document_id, occurred_at DESC);
     `
+  },
+  {
+    id: "0015_vehicle_license_optional_authority",
+    sql: `
+      ALTER TABLE vehicle_licensing_authorities
+        ALTER COLUMN licensing_authority_id DROP NOT NULL;
+    `
   }
 ];
 

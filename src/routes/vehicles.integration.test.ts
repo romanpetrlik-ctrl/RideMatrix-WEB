@@ -601,6 +601,27 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match((await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text()), /PH-VEH-2/);
   });
 
+  test("admins can add a vehicle licence without selecting a licensing authority", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("NO AUTH 1", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    assert.doesNotMatch(detail.body, /name="licensingAuthorityId" required/);
+    const created = await postForm(`/vehicles/${vehicleId}/licenses`, [
+      ["_csrf", detail.token], ["licensingAuthorityId", ""], ["licenseType", "hackney_carriage"],
+      ["vehicleLicenseBadge", "HC-NO-AUTH"], ["licenseReference", "REF-NO-AUTH"], ["validFrom", "2026-03-01"],
+      ["validUntil", "2026-12-31"], ["notes", "Authority pending"]
+    ], detail.cookie);
+    assert.equal(created.headers.get("location"), `/vehicles/${vehicleId}?notice=license-saved`);
+    const saved = await query<{ licensing_authority_id: string | null; license_reference: string; valid_from: string; valid_until: string | null }>(
+      "SELECT licensing_authority_id, license_reference, valid_from, valid_until FROM vehicle_licensing_authorities WHERE vehicle_id=$1 ORDER BY created_at DESC LIMIT 1",
+      [vehicleId]
+    );
+    assert.equal(saved.rows[0]?.licensing_authority_id, null);
+    assert.equal(saved.rows[0]?.license_reference, "REF-NO-AUTH");
+    assert.equal(saved.rows[0]?.valid_from, "2026-03-01");
+    assert.equal(saved.rows[0]?.valid_until, "2026-12-31");
+  });
+
   test("detail page manages driver assignments and preserves assignment history", async () => {
     signIn(["admin"]);
     const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;

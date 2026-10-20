@@ -51,6 +51,8 @@ async function renderDetail(canManageVehicleDocuments: boolean): Promise<string>
 test("vehicle detail required document rows show uploaded/missing states and manager actions", async () => {
   const html = await renderDetail(true);
   assert.match(html, /<h2>Vehicle documents<\/h2>/);
+  assert.doesNotMatch(html, /<h2>Compliance documents<\/h2>/);
+  assert.doesNotMatch(html, /action="\/vehicles\/vehicle-1\/documents"/);
   assert.match(html, /<h3>Upload documents<\/h3>/);
   assert.match(html, /Upload selected documents/);
   assert.match(html, /Add to upload queue/);
