@@ -8,7 +8,7 @@ import {
   DOCUMENT_MAX_FILES_PER_CATEGORY
 } from "../config/documents";
 import { getPool } from "../database/connection";
-import { buildEntityVaultRelativePath, readVaultFile, sanitizeOriginalFilename as sanitizeVaultFilename, writeVaultFile } from "./document-vault";
+import { buildEntityVaultRelativePath, readVaultFile, removeVaultFile, sanitizeOriginalFilename as sanitizeVaultFilename, writeVaultFile } from "./document-vault";
 
 type Queryable = Pool | PoolClient;
 const db = (client?: Queryable): Queryable => client || getPool();
@@ -493,13 +493,20 @@ export async function saveVehicleEntityDocument(input: {
   const id = randomUUID();
   const originalFilename = sanitizeVaultFilename(input.file.originalname || "");
   const checksum = createHash("sha256").update(input.file.buffer).digest("hex");
-  await db(client).query(
-    `INSERT INTO entity_documents
-       (id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at)
-     VALUES ($1, 'vehicle', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [id, input.vehicleId, category, originalFilename, text(input.file.mimetype).toLowerCase(), input.file.buffer.length, checksum, storagePath, text(input.uploadedBy) || null, uploadedAt]
-  );
-  await logVehicleDocumentAccess({ documentId: id, action: "upload", actorId: input.uploadedBy || null }, client);
+  try {
+    await withVehicleTransaction(client, async (runner) => {
+      await runner.query(
+        `INSERT INTO entity_documents
+           (id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at)
+         VALUES ($1, 'vehicle', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [id, input.vehicleId, category, originalFilename, text(input.file.mimetype).toLowerCase(), input.file.buffer.length, checksum, storagePath, text(input.uploadedBy) || null, uploadedAt]
+      );
+      await logVehicleDocumentAccess({ documentId: id, action: "upload", actorId: input.uploadedBy || null }, runner);
+    });
+  } catch (error) {
+    await removeVaultFile(storagePath).catch(() => undefined);
+    throw error;
+  }
   return {
     id,
     entity_type: "vehicle",
