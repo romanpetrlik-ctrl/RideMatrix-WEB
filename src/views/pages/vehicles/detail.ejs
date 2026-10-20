@@ -15,6 +15,7 @@
         ["driver-invalid", ["Select a valid driver account.", true]],
         ["document-added", ["Document uploaded.", false]],
         ["document-partial", ["Some files failed to upload. Review per-file status.", true]],
+        ["document-upload-rejected", ["The upload batch was rejected and no files were saved.", true]],
         ["document-required", ["Choose a document type and file to upload.", true]],
         ["document-invalid-file", ["Only valid PDF, JPEG, and PNG documents are accepted.", true]],
         ["document-invalid-type", ["Select a valid compliance document type.", true]],
@@ -51,7 +52,11 @@
                 <% if (document.files.length) { %>
                   <% document.files.forEach((file) => { %>
                     <span>Uploaded: <strong><%= file.original_filename %></strong><%= file.uploaded_at ? ` (${String(file.uploaded_at)})` : "" %></span>
-                    <span><a href="/vehicles/record-documents/<%= file.id %>/view">View</a> · <a href="/vehicles/record-documents/<%= file.id %>/download">Download</a></span>
+                    <% if (file.legacy) { %>
+                      <span><a href="/vehicles/documents/<%= file.id %>">View</a> · <a href="/vehicles/documents/<%= file.id %>?download=1">Download</a></span>
+                    <% } else { %>
+                      <span><a href="/vehicles/record-documents/<%= file.id %>/view">View</a> · <a href="/vehicles/record-documents/<%= file.id %>/download">Download</a></span>
+                    <% } %>
                   <% }) %>
                 <% } else { %>
                   <span>Missing</span>

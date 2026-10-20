@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -12,7 +14,12 @@ import { createCsrfProtection } from "../middleware/csrf";
 import { CSRF_COOKIE_NAME } from "../services/csrf";
 import { SessionAccount } from "../services/api";
 import { operationalMenuRows } from "./dashboard";
-import { createVehiclesRouter } from "./vehicles";
+
+let createVehiclesRouter: typeof import("./vehicles.js")["createVehiclesRouter"];
+let createVehicleDocument: typeof import("../services/vehicles.js")["createVehicleDocument"];
+let listVehicles: typeof import("../services/vehicles.js")["listVehicles"];
+let vaultRoot: string;
+const previousVaultRoot = process.env.DOCUMENT_VAULT_ROOT;
 
 const DRIVER_ID = "a0000000-0000-0000-0000-000000000002";
 const SECOND_DRIVER_ID = "a0000000-0000-0000-0000-000000000003";
@@ -25,6 +32,10 @@ describe("vehicle management end-to-end workflow", () => {
   let session: SessionAccount = { authenticated: false };
 
   before(async () => {
+    vaultRoot = await mkdtemp(path.join(os.tmpdir(), "ridematrix-vehicle-vault-"));
+    process.env.DOCUMENT_VAULT_ROOT = vaultRoot;
+    ({ createVehiclesRouter } = await import("./vehicles.js"));
+    ({ createVehicleDocument, listVehicles } = await import("../services/vehicles.js"));
     dbContext = await createTestDatabaseContext("test_vehicle_routes");
     await dbContext.createAuthTables();
     await initializeDatabase();
@@ -49,6 +60,9 @@ describe("vehicle management end-to-end workflow", () => {
   after(async () => {
     if (appServer) await new Promise<void>((resolve) => appServer.close(() => resolve()));
     await safeCleanupTestDatabase(dbContext);
+    if (previousVaultRoot === undefined) delete process.env.DOCUMENT_VAULT_ROOT;
+    else process.env.DOCUMENT_VAULT_ROOT = previousVaultRoot;
+    if (vaultRoot) await rm(vaultRoot, { recursive: true, force: true });
   });
 
   function signIn(roles: string[]): void {
@@ -269,10 +283,128 @@ describe("vehicle management end-to-end workflow", () => {
       [vehicleId]
     );
     assert.equal(docs.rows[0].count, 2);
+    const audit = await query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM document_access_events
+       WHERE document_id IN (SELECT id FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1 AND category='mec') AND action='upload'`,
+      [vehicleId]
+    );
+    assert.equal(audit.rows[0].count, 2);
+    const directory = await listVehicles({ search: "DOC MULTI" });
+    assert.equal(directory.vehicles.find((item) => item.id === vehicleId)?.documentsCount, 2);
     const listed = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents?category=mec`);
     assert.equal(listed.status, 200);
     const payload = await listed.json() as { documents: Array<{ original_filename: string }> };
     assert.equal(payload.documents.length, 2);
+  });
+
+  test("upload parser limits reject the full batch and still validate CSRF", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC LIMIT", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const maxFiles = Number(/Max (\d+) files per category/.exec(detail.body)?.[1]);
+    assert.ok(maxFiles > 0);
+    const makeBody = (token?: string) => {
+      const body = new FormData();
+      if (token) body.append("_csrf", token);
+      body.append("category", "v5c");
+      for (let index = 0; index <= maxFiles; index += 1) {
+        body.append("documents", new Blob([Buffer.from("%PDF-1.7 test")], { type: "application/pdf" }), `limit-${index}.pdf`);
+      }
+      return body;
+    };
+    const rejectedCsrf = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie },
+      body: makeBody()
+    });
+    assert.equal(rejectedCsrf.status, 403);
+
+    const response = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie },
+      body: makeBody(detail.token)
+    });
+    assert.equal(response.status, 400);
+    const responseBody = await response.text();
+    assert.match(responseBody, /No files in this batch were saved/);
+    assert.match(responseBody, new RegExp(`Select no more than ${maxFiles} files`));
+    const docs = await query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1",
+      [vehicleId]
+    );
+    assert.equal(docs.rows[0].count, 0);
+  });
+
+  test("concurrent uploads cannot exceed the per-category file limit", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC CONCURRENT", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const maxFiles = Number(/Max (\d+) files per category/.exec(detail.body)?.[1]);
+    const uploads = await Promise.all(Array.from({ length: maxFiles + 1 }, (_, index) => {
+      const body = new FormData();
+      body.append("_csrf", detail.token);
+      body.append("category", "mot");
+      body.append("documents", new Blob([Buffer.from("%PDF-1.7 concurrent")], { type: "application/pdf" }), `concurrent-${index}.pdf`);
+      return fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+        method: "POST",
+        headers: { cookie: detail.cookie },
+        body
+      });
+    }));
+    const docs = await query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1 AND category='mot'",
+      [vehicleId]
+    );
+    assert.equal(docs.rows[0].count, maxFiles);
+    assert.ok(uploads.some((response) => response.status === 400));
+  });
+
+  test("upload metadata and audit roll back together and remove the written vault file", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC ROLLBACK", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const vaultFilesBefore = (await readdir(vaultRoot, { recursive: true })).filter((file) => file.endsWith(".pdf"));
+    await query("DELETE FROM document_access_events");
+    await query(`ALTER TABLE document_access_events ADD CONSTRAINT reject_test_upload_audit CHECK (action <> 'upload')`);
+    try {
+      const body = new FormData();
+      body.append("_csrf", detail.token);
+      body.append("category", "v5c");
+      body.append("documents", new Blob([Buffer.from("%PDF-1.7 rollback")], { type: "application/pdf" }), "rollback.pdf");
+      const response = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+        method: "POST",
+        headers: { cookie: detail.cookie },
+        body
+      });
+      assert.equal(response.status, 400);
+      const documents = await query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1",
+        [vehicleId]
+      );
+      assert.equal(documents.rows[0].count, 0);
+      const vaultFiles = (await readdir(vaultRoot, { recursive: true })).filter((file) => file.endsWith(".pdf"));
+      assert.deepEqual(vaultFiles.sort(), vaultFilesBefore.sort());
+    } finally {
+      await query("ALTER TABLE document_access_events DROP CONSTRAINT reject_test_upload_audit");
+    }
+  });
+
+  test("required document groups retain legacy vehicle documents and links", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC LEGACY", "active");
+    const legacy = await createVehicleDocument({
+      vehicleId,
+      documentType: "v5c",
+      originalFilename: "legacy-v5c.pdf",
+      mimeType: "application/pdf",
+      content: Buffer.from("%PDF-1.7 legacy"),
+      uploadedBy: ADMIN_USER_ID
+    });
+    const response = await fetch(`${baseUrl}/vehicles/${vehicleId}`);
+    const body = await response.text();
+    assert.match(body, /legacy-v5c\.pdf/);
+    assert.match(body, new RegExp(`/vehicles/documents/${legacy}`));
+    assert.match(body, /Status: Uploaded/);
   });
 
   test("upload failure does not remove saved record", async () => {

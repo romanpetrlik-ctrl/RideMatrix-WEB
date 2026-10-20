@@ -63,6 +63,7 @@ const SAFE_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "imag
 const VEHICLE_DOCUMENT_LABELS: Array<{ type: VehicleRecordDocumentType; label: string; fieldName: string }> = [
   { type: "v5c", label: "V5C", fieldName: "document_v5c" },
   { type: "council_mechanical_check", label: "Council Mechanical Check", fieldName: "document_council_mechanical_check" },
+  { type: "mec", label: "MEC", fieldName: "document_mec" },
   { type: "hire_reward_insurance", label: "Hire & Reward Insurance", fieldName: "document_hire_reward_insurance" },
   { type: "hc_phv_license_issued", label: "HC/PHV License issued", fieldName: "document_hc_phv_license_issued" },
   { type: "mot", label: "MOT", fieldName: "document_mot" }
@@ -155,12 +156,29 @@ export function createVehiclesRouter(options: Options): Router {
     ...data
   });
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
+  const parseRecordDocumentUpload = (req: any, res: any, next: any) => multiUpload.array("documents", DOCUMENT_MAX_FILES_PER_CATEGORY)(req, res, (error: unknown) => {
+    if (error instanceof multer.MulterError) {
+      req.recordDocumentUploadError = error;
+      return next();
+    }
+    return next(error);
+  });
   const parseVehicleFormBody = (req: any, res: any, next: any) => {
     if (!req.is("multipart/form-data")) return next();
     return formUpload.any()(req, res, next);
   };
-  const buildRequiredDocumentGroups = async (vehicleId: string) => {
-    const uploaded = await listVehicleEntityDocuments(vehicleId);
+  const buildRequiredDocumentGroups = async (vehicleId: string, legacyDocuments: any[]) => {
+    const entityDocuments = await listVehicleEntityDocuments(vehicleId);
+    const uploaded = [
+      ...entityDocuments,
+      ...legacyDocuments.filter((item) => (VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(item.document_type)).map((item) => ({
+        id: item.id!,
+        category: item.document_type,
+        original_filename: item.original_filename,
+        uploaded_at: item.uploaded_at,
+        legacy: true
+      }))
+    ];
     const byType = new Map<string, any[]>();
     for (const item of uploaded) {
       const items = byType.get(item.category) || [];
@@ -174,9 +192,10 @@ export function createVehiclesRouter(options: Options): Router {
     }));
   };
   const renderDetailPage = async (res: any, vehicle: any, notice: string, uploadStatuses: any[] = [], status = 200) => {
-    const requiredDocuments = await buildRequiredDocumentGroups(vehicle.id);
+    const documents = await listVehicleDocuments(vehicle.id);
+    const requiredDocuments = await buildRequiredDocumentGroups(vehicle.id, documents);
     return res.status(status).render("pages/vehicles/detail", { title: vehicle.registration, appTitle: options.appTitle, email: res.locals.vehicleUser.email,
-      vehicle, documents: await listVehicleDocuments(vehicle.id), licenses: await listVehicleLicenses(vehicle.id),
+      vehicle, documents, licenses: await listVehicleLicenses(vehicle.id),
       requiredDocuments,
       canManageVehicleDocuments: true,
       uploadStatuses,
@@ -371,11 +390,23 @@ export function createVehiclesRouter(options: Options): Router {
       return next(error);
     }
   });
-  router.post("/vehicles/:vehicleId/record-documents/upload", requireAuthorizedVehicleManager, localDocumentUploadRateLimit, limitDocumentUploads, multiUpload.array("documents", DOCUMENT_MAX_FILES_PER_CATEGORY), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+  router.post("/vehicles/:vehicleId/record-documents/upload", requireAuthorizedVehicleManager, localDocumentUploadRateLimit, limitDocumentUploads, parseRecordDocumentUpload, csrfGuard, async (req, res, next) => {
     try {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const uploadError = (req as any).recordDocumentUploadError;
+      if (uploadError instanceof multer.MulterError) {
+        const oversized = uploadError.code === "LIMIT_FILE_SIZE";
+        const reason = oversized
+          ? `A file exceeds the ${Math.floor(VEHICLE_DOCUMENT_MAX_BYTES / (1024 * 1024))} MB size limit.`
+          : `Select no more than ${DOCUMENT_MAX_FILES_PER_CATEGORY} files in one batch.`;
+        return renderDetailPage(res, vehicle, "document-upload-rejected", [{
+          name: "",
+          status: "failed",
+          reason: `${reason} No files in this batch were saved.`
+        }], oversized ? 413 : 400);
+      }
       const category = text(req.body.category || req.body.documentType).toLowerCase();
       if (!(VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(category)) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
