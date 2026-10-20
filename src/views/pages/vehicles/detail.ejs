@@ -44,7 +44,7 @@
           <dt>Wheelchair accessible <%- include("../../partials/help-button", { key: "vehicle.wheelchairAccessible", helpFor }) %></dt><dd><%= vehicle.wheelchairAccessible ? "Yes" : "No" %></dd><dt>Status</dt><dd><%= vehicle.status %></dd>
         </dl></article>
         <article class="vehicle-card"><h2>Vehicle documents</h2>
-          <% const failedCategories = new Set(failedDocumentCategories || []); %>
+          <% const failedCategories = new Set((locals.failedDocumentCategories || [])); %>
           <div class="vehicle-document-list">
             <% (requiredDocuments || []).forEach((document) => { %>
               <% const hasUploadedFiles = document.files.length > 0; %>
