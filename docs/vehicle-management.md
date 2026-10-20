@@ -24,7 +24,7 @@ status, and pagination links keep each other's values.
 - `POST /vehicles/:id/documents` – upload or replace a compliance document (PDF/JPEG/PNG, 10 MiB).
   Replaced documents are kept as history; only the latest document per type is listed or downloadable.
 - `GET /vehicles/:id/record-documents` – list uploaded record documents for a vehicle, optionally filtered by `category`.
-- `POST /vehicles/:id/record-documents/upload` – multi-file upload for one required category (e.g. MEC, V5C pages 1+2).
+- `POST /vehicles/:id/record-documents/upload` – multi-file upload for one required category (e.g. `mec`, V5C pages 1+2).
 - `GET /vehicles/record-documents/:documentId/view` – authorized inline stream for a stored record document.
 - `GET /vehicles/record-documents/:documentId/download` – authorized attachment download for a stored record document.
 - `GET /vehicles/documents/:documentId` – authorized inline view or `?download=1` attachment.
@@ -46,7 +46,10 @@ vehicle management.
 - All responses are `no-store`.
 - Mutations require a valid CSRF token and are rate limited (process-local plus the
   PostgreSQL-backed distributed counter). Document uploads authorize and rate limit before
-  multipart parsing, then validate CSRF, extension, MIME type, and file signature.
+  multipart parsing, then validate CSRF, extension, MIME type, and file signature. Upload
+  batches that exceed their configured file or size limits are rejected without saving any files.
+- Required-document groups include both DocuVault uploads and existing vehicle-document records,
+  with legacy files retaining their existing view and download links.
 - Document downloads use a sanitized filename, `X-Content-Type-Options: nosniff`, and only
   serve the stored PDF/JPEG/PNG content types (anything else falls back to `application/octet-stream`).
 

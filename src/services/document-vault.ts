@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DOCUMENT_VAULT_ROOT } from "../config/documents";
 
@@ -84,4 +84,9 @@ export async function writeVaultFile(relativePath: string, content: Buffer, vaul
 export async function readVaultFile(relativePath: string, vaultRoot = DOCUMENT_VAULT_ROOT): Promise<Buffer> {
   const normalizedPath = resolveVaultPath(relativePath, vaultRoot);
   return readFile(normalizedPath);
+}
+
+export async function removeVaultFile(relativePath: string, vaultRoot = DOCUMENT_VAULT_ROOT): Promise<void> {
+  const normalizedPath = resolveVaultPath(relativePath, vaultRoot);
+  await rm(normalizedPath, { force: true });
 }
