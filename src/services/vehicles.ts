@@ -20,7 +20,7 @@ export const VEHICLE_STATUS_OPTIONS = ["active", "inactive", "maintenance"] as c
 export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_LICENSE_TYPES = ["hackney_carriage", "private_hire"] as const;
 export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge", "v5c", "council_mechanical_check", "hire_reward_insurance", "hc_phv_license_issued"] as const;
-export const VEHICLE_RECORD_DOCUMENT_TYPES = ["v5c", "council_mechanical_check", "hire_reward_insurance", "hc_phv_license_issued", "mot"] as const;
+export const VEHICLE_RECORD_DOCUMENT_TYPES = ["v5c", "council_mechanical_check", "mec", "hire_reward_insurance", "hc_phv_license_issued", "mot"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
 export const VEHICLE_DOCUMENT_DOWNLOAD_LIMIT = 120;
@@ -120,7 +120,8 @@ function capacityAggregate(): string {
 }
 const vehicleSelect = `v.*, ${classAggregate()}, ${capacityAggregate()},
   a.driver_id, u.email AS driver_email,
-  (SELECT count(*)::int FROM vehicle_documents d WHERE d.vehicle_id = v.id AND d.is_latest = TRUE) AS documents_count`;
+  ((SELECT count(*)::int FROM vehicle_documents d WHERE d.vehicle_id = v.id AND d.is_latest = TRUE)
+    + (SELECT count(*)::int FROM entity_documents d WHERE d.entity_type = 'vehicle' AND d.entity_id = v.id)) AS documents_count`;
 
 async function withVehicleTransaction<T>(client: Queryable | undefined, work: (runner: Queryable) => Promise<T>): Promise<T> {
   const runner = client || getPool();
@@ -464,37 +465,39 @@ export async function saveVehicleEntityDocument(input: {
   validateVehicleDocumentUpload(input.file);
   if (!input.file.buffer?.length) throw new Error("Upload a non-empty document.");
   if (input.file.buffer.length > VEHICLE_DOCUMENT_MAX_BYTES) throw new Error("Document exceeds maximum file size.");
-  const existing = await db(client).query<{ count: string }>(
-    `SELECT count(*)::text AS count
-       FROM entity_documents
-      WHERE entity_type='vehicle' AND entity_id=$1 AND category=$2`,
-    [input.vehicleId, category]
-  );
-  const existingCount = Number(existing.rows[0]?.count || 0);
-  if (existingCount >= DOCUMENT_MAX_FILES_PER_CATEGORY) {
-    throw new Error(`Maximum files reached for ${category}.`);
-  }
-  const vehicle = await db(client).query<{ registration: string; vehicle_license_type: string | null }>(
-    "SELECT registration, vehicle_license_type FROM vehicles WHERE id=$1",
-    [input.vehicleId]
-  );
-  if (!vehicle.rows[0]) throw new Error("Vehicle not found.");
-  const uploadedAt = new Date().toISOString();
-  const storagePath = buildEntityVaultRelativePath({
-    entityType: "vehicle",
-    uploadedAt,
-    entityId: input.vehicleId,
-    registrationOrBadge: vehicle.rows[0].registration || input.vehicleId,
-    vehicleLicenseType: vehicle.rows[0].vehicle_license_type,
-    category,
-    originalFilename: input.file.originalname
-  });
-  await writeVaultFile(storagePath, input.file.buffer);
-  const id = randomUUID();
-  const originalFilename = sanitizeVaultFilename(input.file.originalname || "");
-  const checksum = createHash("sha256").update(input.file.buffer).digest("hex");
+  let storagePath: string | undefined;
+  let fileWritten = false;
   try {
-    await withVehicleTransaction(client, async (runner) => {
+    return await withVehicleTransaction(client, async (runner) => {
+      const vehicle = await runner.query<{ registration: string; vehicle_license_type: string | null }>(
+        "SELECT registration, vehicle_license_type FROM vehicles WHERE id=$1 FOR UPDATE",
+        [input.vehicleId]
+      );
+      if (!vehicle.rows[0]) throw new Error("Vehicle not found.");
+      const existing = await runner.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+           FROM entity_documents
+          WHERE entity_type='vehicle' AND entity_id=$1 AND category=$2`,
+        [input.vehicleId, category]
+      );
+      if (Number(existing.rows[0]?.count || 0) >= DOCUMENT_MAX_FILES_PER_CATEGORY) {
+        throw new Error(`Maximum files reached for ${category}.`);
+      }
+      const uploadedAt = new Date().toISOString();
+      storagePath = buildEntityVaultRelativePath({
+        entityType: "vehicle",
+        uploadedAt,
+        entityId: input.vehicleId,
+        registrationOrBadge: vehicle.rows[0].registration || input.vehicleId,
+        vehicleLicenseType: vehicle.rows[0].vehicle_license_type,
+        category,
+        originalFilename: input.file.originalname
+      });
+      await writeVaultFile(storagePath, input.file.buffer);
+      fileWritten = true;
+      const id = randomUUID();
+      const originalFilename = sanitizeVaultFilename(input.file.originalname || "");
+      const checksum = createHash("sha256").update(input.file.buffer).digest("hex");
       await runner.query(
         `INSERT INTO entity_documents
            (id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at)
@@ -502,24 +505,30 @@ export async function saveVehicleEntityDocument(input: {
         [id, input.vehicleId, category, originalFilename, text(input.file.mimetype).toLowerCase(), input.file.buffer.length, checksum, storagePath, text(input.uploadedBy) || null, uploadedAt]
       );
       await logVehicleDocumentAccess({ documentId: id, action: "upload", actorId: input.uploadedBy || null }, runner);
+      return {
+        id,
+        entity_type: "vehicle",
+        entity_id: input.vehicleId,
+        category,
+        original_filename: originalFilename,
+        mime_type: text(input.file.mimetype).toLowerCase(),
+        byte_size: input.file.buffer.length,
+        checksum,
+        storage_path: storagePath,
+        uploaded_by: text(input.uploadedBy) || null,
+        uploaded_at: uploadedAt
+      };
     });
   } catch (error) {
-    await removeVaultFile(storagePath).catch(() => undefined);
+    if (fileWritten && storagePath) {
+      try {
+        await removeVaultFile(storagePath);
+      } catch {
+        // Preserve the persistence error; cleanup is best-effort.
+      }
+    }
     throw error;
   }
-  return {
-    id,
-    entity_type: "vehicle",
-    entity_id: input.vehicleId,
-    category,
-    original_filename: originalFilename,
-    mime_type: text(input.file.mimetype).toLowerCase(),
-    byte_size: input.file.buffer.length,
-    checksum,
-    storage_path: storagePath,
-    uploaded_by: text(input.uploadedBy) || null,
-    uploaded_at: uploadedAt
-  };
 }
 
 export async function readVehicleEntityDocumentContent(documentId: string, client?: Queryable): Promise<{ document: VehicleEntityDocument; content: Buffer } | null> {

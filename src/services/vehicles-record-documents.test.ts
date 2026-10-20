@@ -22,6 +22,12 @@ test("vehicle record document metadata and audit are transactional and failed pe
       const tx = {
         async query(sql: string, values: unknown[] = []) {
           transactionQueries.push(sql);
+          if (sql.includes("SELECT registration, vehicle_license_type FROM vehicles")) {
+            return { rows: [{ registration: "AB123", vehicle_license_type: "hackney_carriage" }] };
+          }
+          if (sql.includes("count(*)::text AS count") && sql.includes("FROM entity_documents")) {
+            return { rows: [{ count: "0" }] };
+          }
           if (sql.includes("INSERT INTO entity_documents")) storagePath = String(values[7]);
           if (failAudit && sql.includes("INSERT INTO document_access_events")) throw new Error("audit failure");
           return { rows: [] };
@@ -29,15 +35,6 @@ test("vehicle record document metadata and audit are transactional and failed pe
         release() {}
       };
       const pool = {
-        async query(sql: string) {
-          if (sql.includes("count(*)::text AS count") && sql.includes("FROM entity_documents")) {
-            return { rows: [{ count: "0" }] };
-          }
-          if (sql.includes("SELECT registration, vehicle_license_type FROM vehicles")) {
-            return { rows: [{ registration: "AB123", vehicle_license_type: "hackney_carriage" }] };
-          }
-          throw new Error(`Unexpected query: ${sql}`);
-        },
         async connect() {
           return tx;
         }
