@@ -601,11 +601,36 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match((await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text()), /PH-VEH-2/);
   });
 
+  test("admins can add a vehicle licence without selecting a licensing authority", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("NO AUTH 1", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    assert.doesNotMatch(detail.body, /name="licensingAuthorityId" required/);
+    const created = await postForm(`/vehicles/${vehicleId}/licenses`, [
+      ["_csrf", detail.token], ["licensingAuthorityId", ""], ["licenseType", "hackney_carriage"],
+      ["vehicleLicenseBadge", "HC-NO-AUTH"], ["licenseReference", "REF-NO-AUTH"], ["validFrom", "2026-03-01"],
+      ["validUntil", "2026-12-31"], ["notes", "Authority pending"]
+    ], detail.cookie);
+    assert.equal(created.headers.get("location"), `/vehicles/${vehicleId}?notice=license-saved`);
+    const saved = await query<{ licensing_authority_id: string | null; license_reference: string; valid_from: string; valid_until: string | null }>(
+      "SELECT licensing_authority_id, license_reference, valid_from, valid_until FROM vehicle_licensing_authorities WHERE vehicle_id=$1 ORDER BY created_at DESC LIMIT 1",
+      [vehicleId]
+    );
+    assert.equal(saved.rows[0]?.licensing_authority_id, null);
+    assert.equal(saved.rows[0]?.license_reference, "REF-NO-AUTH");
+    assert.equal(saved.rows[0]?.valid_from, "2026-03-01");
+    assert.equal(saved.rows[0]?.valid_until, "2026-12-31");
+  });
+
   test("detail page manages driver assignments and preserves assignment history", async () => {
     signIn(["admin"]);
     const id = (await query<{ id: string }>("SELECT id FROM vehicles WHERE registration = 'AB12 CDE'")).rows[0].id;
     const detail = await openForm(`/vehicles/${id}`);
-    assert.match(detail.body, /driver@ridematrix\.com/);
+    const linkedSection = /<section class="vehicle-card"><h2>Linked driver<\/h2>[\s\S]*?<\/section>/.exec(detail.body)?.[0] || "";
+    assert.ok(linkedSection);
+    assert.match(linkedSection, new RegExp(`Driver #${DRIVER_ID}`));
+    assert.match(linkedSection, new RegExp(`Driver #${SECOND_DRIVER_ID}`));
+    assert.doesNotMatch(linkedSection, /driver@ridematrix\.com|second\.driver@ridematrix\.com/);
     assert.match(detail.body, /No driver has been assigned to this vehicle yet/);
 
     let response = await postForm(`/vehicles/${id}/driver`, [["_csrf", detail.token], ["driverId", DRIVER_ID]], detail.cookie);
@@ -621,14 +646,22 @@ describe("vehicle management end-to-end workflow", () => {
     response = await postForm(`/vehicles/${otherId}/driver`, [["_csrf", detail.token], ["driverId", SECOND_DRIVER_ID]], detail.cookie);
     assert.equal(response.headers.get("location"), `/vehicles/${otherId}?notice=driver-updated`, "a driver may be assigned to multiple vehicles");
 
+    const detailAfterAssignments = await (await fetch(`${baseUrl}/vehicles/${id}`)).text();
+    const historySnippet = /<h3>Recent assignment history<\/h3>[\s\S]*?<\/ul>/.exec(detailAfterAssignments)?.[0] || "";
+    assert.ok(historySnippet);
+    assert.match(historySnippet, new RegExp(`Driver #${DRIVER_ID}[\\s\\S]*assigned`));
+    assert.match(historySnippet, new RegExp(`Driver #${SECOND_DRIVER_ID}[\\s\\S]*\\(current\\)`));
+    assert.doesNotMatch(historySnippet, /driver@ridematrix\.com|second\.driver@ridematrix\.com|@/);
+
     const missing = await postForm("/vehicles/does-not-exist/driver", [["_csrf", detail.token], ["driverId", DRIVER_ID]], detail.cookie);
     assert.equal(missing.status, 404);
 
     const history = await fetch(`${baseUrl}/vehicles/${id}/driver-history`);
     assert.equal(history.status, 200);
     const historyBody = await history.text();
-    assert.match(historyBody, /driver@ridematrix\.com[\s\S]*Ended/);
-    assert.match(historyBody, /second\.driver@ridematrix\.com[\s\S]*Current/);
+    assert.match(historyBody, new RegExp(`Driver #${DRIVER_ID}[\\s\\S]*Ended`));
+    assert.match(historyBody, new RegExp(`Driver #${SECOND_DRIVER_ID}[\\s\\S]*Current`));
+    assert.doesNotMatch(historyBody, /driver@ridematrix\.com|second\.driver@ridematrix\.com/);
     const rows = await query<{ count: number }>("SELECT count(*)::int AS count FROM vehicle_driver_assignments WHERE vehicle_id = $1", [id]);
     assert.equal(rows.rows[0].count, 2);
 

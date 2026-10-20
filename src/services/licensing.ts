@@ -123,12 +123,13 @@ export async function addLicense(
   const now = new Date().toISOString();
   if (subject === "vehicle") {
     validateVehicleLicenseInput(input);
+    const licensingAuthorityId = normalizeLicensingAuthorityId(input.licensingAuthorityId);
     await db(client).query(
       `INSERT INTO ${table}
         (id, ${column}, licensing_authority_id, license_type, vehicle_license_badge,
          license_reference, valid_from, valid_until, active, notes, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10,$10)`,
-      [id, subjectId, input.licensingAuthorityId, input.licenseType,
+      [id, subjectId, licensingAuthorityId, input.licenseType,
         normalizeVehicleLicenseBadge(input.vehicleLicenseBadge), input.licenseReference || null,
         input.validFrom, input.validUntil || null, input.notes || null, now]
     );
@@ -154,6 +155,11 @@ function normalizeVehicleLicenseBadge(value: unknown): string | null {
   return badge;
 }
 
+function normalizeLicensingAuthorityId(value: unknown): string | null {
+  const authorityId = String(value ?? "").trim();
+  return authorityId || null;
+}
+
 function validateVehicleLicenseInput<T extends LicenseInput>(
   input: T,
   allowUnspecifiedType = false
@@ -167,7 +173,6 @@ function validateVehicleLicenseInput<T extends LicenseInput>(
   if (!allowUnspecifiedType && !input.licenseType) {
     throw new Error("Select Hackney Carriage or Private Hire as the vehicle licence type.");
   }
-  if (!input.licensingAuthorityId.trim()) throw new Error("Select a licensing authority.");
   if (!validDate(input.validFrom)) {
     throw new Error("Enter a valid licence start date.");
   }
@@ -188,7 +193,7 @@ function vehicleLicenseFromRow(row: any): VehicleLicenseRecord {
     id: row.id,
     vehicleId: row.vehicle_id,
     licensingAuthorityId: row.licensing_authority_id,
-    licensingAuthorityName: row.authority_name,
+    licensingAuthorityName: row.authority_name ?? null,
     licenseType: row.license_type ?? null,
     vehicleLicenseBadge: row.vehicle_license_badge ?? null,
     licenseReference: row.license_reference ?? null,
@@ -204,9 +209,10 @@ export async function listVehicleLicenses(vehicleId: string, client?: Queryable)
   const result = await db(client).query(
     `SELECT vla.*, la.name AS authority_name
        FROM vehicle_licensing_authorities vla
-       JOIN licensing_authorities la ON la.id = vla.licensing_authority_id
+      LEFT JOIN licensing_authorities la ON la.id = vla.licensing_authority_id
       WHERE vla.vehicle_id = $1
-      ORDER BY vla.active DESC, vla.valid_from DESC, la.preference_order, lower(la.name), vla.id`,
+      ORDER BY vla.active DESC, vla.valid_from DESC,
+               COALESCE(la.preference_order, 2147483647), lower(COALESCE(la.name, '')), vla.id`,
     [vehicleId]
   );
   return result.rows.map(vehicleLicenseFromRow);
@@ -220,6 +226,7 @@ export async function saveVehicleLicense(
 ): Promise<string | null> {
   validateVehicleLicenseInput(input, Boolean(licenseId));
   const runner = db(client);
+  const licensingAuthorityId = normalizeLicensingAuthorityId(input.licensingAuthorityId);
   const badge = normalizeVehicleLicenseBadge(input.vehicleLicenseBadge);
   const now = new Date().toISOString();
   if (licenseId) {
@@ -232,7 +239,7 @@ export async function saveVehicleLicense(
               license_reference=$6, valid_from=$7, valid_until=$8, notes=$9,
               active=TRUE, revoked_at=NULL, updated_at=$10
         WHERE id=$1 AND vehicle_id=$2`,
-      [licenseId, vehicleId, input.licensingAuthorityId, input.licenseType, badge,
+      [licenseId, vehicleId, licensingAuthorityId, input.licenseType, badge,
         input.licenseReference?.trim() || null, input.validFrom, input.validUntil || null,
         input.notes?.trim() || null, now, Boolean(input.clearVehicleLicenseBadge)]
     );
@@ -244,7 +251,7 @@ export async function saveVehicleLicense(
       (id, vehicle_id, licensing_authority_id, license_type, vehicle_license_badge,
        license_reference, valid_from, valid_until, active, notes, created_at, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10,$10)`,
-    [id, vehicleId, input.licensingAuthorityId, input.licenseType, badge,
+    [id, vehicleId, licensingAuthorityId, input.licenseType, badge,
       input.licenseReference?.trim() || null, input.validFrom, input.validUntil || null,
       input.notes?.trim() || null, now]
   );
