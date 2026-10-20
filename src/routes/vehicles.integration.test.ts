@@ -97,7 +97,7 @@ describe("vehicle management end-to-end workflow", () => {
 
   const documentFieldByType = {
     v5c: "document_v5c",
-    council_mechanical_check: "document_council_mechanical_check",
+    mec: "document_mec",
     hire_reward_insurance: "document_hire_reward_insurance",
     hc_phv_license_issued: "document_hc_phv_license_issued",
     mot: "document_mot"
@@ -448,14 +448,58 @@ describe("vehicle management end-to-end workflow", () => {
       body: uploadBody
     });
     const detailBody = await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text();
-    for (const label of ["V5C", "Council Mechanical Check", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
+    for (const label of ["V5C", "Council Mechanical Check \\(MEC\\)", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
       assert.match(detailBody, new RegExp(label));
     }
+    assert.equal((detailBody.match(/Council Mechanical Check \(MEC\)/g) || []).length, 1);
     assert.match(detailBody, /Status: Uploaded/);
     assert.match(detailBody, /Status: Missing/);
     assert.match(detailBody, /record-documents\/upload/);
     assert.match(detailBody, /Upload documents/);
     assert.match(detailBody, /record-documents\/.*\/view/);
+  });
+
+  test("legacy council mechanical check and MEC files render in one MEC row and uploads persist canonical category", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC MEC MERGE", "active");
+    const legacyId = await createVehicleDocument({
+      vehicleId,
+      documentType: "council_mechanical_check",
+      originalFilename: "legacy-council.pdf",
+      mimeType: "application/pdf",
+      content: Buffer.from("%PDF-1.7 legacy council"),
+      uploadedBy: ADMIN_USER_ID
+    });
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const body = new FormData();
+    body.append("_csrf", detail.token);
+    body.append("category", "council_mechanical_check");
+    body.append("documents", new Blob([Buffer.from("%PDF-1.7 mec")], { type: "application/pdf" }), "mec-upload.pdf");
+    const upload = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie },
+      body
+    });
+    assert.equal(upload.status, 200);
+    const stored = await query<{ category: string; count: number }>(
+      `SELECT category, count(*)::int AS count
+         FROM entity_documents
+        WHERE entity_type='vehicle' AND entity_id=$1
+        GROUP BY category`,
+      [vehicleId]
+    );
+    assert.deepEqual(stored.rows, [{ category: "mec", count: 1 }]);
+    const listedByAlias = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents?category=council_mechanical_check`);
+    assert.equal(listedByAlias.status, 200);
+    const listedPayload = await listedByAlias.json() as { category: string; documents: Array<{ category: string }> };
+    assert.equal(listedPayload.category, "mec");
+    assert.equal(listedPayload.documents.length, 1);
+    assert.equal(listedPayload.documents[0]?.category, "mec");
+    const detailBody = await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text();
+    assert.equal((detailBody.match(/Council Mechanical Check \(MEC\)/g) || []).length, 1);
+    assert.match(detailBody, /legacy-council\.pdf/);
+    assert.match(detailBody, /mec-upload\.pdf/);
+    assert.match(detailBody, new RegExp(`/vehicles/documents/${legacyId}`));
   });
 
   test("admins create and edit distinct vehicle licence types and badges", async () => {

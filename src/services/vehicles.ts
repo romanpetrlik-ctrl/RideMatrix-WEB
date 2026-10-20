@@ -20,7 +20,7 @@ export const VEHICLE_STATUS_OPTIONS = ["active", "inactive", "maintenance"] as c
 export const VEHICLE_FUEL_TYPES = ["ICE", "HYBRID", "EV"] as const;
 export const VEHICLE_LICENSE_TYPES = ["hackney_carriage", "private_hire"] as const;
 export const VEHICLE_DOCUMENT_TYPES = ["insurance", "mot", "mec", "hackney_ph_badge", "v5c", "council_mechanical_check", "hire_reward_insurance", "hc_phv_license_issued"] as const;
-export const VEHICLE_RECORD_DOCUMENT_TYPES = ["v5c", "council_mechanical_check", "mec", "hire_reward_insurance", "hc_phv_license_issued", "mot"] as const;
+export const VEHICLE_RECORD_DOCUMENT_TYPES = ["v5c", "mec", "hire_reward_insurance", "hc_phv_license_issued", "mot"] as const;
 export const DOCUMENT_EXPIRING_SOON_DAYS = 30;
 export const VEHICLE_DOCUMENT_UPLOAD_LIMIT = 30;
 export const VEHICLE_DOCUMENT_DOWNLOAD_LIMIT = 120;
@@ -32,6 +32,16 @@ export type VehicleFuelType = (typeof VEHICLE_FUEL_TYPES)[number];
 export type VehicleLicenseType = (typeof VEHICLE_LICENSE_TYPES)[number];
 export type VehicleDocumentType = (typeof VEHICLE_DOCUMENT_TYPES)[number];
 export type VehicleRecordDocumentType = (typeof VEHICLE_RECORD_DOCUMENT_TYPES)[number];
+const VEHICLE_RECORD_DOCUMENT_CATEGORY_ALIASES: Record<VehicleRecordDocumentType, readonly string[]> = {
+  v5c: ["v5c"],
+  mec: ["mec", "council_mechanical_check"],
+  hire_reward_insurance: ["hire_reward_insurance"],
+  hc_phv_license_issued: ["hc_phv_license_issued"],
+  mot: ["mot"]
+};
+const VEHICLE_RECORD_DOCUMENT_CATEGORY_TO_CANONICAL = Object.fromEntries(
+  Object.entries(VEHICLE_RECORD_DOCUMENT_CATEGORY_ALIASES).flatMap(([canonical, aliases]) => aliases.map((alias) => [alias, canonical]))
+) as Record<string, VehicleRecordDocumentType>;
 
 export type VehicleClass = { key: string; label: string };
 export type BaggageCategory = {
@@ -375,15 +385,26 @@ export async function listVehicleDocuments(vehicleId: string, client?: Queryable
 }
 
 export async function listLatestVehicleRecordDocuments(vehicleId: string, client?: Queryable) {
+  const categoryFilters = Array.from(new Set(
+    VEHICLE_RECORD_DOCUMENT_TYPES.flatMap((type) => VEHICLE_RECORD_DOCUMENT_CATEGORY_ALIASES[type])
+  ));
   const result = await db(client).query(
     `SELECT id, document_type, storage_key, original_filename, mime_type, uploaded_at
        FROM vehicle_documents
       WHERE vehicle_id = $1
         AND is_latest = TRUE
         AND document_type = ANY($2::text[])`,
-    [vehicleId, [...VEHICLE_RECORD_DOCUMENT_TYPES]]
+    [vehicleId, categoryFilters]
   );
-  const entries = new Map(result.rows.map((row) => [row.document_type, row]));
+  const entries = new Map<string, any>();
+  for (const row of result.rows) {
+    const canonicalType = normalizeVehicleRecordDocumentCategory(row.document_type);
+    if (!canonicalType) continue;
+    const current = entries.get(canonicalType);
+    if (!current || new Date(row.uploaded_at).getTime() >= new Date(current.uploaded_at).getTime()) {
+      entries.set(canonicalType, row);
+    }
+  }
   return VEHICLE_RECORD_DOCUMENT_TYPES.map((type) => {
     const row = entries.get(type);
     return {
@@ -412,15 +433,21 @@ export type VehicleEntityDocument = {
 };
 
 export async function listVehicleEntityDocuments(vehicleId: string, category?: string, client?: Queryable): Promise<VehicleEntityDocument[]> {
+  const normalizedCategory = text(category) ? normalizeVehicleRecordDocumentCategory(text(category)) : null;
+  const categoryFilter = normalizedCategory ? VEHICLE_RECORD_DOCUMENT_CATEGORY_ALIASES[normalizedCategory] : [];
   const result = await db(client).query<VehicleEntityDocument>(
     `SELECT id, entity_type, entity_id, category, original_filename, mime_type, byte_size, checksum, storage_path, uploaded_by, uploaded_at
-       FROM entity_documents
+      FROM entity_documents
       WHERE entity_type = 'vehicle' AND entity_id = $1
-        AND ($2 = '' OR category = $2)
+        AND ($2 = '' OR category = ANY($3::text[]))
       ORDER BY category, uploaded_at DESC, id DESC`,
-    [vehicleId, text(category)]
+    [vehicleId, text(category), categoryFilter]
   );
-  return result.rows.map((row) => ({ ...row, byte_size: Number(row.byte_size) }));
+  return result.rows.map((row) => ({
+    ...row,
+    category: normalizeVehicleRecordDocumentCategory(row.category) || row.category,
+    byte_size: Number(row.byte_size)
+  }));
 }
 
 export async function getVehicleEntityDocument(documentId: string, client?: Queryable): Promise<VehicleEntityDocument | null> {
@@ -447,12 +474,17 @@ export async function logVehicleDocumentAccess(input: {
   );
 }
 
-function normalizeDocumentCategory(value: string): VehicleRecordDocumentType {
+export function normalizeVehicleRecordDocumentCategory(value: string): VehicleRecordDocumentType | null {
   const category = text(value).toLowerCase();
-  if (!VEHICLE_RECORD_DOCUMENT_CATEGORIES.includes(category as VehicleRecordDocumentType)) {
+  return VEHICLE_RECORD_DOCUMENT_CATEGORY_TO_CANONICAL[category] || null;
+}
+
+function normalizeDocumentCategory(value: string): VehicleRecordDocumentType {
+  const category = normalizeVehicleRecordDocumentCategory(value);
+  if (!category || !VEHICLE_RECORD_DOCUMENT_CATEGORIES.includes(category)) {
     throw new Error("Select a valid record document category.");
   }
-  return category as VehicleRecordDocumentType;
+  return category;
 }
 
 export async function saveVehicleEntityDocument(input: {
@@ -555,7 +587,9 @@ export async function createVehicleDocument(input: {
   expiresOn?: string; originalFilename?: string; mimeType?: string; content?: Buffer; uploadedBy?: string;
   licenseId?: string | null; storageKey?: string;
 }, client?: Queryable) {
-  if (!VEHICLE_DOCUMENT_TYPES.includes(input.documentType as VehicleDocumentType)) throw new Error("Select a valid compliance document type.");
+  const requestedDocumentType = text(input.documentType).toLowerCase();
+  if (!VEHICLE_DOCUMENT_TYPES.includes(requestedDocumentType as VehicleDocumentType)) throw new Error("Select a valid compliance document type.");
+  const documentType = requestedDocumentType === "council_mechanical_check" ? "mec" : requestedDocumentType;
   if (input.expiresOn && getDocumentStatus(input.expiresOn) === "Expired") throw new Error("Enter a valid current or future expiry date.");
   if (!input.content?.length) throw new Error("Upload a non-empty vehicle document.");
   if (input.content.length > VEHICLE_DOCUMENT_MAX_BYTES) throw new Error("Vehicle documents must not exceed 10 MB.");
@@ -564,7 +598,7 @@ export async function createVehicleDocument(input: {
     mimetype: input.mimeType || "",
     buffer: input.content
   });
-  if (input.documentType === "hackney_ph_badge" && !input.licenseId) {
+  if (documentType === "hackney_ph_badge" && !input.licenseId) {
     throw new Error("Select the vehicle licence that this badge document belongs to.");
   }
   return withVehicleTransaction(client, async (runner) => {
@@ -580,20 +614,20 @@ export async function createVehicleDocument(input: {
     const byteSize = input.content!.length;
     const checksum = createHash("sha256").update(input.content!).digest("hex");
     const originalFilename = sanitizeOriginalFilename(input.originalFilename || "");
-    const storageKey = text(input.storageKey) || buildVehicleDocumentStorageKey(input.vehicleId, input.documentType, originalFilename);
+    const storageKey = text(input.storageKey) || buildVehicleDocumentStorageKey(input.vehicleId, documentType, originalFilename);
     await runner.query(
       `UPDATE vehicle_documents
        SET is_latest = FALSE, superseded_at = $3
        WHERE vehicle_id = $1 AND document_type = $2
          AND license_id IS NOT DISTINCT FROM $4 AND is_latest = TRUE`,
-      [input.vehicleId, input.documentType, now, input.licenseId || null]
+      [input.vehicleId, documentType, now, input.licenseId || null]
     );
     await runner.query(
       `INSERT INTO vehicle_documents
         (id, vehicle_id, license_id, document_type, document_number, issued_on, expires_on,
          original_filename, mime_type, storage_key, byte_size, checksum, content, uploaded_by, uploaded_at, is_latest)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE)`,
-      [id, input.vehicleId, input.licenseId || null, input.documentType, text(input.documentNumber) || null,
+      [id, input.vehicleId, input.licenseId || null, documentType, text(input.documentNumber) || null,
         input.issuedOn || null, input.expiresOn || null, originalFilename || null, input.mimeType || null,
         storageKey, byteSize, checksum, input.content, input.uploadedBy || null, now]
     );

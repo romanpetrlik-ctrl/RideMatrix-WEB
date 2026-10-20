@@ -19,6 +19,7 @@ import {
   logVehicleDocumentAccess, readVehicleEntityDocumentContent, saveVehicleEntityDocument,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
   consumeVehicleDocumentDownloadRateLimit,
+  normalizeVehicleRecordDocumentCategory,
   VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_MAX_BYTES, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_RECORD_DOCUMENT_TYPES, VEHICLE_STATUS_OPTIONS, VehicleDriverAssignmentError, VehicleRecordDocumentType,
   VehicleInput, VehicleNotFoundError, VehicleValidationError
 } from "../services/vehicles";
@@ -62,8 +63,7 @@ function formVehicle(value: VehicleInput, id?: string) {
 const SAFE_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 const VEHICLE_DOCUMENT_LABELS: Array<{ type: VehicleRecordDocumentType; label: string; fieldName: string }> = [
   { type: "v5c", label: "V5C", fieldName: "document_v5c" },
-  { type: "council_mechanical_check", label: "Council Mechanical Check", fieldName: "document_council_mechanical_check" },
-  { type: "mec", label: "MEC", fieldName: "document_mec" },
+  { type: "mec", label: "Council Mechanical Check (MEC)", fieldName: "document_mec" },
   { type: "hire_reward_insurance", label: "Hire & Reward Insurance", fieldName: "document_hire_reward_insurance" },
   { type: "hc_phv_license_issued", label: "HC/PHV License issued", fieldName: "document_hc_phv_license_issued" },
   { type: "mot", label: "MOT", fieldName: "document_mot" }
@@ -170,14 +170,21 @@ export function createVehiclesRouter(options: Options): Router {
   const buildRequiredDocumentGroups = async (vehicleId: string, legacyDocuments: any[]) => {
     const entityDocuments = await listVehicleEntityDocuments(vehicleId);
     const uploaded = [
-      ...entityDocuments,
-      ...legacyDocuments.filter((item) => (VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(item.document_type)).map((item) => ({
-        id: item.id!,
-        category: item.document_type,
-        original_filename: item.original_filename,
-        uploaded_at: item.uploaded_at,
-        legacy: true
-      }))
+      ...entityDocuments.map((item) => ({
+        ...item,
+        category: normalizeVehicleRecordDocumentCategory(item.category) || item.category
+      })),
+      ...legacyDocuments.map((item) => {
+        const category = normalizeVehicleRecordDocumentCategory(item.document_type);
+        if (!category) return null;
+        return {
+          id: item.id!,
+          category,
+          original_filename: item.original_filename,
+          uploaded_at: item.uploaded_at,
+          legacy: true
+        };
+      }).filter(Boolean)
     ];
     const byType = new Map<string, any[]>();
     for (const item of uploaded) {
@@ -381,10 +388,12 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.sendStatus(404);
+      const requestedCategory = text(req.query.category);
+      const normalizedCategory = normalizeVehicleRecordDocumentCategory(requestedCategory);
       return res.json({
         vehicleId: vehicle.id,
-        category: text(req.query.category),
-        documents: await listVehicleEntityDocuments(vehicle.id, text(req.query.category))
+        category: normalizedCategory || requestedCategory,
+        documents: await listVehicleEntityDocuments(vehicle.id, requestedCategory)
       });
     } catch (error) {
       return next(error);
@@ -407,8 +416,8 @@ export function createVehiclesRouter(options: Options): Router {
           reason: `${reason} No files in this batch were saved.`
         }], oversized ? 413 : 400);
       }
-      const category = text(req.body.category || req.body.documentType).toLowerCase();
-      if (!(VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(category)) {
+      const category = normalizeVehicleRecordDocumentCategory(text(req.body.category || req.body.documentType));
+      if (!category) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
       }
       const files = Array.isArray(req.files) ? req.files : [];
@@ -438,8 +447,8 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
-      const category = text(req.params.documentType).toLowerCase();
-      if (!(VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(category)) {
+      const category = normalizeVehicleRecordDocumentCategory(text(req.params.documentType));
+      if (!category) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
       }
       if (!req.file) return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select a file." }], 400);
