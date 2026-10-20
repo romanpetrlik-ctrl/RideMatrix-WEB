@@ -15,7 +15,7 @@ import {
 } from "../services/licensing";
 import {
   assignVehicleDriver, createVehicle, createVehicleDocument, getDocumentStatus, getVehicleById, getVehicleDocument,
-  getVehicleDriverSummary, listBaggageCategories, listDrivers, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicleEntityDocuments, listVehicles,
+  getVehicleDriverSummary, listBaggageCategories, listDriverCandidates, listVehicleClasses, listVehicleDocuments, listVehicleDriverAssignments, listVehicleEntityDocuments, listVehicles,
   logVehicleDocumentAccess, readVehicleEntityDocumentContent, saveVehicleEntityDocument,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
   consumeVehicleDocumentDownloadRateLimit,
@@ -219,6 +219,7 @@ export function createVehiclesRouter(options: Options): Router {
     }));
   };
   const renderDetailPage = async (res: any, vehicle: any, notice: string, uploadStatuses: any[] = [], status = 200) => {
+    const { drivers, sourceAvailable: driverSourceAvailable } = await listDriverCandidates();
     const documents = await listVehicleDocuments(vehicle.id);
     const requiredDocuments = await buildRequiredDocumentGroups(vehicle.id, documents);
     const failedDocumentCategories = Array.from(new Set(uploadStatuses
@@ -230,10 +231,13 @@ export function createVehiclesRouter(options: Options): Router {
       canManageVehicleDocuments: true,
       uploadStatuses,
       failedDocumentCategories,
+      editingLicenseId: text(res.req?.query?.editLicense),
       maxFilesPerCategory: DOCUMENT_MAX_FILES_PER_CATEGORY,
       authorities: await listLicensingAuthoritiesForManagement(), licenseTypes: VEHICLE_LICENSE_TYPES,
       driverAssignments: await listVehicleDriverAssignments(vehicle.id),
-      drivers: await listDrivers(), baggageCategories: await listBaggageCategories(), documentTypes: VEHICLE_DOCUMENT_TYPES,
+      drivers,
+      driverSourceAvailable,
+      baggageCategories: await listBaggageCategories(), documentTypes: VEHICLE_DOCUMENT_TYPES,
       helpFor: resolveHelpContent, notice });
   };
 
@@ -328,7 +332,8 @@ export function createVehiclesRouter(options: Options): Router {
       } catch (error) {
         if ((error as { code?: string }).code === "23503"
           || (error instanceof Error && (error.message.includes("licence") || error.message.includes("license") || error.message.includes("authority")))) {
-          return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}?notice=license-invalid`);
+          const query = licenseId ? `?notice=license-invalid&editLicense=${encodeURIComponent(licenseId)}` : "?notice=license-invalid";
+          return res.redirect(`/vehicles/${encodeURIComponent(vehicleId)}${query}`);
         }
         throw error;
       }

@@ -39,9 +39,11 @@ async function renderDetail(canManageVehicleDocuments: boolean, overrides: Recor
     uploadStatuses: [],
     documents: [],
     licenses: [],
+    editingLicenseId: "",
     authorities: [],
     licenseTypes: [],
     drivers: [],
+    driverSourceAvailable: true,
     driverAssignments: [],
     documentTypes: [],
     helpFor: () => ({ title: "Help", body: "Help body." }),
@@ -112,4 +114,45 @@ test("linked driver section renders safe labels without visible emails", async (
   assert.match(linkedSection, /Alice Driver/);
   assert.match(linkedSection, /Driver #driver-2/);
   assert.doesNotMatch(linkedSection, /driver@example\.com|second@example\.com|@/);
+});
+
+test("vehicle licences render read-only by default and switch to edit mode only when requested", async () => {
+  const licenses = [{
+    id: "license-1",
+    licensingAuthorityName: "City Council",
+    licensingAuthorityId: "authority-1",
+    licenseType: "hackney_carriage",
+    vehicleLicenseBadge: "HC-1",
+    licenseReference: "REF-1",
+    validFrom: "2026-01-01",
+    validUntil: "2026-12-31",
+    notes: "Test note",
+    active: true
+  }];
+  const readOnlyHtml = await renderDetail(true, { licenses, authorities: [{ id: "authority-1", name: "City Council", active: true }], licenseTypes: ["hackney_carriage", "private_hire"] });
+  assert.match(readOnlyHtml, /Edit licence/);
+  assert.match(readOnlyHtml, /Vehicle licence badge<\/dt><dd>HC-1<\/dd>/);
+  assert.doesNotMatch(readOnlyHtml, /name="licenseId" value="license-1"/);
+
+  const editingHtml = await renderDetail(true, {
+    licenses,
+    editingLicenseId: "license-1",
+    authorities: [{ id: "authority-1", name: "City Council", active: true }],
+    licenseTypes: ["hackney_carriage", "private_hire"]
+  });
+  assert.match(editingHtml, /name="licenseId" value="license-1"/);
+  assert.match(editingHtml, /Save licence/);
+  assert.match(editingHtml, /href="\/vehicles\/vehicle-1">Cancel<\/a>/);
+});
+
+test("linked driver section disables assignment and shows no-drivers helper when source is unavailable", async () => {
+  const html = await renderDetail(true, {
+    drivers: [],
+    driverSourceAvailable: false
+  });
+  const linkedSection = /<section class="vehicle-card"><h2>Linked driver<\/h2>[\s\S]*?<\/section>/.exec(html)?.[0] || "";
+  assert.match(linkedSection, /<select id="driverId" name="driverId" disabled>/);
+  assert.match(linkedSection, /type="submit" disabled>Save assignment<\/button>/);
+  assert.match(linkedSection, /No drivers available\./);
+  assert.doesNotMatch(linkedSection, /driver@example\.com|@/);
 });

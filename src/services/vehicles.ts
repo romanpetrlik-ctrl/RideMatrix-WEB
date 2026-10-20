@@ -117,7 +117,10 @@ export async function listBaggageCategories(client?: Queryable): Promise<Baggage
   }));
 }
 
-export async function listDrivers(client?: Queryable): Promise<Array<{ id: string; email: string; displayName: string }>> {
+type DriverCandidate = { id: string; email: string; displayName: string };
+export type DriverCandidateList = { drivers: DriverCandidate[]; sourceAvailable: boolean };
+
+export async function listDriverCandidates(client?: Queryable): Promise<DriverCandidateList> {
   try {
     const result = await db(client).query<{ id: string; email: string; display_name: string }>(
       `SELECT u.id::text AS id, u.email, ${driverDisplayNameSql("u", "u.id::text")} AS display_name
@@ -127,11 +130,18 @@ export async function listDrivers(client?: Queryable): Promise<Array<{ id: strin
          WHERE ur.user_id = u.id AND r.key = 'driver')
        ORDER BY lower(${driverDisplayNameSql("u", "u.id::text")}), lower(u.email), u.id::text`
     );
-    return result.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name }));
+    return {
+      drivers: result.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name })),
+      sourceAvailable: true
+    };
   } catch (error) {
-    if ((error as { code?: string }).code === "42P01") return [];
-    throw error;
+    if ((error as { code?: string }).code === "42P01") return { drivers: [], sourceAvailable: false };
+    return { drivers: [], sourceAvailable: false };
   }
+}
+
+export async function listDrivers(client?: Queryable): Promise<DriverCandidate[]> {
+  return (await listDriverCandidates(client)).drivers;
 }
 
 function classAggregate(): string {
@@ -334,10 +344,16 @@ export async function assignVehicleDriver(vehicleId: string, driverId: string, c
     const vehicle = await runner.query("SELECT id FROM vehicles WHERE id = $1 FOR UPDATE", [vehicleId]);
     if (!vehicle.rows[0]) throw new VehicleNotFoundError("Vehicle not found.");
     if (nextDriverId) {
-      const driver = await runner.query(
-        `SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
-         WHERE u.id::text = $1 AND r.key = 'driver' LIMIT 1`, [nextDriverId]
-      );
+      let driver: { rows: Array<unknown> };
+      try {
+        driver = await runner.query(
+          `SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
+           WHERE u.id::text = $1 AND r.key = 'driver' LIMIT 1`, [nextDriverId]
+        );
+      } catch (error) {
+        if ((error as { code?: string }).code === "42P01") throw new VehicleDriverAssignmentError("No drivers available.");
+        throw new VehicleDriverAssignmentError("No drivers available.");
+      }
       if (!driver.rows[0]) throw new VehicleDriverAssignmentError("Select a valid driver.");
     }
     const current = await runner.query(
