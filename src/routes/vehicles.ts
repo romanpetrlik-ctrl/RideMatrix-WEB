@@ -169,22 +169,24 @@ export function createVehiclesRouter(options: Options): Router {
   };
   const buildRequiredDocumentGroups = async (vehicleId: string, legacyDocuments: any[]) => {
     const entityDocuments = await listVehicleEntityDocuments(vehicleId);
+    const legacyUploads = legacyDocuments.reduce<Array<{ id: string; category: string; original_filename: string; uploaded_at: string; legacy: boolean }>>((all, item) => {
+      const category = normalizeVehicleRecordDocumentCategory(item.document_type);
+      if (!category) return all;
+      all.push({
+        id: item.id!,
+        category,
+        original_filename: item.original_filename,
+        uploaded_at: item.uploaded_at,
+        legacy: true
+      });
+      return all;
+    }, []);
     const uploaded = [
       ...entityDocuments.map((item) => ({
         ...item,
         category: normalizeVehicleRecordDocumentCategory(item.category) || item.category
       })),
-      ...legacyDocuments.map((item) => {
-        const category = normalizeVehicleRecordDocumentCategory(item.document_type);
-        if (!category) return null;
-        return {
-          id: item.id!,
-          category,
-          original_filename: item.original_filename,
-          uploaded_at: item.uploaded_at,
-          legacy: true
-        };
-      }).filter(Boolean)
+      ...legacyUploads
     ];
     const byType = new Map<string, any[]>();
     for (const item of uploaded) {
