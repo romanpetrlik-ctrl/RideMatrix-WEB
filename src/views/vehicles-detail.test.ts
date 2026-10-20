@@ -12,7 +12,7 @@ const requiredDocuments = [
   { type: "mot", label: "MOT", files: [] }
 ];
 
-async function renderDetail(canManageVehicleDocuments: boolean): Promise<string> {
+async function renderDetail(canManageVehicleDocuments: boolean, overrides: Record<string, unknown> = {}): Promise<string> {
   return ejs.renderFile(path.join(process.cwd(), "src/views/pages/vehicles/detail.ejs"), {
     title: "AB12 CDE",
     appTitle: "RideMatrix Test",
@@ -30,6 +30,7 @@ async function renderDetail(canManageVehicleDocuments: boolean): Promise<string>
       capacities: [],
       driverId: null,
       driverEmail: null,
+      driverDisplayName: null,
       wheelchairAccessible: false
     },
     requiredDocuments,
@@ -44,7 +45,8 @@ async function renderDetail(canManageVehicleDocuments: boolean): Promise<string>
     driverAssignments: [],
     documentTypes: [],
     helpFor: () => ({ title: "Help", body: "Help body." }),
-    notice: ""
+    notice: "",
+    ...overrides
   });
 }
 
@@ -77,4 +79,37 @@ test("vehicle detail hides upload and replace actions when user cannot manage do
   assert.doesNotMatch(html, /Upload selected documents/);
   assert.doesNotMatch(html, /vehicle-record-document-upload\.js/);
   assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/view"/);
+});
+
+test("linked driver section renders safe labels without visible emails", async () => {
+  const html = await renderDetail(true, {
+    vehicle: {
+      id: "vehicle-1",
+      registration: "AB12 CDE",
+      make: "Toyota",
+      model: "Prius",
+      status: "active",
+      classes: [],
+      fuelType: "HYBRID",
+      passengerCapacity: 4,
+      capacities: [],
+      driverId: "driver-1",
+      driverEmail: "driver@example.com",
+      driverDisplayName: "Driver #driver-1",
+      wheelchairAccessible: false
+    },
+    drivers: [
+      { id: "driver-1", email: "driver@example.com", displayName: "Alice Driver" },
+      { id: "driver-2", email: "second@example.com", displayName: "" }
+    ],
+    driverAssignments: [
+      { driver_id: "driver-1", driver_email: "driver@example.com", driver_display_name: "Alice Driver", assigned_at: "2026-01-01", unassigned_at: "2026-01-02" },
+      { driver_id: "driver-2", driver_email: "second@example.com", driver_display_name: "Driver #driver-2", assigned_at: "2026-01-03", unassigned_at: null }
+    ]
+  });
+  const linkedSection = /<section class="vehicle-card"><h2>Linked driver<\/h2>[\s\S]*?<\/section>/.exec(html)?.[0] || "";
+  assert.ok(linkedSection);
+  assert.match(linkedSection, /Alice Driver/);
+  assert.match(linkedSection, /Driver #driver-2/);
+  assert.doesNotMatch(linkedSection, /driver@example\.com|second@example\.com|@/);
 });
