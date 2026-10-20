@@ -44,7 +44,11 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.doesNotMatch(html, /enctype="multipart\/form-data"/);
   assert.match(html, /Save record first\./);
   assert.match(html, /name="_csrf" value="test-token"/);
+  assert.match(html, /<form method="post" action="\/vehicles\/new">/);
+  assert.match(html, /<button class="button button--primary" type="submit">Save record<\/button>/);
+  assert.doesNotMatch(html, /<form method="dialog">/);
   assert.match(html, /class="help-button" type="button" aria-haspopup="dialog"/);
+  assert.match(html, /type="button" onclick="document.getElementById\('help-vehicle-fuelType'\)\.close\(\)">Close<\/button>/);
   assert.match(html, /aria-label="Help: vehicle\.fuelType"/);
   assert.match(html, /name="classKeys" value="wheelchair_accessible"/);
   assert.doesNotMatch(html, /name="wheelchairAccessible"/);
@@ -91,6 +95,7 @@ test("vehicle form renders grouped fields and responsive, scoped control styles"
   assert.match(legacyHtml, /name="vehicleLicenseBadge" maxlength="64" value="PH-777"/);
   assert.match(legacyHtml, /name="classKeys" value="wheelchair_accessible" checked/);
   assert.match(legacyHtml, /Record is saved\. Upload documents from the vehicle detail page\./);
+  assert.match(legacyHtml, /<form method="post" action="\/vehicles\/vehicle-1\/edit">/);
 
   const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8");
   assert.match(css, /\.vehicle-form input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\),\s*\.vehicle-form select,\s*\.vehicle-form textarea\s*\{[\s\S]*width:100%;[\s\S]*max-width:none;/);

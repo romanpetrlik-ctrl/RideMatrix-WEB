@@ -253,9 +253,15 @@ describe("vehicle management end-to-end workflow", () => {
   test("save record without docs succeeds", async () => {
     signIn(["admin"]);
     const form = await openForm("/vehicles/new");
+    assert.match(form.body, /<form method="post" action="\/vehicles\/new">/);
+    assert.match(form.body, /<button class="button button--primary" type="submit">Save record<\/button>/);
     const response = await postForm("/vehicles/new", vehicleFields(form.token, "NODOCS", "active"), form.cookie);
     assert.equal(response.status, 302);
-    const createdId = decodeURIComponent((response.headers.get("location") || "").split("/")[2]?.split("?")[0] || "");
+    const location = response.headers.get("location") || "";
+    assert.match(location, /^\/vehicles\/[^/?]+\?notice=created$/);
+    const createdId = decodeURIComponent(location.split("/")[2]?.split("?")[0] || "");
+    const editForm = await openForm(`/vehicles/${createdId}/edit`);
+    assert.match(editForm.body, new RegExp(`<form method="post" action="/vehicles/${createdId}/edit">`));
     const docs = await query<{ count: number }>(
       "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1",
       [createdId]
