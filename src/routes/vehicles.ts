@@ -33,7 +33,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEH
 const formUpload = multer({ fileFilter: (_req, _file, callback) => callback(null, false) });
 const multiUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES, files: DOCUMENT_MAX_FILES_PER_CATEGORY }
+  limits: { fileSize: VEHICLE_DOCUMENT_MAX_BYTES, files: DOCUMENT_MAX_FILES_PER_CATEGORY * 6 }
 });
 const text = (value: unknown) => String(value ?? "").trim();
 function input(body: any): VehicleInput {
@@ -62,12 +62,39 @@ function formVehicle(value: VehicleInput, id?: string) {
 const SAFE_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 const VEHICLE_DOCUMENT_LABELS: Array<{ type: VehicleRecordDocumentType; label: string; fieldName: string }> = [
   { type: "v5c", label: "V5C", fieldName: "document_v5c" },
-  { type: "council_mechanical_check", label: "Council Mechanical Check", fieldName: "document_council_mechanical_check" },
-  { type: "mec", label: "MEC", fieldName: "document_mec" },
+  { type: "mec", label: "MEC / Council Mechanical Check", fieldName: "document_mec" },
   { type: "hire_reward_insurance", label: "Hire & Reward Insurance", fieldName: "document_hire_reward_insurance" },
   { type: "hc_phv_license_issued", label: "HC/PHV License issued", fieldName: "document_hc_phv_license_issued" },
   { type: "mot", label: "MOT", fieldName: "document_mot" }
 ];
+const RECORD_DOCUMENT_CATEGORY_ALIASES: Record<string, VehicleRecordDocumentType> = {
+  v5c: "v5c",
+  council_mechanical_check: "mec",
+  mec: "mec",
+  hire_reward_insurance: "hire_reward_insurance",
+  hc_phv_license_issued: "hc_phv_license_issued",
+  mot: "mot"
+};
+const RECORD_DOCUMENT_LABEL_BY_TYPE = new Map(VEHICLE_DOCUMENT_LABELS.map((item) => [item.type, item.label]));
+function normalizeRecordDocumentCategory(value: unknown): VehicleRecordDocumentType | null {
+  const normalized = RECORD_DOCUMENT_CATEGORY_ALIASES[text(value).toLowerCase()];
+  return normalized || null;
+}
+function parseGroupedRecordDocumentUploads(req: any): Map<VehicleRecordDocumentType, any[]> {
+  const grouped = new Map<VehicleRecordDocumentType, any[]>();
+  const files = Array.isArray(req.files) ? req.files : [];
+  const fallbackCategory = normalizeRecordDocumentCategory(req.body.category || req.body.documentType);
+  for (const file of files) {
+    const fieldName = text(file?.fieldname);
+    const keyedCategory = /^documentsByCategory\[([a-z0-9_]+)\]$/i.exec(fieldName)?.[1];
+    const category = normalizeRecordDocumentCategory(keyedCategory || fallbackCategory);
+    if (!category) continue;
+    const items = grouped.get(category) || [];
+    items.push(file);
+    grouped.set(category, items);
+  }
+  return grouped;
+}
 function safeDownloadName(document: any): string {
   const fallback = `${text(document.document_type) || "vehicle-document"}.pdf`;
   return (text(document.original_filename) || fallback).replace(/[^a-z0-9._ -]/gi, "_");
@@ -156,7 +183,7 @@ export function createVehiclesRouter(options: Options): Router {
     ...data
   });
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
-  const parseRecordDocumentUpload = (req: any, res: any, next: any) => multiUpload.array("documents", DOCUMENT_MAX_FILES_PER_CATEGORY)(req, res, (error: unknown) => {
+  const parseRecordDocumentUpload = (req: any, res: any, next: any) => multiUpload.any()(req, res, (error: unknown) => {
     if (error instanceof multer.MulterError) {
       req.recordDocumentUploadError = error;
       return next();
@@ -181,9 +208,11 @@ export function createVehiclesRouter(options: Options): Router {
     ];
     const byType = new Map<string, any[]>();
     for (const item of uploaded) {
-      const items = byType.get(item.category) || [];
+      const category = normalizeRecordDocumentCategory(item.category);
+      if (!category) continue;
+      const items = byType.get(category) || [];
       items.push(item);
-      byType.set(item.category, items);
+      byType.set(category, items);
     }
     return VEHICLE_DOCUMENT_LABELS.map((item) => ({
       type: item.type,
@@ -381,10 +410,15 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.sendStatus(404);
+      const requestedCategory = normalizeRecordDocumentCategory(req.query.category);
+      const documents = await listVehicleEntityDocuments(vehicle.id);
+      const filtered = requestedCategory
+        ? documents.filter((item) => normalizeRecordDocumentCategory(item.category) === requestedCategory)
+        : documents;
       return res.json({
         vehicleId: vehicle.id,
-        category: text(req.query.category),
-        documents: await listVehicleEntityDocuments(vehicle.id, text(req.query.category))
+        category: requestedCategory || text(req.query.category),
+        documents: filtered
       });
     } catch (error) {
       return next(error);
@@ -407,30 +441,54 @@ export function createVehiclesRouter(options: Options): Router {
           reason: `${reason} No files in this batch were saved.`
         }], oversized ? 413 : 400);
       }
-      const category = text(req.body.category || req.body.documentType).toLowerCase();
-      if (!(VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(category)) {
+      const groupedUploads = parseGroupedRecordDocumentUploads(req);
+      if (!groupedUploads.size) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
       }
-      const files = Array.isArray(req.files) ? req.files : [];
-      if (!files.length) {
+      if (!(Array.isArray(req.files) ? req.files : []).length) {
         return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select at least one file." }], 400);
       }
-      const statuses: Array<{ name: string; status: "success" | "failed"; reason?: string; documentId?: string }> = [];
-      for (const file of files) {
-        try {
-          const saved = await saveVehicleEntityDocument({
-            vehicleId: vehicle.id,
-            category,
-            file,
-            uploadedBy: res.locals.vehicleUser.id
-          });
-          statuses.push({ name: file.originalname, status: "success", documentId: saved.id });
-        } catch (error) {
-          statuses.push({ name: file.originalname, status: "failed", reason: error instanceof Error ? error.message : "Upload failed." });
+      const statuses: Array<{ category: VehicleRecordDocumentType; categoryLabel: string; name: string; status: "success" | "failed"; reason?: string; documentId?: string }> = [];
+      for (const [category, files] of groupedUploads.entries()) {
+        const categoryLabel = RECORD_DOCUMENT_LABEL_BY_TYPE.get(category) || category;
+        if (files.length > DOCUMENT_MAX_FILES_PER_CATEGORY) {
+          for (const file of files) {
+            statuses.push({
+              category,
+              categoryLabel,
+              name: file.originalname,
+              status: "failed",
+              reason: `Select no more than ${DOCUMENT_MAX_FILES_PER_CATEGORY} files for ${categoryLabel}.`
+            });
+          }
+          continue;
+        }
+        for (const file of files) {
+          try {
+            const saved = await saveVehicleEntityDocument({
+              vehicleId: vehicle.id,
+              category,
+              file,
+              uploadedBy: res.locals.vehicleUser.id
+            });
+            statuses.push({ category, categoryLabel, name: file.originalname, status: "success", documentId: saved.id });
+          } catch (error) {
+            statuses.push({
+              category,
+              categoryLabel,
+              name: file.originalname,
+              status: "failed",
+              reason: error instanceof Error ? error.message : "Upload failed."
+            });
+          }
         }
       }
       const notice = statuses.some((item) => item.status === "failed") ? "document-partial" : "document-added";
-      return renderDetailPage(res, vehicle, notice, statuses, statuses.some((item) => item.status === "failed") ? 400 : 200);
+      const statusCode = statuses.some((item) => item.status === "failed") ? 400 : 200;
+      if (String(req.headers.accept || "").includes("application/json")) {
+        return res.status(statusCode).json({ notice, statuses });
+      }
+      return renderDetailPage(res, vehicle, notice, statuses, statusCode);
     } catch (error) { return next(error); }
   });
   router.post("/vehicles/:vehicleId/record-documents/:documentType", requireAuthorizedVehicleManager, localDocumentUploadRateLimit, limitDocumentUploads, upload.single("document"), requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
@@ -438,8 +496,8 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
-      const category = text(req.params.documentType).toLowerCase();
-      if (!(VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(category)) {
+      const category = normalizeRecordDocumentCategory(req.params.documentType);
+      if (!category) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
       }
       if (!req.file) return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select a file." }], 400);
