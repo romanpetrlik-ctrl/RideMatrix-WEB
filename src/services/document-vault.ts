@@ -64,7 +64,7 @@ export function buildEntityVaultRelativePath(input: {
   return path.posix.join(dir, category, `${randomUUID()}.${extension}`);
 }
 
-export async function writeVaultFile(relativePath: string, content: Buffer): Promise<void> {
+function resolveVaultPath(relativePath: string): string {
   if (relativePath.includes("..")) throw new Error("Invalid vault path.");
   const absolutePath = path.join(DOCUMENT_VAULT_ROOT, relativePath);
   const normalizedRoot = path.resolve(DOCUMENT_VAULT_ROOT);
@@ -72,28 +72,19 @@ export async function writeVaultFile(relativePath: string, content: Buffer): Pro
   if (!normalizedPath.startsWith(`${normalizedRoot}${path.sep}`) && normalizedPath !== normalizedRoot) {
     throw new Error("Invalid vault path.");
   }
+  return normalizedPath;
+}
+
+export async function writeVaultFile(relativePath: string, content: Buffer): Promise<void> {
+  const normalizedPath = resolveVaultPath(relativePath);
   await mkdir(path.dirname(normalizedPath), { recursive: true });
   await writeFile(normalizedPath, content);
 }
 
 export async function readVaultFile(relativePath: string): Promise<Buffer> {
-  if (relativePath.includes("..")) throw new Error("Invalid vault path.");
-  const absolutePath = path.join(DOCUMENT_VAULT_ROOT, relativePath);
-  const normalizedRoot = path.resolve(DOCUMENT_VAULT_ROOT);
-  const normalizedPath = path.resolve(absolutePath);
-  if (!normalizedPath.startsWith(`${normalizedRoot}${path.sep}`) && normalizedPath !== normalizedRoot) {
-    throw new Error("Invalid vault path.");
-  }
-  return readFile(normalizedPath);
+  return readFile(resolveVaultPath(relativePath));
 }
 
 export async function removeVaultFile(relativePath: string): Promise<void> {
-  if (relativePath.includes("..")) throw new Error("Invalid vault path.");
-  const absolutePath = path.join(DOCUMENT_VAULT_ROOT, relativePath);
-  const normalizedRoot = path.resolve(DOCUMENT_VAULT_ROOT);
-  const normalizedPath = path.resolve(absolutePath);
-  if (!normalizedPath.startsWith(`${normalizedRoot}${path.sep}`) && normalizedPath !== normalizedRoot) {
-    throw new Error("Invalid vault path.");
-  }
-  await rm(normalizedPath, { force: true });
+  await rm(resolveVaultPath(relativePath), { force: true });
 }
