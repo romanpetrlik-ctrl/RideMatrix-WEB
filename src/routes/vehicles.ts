@@ -203,11 +203,15 @@ export function createVehiclesRouter(options: Options): Router {
   const renderDetailPage = async (res: any, vehicle: any, notice: string, uploadStatuses: any[] = [], status = 200) => {
     const documents = await listVehicleDocuments(vehicle.id);
     const requiredDocuments = await buildRequiredDocumentGroups(vehicle.id, documents);
+    const failedDocumentCategories = Array.from(new Set(uploadStatuses
+      .filter((item) => item?.status === "failed" && typeof item?.category === "string")
+      .map((item) => normalizeVehicleRecordDocumentCategory(item.category) || item.category)));
     return res.status(status).render("pages/vehicles/detail", { title: vehicle.registration, appTitle: options.appTitle, email: res.locals.vehicleUser.email,
       vehicle, documents, licenses: await listVehicleLicenses(vehicle.id),
       requiredDocuments,
       canManageVehicleDocuments: true,
       uploadStatuses,
+      failedDocumentCategories,
       maxFilesPerCategory: DOCUMENT_MAX_FILES_PER_CATEGORY,
       authorities: await listLicensingAuthoritiesForManagement(), licenseTypes: VEHICLE_LICENSE_TYPES,
       driverAssignments: await listVehicleDriverAssignments(vehicle.id),
@@ -406,6 +410,8 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const requestedCategory = text(req.body.category || req.body.documentType);
+      const category = normalizeVehicleRecordDocumentCategory(requestedCategory);
       const uploadError = (req as any).recordDocumentUploadError;
       if (uploadError instanceof multer.MulterError) {
         const oversized = uploadError.code === "LIMIT_FILE_SIZE";
@@ -415,18 +421,18 @@ export function createVehiclesRouter(options: Options): Router {
         return renderDetailPage(res, vehicle, "document-upload-rejected", [{
           name: "",
           status: "failed",
+          category: category || requestedCategory,
           reason: `${reason} No files in this batch were saved.`
         }], oversized ? 413 : 400);
       }
-      const category = normalizeVehicleRecordDocumentCategory(text(req.body.category || req.body.documentType));
       if (!category) {
-        return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
+        return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category.", category: requestedCategory }], 400);
       }
       const files = Array.isArray(req.files) ? req.files : [];
       if (!files.length) {
-        return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select at least one file." }], 400);
+        return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select at least one file.", category }], 400);
       }
-      const statuses: Array<{ name: string; status: "success" | "failed"; reason?: string; documentId?: string }> = [];
+      const statuses: Array<{ name: string; status: "success" | "failed"; reason?: string; documentId?: string; category?: string }> = [];
       for (const file of files) {
         try {
           const saved = await saveVehicleEntityDocument({
@@ -435,9 +441,9 @@ export function createVehiclesRouter(options: Options): Router {
             file,
             uploadedBy: res.locals.vehicleUser.id
           });
-          statuses.push({ name: file.originalname, status: "success", documentId: saved.id });
+          statuses.push({ name: file.originalname, status: "success", documentId: saved.id, category });
         } catch (error) {
-          statuses.push({ name: file.originalname, status: "failed", reason: error instanceof Error ? error.message : "Upload failed." });
+          statuses.push({ name: file.originalname, status: "failed", reason: error instanceof Error ? error.message : "Upload failed.", category });
         }
       }
       const notice = statuses.some((item) => item.status === "failed") ? "document-partial" : "document-added";
@@ -453,7 +459,7 @@ export function createVehiclesRouter(options: Options): Router {
       if (!category) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
       }
-      if (!req.file) return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select a file." }], 400);
+      if (!req.file) return renderDetailPage(res, vehicle, "document-required", [{ name: "", status: "failed", reason: "Select a file.", category }], 400);
       try {
         const saved = await saveVehicleEntityDocument({
           vehicleId: vehicle.id,
@@ -461,9 +467,9 @@ export function createVehiclesRouter(options: Options): Router {
           file: req.file,
           uploadedBy: res.locals.vehicleUser.id
         });
-        return renderDetailPage(res, vehicle, "document-added", [{ name: req.file.originalname, status: "success", documentId: saved.id }]);
+        return renderDetailPage(res, vehicle, "document-added", [{ name: req.file.originalname, status: "success", documentId: saved.id, category }]);
       } catch (error) {
-        return renderDetailPage(res, vehicle, "document-partial", [{ name: req.file.originalname, status: "failed", reason: error instanceof Error ? error.message : "Upload failed." }], 400);
+        return renderDetailPage(res, vehicle, "document-partial", [{ name: req.file.originalname, status: "failed", reason: error instanceof Error ? error.message : "Upload failed.", category }], 400);
       }
     } catch (error) {
       return next(error);
