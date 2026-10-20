@@ -583,13 +583,21 @@ describe("vehicle management end-to-end workflow", () => {
     assert.ok(row?.id);
 
     const reloaded = await openForm(`/vehicles/${vehicleId}`);
-    assert.match(reloaded.body, /Vehicle licence badge/);
+    assert.match(reloaded.body, /Edit licence/);
     assert.match(reloaded.body, /HC-VEH-1/);
+    assert.doesNotMatch(reloaded.body, new RegExp(`name="licenseId" value="${row.id}"`));
+    const editMode = await openForm(`/vehicles/${vehicleId}?editLicense=${encodeURIComponent(row.id)}`);
+    assert.match(editMode.body, new RegExp(`name="licenseId" value="${row.id}"`));
+    assert.match(editMode.body, new RegExp(`href="/vehicles/${vehicleId}">Cancel</a>`));
+    const cancelled = await openForm(`/vehicles/${vehicleId}`);
+    assert.match(cancelled.body, /HC-VEH-1/);
+    assert.doesNotMatch(cancelled.body, new RegExp(`name="licenseId" value="${row.id}"`));
+    assert.match(reloaded.body, /Vehicle licence badge/);
     const changed = await postForm(`/vehicles/${vehicleId}/licenses`, [
-      ["_csrf", reloaded.token], ["licenseId", row.id], ["licensingAuthorityId", authorityId],
+      ["_csrf", editMode.token], ["licenseId", row.id], ["licensingAuthorityId", authorityId],
       ["licenseType", "private_hire"], ["vehicleLicenseBadge", "PH-VEH-2"],
       ["licenseReference", "REF-PH-2"], ["validFrom", "2026-02-01"]
-    ], reloaded.cookie);
+    ], editMode.cookie);
     assert.equal(changed.headers.get("location"), `/vehicles/${vehicleId}?notice=license-saved`);
     const saved = await query<{ license_type: string; vehicle_license_badge: string; license_reference: string }>(
       "SELECT license_type, vehicle_license_badge, license_reference FROM vehicle_licensing_authorities WHERE id=$1",
@@ -792,6 +800,19 @@ describe("vehicle management end-to-end workflow", () => {
       [id]
     );
     assert.equal(docs.rows[0].count, 1);
+  });
+
+  test("driver source unavailability leaves linked driver unassigned-only without global-user fallback", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("NO DRIVERS SRC", "active");
+    await query("DROP TABLE IF EXISTS user_roles");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const linkedSection = /<section class="vehicle-card"><h2>Linked driver<\/h2>[\s\S]*?<\/section>/.exec(detail.body)?.[0] || "";
+    assert.match(linkedSection, /<select id="driverId" name="driverId" disabled>/);
+    assert.match(linkedSection, /No drivers available\./);
+    assert.doesNotMatch(linkedSection, /second\.driver@ridematrix\.com|driver@ridematrix\.com|@/);
+    const rejected = await postForm(`/vehicles/${vehicleId}/driver`, [["_csrf", detail.token], ["driverId", DRIVER_ID]], detail.cookie);
+    assert.equal(rejected.headers.get("location"), `/vehicles/${vehicleId}?notice=driver-invalid`);
   });
 
   test("dashboard Active vehicles destination is the filtered vehicle directory", async () => {

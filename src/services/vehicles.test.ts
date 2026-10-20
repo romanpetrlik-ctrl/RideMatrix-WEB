@@ -14,11 +14,14 @@ import {
   getVehicleDocument,
   getDocumentStatus,
   listVehicleClasses,
+  listDriverCandidates,
   listVehicleDocuments,
   listVehicles,
   normalizeVehicleStatusFilter,
+  assignVehicleDriver,
   updateVehicle,
   validateVehicleDocumentUpload,
+  VehicleDriverAssignmentError,
   VEHICLE_DEFAULT_PER_PAGE
 } from "./vehicles";
 
@@ -377,4 +380,34 @@ test("vehicle joins compare auth user ids as text so UUID users.id columns are s
   const client: any = { async query(sql: string) { calls.push(sql); return sql.includes("count(*)") ? { rows: [{ count: "0" }] } : { rows: [] }; } };
   await listVehicles({ client });
   assert.match(calls[1], /JOIN users u ON u\.id::text = a\.driver_id/);
+});
+
+test("driver candidates return an unavailable source state instead of falling back to global users", async () => {
+  const missingSource = await listDriverCandidates({
+    query: async () => {
+      const error = new Error("relation does not exist") as Error & { code?: string };
+      error.code = "42P01";
+      throw error;
+    }
+  } as any);
+  assert.equal(missingSource.sourceAvailable, false);
+  assert.deepEqual(missingSource.drivers, []);
+});
+
+test("driver assignment rejects any non-empty driver id when the driver source is unavailable", async () => {
+  await assert.rejects(
+    assignVehicleDriver("vehicle-1", "driver-1", {
+      connect: async () => ({
+        query: async (sql: string) => {
+          if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+          if (sql.includes("SELECT id FROM vehicles")) return { rows: [{ id: "vehicle-1" }] };
+          const error = new Error("relation does not exist") as Error & { code?: string };
+          error.code = "42P01";
+          throw error;
+        },
+        release() { }
+      })
+    } as any),
+    VehicleDriverAssignmentError
+  );
 });
