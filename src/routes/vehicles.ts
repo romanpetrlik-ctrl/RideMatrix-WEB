@@ -19,6 +19,7 @@ import {
   logVehicleDocumentAccess, readVehicleEntityDocumentContent, saveVehicleEntityDocument,
   consumeVehicleDocumentUploadRateLimit, consumeVehicleMutationRateLimit, updateVehicle, validateVehicleDocumentUpload,
   consumeVehicleDocumentDownloadRateLimit,
+  normalizeVehicleRecordDocumentCategory,
   VEHICLE_DEFAULT_PER_PAGE, VEHICLE_DOCUMENT_MAX_BYTES, VEHICLE_DOCUMENT_TYPES, VEHICLE_FUEL_TYPES, VEHICLE_RECORD_DOCUMENT_TYPES, VEHICLE_STATUS_OPTIONS, VehicleDriverAssignmentError, VehicleRecordDocumentType,
   VehicleInput, VehicleNotFoundError, VehicleValidationError
 } from "../services/vehicles";
@@ -62,32 +63,20 @@ function formVehicle(value: VehicleInput, id?: string) {
 const SAFE_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 const VEHICLE_DOCUMENT_LABELS: Array<{ type: VehicleRecordDocumentType; label: string; fieldName: string }> = [
   { type: "v5c", label: "V5C", fieldName: "document_v5c" },
-  { type: "mec", label: "MEC / Council Mechanical Check", fieldName: "document_mec" },
+  { type: "mec", label: "Council Mechanical Check (MEC)", fieldName: "document_mec" },
   { type: "hire_reward_insurance", label: "Hire & Reward Insurance", fieldName: "document_hire_reward_insurance" },
   { type: "hc_phv_license_issued", label: "HC/PHV License issued", fieldName: "document_hc_phv_license_issued" },
   { type: "mot", label: "MOT", fieldName: "document_mot" }
 ];
-const RECORD_DOCUMENT_CATEGORY_ALIASES: Record<string, VehicleRecordDocumentType> = {
-  v5c: "v5c",
-  council_mechanical_check: "mec",
-  mec: "mec",
-  hire_reward_insurance: "hire_reward_insurance",
-  hc_phv_license_issued: "hc_phv_license_issued",
-  mot: "mot"
-};
 const RECORD_DOCUMENT_LABEL_BY_TYPE = new Map(VEHICLE_DOCUMENT_LABELS.map((item) => [item.type, item.label]));
-function normalizeRecordDocumentCategory(value: unknown): VehicleRecordDocumentType | null {
-  const normalized = RECORD_DOCUMENT_CATEGORY_ALIASES[text(value).toLowerCase()];
-  return normalized || null;
-}
 function parseGroupedRecordDocumentUploads(req: any): Map<VehicleRecordDocumentType, any[]> {
   const grouped = new Map<VehicleRecordDocumentType, any[]>();
   const files = Array.isArray(req.files) ? req.files : [];
-  const fallbackCategory = normalizeRecordDocumentCategory(req.body.category || req.body.documentType);
+  const fallbackCategory = normalizeVehicleRecordDocumentCategory(text(req.body.category || req.body.documentType));
   for (const file of files) {
     const fieldName = text(file?.fieldname);
     const keyedCategory = /^documentsByCategory\[([a-z0-9_]+)\]$/i.exec(fieldName)?.[1];
-    const category = normalizeRecordDocumentCategory(keyedCategory || fallbackCategory);
+    const category = normalizeVehicleRecordDocumentCategory(text(keyedCategory || fallbackCategory || ""));
     if (!category) continue;
     const items = grouped.get(category) || [];
     items.push(file);
@@ -196,19 +185,28 @@ export function createVehiclesRouter(options: Options): Router {
   };
   const buildRequiredDocumentGroups = async (vehicleId: string, legacyDocuments: any[]) => {
     const entityDocuments = await listVehicleEntityDocuments(vehicleId);
-    const uploaded = [
-      ...entityDocuments,
-      ...legacyDocuments.filter((item) => (VEHICLE_RECORD_DOCUMENT_TYPES as readonly string[]).includes(item.document_type)).map((item) => ({
+    const legacyUploads = legacyDocuments.reduce<Array<{ id: string; category: string; original_filename: string; uploaded_at: string; legacy: boolean }>>((all, item) => {
+      const category = normalizeVehicleRecordDocumentCategory(item.document_type);
+      if (!category) return all;
+      all.push({
         id: item.id!,
-        category: item.document_type,
+        category,
         original_filename: item.original_filename,
         uploaded_at: item.uploaded_at,
         legacy: true
-      }))
+      });
+      return all;
+    }, []);
+    const uploaded = [
+      ...entityDocuments.map((item) => ({
+        ...item,
+        category: normalizeVehicleRecordDocumentCategory(item.category) || item.category
+      })),
+      ...legacyUploads
     ];
     const byType = new Map<string, any[]>();
     for (const item of uploaded) {
-      const category = normalizeRecordDocumentCategory(item.category);
+      const category = normalizeVehicleRecordDocumentCategory(item.category);
       if (!category) continue;
       const items = byType.get(category) || [];
       items.push(item);
@@ -410,15 +408,12 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.sendStatus(404);
-      const requestedCategory = normalizeRecordDocumentCategory(req.query.category);
-      const documents = await listVehicleEntityDocuments(vehicle.id);
-      const filtered = requestedCategory
-        ? documents.filter((item) => normalizeRecordDocumentCategory(item.category) === requestedCategory)
-        : documents;
+      const requestedCategory = text(req.query.category);
+      const normalizedCategory = normalizeVehicleRecordDocumentCategory(requestedCategory);
       return res.json({
         vehicleId: vehicle.id,
-        category: requestedCategory || text(req.query.category),
-        documents: filtered
+        category: normalizedCategory || requestedCategory,
+        documents: await listVehicleEntityDocuments(vehicle.id, requestedCategory)
       });
     } catch (error) {
       return next(error);
@@ -496,7 +491,7 @@ export function createVehiclesRouter(options: Options): Router {
       const vehicleId = text(req.params.vehicleId);
       const vehicle = await getVehicleById(vehicleId);
       if (!vehicle) return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
-      const category = normalizeRecordDocumentCategory(req.params.documentType);
+      const category = normalizeVehicleRecordDocumentCategory(text(req.params.documentType));
       if (!category) {
         return renderDetailPage(res, vehicle, "document-invalid-type", [{ name: "", status: "failed", reason: "Invalid category." }], 400);
       }
