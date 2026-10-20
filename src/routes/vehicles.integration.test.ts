@@ -508,7 +508,8 @@ describe("vehicle management end-to-end workflow", () => {
     for (const label of ["V5C", "MEC \/ Council Mechanical Check", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
       assert.match(detailBody, new RegExp(label));
     }
-    assert.equal((detailBody.match(/MEC \/ Council Mechanical Check/g) || []).length, 1);
+    assert.match(detailBody, /<strong>MEC \/ Council Mechanical Check<\/strong>/);
+    assert.doesNotMatch(detailBody, /<strong>Council Mechanical Check<\/strong>/);
     assert.match(detailBody, /Status: Uploaded/);
     assert.match(detailBody, /Status: Missing/);
     assert.match(detailBody, /record-documents\/upload/);
