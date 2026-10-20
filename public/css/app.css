@@ -2475,6 +2475,14 @@ button:visited,
 .vehicle-document-row > .vehicle-document-form { flex:1 1 100%; margin:0; }
 .vehicle-document-row .vehicle-document-form--row-upload label { flex:1 1 min(100%, 17rem); min-width:min(100%, 15rem); }
 .vehicle-document-row .vehicle-document-form--row-upload input[type="file"] { width:100%; min-width:0; }
+.vehicle-document-row .vehicle-document-form__helper-line {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--rm-text-soft);
+}
+.vehicle-document-row .vehicle-document-form__helper-line--tip { margin-top: -0.25rem; }
 .vehicle-detail-page .vehicle-card .vehicle-document-form input:not([type]),
 .vehicle-detail-page .vehicle-card .vehicle-document-form input[type="text"],
 .vehicle-detail-page .vehicle-card .vehicle-document-form input[type="date"],

@@ -62,6 +62,7 @@ test("vehicle detail required document rows show uploaded/missing states and man
   assert.match(html, /name="category" value="v5c"/);
   assert.match(html, /name="category" value="mot"/);
   assert.match(html, />Upload documents</);
+  assert.match(html, /Tip: select multiple files using Ctrl \(Windows\/Linux\) or ⌘ Command \(macOS\) while clicking files\./);
 });
 
 test("vehicle detail hides upload and replace actions when user cannot manage documents", async () => {

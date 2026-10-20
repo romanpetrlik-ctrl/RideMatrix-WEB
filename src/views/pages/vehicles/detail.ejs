@@ -67,7 +67,8 @@
                     <input type="hidden" name="category" value="<%= document.type %>">
                     <label><span class="sr-only"><%= document.label %> upload</span><input name="documents" type="file" accept=".pdf,.jpg,.jpeg,.png" multiple required></label>
                     <button class="button button--secondary" type="submit">Upload documents</button>
-                    <span class="form-help">Max <%= maxFilesPerCategory %> files per category.</span>
+                    <span class="form-help vehicle-document-form__helper-line">Max <%= maxFilesPerCategory %> files per category.</span>
+                    <span class="form-help vehicle-document-form__helper-line vehicle-document-form__helper-line--tip">Tip: select multiple files using Ctrl (Windows/Linux) or ⌘ Command (macOS) while clicking files.</span>
                   </form>
                 <% } %>
               </div>
