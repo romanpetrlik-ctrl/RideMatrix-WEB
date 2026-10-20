@@ -3,5 +3,5 @@
 <dialog id="<%= helpId %>" class="help-modal" aria-labelledby="<%= helpId %>-title">
   <h2 id="<%= helpId %>-title"><%= helpItem.title %></h2>
   <p><%= helpItem.body %></p>
-  <form method="dialog"><button class="button button--secondary" type="submit">Close</button></form>
+  <button class="button button--secondary" type="button" onclick="document.getElementById('<%= helpId %>').close()">Close</button>
 </dialog>
