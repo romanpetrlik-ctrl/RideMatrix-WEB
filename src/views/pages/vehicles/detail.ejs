@@ -14,6 +14,7 @@
         ["driver-unchanged", ["Driver assignment unchanged.", false]],
         ["driver-invalid", ["Select a valid driver account.", true]],
         ["document-added", ["Document uploaded.", false]],
+        ["document-partial", ["Some files failed to upload. Review per-file status.", true]],
         ["document-required", ["Choose a document type and file to upload.", true]],
         ["document-invalid-file", ["Only valid PDF, JPEG, and PNG documents are accepted.", true]],
         ["document-invalid-type", ["Select a valid compliance document type.", true]],
@@ -24,6 +25,13 @@
       ]).get(notice); %>
       <p><a href="/vehicles">&larr; All vehicles</a> · <a href="/vehicles?status=active">Active vehicles</a></p>
       <% if (noticeMessage) { %><div class="notice<%= noticeMessage[1] ? " notice--warning" : "" %>" role="status"><%= noticeMessage[0] %></div><% } %>
+      <% if ((uploadStatuses || []).length) { %>
+        <div class="notice <%= uploadStatuses.some((item) => item.status === "failed") ? "notice--warning" : "" %>" role="status">
+          <% uploadStatuses.forEach((item) => { %>
+            <p><strong><%= item.name || "File" %></strong>: <%= item.status %><%= item.reason ? ` (${item.reason})` : "" %></p>
+          <% }) %>
+        </div>
+      <% } %>
       <section class="vehicle-detail-grid">
         <article class="vehicle-card"><h2>Vehicle information</h2><dl>
           <dt>Vehicle class assignment <%- include("../../partials/help-button", { key: "vehicle.classAssignment", helpFor }) %></dt><dd><%= vehicle.classes.map((item) => item.label).join(", ") || "—" %></dd>
@@ -39,20 +47,22 @@
             <% (requiredDocuments || []).forEach((document) => { %>
               <div class="vehicle-document-row">
                 <strong><%= document.label %></strong>
-                <span>Status: <%= document.status %></span>
-                <% if (document.fileName) { %>
-                  <span>Uploaded: <strong><%= document.fileName %></strong><%= document.uploadedAt ? ` (${String(document.uploadedAt)})` : "" %></span>
-                  <% if (canManageVehicleDocuments && document.id) { %>
-                    <span><a href="/vehicles/documents/<%= document.id %>">View</a> · <a href="/vehicles/documents/<%= document.id %>?download=1">Download</a></span>
-                  <% } %>
+                <span>Status: <%= document.files.length ? "Uploaded" : "Missing" %></span>
+                <% if (document.files.length) { %>
+                  <% document.files.forEach((file) => { %>
+                    <span>Uploaded: <strong><%= file.original_filename %></strong><%= file.uploaded_at ? ` (${String(file.uploaded_at)})` : "" %></span>
+                    <span><a href="/vehicles/record-documents/<%= file.id %>/view">View</a> · <a href="/vehicles/record-documents/<%= file.id %>/download">Download</a></span>
+                  <% }) %>
                 <% } else { %>
                   <span>Missing</span>
                 <% } %>
                 <% if (canManageVehicleDocuments) { %>
-                  <form method="post" action="/vehicles/<%= vehicle.id %>/record-documents/<%= document.type %>" enctype="multipart/form-data" class="vehicle-document-form">
+                  <form method="post" action="/vehicles/<%= vehicle.id %>/record-documents/upload" enctype="multipart/form-data" class="vehicle-document-form">
                     <%- locals.csrfField || "" %>
-                    <label><span class="sr-only"><%= document.label %> upload</span><input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
-                    <button class="button button--secondary" type="submit"><%= document.fileName ? "Replace" : "Upload" %></button>
+                    <input type="hidden" name="category" value="<%= document.type %>">
+                    <label><span class="sr-only"><%= document.label %> upload</span><input name="documents" type="file" accept=".pdf,.jpg,.jpeg,.png" multiple required></label>
+                    <button class="button button--secondary" type="submit">Upload documents</button>
+                    <span class="form-help">Max <%= maxFilesPerCategory %> files per category.</span>
                   </form>
                 <% } %>
               </div>

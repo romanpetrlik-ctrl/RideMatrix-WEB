@@ -19,8 +19,14 @@ status, and pagination links keep each other's values.
 - `GET /vehicles/:id` – detail page with vehicle information, compliance documents, the
   linked driver form, and recent assignment history.
 - `GET|POST /vehicles/:id/edit` – edit; validation and duplicate-registration errors re-render the form (400).
+- Vehicle record save and document upload are separate actions. The create/edit form only saves the
+  vehicle record; document uploads happen after save from the detail page.
 - `POST /vehicles/:id/documents` – upload or replace a compliance document (PDF/JPEG/PNG, 10 MiB).
   Replaced documents are kept as history; only the latest document per type is listed or downloadable.
+- `GET /vehicles/:id/record-documents` – list uploaded record documents for a vehicle, optionally filtered by `category`.
+- `POST /vehicles/:id/record-documents/upload` – multi-file upload for one required category (e.g. MEC, V5C pages 1+2).
+- `GET /vehicles/record-documents/:documentId/view` – authorized inline stream for a stored record document.
+- `GET /vehicles/record-documents/:documentId/download` – authorized attachment download for a stored record document.
 - `GET /vehicles/documents/:documentId` – authorized inline view or `?download=1` attachment.
 - `POST /vehicles/:id/driver` – assign, change, or clear the active primary driver.
 - `GET /vehicles/:id/driver-history` – full driver assignment history.
@@ -43,3 +49,23 @@ vehicle management.
   multipart parsing, then validate CSRF, extension, MIME type, and file signature.
 - Document downloads use a sanitized filename, `X-Content-Type-Options: nosniff`, and only
   serve the stored PDF/JPEG/PNG content types (anything else falls back to `application/octet-stream`).
+
+## DocuVault storage configuration
+
+Record document files are stored on the VPS filesystem under `DOCUMENT_VAULT_ROOT` (default
+`/opt/ridematrix/DocuVault`) with year-first layout:
+
+```
+DocuVault/{year}/Drivers/{slug__id}
+DocuVault/{year}/Vehicles/{HC|PHV}/{slug__id}
+DocuVault/{year}/Operators/{slug__id}
+```
+
+Required environment variables:
+
+- `DOCUMENT_VAULT_ROOT`
+- `DOCUMENT_MAX_FILE_SIZE_MB`
+- `DOCUMENT_MAX_FILES_PER_CATEGORY`
+- `DOCUMENT_ALLOWED_MIME`
+
+VPS runtime user must have create/read access to `DOCUMENT_VAULT_ROOT` and child directories.

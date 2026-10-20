@@ -225,123 +225,99 @@ describe("vehicle management end-to-end workflow", () => {
     assert.equal(missing.status, 404);
   });
 
-  test("vehicle create/edit forms render all mandatory vehicle document controls", async () => {
+  test("vehicle create/edit forms separate save and upload actions", async () => {
     signIn(["admin"]);
     const createForm = await openForm("/vehicles/new");
-    for (const label of ["V5C", "Council Mechanical Check", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
-      assert.match(createForm.body, new RegExp(label));
-    }
-    for (const field of Object.values(documentFieldByType)) {
-      assert.match(createForm.body, new RegExp(`name="${field}"[^>]*required`));
-    }
+    assert.match(createForm.body, /Save record first\./);
+    for (const field of Object.values(documentFieldByType)) assert.doesNotMatch(createForm.body, new RegExp(`name="${field}"`));
     const vehicleId = await createVehicle("DOC RNDR", "active");
     const editForm = await openForm(`/vehicles/${vehicleId}/edit`);
-    for (const field of Object.values(documentFieldByType)) {
-      assert.match(editForm.body, new RegExp(`name="${field}"`));
-      assert.doesNotMatch(editForm.body, new RegExp(`name="${field}"[^>]*required`));
-    }
+    assert.match(editForm.body, /Upload documents from the vehicle detail page/);
+    assert.match(editForm.body, new RegExp(`href="/vehicles/${vehicleId}"`));
   });
 
-  test("vehicle creation requires all mandatory document uploads and shows inline messages", async () => {
+  test("save record without docs succeeds", async () => {
     signIn(["admin"]);
     const form = await openForm("/vehicles/new");
-    const response = await postVehicleMultipart(
-      "/vehicles/new",
-      vehicleFields(form.token, "NODOCS", "active"),
-      form.cookie,
-      false
+    const response = await postForm("/vehicles/new", vehicleFields(form.token, "NODOCS", "active"), form.cookie);
+    assert.equal(response.status, 302);
+    const createdId = decodeURIComponent((response.headers.get("location") || "").split("/")[2]?.split("?")[0] || "");
+    const docs = await query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1",
+      [createdId]
     );
-    assert.equal(response.status, 400);
-    const body = await response.text();
-    assert.match(body, /Upload all required vehicle documents before saving\./);
-    assert.match(body, /V5C document is required\./);
-    assert.match(body, /Hire &amp; Reward Insurance document is required\./);
+    assert.equal(docs.rows[0].count, 0);
   });
 
-  test("active vehicle edit requires missing mandatory documents with per-document errors", async () => {
+  test("upload multiple files in one category succeeds", async () => {
     signIn(["admin"]);
-    const vehicleId = await createVehicle("DOC ACTIVE", "maintenance");
-    await query(
-      `UPDATE vehicle_documents
-       SET is_latest = FALSE, superseded_at = now()
-       WHERE vehicle_id = $1 AND document_type = 'v5c'`,
-      [vehicleId]
-    );
-    const edit = await openForm(`/vehicles/${vehicleId}/edit`);
-    const response = await postForm(`/vehicles/${vehicleId}/edit`, vehicleFields(edit.token, "DOC ACTIVE", "active"), edit.cookie);
-    assert.equal(response.status, 400);
-    const body = await response.text();
-    assert.match(body, /Fix the vehicle document upload errors before saving\./);
-    assert.match(body, /V5C document is required for active vehicles\./);
-  });
-
-  test("edit mode shows existing vehicle documents and supports per-document replacement", async () => {
-    signIn(["admin"]);
-    const vehicleId = await createVehicle("DOC RPLC", "active");
-    const before = await query<{ document_type: string; original_filename: string; is_latest: boolean; byte_size: string | number; storage_key: string; uploaded_at: string }>(
-      `SELECT document_type, original_filename, is_latest, byte_size, storage_key, uploaded_at
-       FROM vehicle_documents WHERE vehicle_id=$1 ORDER BY document_type, uploaded_at`,
-      [vehicleId]
-    );
-    assert.equal(before.rows.length, 5);
-    assert.ok(before.rows.every((row) => row.is_latest === true));
-    assert.ok(before.rows.every((row) => Number(row.byte_size) > 0));
-    assert.ok(before.rows.every((row) => row.storage_key.includes(`/documents/${row.document_type}/`)));
-
-    const edit = await openForm(`/vehicles/${vehicleId}/edit`);
-    assert.match(edit.body, /Uploaded: <strong>v5c\.pdf<\/strong>/);
-    assert.match(edit.body, /Uploaded: <strong>mot\.pdf<\/strong>/);
-
+    const vehicleId = await createVehicle("DOC MULTI", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
     const body = new FormData();
-    for (const [key, value] of vehicleFields(edit.token, "DOC RPLC", "maintenance")) body.append(key, value);
-    body.append(documentFieldByType.mot, new Blob([Buffer.from("%PDF-1.7 replacement")], { type: "application/pdf" }), "mot-replacement.pdf");
-    const update = await fetch(`${baseUrl}/vehicles/${vehicleId}/edit`, {
+    body.append("_csrf", detail.token);
+    body.append("category", "mec");
+    body.append("documents", new Blob([Buffer.from("%PDF-1.7 page one")], { type: "application/pdf" }), "mec-1.pdf");
+    body.append("documents", new Blob([Buffer.from("%PDF-1.7 page two")], { type: "application/pdf" }), "mec-2.pdf");
+    const upload = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
       method: "POST",
-      headers: { cookie: edit.cookie },
-      body,
-      redirect: "manual"
+      headers: { cookie: detail.cookie },
+      body
     });
-    assert.equal(update.status, 302);
-    assert.equal(update.headers.get("location"), `/vehicles/${vehicleId}?notice=updated`);
+    assert.equal(upload.status, 200);
+    const docs = await query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1 AND category='mec'",
+      [vehicleId]
+    );
+    assert.equal(docs.rows[0].count, 2);
+    const listed = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents?category=mec`);
+    assert.equal(listed.status, 200);
+    const payload = await listed.json() as { documents: Array<{ original_filename: string }> };
+    assert.equal(payload.documents.length, 2);
+  });
 
-    const motHistory = await query<{ original_filename: string; is_latest: boolean }>(
-      `SELECT original_filename, is_latest
-       FROM vehicle_documents
-       WHERE vehicle_id=$1 AND document_type='mot'
-       ORDER BY uploaded_at, id`,
+  test("upload failure does not remove saved record", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC FAIL", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const body = new FormData();
+    body.append("_csrf", detail.token);
+    body.append("category", "v5c");
+    body.append("documents", new Blob(["<html>bad</html>"], { type: "text/html" }), "bad.html");
+    const upload = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie },
+      body,
+    });
+    assert.equal(upload.status, 400);
+    const stillExists = await query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM vehicles WHERE id=$1",
       [vehicleId]
     );
-    assert.equal(motHistory.rows.length, 2);
-    assert.deepEqual(motHistory.rows.map((row) => row.is_latest), [false, true]);
-    assert.equal(motHistory.rows[1].original_filename, "mot-replacement.pdf");
-    const unchanged = await query<{ count: number }>(
-      `SELECT count(*)::int AS count
-       FROM vehicle_documents
-       WHERE vehicle_id=$1 AND document_type<>'mot'`,
-      [vehicleId]
-    );
-    assert.equal(unchanged.rows[0].count, 4);
+    assert.equal(stillExists.rows[0].count, 1);
   });
 
   test("detail page renders all required vehicle document rows with uploaded/missing states", async () => {
     signIn(["admin"]);
     const vehicleId = await createVehicle("DOC STATE", "active");
-    await query(
-      `UPDATE vehicle_documents
-       SET is_latest = FALSE, superseded_at = now()
-       WHERE vehicle_id = $1 AND document_type = 'mot'`,
-      [vehicleId]
-    );
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const uploadBody = new FormData();
+    uploadBody.append("_csrf", detail.token);
+    uploadBody.append("category", "v5c");
+    uploadBody.append("documents", new Blob([Buffer.from("%PDF-1.7 v5c")], { type: "application/pdf" }), "v5c.pdf");
+    await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie },
+      body: uploadBody
+    });
     const detailBody = await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text();
     for (const label of ["V5C", "Council Mechanical Check", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
       assert.match(detailBody, new RegExp(label));
     }
     assert.match(detailBody, /Status: Uploaded/);
     assert.match(detailBody, /Status: Missing/);
-    assert.match(detailBody, /record-documents\/v5c/);
-    assert.match(detailBody, /record-documents\/mot/);
-    assert.match(detailBody, /Replace/);
-    assert.match(detailBody, /Upload/);
+    assert.match(detailBody, /record-documents\/upload/);
+    assert.match(detailBody, /Upload documents/);
+    assert.match(detailBody, /record-documents\/.*\/view/);
   });
 
   test("admins create and edit distinct vehicle licence types and badges", async () => {
@@ -461,10 +437,11 @@ describe("vehicle management end-to-end workflow", () => {
     response = await upload({ documentType: "insurance", documentNumber: "POL-1", expiresOn: "2099-01-01" }, pdf, "insurance\".pdf");
     assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-added`);
     response = await uploadRequiredDocument("mot", new Blob([Buffer.from("%PDF-1.7 mot replacement")], { type: "application/pdf" }), "mot-replacement.pdf");
-    assert.equal(response.headers.get("location"), `/vehicles/${id}?notice=document-added`);
+    assert.equal(response.status, 200);
     const latestMot = (await query<{ original_filename: string }>(
-      `SELECT original_filename FROM vehicle_documents
-       WHERE vehicle_id=$1 AND document_type='mot' AND is_latest=TRUE`,
+      `SELECT original_filename FROM entity_documents
+       WHERE entity_type='vehicle' AND entity_id=$1 AND category='mot'
+       ORDER BY uploaded_at DESC, id DESC LIMIT 1`,
       [id]
     )).rows[0];
     assert.equal(latestMot.original_filename, "mot-replacement.pdf");
@@ -523,10 +500,19 @@ describe("vehicle management end-to-end workflow", () => {
     const previousDownload = await fetch(`${baseUrl}/vehicles/documents/${originalDocumentId}?download=1`);
     assert.equal(previousDownload.status, 200);
     assert.deepEqual(Buffer.from(await previousDownload.arrayBuffer()), firstBadgeDocument);
+    const uploadedRecordDocument = (await query<{ id: string }>(
+      "SELECT id FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1 AND category='mot' ORDER BY uploaded_at DESC, id DESC LIMIT 1",
+      [id]
+    )).rows[0];
+    const recordView = await fetch(`${baseUrl}/vehicles/record-documents/${uploadedRecordDocument.id}/view`);
+    assert.equal(recordView.status, 200);
+    assert.equal(recordView.headers.get("content-type"), "application/pdf");
 
     signIn(["driver"]);
     const denied = await fetch(`${baseUrl}/vehicles/documents/${documentId}`, { redirect: "manual" });
     assert.equal(denied.status, 403);
+    const deniedRecordView = await fetch(`${baseUrl}/vehicles/record-documents/${uploadedRecordDocument.id}/view`, { redirect: "manual" });
+    assert.equal(deniedRecordView.status, 403);
     const deniedUpload = await upload({ documentType: "insurance", expiresOn: "2099-01-01" }, pdf, "insurance.pdf");
     assert.equal(deniedUpload.status, 403);
     const docs = await query<{ count: number }>(
