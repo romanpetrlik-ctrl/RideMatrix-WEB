@@ -60,8 +60,8 @@ test("vehicle detail required document rows show uploaded/missing states and man
   assert.match(html, /<h3>Existing documents by category<\/h3>/);
   assert.match(html, /V5C/);
   assert.match(html, /MOT/);
-  assert.match(html, /Status: Uploaded/);
-  assert.match(html, /Status: Missing/);
+  assert.match(html, /Status:\s*<span[^>]*>Uploaded<\/span>/);
+  assert.match(html, /Status:\s*<span[^>]*>Missing<\/span>/);
   assert.match(html, /Uploaded: <strong>v5c\.pdf<\/strong>/);
   assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/view"/);
   assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/download"/);

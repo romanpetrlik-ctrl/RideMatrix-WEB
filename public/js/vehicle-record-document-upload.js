@@ -24,6 +24,11 @@
   function updateSubmitState() {
     submitButton.disabled = queuedFiles() === 0;
   }
+  function emitQueueChange() {
+    document.dispatchEvent(new CustomEvent("vehicle-record-document-queue-change", {
+      detail: { pendingCategories: Array.from(queue.keys()) }
+    }));
+  }
 
   function removeQueueItem(category, index) {
     const files = queue.get(category) || [];
@@ -37,6 +42,7 @@
     if (!queuedFiles()) {
       queueContainer.innerHTML = '<p class="muted">No files staged yet.</p>';
       updateSubmitState();
+      emitQueueChange();
       return;
     }
     const groups = Array.from(queue.entries()).map(([category, files]) => {
@@ -47,6 +53,7 @@
     }).join("");
     queueContainer.innerHTML = groups;
     updateSubmitState();
+    emitQueueChange();
   }
 
   addButton.addEventListener("click", () => {
