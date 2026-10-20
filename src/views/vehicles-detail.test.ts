@@ -51,6 +51,13 @@ async function renderDetail(canManageVehicleDocuments: boolean): Promise<string>
 test("vehicle detail required document rows show uploaded/missing states and manager actions", async () => {
   const html = await renderDetail(true);
   assert.match(html, /<h2>Vehicle documents<\/h2>/);
+  assert.match(html, /<h3>Upload documents<\/h3>/);
+  assert.match(html, /Upload selected documents/);
+  assert.match(html, /Add to upload queue/);
+  assert.match(html, /recordDocumentBatchForm/);
+  assert.match(html, /recordDocumentQueue/);
+  assert.match(html, /vehicle-record-document-upload\.js/);
+  assert.match(html, /<h3>Existing documents by category<\/h3>/);
   assert.match(html, /V5C/);
   assert.match(html, /MOT/);
   assert.match(html, /Status: Uploaded/);
@@ -59,15 +66,13 @@ test("vehicle detail required document rows show uploaded/missing states and man
   assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/view"/);
   assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/download"/);
   assert.match(html, /record-documents\/upload/);
-  assert.match(html, /name="category" value="v5c"/);
-  assert.match(html, /name="category" value="mot"/);
-  assert.match(html, />Upload documents</);
   assert.match(html, /Tip: select multiple files using Ctrl \(Windows\/Linux\) or ⌘ Command \(macOS\) while clicking files\./);
 });
 
 test("vehicle detail hides upload and replace actions when user cannot manage documents", async () => {
   const html = await renderDetail(false);
   assert.doesNotMatch(html, /record-documents\/upload/);
-  assert.doesNotMatch(html, />Upload documents</);
+  assert.doesNotMatch(html, /Upload selected documents/);
+  assert.doesNotMatch(html, /vehicle-record-document-upload\.js/);
   assert.match(html, /href="\/vehicles\/record-documents\/doc-v5c\/view"/);
 });

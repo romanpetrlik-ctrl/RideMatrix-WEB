@@ -303,7 +303,38 @@ describe("vehicle management end-to-end workflow", () => {
     assert.equal(payload.documents.length, 2);
   });
 
-  test("upload parser limits reject the full batch and still validate CSRF", async () => {
+  test("single staged multi-category upload persists all categories in one submit", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC BATCH", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const body = new FormData();
+    body.append("_csrf", detail.token);
+    body.append("documentsByCategory[mec]", new Blob([Buffer.from("%PDF-1.7 mec one")], { type: "application/pdf" }), "mec-1.pdf");
+    body.append("documentsByCategory[mec]", new Blob([Buffer.from("%PDF-1.7 mec two")], { type: "application/pdf" }), "mec-2.pdf");
+    body.append("documentsByCategory[v5c]", new Blob([Buffer.from("%PDF-1.7 v5c one")], { type: "application/pdf" }), "v5c-1.pdf");
+    const upload = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie, accept: "application/json" },
+      body
+    });
+    assert.equal(upload.status, 200);
+    const payload = await upload.json() as { notice: string; statuses: Array<{ status: string; category: string }> };
+    assert.equal(payload.notice, "document-added");
+    assert.equal(payload.statuses.length, 3);
+    assert.ok(payload.statuses.every((item) => item.status === "success"));
+    const docs = await query<{ category: string; count: number }>(
+      `SELECT category, count(*)::int AS count FROM entity_documents
+       WHERE entity_type='vehicle' AND entity_id=$1
+       GROUP BY category ORDER BY category`,
+      [vehicleId]
+    );
+    assert.deepEqual(docs.rows, [
+      { category: "mec", count: 2 },
+      { category: "v5c", count: 1 }
+    ]);
+  });
+
+  test("upload limits remain category-scoped and still validate CSRF", async () => {
     signIn(["admin"]);
     const vehicleId = await createVehicle("DOC LIMIT", "active");
     const detail = await openForm(`/vehicles/${vehicleId}`);
@@ -332,8 +363,7 @@ describe("vehicle management end-to-end workflow", () => {
     });
     assert.equal(response.status, 400);
     const responseBody = await response.text();
-    assert.match(responseBody, /No files in this batch were saved/);
-    assert.match(responseBody, new RegExp(`Select no more than ${maxFiles} files`));
+    assert.match(responseBody, new RegExp(`Select no more than ${maxFiles} files for V5C`));
     const docs = await query<{ count: number }>(
       "SELECT count(*)::int AS count FROM entity_documents WHERE entity_type='vehicle' AND entity_id=$1",
       [vehicleId]
@@ -413,6 +443,33 @@ describe("vehicle management end-to-end workflow", () => {
     assert.match(body, /Status: Uploaded/);
   });
 
+  test("stepwise staged batch reports category failures without dropping successful category uploads", async () => {
+    signIn(["admin"]);
+    const vehicleId = await createVehicle("DOC PARTIAL", "active");
+    const detail = await openForm(`/vehicles/${vehicleId}`);
+    const body = new FormData();
+    body.append("_csrf", detail.token);
+    body.append("documentsByCategory[v5c]", new Blob([Buffer.from("%PDF-1.7 staged v5c")], { type: "application/pdf" }), "staged-v5c.pdf");
+    body.append("documentsByCategory[mec]", new Blob(["<html>bad</html>"], { type: "text/html" }), "bad-mec.html");
+    const upload = await fetch(`${baseUrl}/vehicles/${vehicleId}/record-documents/upload`, {
+      method: "POST",
+      headers: { cookie: detail.cookie, accept: "application/json" },
+      body
+    });
+    assert.equal(upload.status, 400);
+    const payload = await upload.json() as { notice: string; statuses: Array<{ category: string; status: string; reason?: string }> };
+    assert.equal(payload.notice, "document-partial");
+    assert.ok(payload.statuses.some((item) => item.category === "v5c" && item.status === "success"));
+    assert.ok(payload.statuses.some((item) => item.category === "mec" && item.status === "failed" && /Only valid PDF, JPEG, and PNG documents are accepted/.test(item.reason || "")));
+    const docs = await query<{ category: string; count: number }>(
+      `SELECT category, count(*)::int AS count FROM entity_documents
+       WHERE entity_type='vehicle' AND entity_id=$1
+       GROUP BY category ORDER BY category`,
+      [vehicleId]
+    );
+    assert.deepEqual(docs.rows, [{ category: "v5c", count: 1 }]);
+  });
+
   test("upload failure does not remove saved record", async () => {
     signIn(["admin"]);
     const vehicleId = await createVehicle("DOC FAIL", "active");
@@ -451,11 +508,11 @@ describe("vehicle management end-to-end workflow", () => {
     for (const label of ["V5C", "Council Mechanical Check \\(MEC\\)", "Hire &amp; Reward Insurance", "HC/PHV License issued", "MOT"]) {
       assert.match(detailBody, new RegExp(label));
     }
-    assert.equal((detailBody.match(/Council Mechanical Check \(MEC\)/g) || []).length, 1);
+    assert.equal((detailBody.match(/<strong>Council Mechanical Check \(MEC\)<\/strong>/g) || []).length, 1);
     assert.match(detailBody, /Status: Uploaded/);
     assert.match(detailBody, /Status: Missing/);
     assert.match(detailBody, /record-documents\/upload/);
-    assert.match(detailBody, /Upload documents/);
+    assert.match(detailBody, /Upload selected documents/);
     assert.match(detailBody, /record-documents\/.*\/view/);
   });
 
@@ -496,7 +553,7 @@ describe("vehicle management end-to-end workflow", () => {
     assert.equal(listedPayload.documents.length, 1);
     assert.equal(listedPayload.documents[0]?.category, "mec");
     const detailBody = await (await fetch(`${baseUrl}/vehicles/${vehicleId}`)).text();
-    assert.equal((detailBody.match(/Council Mechanical Check \(MEC\)/g) || []).length, 1);
+    assert.equal((detailBody.match(/<strong>Council Mechanical Check \(MEC\)<\/strong>/g) || []).length, 1);
     assert.match(detailBody, /legacy-council\.pdf/);
     assert.match(detailBody, /mec-upload\.pdf/);
     assert.match(detailBody, new RegExp(`/vehicles/documents/${legacyId}`));
