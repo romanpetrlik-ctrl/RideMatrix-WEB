@@ -10,7 +10,7 @@ test("vehicle record document metadata and audit are transactional and failed pe
   process.env.DOCUMENT_VAULT_ROOT = vaultRoot;
 
   try {
-    const { saveVehicleEntityDocument } = await import("./vehicles");
+    const { saveVehicleEntityDocument } = await import("./vehicles.js");
     const file = {
       originalname: "vehicle.pdf",
       mimetype: "application/pdf",
