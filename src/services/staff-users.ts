@@ -1,6 +1,11 @@
 import type { Pool, PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
 import { isValidStaffAccountId, normalizeStaffDisplayName, STAFF_MANAGEMENT_ROLES } from "./staff";
+import {
+  appendStaffRoleAuditEvent,
+  STAFF_ROLE_UPDATE_APPLIED,
+  STAFF_ROLE_UPDATE_BLOCKED
+} from "./staff-role-audit";
 
 /**
  * Internal staff-user administration on top of the existing authentication
@@ -37,6 +42,18 @@ export const MANAGE_USER_ROLES_PERMISSION = "manage_user_roles";
 
 /** Role that may always manage internal accounts and delegate any role. */
 export const SUPERUSER_ROLE = "superuser";
+const EXTERNAL_ROLE_NAMES = ["customer", "partner"] as const;
+const PRIVILEGED_ROLE_NAMES = ["admin", "superuser"] as const;
+const STAFF_ROLE_AUDIT_LIMIT = 100;
+
+function envFlag(name: string): boolean {
+  return String(process.env[name] || "").trim().toLowerCase() === "true";
+}
+
+const STAFF_ROLE_POLICY = {
+  allowMixedExternalInternal: envFlag("STAFF_ROLE_POLICY_ALLOW_MIXED_INTERNAL_EXTERNAL"),
+  allowGenericOpsDriver: envFlag("STAFF_ROLE_POLICY_ALLOW_GENERIC_OPS_DRIVER")
+};
 
 /**
  * Initial status for an invited account when `users.status` is a free-form
@@ -173,6 +190,7 @@ export type AssignableRole = {
 };
 
 export type StaffUserActor = {
+  userId?: string;
   email: string;
   roles: string[];
   permissions: string[];
@@ -208,6 +226,20 @@ export class UnknownRoleError extends Error {
   constructor(readonly role: string) {
     super(`Role ${role} is not available for internal staff accounts.`);
     this.name = "UnknownRoleError";
+  }
+}
+
+export class ImmutableRoleError extends Error {
+  constructor(readonly role: string) {
+    super(`Role ${role} is managed by installation and cannot be changed here.`);
+    this.name = "ImmutableRoleError";
+  }
+}
+
+export class RolePolicyViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RolePolicyViolationError";
   }
 }
 
@@ -307,6 +339,31 @@ export async function listAssignableRoles(runner?: Queryable): Promise<Assignabl
       label: getInternalRoleLabel(row.name),
       description: getInternalRoleDescription(row.name)
     }));
+}
+
+export async function listUserRolesForAccount(
+  accountId: string,
+  runner?: Queryable
+): Promise<string[] | null> {
+  if (!isValidStaffAccountId(accountId)) {
+    return null;
+  }
+
+  const result = await query<{ role: string }>(
+    `SELECT r.key AS role
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       LEFT JOIN roles r ON r.id = ur.role_id
+      WHERE u.id::text = $1`,
+    [accountId],
+    runner
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return result.rows.map((row) => row.role).filter(Boolean).sort();
 }
 
 /** Reads the effective permission names granted by the given role names. */
@@ -476,6 +533,267 @@ export async function createStaffUser(input: CreateStaffUserInput): Promise<Crea
 
     throw error;
   }
+}
+
+export type UpdateStaffUserRolesInput = {
+  accountId: string;
+  roles: string[];
+  actor: StaffUserActor;
+  expectedSuperuserMembership?: "present" | "absent";
+};
+
+export type UpdatedStaffUserRoles = {
+  accountId: string;
+  email: string;
+  beforeRoles: string[];
+  afterRoles: string[];
+};
+
+function uniqueRoleList(roles: string[]): string[] {
+  return Array.from(new Set(roles.map((role) => String(role).trim()).filter(Boolean))).sort();
+}
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((entry, index) => entry === right[index]);
+}
+
+function hasExternalRole(roles: string[]): boolean {
+  return roles.some((role) => EXTERNAL_ROLE_NAMES.includes(role as (typeof EXTERNAL_ROLE_NAMES)[number]));
+}
+
+function hasInternalManagementRole(roles: string[]): boolean {
+  return roles.some((role) => INTERNAL_ROLE_ORDER.includes(role as (typeof INTERNAL_ROLE_ORDER)[number]));
+}
+
+function isMixedInternalExternal(roles: string[]): boolean {
+  return hasExternalRole(roles) && hasInternalManagementRole(roles);
+}
+
+function countIntersection(roles: string[], candidates: readonly string[]): number {
+  return roles.filter((role) => candidates.includes(role)).length;
+}
+
+function isGenericOpsIdentity(email: string, displayName: string | null): boolean {
+  const identity = `${email} ${displayName || ""}`.toLowerCase();
+  return /(ops|operations|dispatch|bookings|office|team|shared|generic)/.test(identity);
+}
+
+function ensureStaffRolePolicy(beforeRoles: string[], afterRoles: string[], email: string, displayName: string | null) {
+  if (!STAFF_ROLE_POLICY.allowGenericOpsDriver && afterRoles.includes("driver") && isGenericOpsIdentity(email, displayName)) {
+    throw new RolePolicyViolationError(
+      "Driver role assignment is blocked for generic operations accounts by current policy."
+    );
+  }
+
+  if (!STAFF_ROLE_POLICY.allowMixedExternalInternal && isMixedInternalExternal(afterRoles)) {
+    const beforeInternal = countIntersection(beforeRoles, INTERNAL_ROLE_ORDER);
+    const beforeExternal = countIntersection(beforeRoles, EXTERNAL_ROLE_NAMES);
+    const afterInternal = countIntersection(afterRoles, INTERNAL_ROLE_ORDER);
+    const afterExternal = countIntersection(afterRoles, EXTERNAL_ROLE_NAMES);
+    const sameAsBefore = arraysEqual(beforeRoles, afterRoles);
+    const reducesMixedState = afterInternal < beforeInternal || afterExternal < beforeExternal;
+    if (!(sameAsBefore || reducesMixedState)) {
+      throw new RolePolicyViolationError(
+        "Customer/partner roles cannot be combined with internal staff roles unless policy explicitly allows it."
+      );
+    }
+  }
+}
+
+function assertActorCanStillManage(updatedRoles: string[], permissions: string[]): void {
+  if (
+    updatedRoles.some((role) => PRIVILEGED_ROLE_NAMES.includes(role as (typeof PRIVILEGED_ROLE_NAMES)[number])) ||
+    permissions.includes(MANAGE_USERS_PERMISSION) ||
+    permissions.includes(MANAGE_USER_ROLES_PERMISSION)
+  ) {
+    return;
+  }
+
+  throw new RolePolicyViolationError(
+    "You cannot remove your own last privileged role because this would lock out staff administration."
+  );
+}
+
+async function appendRoleAudit(
+  event: Parameters<typeof appendStaffRoleAuditEvent>[0],
+  runner?: Queryable
+): Promise<void> {
+  try {
+    await appendStaffRoleAuditEvent(event, runner);
+  } catch (error) {
+    console.error("[staff-roles] Failed to persist role audit event:", error);
+  }
+}
+
+export async function updateStaffUserRoles(input: UpdateStaffUserRolesInput): Promise<UpdatedStaffUserRoles> {
+  if (!canManageStaffUsers(input.actor)) {
+    await appendRoleAudit({
+      eventName: STAFF_ROLE_UPDATE_BLOCKED,
+      actorAccountId: input.actor.userId ?? null,
+      actorEmail: input.actor.email,
+      targetAccountId: input.accountId,
+      success: false,
+      reason: "unauthorized_actor",
+      beforeRoles: [],
+      afterRoles: []
+    });
+    throw new UnauthorizedRoleDelegationError("all");
+  }
+  if (!isValidStaffAccountId(input.accountId)) {
+    throw new Error("Unknown staff account.");
+  }
+
+  const requestedRoles = uniqueRoleList(input.roles);
+  if (requestedRoles.includes(SUPERUSER_ROLE)) {
+    await appendRoleAudit({
+      eventName: STAFF_ROLE_UPDATE_BLOCKED,
+      actorAccountId: input.actor.userId ?? null,
+      actorEmail: input.actor.email,
+      targetAccountId: input.accountId,
+      success: false,
+      reason: "immutable_superuser",
+      beforeRoles: [],
+      afterRoles: requestedRoles
+    });
+    throw new ImmutableRoleError(SUPERUSER_ROLE);
+  }
+
+  return withTransaction(async (client) => {
+    const targetResult = await query<{ id: string; email: string; display_name: string | null }>(
+      `SELECT u.id::text AS id, u.email, p.display_name
+         FROM users u
+         LEFT JOIN staff_profiles p ON p.account_id = u.id::text
+        WHERE u.id::text = $1
+        FOR UPDATE`,
+      [input.accountId],
+      client
+    );
+
+    const target = targetResult.rows[0];
+    if (!target) {
+      throw new Error("Unknown staff account.");
+    }
+
+    const beforeRoles = uniqueRoleList((await listUserRolesForAccount(input.accountId, client)) ?? []);
+    const beforeHasSuperuser = beforeRoles.includes(SUPERUSER_ROLE);
+    const expectedMembership =
+      input.expectedSuperuserMembership ?? (beforeHasSuperuser ? "present" : "absent");
+    if ((expectedMembership === "present") !== beforeHasSuperuser) {
+      await appendRoleAudit(
+        {
+          eventName: STAFF_ROLE_UPDATE_BLOCKED,
+          actorAccountId: input.actor.userId ?? null,
+          actorEmail: input.actor.email,
+          targetAccountId: input.accountId,
+          targetEmail: target.email,
+          success: false,
+          reason: "immutable_superuser",
+          beforeRoles,
+          afterRoles: requestedRoles
+        },
+        client
+      );
+      throw new ImmutableRoleError(SUPERUSER_ROLE);
+    }
+
+    const assignableRoles = await listAssignableRoles(client);
+    const editableRoles = assignableRoles.filter((role) => role.name !== SUPERUSER_ROLE);
+    const editableNames = new Set(editableRoles.map((role) => role.name));
+    let afterRoles: string[] = beforeRoles;
+    try {
+      for (const role of requestedRoles) {
+        if (!editableNames.has(role)) {
+          throw new UnknownRoleError(role);
+        }
+        if (!canDelegateRole(input.actor, role)) {
+          throw new UnauthorizedRoleDelegationError(role);
+        }
+      }
+
+      const unmanagedRoles = beforeRoles.filter((role) => !editableNames.has(role));
+      afterRoles = uniqueRoleList([...unmanagedRoles, ...requestedRoles]);
+      ensureStaffRolePolicy(beforeRoles, afterRoles, target.email, target.display_name);
+
+      if (input.actor.userId && input.actor.userId === input.accountId) {
+        const permissions = await getPermissionsForRoles(afterRoles, client);
+        assertActorCanStillManage(afterRoles, permissions);
+      }
+    } catch (error) {
+      if (
+        error instanceof UnknownRoleError ||
+        error instanceof UnauthorizedRoleDelegationError ||
+        error instanceof RolePolicyViolationError
+      ) {
+        await appendRoleAudit(
+          {
+            eventName: STAFF_ROLE_UPDATE_BLOCKED,
+            actorAccountId: input.actor.userId ?? null,
+            actorEmail: input.actor.email,
+            targetAccountId: input.accountId,
+            targetEmail: target.email,
+            success: false,
+            reason: error.name,
+            beforeRoles,
+            afterRoles: requestedRoles
+          },
+          client
+        );
+      }
+      throw error;
+    }
+
+    const editableRoleIds = editableRoles.map((role) => role.id);
+    if (editableRoleIds.length > 0) {
+      await query(
+        `DELETE FROM user_roles
+          WHERE user_id::text = $1
+            AND role_id = ANY($2::int[])`,
+        [input.accountId, editableRoleIds],
+        client
+      );
+    }
+
+    if (requestedRoles.length > 0) {
+      const resolvedIds = editableRoles
+        .filter((role) => requestedRoles.includes(role.name))
+        .map((role) => role.id);
+      for (const roleId of resolvedIds) {
+        await query(
+          `INSERT INTO user_roles (user_id, role_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [input.accountId, roleId],
+          client
+        );
+      }
+    }
+
+    await appendRoleAudit(
+      {
+        eventName: STAFF_ROLE_UPDATE_APPLIED,
+        actorAccountId: input.actor.userId ?? null,
+        actorEmail: input.actor.email,
+        targetAccountId: input.accountId,
+        targetEmail: target.email,
+        success: true,
+        reason: arraysEqual(beforeRoles, afterRoles) ? "role_update_no_change" : "role_update_saved",
+        beforeRoles,
+        afterRoles,
+        metadata: {
+          editableRoleCount: editableRoles.length,
+          auditLimit: STAFF_ROLE_AUDIT_LIMIT
+        }
+      },
+      client
+    );
+
+    return {
+      accountId: input.accountId,
+      email: target.email,
+      beforeRoles,
+      afterRoles
+    };
+  });
 }
 
 export async function updateStaffDisplayName(

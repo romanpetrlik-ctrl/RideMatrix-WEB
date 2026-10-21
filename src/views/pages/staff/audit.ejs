@@ -115,6 +115,56 @@
           </div>
         <% } %>
       </section>
+
+      <section class="staff-card" aria-labelledby="staff-role-audit-heading">
+        <header class="staff-card__header">
+          <div>
+            <h2 class="staff-card__title" id="staff-role-audit-heading"><%= roleEvents.length %> role change event<%= roleEvents.length === 1 ? "" : "s" %></h2>
+            <p class="staff-card__subtitle">Newest first. Includes successful updates and blocked attempts.</p>
+          </div>
+        </header>
+        <% if (roleEvents.length > 0) { %>
+          <div class="staff-table-wrapper">
+            <table class="staff-table staff-audit-table">
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  <th scope="col">Outcome</th>
+                  <th scope="col">Actor</th>
+                  <th scope="col">Before</th>
+                  <th scope="col">After</th>
+                  <th scope="col">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% roleEvents.forEach((event) => { %>
+                  <tr>
+                    <th scope="row" data-label="Time">
+                      <% if (event.occurredAt) { %>
+                        <time datetime="<%= event.occurredAt %>"><%= event.formattedOccurredAt %></time>
+                      <% } else { %>
+                        <%= event.formattedOccurredAt %>
+                      <% } %>
+                    </th>
+                    <td data-label="Outcome">
+                      <span class="status-pill status-pill--<%= event.success ? "succeeded" : "failed" %>"><%= event.outcomeLabel %></span>
+                    </td>
+                    <td data-label="Actor"><%= event.actorEmail || "Unknown" %></td>
+                    <td data-label="Before"><%= event.beforeRolesLabel %></td>
+                    <td data-label="After"><%= event.afterRolesLabel %></td>
+                    <td data-label="Reason"><code><%= event.reason %></code></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } else { %>
+          <div class="staff-empty-state">
+            <h2 class="staff-empty-state__title">No role change events recorded</h2>
+            <p class="staff-empty-state__text">No staff role updates have been recorded for this account.</p>
+          </div>
+        <% } %>
+      </section>
     </main>
 
     <% if (!dialogMode) { %><%- include("../../partials/footer") %><% } %>

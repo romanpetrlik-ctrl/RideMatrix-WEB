@@ -181,6 +181,7 @@ describe("GET /staff (staff directory)", () => {
     assert.match(body, /<a class="staff-button staff-button--primary" href="\/staff\/invite">/);
     assert.match(body, /<span class="staff-role-badge">Driver<\/span>/);
     assert.match(body, /<span class="staff-role-badge">Staff<\/span>/);
+    assert.match(body, /href="\/staff\/a0000000-0000-0000-0000-000000000002\/roles">Edit roles<\/a>/);
   });
 
   test("bookings@romanairporttransfers.co.uk is listed only while it holds an internal role", async () => {

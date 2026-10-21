@@ -17,6 +17,7 @@ describe("admin-managed staff display names", () => {
   let baseUrl: string;
   let session: SessionAccount;
   let accountId: string;
+  let superuserAccountId: string;
   const invitations: string[] = [];
   const name = '<img src=x onerror="alert(1)">';
   const manager: SessionAccount = {
@@ -80,6 +81,47 @@ describe("admin-managed staff display names", () => {
     assert.match(html, /named@example.com/);
   });
 
+  test("staff directory shows Edit roles action and role editor preselects current roles", async () => {
+    const directory = await fetch(`${baseUrl}/staff`);
+    const html = await directory.text();
+    assert.match(html, new RegExp(`href="/staff/${accountId}/roles">Edit roles<`));
+
+    const editor = await fetch(`${baseUrl}/staff/${accountId}/roles`);
+    const editorHtml = await editor.text();
+    assert.equal(editor.status, 200);
+    assert.match(editorHtml, /id="role-driver"[^>]*checked/);
+    assert.match(editorHtml, /Managed by installation|No superuser role assigned/);
+  });
+
+  test("saving roles updates role badges in staff list and logs audit with before/after", async () => {
+    const response = await postForm(`/staff/${accountId}/roles`, {
+      roles: "staff",
+      expectedSuperuserMembership: "absent"
+    });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), "/staff?rolesUpdated=1");
+
+    const updated = await getStaffUser(accountId);
+    assert.deepEqual(updated?.roles, ["staff"]);
+
+    const listHtml = await (await fetch(`${baseUrl}/staff?rolesUpdated=1`)).text();
+    assert.match(listHtml, /Roles updated successfully/);
+    assert.match(listHtml, /<span class="staff-role-badge">Staff<\/span>/);
+    assert.doesNotMatch(listHtml, /<span class="staff-role-badge">Driver<\/span>/);
+
+    const audit = await query<{ before_roles: string[]; after_roles: string[]; success: boolean }>(
+      `SELECT before_roles, after_roles, success
+         FROM staff_role_change_audit
+        WHERE target_account_id = $1
+        ORDER BY occurred_at DESC
+        LIMIT 1`,
+      [accountId]
+    );
+    assert.equal(audit.rows[0].success, true);
+    assert.deepEqual(audit.rows[0].before_roles.sort(), ["driver"]);
+    assert.deepEqual(audit.rows[0].after_roles.sort(), ["staff"]);
+  });
+
   test("edit form escapes stored names; saving and clearing preserves the account", async () => {
     const form = await fetch(`${baseUrl}/staff/${accountId}/profile`);
     assert.equal(form.status, 200);
@@ -141,5 +183,59 @@ describe("admin-managed staff display names", () => {
     assert.equal(response.headers.get("location"), "/access");
     assert.equal((await getStaffUser(accountId))?.displayName, null);
     session = manager;
+  });
+
+  test("role editor blocks unauthorized users and immutable superuser changes", async () => {
+    await postForm("/staff/invite", {
+      email: "super.user@example.com",
+      roles: "superuser",
+      confirmSuperuser: "yes"
+    });
+    const superuserIdResult = await query<{ id: string }>(
+      `SELECT id::text AS id FROM users WHERE email = $1`,
+      ["super.user@example.com"]
+    );
+    superuserAccountId = superuserIdResult.rows[0].id;
+
+    const csrfForm = await fetch(`${baseUrl}/staff/${accountId}/profile`, { redirect: "manual" });
+    const cookie = csrfForm.headers.get("set-cookie")!.split(";")[0];
+    const token = (await csrfForm.text()).match(/name="_csrf" value="([^"]+)"/)![1];
+    session = { authenticated: true, user: { id: accountId, email: "named@example.com", roles: ["driver"] } };
+    assert.equal((await fetch(`${baseUrl}/staff/${accountId}/roles`)).status, 403);
+    const unauthorizedPost = await fetch(`${baseUrl}/staff/${accountId}/roles`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ _csrf: token, roles: "driver", expectedSuperuserMembership: "absent" })
+    });
+    assert.equal(unauthorizedPost.status, 403);
+    const unauthorizedAudit = await query<{ success: boolean; reason: string }>(
+      `SELECT success, reason
+         FROM staff_role_change_audit
+        WHERE target_account_id = $1
+        ORDER BY occurred_at DESC
+        LIMIT 1`,
+      [accountId]
+    );
+    assert.equal(unauthorizedAudit.rows[0].success, false);
+    assert.equal(unauthorizedAudit.rows[0].reason, "unauthorized_actor");
+
+    session = manager;
+    const blocked = await postForm(`/staff/${superuserAccountId}/roles`, {
+      roles: "staff",
+      expectedSuperuserMembership: "absent"
+    });
+    assert.equal(blocked.status, 403);
+    const blockedHtml = await blocked.text();
+    assert.match(blockedHtml, /managed by installation/i);
+    const blockedAudit = await query<{ success: boolean; reason: string }>(
+      `SELECT success, reason
+         FROM staff_role_change_audit
+        WHERE target_account_id = $1
+        ORDER BY occurred_at DESC
+        LIMIT 1`,
+      [superuserAccountId]
+    );
+    assert.equal(blockedAudit.rows[0].success, false);
+    assert.equal(blockedAudit.rows[0].reason, "immutable_superuser");
   });
 });

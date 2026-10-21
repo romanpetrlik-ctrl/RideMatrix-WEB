@@ -3,14 +3,18 @@ import test, { after, before, describe } from "node:test";
 import { initializeDatabase, query  } from "../database/connection";
 import { TestDatabaseContext, createTestDatabaseContext, safeCleanupTestDatabase } from "../database/test-helper";
 import {
+  ImmutableRoleError,
+  RolePolicyViolationError,
   StaffUserActor,
   createStaffUser,
   describeUserStatusColumn,
   resolveInvitedUserStatus,
   selectInvitedStatusLabel,
+  updateStaffUserRoles,
   updateStaffDisplayName
 } from "./staff-users";
 import { getStaffUser, listStaffUsers } from "./staff";
+import { listStaffRoleAuditEvents } from "./staff-role-audit";
 
 const ACTOR: StaffUserActor = {
   email: "admin@ridematrix.com",
@@ -210,5 +214,120 @@ describe("createStaffUser against a text status column", () => {
     );
 
     assert.equal(result.rows[0].count, 0);
+  });
+});
+
+describe("updateStaffUserRoles", () => {
+  let dbContext: TestDatabaseContext;
+
+  before(async () => {
+    dbContext = await createTestDatabaseContext("test_staff_roles_update");
+    await dbContext.createAuthTables();
+    await initializeDatabase();
+    await query(
+      `INSERT INTO roles (id, key, description) VALUES
+         (3, 'staff', 'Staff'),
+         (4, 'customer', 'Customer'),
+         (5, 'superuser', 'Superuser')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await query(
+      `INSERT INTO permissions (id, key, description) VALUES
+         (10, 'manage_user_roles', 'Manage user roles')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await query(
+      `INSERT INTO role_permissions (role_id, permission_id) VALUES
+         (1, 2),
+         (1, 10),
+         (5, 10)
+       ON CONFLICT DO NOTHING`
+    );
+  });
+
+  after(async () => {
+    await safeCleanupTestDatabase(dbContext);
+  });
+
+  const actor: StaffUserActor = {
+    userId: "a0000000-0000-0000-0000-000000000001",
+    email: "admin@ridematrix.com",
+    roles: ["admin"],
+    permissions: ["manage_users", "manage_user_roles"]
+  };
+
+  test("updates role mappings transactionally and records before/after roles", async () => {
+    await query(
+      `INSERT INTO user_roles (user_id, role_id) VALUES
+        ('a0000000-0000-0000-0000-000000000002', 3)
+       ON CONFLICT DO NOTHING`
+    );
+    const updated = await updateStaffUserRoles({
+      accountId: "a0000000-0000-0000-0000-000000000002",
+      roles: ["staff", "driver"],
+      actor,
+      expectedSuperuserMembership: "absent"
+    });
+    assert.deepEqual(updated.beforeRoles, ["driver", "staff"]);
+    assert.deepEqual(updated.afterRoles, ["driver", "staff"]);
+    const target = await query<{ role: string }>(
+      `SELECT r.key AS role
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id::text = $1
+        ORDER BY r.key`,
+      ["a0000000-0000-0000-0000-000000000002"]
+    );
+    assert.deepEqual(target.rows.map((row) => row.role), ["driver", "staff"]);
+    const audits = await listStaffRoleAuditEvents("a0000000-0000-0000-0000-000000000002", 10);
+    assert.equal(audits[0].success, true);
+    assert.deepEqual(audits[0].beforeRoles, ["driver", "staff"]);
+    assert.deepEqual(audits[0].afterRoles, ["driver", "staff"]);
+  });
+
+  test("rejects immutable superuser modifications", async () => {
+    await assert.rejects(
+      updateStaffUserRoles({
+        accountId: "a0000000-0000-0000-0000-000000000002",
+        roles: ["superuser"],
+        actor,
+        expectedSuperuserMembership: "absent"
+      }),
+      ImmutableRoleError
+    );
+  });
+
+  test("prevents self lockout of privileged access", async () => {
+    await assert.rejects(
+      updateStaffUserRoles({
+        accountId: actor.userId!,
+        roles: [],
+        actor,
+        expectedSuperuserMembership: "absent"
+      }),
+      RolePolicyViolationError
+    );
+  });
+
+  test("rejects internal+customer combination by default policy", async () => {
+    await query(
+      `INSERT INTO users (id, email, status) VALUES
+        ('c0000000-0000-0000-0000-000000000001', 'customer.role.mix@example.com', 'Active')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await query(
+      `INSERT INTO user_roles (user_id, role_id) VALUES
+        ('c0000000-0000-0000-0000-000000000001', 4)
+       ON CONFLICT DO NOTHING`
+    );
+    await assert.rejects(
+      updateStaffUserRoles({
+        accountId: "c0000000-0000-0000-0000-000000000001",
+        roles: ["staff"],
+        actor,
+        expectedSuperuserMembership: "absent"
+      }),
+      RolePolicyViolationError
+    );
   });
 });

@@ -962,6 +962,29 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE vehicle_licensing_authorities
         ALTER COLUMN licensing_authority_id DROP NOT NULL;
     `
+  },
+  {
+    id: "0016_staff_role_change_audit",
+    sql: `
+      CREATE TABLE IF NOT EXISTS staff_role_change_audit (
+        id TEXT PRIMARY KEY,
+        occurred_at TEXT NOT NULL,
+        event_name TEXT NOT NULL,
+        actor_account_id TEXT,
+        actor_email TEXT,
+        target_account_id TEXT,
+        target_email TEXT,
+        success BOOLEAN NOT NULL,
+        reason TEXT,
+        before_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+        after_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata JSONB
+      );
+      CREATE INDEX IF NOT EXISTS idx_staff_role_change_audit_target
+        ON staff_role_change_audit (target_account_id, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_staff_role_change_audit_occurred_at
+        ON staff_role_change_audit (occurred_at DESC);
+    `
   }
 ];
 

@@ -35,6 +35,12 @@
         </div>
       </section>
 
+      <% if (typeof roleNotice !== "undefined" && roleNotice) { %>
+        <section class="staff-notice staff-notice--success" role="status">
+          <strong class="staff-notice__title"><%= roleNotice %></strong>
+        </section>
+      <% } %>
+
       <section class="staff-card" aria-labelledby="staff-directory-heading">
         <header class="staff-card__header">
           <div>
@@ -97,6 +103,7 @@
                     <td data-label="Details">
                       <a class="staff-button" href="<%= member.auditHref %>" data-staff-details aria-describedby="staff-details-hint">View details</a>
                       <a class="staff-button" href="/staff/<%= encodeURIComponent(member.id) %>/profile">Edit name</a>
+                      <a class="staff-button" href="<%= member.editRolesHref || ('/staff/' + encodeURIComponent(member.id) + '/roles') %>">Edit roles</a>
                     </td>
                   </tr>
                 <% }) %>

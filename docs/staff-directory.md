@@ -103,6 +103,11 @@ rights (`superuser`, `manage_users`, or `manage_user_roles`) can:
 - Select **Edit name** in the directory to use `GET/POST /staff/:accountId/profile`.
   Only existing internal staff accounts are eligible. Email, roles and credentials
   cannot be changed through this form.
+- Select **Edit roles** in the directory to use `GET/POST /staff/:accountId/roles`.
+  Role updates are transactional and change only `user_roles` mappings. The
+  `superuser` role is immutable in this flow (read-only "Managed by installation"),
+  self-lockout of the acting administrator is blocked, and policy violations are
+  rejected server-side.
 - During initial installation, confirm the signed-in administrator on
   `/setup/bootstrap-superuser` and enter required **Name** and **Surname**. These
   are trimmed and joined into the same `display_name` (100 characters total,
@@ -123,6 +128,10 @@ Names are trimmed, limited to 100 characters, checked for string type and contro
 characters, and escaped by EJS. Blank names clear the field. Mutations retain
 session authorization and application CSRF protection, and protected responses
 use no-store headers.
+
+Role edits write `staff_role_change_audit` events for both successful updates and
+blocked attempts (for example immutable `superuser` tampering or unauthorized role
+changes), including actor, target, and before/after role sets.
 
 The directory shows the stored name above its email link. Missing/blank names show
 **Name not provided** and a neutral `?` avatar; email stays visible and links to the
@@ -165,11 +174,9 @@ Behavior matches the existing `/customers` authorization pattern
 
 ## Known limitations / placeholders
 
-- Read-only for this change: no create/edit/suspend/remove actions are implemented.
-  The Admin Dashboard's "Management → Staff" tile description ("Add, edit, suspend, or
-  remove staff records") is pre-existing prototype copy that is not currently rendered
-  as a clickable element (`dashboardSections` is not wired into `dashboard.ejs`); it is
-  unrelated to this change and left as-is.
+- Staff role editing only manages internal roles offered by this app's role
+  catalogue; protected installation-only controls (including `superuser`) remain
+  outside the UI.
 - No sorting/filtering/pagination beyond a fixed alphabetical-by-email order, consistent
   with keeping the first implementation simple; `/customers` pagination/search patterns
   can be layered on later if the list grows large enough to need them.
