@@ -316,7 +316,7 @@ describe("GET /staff (staff directory)", () => {
 
       const body = await (await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`)).text();
 
-      assert.match(body, new RegExp(DRIVER_MASKED_EMAIL.replace(/\*/g, "\\*")));
+      assert.match(body, /dr\*\*\*r@ridematrix\.com/);
       assert.doesNotMatch(body, /driver@ridematrix\.com/);
     });
 
@@ -329,7 +329,7 @@ describe("GET /staff (staff directory)", () => {
       assert.match(response.headers.get("cache-control") || "", /no-store/);
       assert.match(body, /User details/);
       assert.match(body, /Unnamed user/);
-      assert.match(body, new RegExp(DRIVER_MASKED_EMAIL.replace(/\*/g, "\\*")));
+      assert.match(body, /dr\*\*\*r@ridematrix\.com/);
       assert.match(body, new RegExp(DRIVER_SHORT_ID));
       assert.match(body, /Created/);
       assert.match(body, /Driver/);
