@@ -144,6 +144,39 @@ function formatAuditTimestamp(value: string): string {
   }).format(new Date(value));
 }
 
+function getIdentityDisplayName(value: string | null): string {
+  const normalized = value?.trim();
+  return normalized || "Unnamed user";
+}
+
+function formatIdentityUserId(value: string): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "Unknown ID";
+  }
+  if (normalized.length <= 12) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 8)}…${normalized.slice(-4)}`;
+}
+
+function maskIdentityEmail(value: string): string | null {
+  const normalized = String(value || "").trim();
+  const at = normalized.lastIndexOf("@");
+  if (at <= 0) {
+    return null;
+  }
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (!domain) {
+    return null;
+  }
+  if (local.length <= 2) {
+    return `${local[0]}***@${domain}`;
+  }
+  return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+}
+
 function getFailureCategoryLabel(category: string): string {
   switch (category) {
     case "invalid_credentials":
@@ -297,6 +330,9 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
         email: session.user.email,
         member: {
           ...member,
+          identityDisplayName: getIdentityDisplayName(member.displayName),
+          identityShortId: formatIdentityUserId(member.id),
+          maskedEmail: maskIdentityEmail(member.email),
           roleLabels: member.roles.map(getRoleLabel),
           formattedCreatedAt: formatDate(member.createdAt),
           formattedLastLoginAt: formatDateTime(member.lastLoginAt)
