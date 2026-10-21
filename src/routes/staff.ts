@@ -13,6 +13,8 @@ import { requireCsrfToken } from "../middleware/csrf";
 import {
   AssignableRole,
   DuplicateStaffUserEmailError,
+  ImmutableRoleError,
+  RolePolicyViolationError,
   SUPERUSER_ROLE,
   StaffUserActor,
   UnauthorizedRoleDelegationError,
@@ -25,8 +27,14 @@ import {
   isValidUserEmail,
   listAssignableRoles,
   normalizeUserEmail,
-  updateStaffDisplayName
+  updateStaffDisplayName,
+  updateStaffUserRoles
 } from "../services/staff-users";
+import {
+  appendStaffRoleAuditEvent,
+  listStaffRoleAuditEvents,
+  STAFF_ROLE_UPDATE_BLOCKED
+} from "../services/staff-role-audit";
 
 type StaffRouterOptions = {
   appTitle: string;
@@ -161,6 +169,19 @@ function getFailureCategoryLabel(category: string): string {
   }
 }
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) {
+    return "—";
+  }
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${"*".repeat(Math.max(1, local.length - visible.length))}@${domain}`;
+}
+
+function shortAccountId(accountId: string): string {
+  return accountId.slice(0, 8);
+}
+
 export function createStaffRouter(options: StaffRouterOptions): Router {
   const router = Router();
   router.use(noStoreProtectedResponse);
@@ -179,6 +200,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
     const sessionRoles = Array.isArray(session.user.roles) ? session.user.roles : [];
     const permissions = await getPermissionsForRoles(sessionRoles);
     const actor: StaffUserActor = {
+      userId: session.user.id,
       email: session.user.email,
       roles: sessionRoles,
       permissions
@@ -227,6 +249,46 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
     });
   }
 
+  function renderRoleEditor(
+    res: Response,
+    context: {
+      actor: StaffUserActor;
+      member: Awaited<ReturnType<typeof getStaffUser>>;
+      assignableRoles: AssignableRole[];
+      selectedRoles: string[];
+      errors: string[];
+      status?: number;
+    }
+  ) {
+    const member = context.member;
+    if (!member) {
+      return res.status(404).render("pages/unavailable", {
+        title: "Unavailable",
+        appTitle: options.appTitle
+      });
+    }
+    const editableRoles = context.assignableRoles.filter((role) => role.name !== SUPERUSER_ROLE);
+    return res.status(context.status ?? 200).render("pages/staff/roles", {
+      title: "Edit roles",
+      appTitle: options.appTitle,
+      email: context.actor.email,
+      member,
+      identity: {
+        displayName: member.displayName?.trim() || "Name not provided",
+        shortId: shortAccountId(member.id),
+        maskedEmail: maskEmail(member.email)
+      },
+      editableRoles: editableRoles.map((role) => ({
+        ...role,
+        canDelegate: canDelegateRole(context.actor, role.name)
+      })),
+      selectedRoles: context.selectedRoles,
+      hasSuperuser: member.roles.includes(SUPERUSER_ROLE),
+      expectedSuperuserMembership: member.roles.includes(SUPERUSER_ROLE) ? "present" : "absent",
+      errors: context.errors
+    });
+  }
+
   router.get("/staff", async (req, res, next) => {
     try {
       const session = await loadSession(req.headers.cookie);
@@ -243,11 +305,16 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       }
 
       const staff = await listStaffUsers();
+      const roleNotice =
+        req.query.rolesUpdated === "1" ? "Roles updated successfully." : req.query.rolesBlocked === "1"
+          ? "Role update request was blocked by policy."
+          : null;
 
       return res.render("pages/staff/index", {
         title: "Staff",
         appTitle: options.appTitle,
         email: session.user.email,
+        roleNotice,
         staffCount: staff.length,
         staff: staff.map((member) => ({
           ...member,
@@ -255,7 +322,8 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
           roleBadges: buildStaffRoleBadges(member.roles),
           formattedCreatedAt: formatDate(member.createdAt),
           formattedLastLoginAt: formatDateTime(member.lastLoginAt),
-          auditHref: `/staff/${encodeURIComponent(member.id)}/audit`
+          auditHref: `/staff/${encodeURIComponent(member.id)}/audit`,
+          editRolesHref: `/staff/${encodeURIComponent(member.id)}/roles`
         }))
       });
     } catch (error) {
@@ -289,6 +357,7 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       }
 
       const events = await listStaffLoginAuditEvents(member);
+      const roleEvents = await listStaffRoleAuditEvents(member.id, 100);
 
       return res.render("pages/staff/audit", {
         title: "Login history",
@@ -307,6 +376,13 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
           formattedOccurredAt: event.occurredAt ? formatAuditTimestamp(event.occurredAt) : "Unknown time",
           outcomeLabel: event.success ? "Succeeded" : "Failed",
           failureLabel: event.failureCategory ? getFailureCategoryLabel(event.failureCategory) : null
+        })),
+        roleEvents: roleEvents.map((event) => ({
+          ...event,
+          formattedOccurredAt: event.occurredAt ? formatAuditTimestamp(event.occurredAt) : "Unknown time",
+          outcomeLabel: event.success ? "Applied" : "Blocked",
+          beforeRolesLabel: event.beforeRoles.length > 0 ? event.beforeRoles.map(getRoleLabel).join(", ") : "—",
+          afterRolesLabel: event.afterRoles.length > 0 ? event.afterRoles.map(getRoleLabel).join(", ") : "—"
         }))
       });
     } catch (error) {
@@ -390,6 +466,114 @@ export function createStaffRouter(options: StaffRouterOptions): Router {
       next(error);
     }
   });
+
+  router.get("/staff/:accountId/roles", async (req, res, next) => {
+    try {
+      const resolved = await resolveActor(req);
+      if (resolved === "unauthenticated") return res.redirect("/access");
+      if (resolved === "forbidden") return renderUnavailable(res);
+      const member = await getStaffUser(req.params.accountId);
+      if (!member) {
+        return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      const assignableRoles = await listAssignableRoles();
+      const selectedRoles = member.roles.filter(
+        (role) => role !== SUPERUSER_ROLE && assignableRoles.some((candidate) => candidate.name === role)
+      );
+      return renderRoleEditor(res, {
+        actor: resolved.actor,
+        member,
+        assignableRoles,
+        selectedRoles,
+        errors: []
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post<{ accountId: string }>(
+    "/staff/:accountId/roles",
+    requireCsrfToken({ appTitle: options.appTitle }),
+    async (req, res, next) => {
+      try {
+        const session = await loadSession(req.headers.cookie);
+        const accountId = req.params.accountId;
+        if (!session.authenticated || !session.user) {
+          return res.redirect("/access");
+        }
+        const permissions = await getPermissionsForRoles(Array.isArray(session.user.roles) ? session.user.roles : []);
+        const actor: StaffUserActor = {
+          userId: session.user.id,
+          email: session.user.email,
+          roles: Array.isArray(session.user.roles) ? session.user.roles : [],
+          permissions
+        };
+        if (!canManageStaffUsers(actor)) {
+          await appendStaffRoleAuditEvent({
+            eventName: STAFF_ROLE_UPDATE_BLOCKED,
+            actorAccountId: actor.userId ?? null,
+            actorEmail: actor.email,
+            targetAccountId: accountId,
+            success: false,
+            reason: "unauthorized_actor",
+            beforeRoles: [],
+            afterRoles: []
+          });
+          return renderUnavailable(res);
+        }
+
+        const assignableRoles = await listAssignableRoles();
+        const member = await getStaffUser(accountId);
+        if (!member) {
+          return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+        }
+
+        const selectedRoles = toRoleList(req.body.roles);
+        try {
+          await updateStaffUserRoles({
+            accountId,
+            roles: selectedRoles,
+            actor,
+            expectedSuperuserMembership:
+              req.body.expectedSuperuserMembership === "present" ? "present" : "absent"
+          });
+          return res.redirect(303, "/staff?rolesUpdated=1");
+        } catch (error) {
+          const renderedSelection = selectedRoles.filter((role) =>
+            assignableRoles.some((candidate) => candidate.name === role && role !== SUPERUSER_ROLE)
+          );
+          if (error instanceof ImmutableRoleError) {
+            return renderRoleEditor(res, {
+              actor,
+              member,
+              assignableRoles,
+              selectedRoles: renderedSelection,
+              errors: [error.message],
+              status: 403
+            });
+          }
+          if (
+            error instanceof UnknownRoleError ||
+            error instanceof UnauthorizedRoleDelegationError ||
+            error instanceof RolePolicyViolationError
+          ) {
+            return renderRoleEditor(res, {
+              actor,
+              member,
+              assignableRoles,
+              selectedRoles: renderedSelection,
+              errors: [error.message],
+              status: 400
+            });
+          }
+          throw error;
+        }
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   router.post("/staff/invite", async (req, res, next) => {
     try {

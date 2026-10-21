@@ -24,7 +24,7 @@ test("staff desktop dialog supports double-click, keyboard, focus, and standalon
   });
   const details = await ejs.renderFile(path.join(root, "src/views/pages/staff/audit.ejs"), {
     title: "Login history", appTitle: "RideMatrix", email: "admin@example.com",
-    dialogMode: true, member, events: [], eventLimit: 200
+    dialogMode: true, member, events: [], roleEvents: [], eventLimit: 200
   });
   const requests: string[] = [];
   const server = http.createServer((request, response) => {

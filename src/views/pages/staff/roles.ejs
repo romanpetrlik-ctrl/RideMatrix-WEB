@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell staff-page staff-invite-page">
+      <div class="staff-page__header">
+        <div class="staff-page__heading">
+          <h1 class="staff-page__title">Edit roles</h1>
+          <p class="staff-page__subtitle"><%= identity.displayName %> · <code><%= identity.shortId %></code> · <%= identity.maskedEmail %></p>
+        </div>
+        <a class="staff-button" href="/staff">Back to staff directory</a>
+      </div>
+
+      <% if (errors.length > 0) { %>
+        <section class="staff-notice staff-notice--critical" role="alert">
+          <strong class="staff-notice__title">Role update blocked</strong>
+          <ul class="staff-notice__list">
+            <% errors.forEach((error) => { %><li><%= error %></li><% }) %>
+          </ul>
+        </section>
+      <% } %>
+
+      <section class="staff-card staff-form-card">
+        <form class="staff-form" method="post" action="/staff/<%= encodeURIComponent(member.id) %>/roles">
+          <%- locals.csrfField || "" %>
+          <input type="hidden" name="expectedSuperuserMembership" value="<%= expectedSuperuserMembership %>" />
+
+          <div class="staff-form__section">
+            <fieldset class="staff-fieldset">
+              <legend class="staff-form__section-title">Assigned roles</legend>
+              <p class="staff-field__hint">Select internal roles for this account.</p>
+              <ul class="staff-role-options">
+                <% editableRoles.forEach((role) => { %>
+                  <li class="staff-role-option<%= role.canDelegate ? '' : ' staff-role-option--disabled' %>">
+                    <input class="staff-role-option__input" type="checkbox" id="role-<%= role.name %>" name="roles" value="<%= role.name %>" <%= selectedRoles.includes(role.name) ? "checked" : "" %> <%= role.canDelegate ? "" : "disabled" %> />
+                    <div class="staff-role-option__body">
+                      <label class="staff-role-option__label" for="role-<%= role.name %>"><%= role.label %></label>
+                      <p class="staff-role-option__description"><%= role.description %></p>
+                    </div>
+                  </li>
+                <% }) %>
+              </ul>
+            </fieldset>
+          </div>
+
+          <div class="staff-form__section">
+            <h2 class="staff-form__section-title">Protected roles</h2>
+            <p class="staff-field__hint">Superuser membership is managed by installation controls and cannot be changed here.</p>
+            <% if (hasSuperuser) { %>
+              <span class="staff-role-badge staff-role-badge--superuser"><abbr title="Superuser">SU</abbr> · Managed by installation</span>
+            <% } else { %>
+              <span class="staff-table__muted">No superuser role assigned</span>
+            <% } %>
+          </div>
+
+          <div class="staff-form__footer">
+            <button class="button button--execute staff-button staff-button--primary" type="submit">Save roles</button>
+            <a class="button button--execute-helper staff-button staff-button--ghost" href="/staff">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </main>
+    <%- include("../../partials/footer") %>
+  </body>
+</html>
