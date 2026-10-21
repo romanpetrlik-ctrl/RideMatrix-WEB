@@ -1,0 +1,6 @@
+<div class="pagination-bar">
+  <% if (page > 1) { %><a class="pagination-bar__link" href="/drivers?q=<%= encodeURIComponent(search) %><%= locals.status ? `&status=${encodeURIComponent(status)}` : "" %>&page=<%= page - 1 %>">Previous</a><% } %>
+  <% for (let n = 1; n <= totalPages; n += 1) { %><a class="pagination-bar__link<%= n === page ? ' pagination-bar__link--active' : '' %>" href="/drivers?q=<%= encodeURIComponent(search) %><%= locals.status ? `&status=${encodeURIComponent(status)}` : "" %>&page=<%= n %>" aria-current="<%= n === page ? 'page' : 'false' %>"><%= n %></a><% } %>
+  <% if (page < totalPages) { %><a class="pagination-bar__link" href="/drivers?q=<%= encodeURIComponent(search) %><%= locals.status ? `&status=${encodeURIComponent(status)}` : "" %>&page=<%= page + 1 %>">Next</a><% } %>
+  <span><%= startRecord %>-<%= endRecord %> of <%= total %></span>
+</div>

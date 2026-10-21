@@ -89,7 +89,7 @@ test("dashboard operational menu is the canonical navigation", () => {
 
 test("drivers and vehicles operational actions use existing destinations or dashboard placeholders", () => {
   const rows = new Map(operationalMenuRows.map((row) => [row.category, row.actions]));
-  assert.deepEqual(rows.get("Drivers"), [{ label: "All drivers", href: "/dashboard?tile=drivers-all" }]);
+  assert.deepEqual(rows.get("Drivers"), [{ label: "All drivers", href: "/drivers" }]);
   assert.deepEqual(rows.get("Vehicles"), [
     { label: "Active vehicles", href: "/vehicles?status=active" },
     { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },

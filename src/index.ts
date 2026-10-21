@@ -12,6 +12,7 @@ import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
 import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
+import { createDriversRouter } from "./routes/drivers";
 import { createSetupRouter } from "./routes/setup";
 import { errorHandler } from "./middleware/error-handler";
 import { createCsrfProtection } from "./middleware/csrf";
@@ -64,6 +65,7 @@ async function startServer() {
   app.use(createDashboardRouter({ appTitle }));
   app.use(createCustomersRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
+  app.use(createDriversRouter({ appTitle }));
   app.use(createVehiclesRouter({ appTitle }));
   app.use(createRoleSectionsRouter({ appTitle }));
 
