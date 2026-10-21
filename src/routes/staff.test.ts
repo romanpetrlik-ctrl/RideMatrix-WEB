@@ -225,6 +225,8 @@ describe("GET /staff (staff directory)", () => {
 
   describe("login audit history", () => {
     const DRIVER_ID = "a0000000-0000-0000-0000-000000000002";
+    const DRIVER_MASKED_EMAIL = "dr***r@ridematrix.com";
+    const DRIVER_SHORT_ID = "a0000000…0002";
     const adminSession: MockSession = {
       authenticated: true,
       user: { id: "u-3", email: "admin@ridematrix.com", roles: ["admin"], active_role: "admin" }
@@ -284,6 +286,40 @@ describe("GET /staff (staff directory)", () => {
       assert.doesNotMatch(body, /other@ridematrix\.com/);
     });
 
+    test("embedded details show the display name when present", async () => {
+      mockSession = adminSession;
+      await query(
+        `INSERT INTO staff_profiles (account_id, display_name)
+         VALUES ($1, $2)
+         ON CONFLICT (account_id)
+         DO UPDATE SET display_name = EXCLUDED.display_name`,
+        [DRIVER_ID, "Driver Name"]
+      );
+
+      const body = await (await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`)).text();
+
+      assert.match(body, /Driver Name/);
+      assert.match(body, new RegExp(DRIVER_SHORT_ID));
+    });
+
+    test("embedded details fallback to Unnamed user when display name is missing", async () => {
+      mockSession = adminSession;
+      await query(`DELETE FROM staff_profiles WHERE account_id = $1`, [DRIVER_ID]);
+
+      const body = await (await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`)).text();
+
+      assert.match(body, /Unnamed user/);
+    });
+
+    test("embedded details never show raw email", async () => {
+      mockSession = adminSession;
+
+      const body = await (await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`)).text();
+
+      assert.match(body, /dr\*\*\*r@ridematrix\.com/);
+      assert.doesNotMatch(body, /driver@ridematrix\.com/);
+    });
+
     test("embedded details reuse protected account-scoped history without the navigation shell", async () => {
       mockSession = adminSession;
       const response = await fetch(`${baseUrl}/staff/${DRIVER_ID}/audit?dialog=1`);
@@ -292,11 +328,14 @@ describe("GET /staff (staff directory)", () => {
       assert.equal(response.status, 200);
       assert.match(response.headers.get("cache-control") || "", /no-store/);
       assert.match(body, /User details/);
-      assert.match(body, /driver@ridematrix\.com/);
+      assert.match(body, /Unnamed user/);
+      assert.match(body, /dr\*\*\*r@ridematrix\.com/);
+      assert.match(body, new RegExp(DRIVER_SHORT_ID));
       assert.match(body, /Created/);
       assert.match(body, /Driver/);
       assert.match(body, /2 login events/);
       assert.match(body, /198\.51\.100\.7/);
+      assert.doesNotMatch(body, /driver@ridematrix\.com/);
       assert.doesNotMatch(body, /Other-Agent|192\.0\.2\.99|other@ridematrix\.com/);
       assert.doesNotMatch(body, /Back to staff directory|currentUserEmail/);
       assert.doesNotMatch(body, /<script>alert\("ua"\)<\/script>/);

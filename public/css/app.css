@@ -2677,6 +2677,21 @@ button:visited,
   font-size: 0.95rem;
 }
 
+.staff-identity-block {
+  display: grid;
+  gap: calc(var(--staff-space) * 0.5);
+}
+
+.staff-identity-block__name {
+  color: var(--staff-navy);
+  font-weight: 600;
+}
+
+.staff-identity-block__meta code {
+  font: inherit;
+  color: var(--staff-text);
+}
+
 .staff-page__actions {
   display: flex;
   flex-wrap: wrap;

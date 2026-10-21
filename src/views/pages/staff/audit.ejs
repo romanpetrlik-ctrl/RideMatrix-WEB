@@ -20,7 +20,17 @@
         <div class="staff-page__heading">
           <p class="staff-page__eyebrow">Administration</p>
           <h1 class="staff-page__title"><%= dialogMode ? "User details" : "Login history" %></h1>
+          <% if (dialogMode) { %>
+          <div class="staff-identity-block" aria-label="User identity">
+            <p class="staff-page__subtitle staff-identity-block__name"><%= member.identityDisplayName %></p>
+            <p class="staff-page__subtitle staff-identity-block__meta">User ID: <code><%= member.identityShortId %></code></p>
+            <% if (member.maskedEmail) { %>
+            <p class="staff-page__subtitle staff-identity-block__meta"><%= member.maskedEmail %></p>
+            <% } %>
+          </div>
+          <% } else { %>
           <p class="staff-page__subtitle"><%= member.email %></p>
+          <% } %>
         </div>
         <% if (!dialogMode) { %>
         <div class="staff-page__actions">

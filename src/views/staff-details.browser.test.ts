@@ -16,9 +16,11 @@ test("staff desktop dialog supports double-click, keyboard, focus, and standalon
   const member = {
     id: "selected", displayName: "Known colleague",
     email: "selected@example.com", status: "Active", roleLabels: ["Driver"],
+    identityDisplayName: "Known colleague", identityShortId: "selected", maskedEmail: "se***d@example.com",
     formattedCreatedAt: "1 Jan 2025", formattedLastLoginAt: "Never",
     auditHref: "/staff/selected/audit"
   };
+  const maskedEmail = "se***d@example.com";
   const directory = await ejs.renderFile(path.join(root, "src/views/pages/staff/index.ejs"), {
     title: "Staff", appTitle: "RideMatrix", email: "admin@example.com", staffCount: 1, staff: [member]
   });
@@ -74,7 +76,8 @@ test("staff desktop dialog supports double-click, keyboard, focus, and standalon
     assert.equal(await dialog.isVisible(), true);
     assert.equal(await close.evaluate((element) => element === document.activeElement), true);
     assert.equal(requests.at(-1), "/staff/selected/audit?dialog=1");
-    assert.equal(await frame.getByText(member.email, { exact: true }).count(), 1);
+    assert.equal(await frame.getByText(maskedEmail, { exact: true }).count(), 1);
+    assert.equal(await frame.getByText(member.email, { exact: true }).count(), 0);
     assert.equal(await frame.getByText("No login events recorded", { exact: true }).count(), 1);
 
     // Native dialog keeps Tab focus away from the background directory.
