@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell vehicle-page"><section class="vehicle-card vehicle-form"><h1><%= title %></h1>
+      <% if (errors.length) { %><div class="notice notice--critical"><% errors.forEach((error) => { %><p><%= error %></p><% }) %></div><% } %>
+      <form method="post" action="<%= driverId ? `/drivers/${encodeURIComponent(driverId)}/edit` : '/drivers/new' %>"><%- locals.csrfField || "" %>
+        <div class="vehicle-form__grid">
+          <section class="vehicle-form__section" aria-labelledby="driver-basic-heading">
+            <h2 class="vehicle-form__section-heading" id="driver-basic-heading">Driver profile</h2>
+            <div class="vehicle-form__fields">
+              <% const readOnlyShortName = shortName || (firstName && lastName ? `${firstName} ${lastName.charAt(0).toUpperCase()}`.trim() : ""); %>
+              <% if (!driverId) { %>
+                <label><span class="vehicle-form__label">Driver account</span><select name="driverId" required><option value="">Select driver account</option><% accountOptions.forEach((account) => { %><option value="<%= account.id %>" <%= driverId === account.id ? 'selected' : '' %>><%= account.email %> · <%= account.id %></option><% }) %></select></label>
+              <% } else { %>
+                <label><span class="vehicle-form__label">Driver account</span><input value="<%= driverId %>" readonly></label>
+              <% } %>
+              <label><span class="vehicle-form__label">First name</span><input name="firstName" required value="<%= firstName || '' %>"></label>
+              <label><span class="vehicle-form__label">Last name</span><input name="lastName" required value="<%= lastName || '' %>"></label>
+              <label><span class="vehicle-form__label">Short name (auto-generated)</span><input value="<%= readOnlyShortName %>" readonly></label>
+            </div>
+            <p class="form-help">Short name is generated automatically as “First name + last name initial”.</p>
+          </section>
+        </div><button class="button button--primary" type="submit">Save record</button> <a class="button button--secondary" href="<%= driverId ? `/drivers/${encodeURIComponent(driverId)}` : '/drivers' %>">Cancel</a>
+      </form>
+    </section></main><%- include("../../partials/footer") %>
+  </body>
+</html>

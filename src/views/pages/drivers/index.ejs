@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell vehicle-page vehicle-list-page">
+      <% const noticeMessage = new Map([["created", "Driver created."], ["updated", "Driver updated."]]).get(notice); %>
+      <header class="vehicle-page__header"><div><h1><%= status === "active" ? "Active drivers" : "Drivers" %></h1><p><%= status === "active" ? "Drivers currently in active service." : "Manage driver profiles, licences, and documents." %></p></div><a class="button button--primary" href="/drivers/new">Add driver</a></header>
+      <% if (noticeMessage) { %><div class="notice" role="status"><%= noticeMessage %></div><% } %>
+      <nav class="vehicle-status-tabs" aria-label="Driver status filter">
+        <a href="/drivers" aria-current="<%= status === '' ? 'page' : 'false' %>" class="button button--small <%= status === '' ? 'button--primary' : 'button--secondary' %>">All drivers</a>
+        <% statuses.forEach((item) => { %><a href="/drivers?status=<%= item %>" aria-current="<%= status === item ? 'page' : 'false' %>" class="button button--small <%= status === item ? 'button--primary' : 'button--secondary' %>"><%= item[0].toUpperCase() + item.slice(1) %></a><% }) %>
+      </nav>
+      <form class="vehicle-toolbar" method="get" action="/drivers">
+        <div class="vehicle-toolbar__field vehicle-toolbar__field--search">
+          <label for="driver-search">Search</label>
+          <input class="vehicle-toolbar__control" id="driver-search" name="q" value="<%= search %>" placeholder="Name, short name, email">
+        </div>
+        <div class="vehicle-toolbar__field vehicle-toolbar__field--status">
+          <label for="driver-status">Status</label>
+          <select class="vehicle-toolbar__control" id="driver-status" name="status"><option value="">All statuses</option><% statuses.forEach((item) => { %><option value="<%= item %>" <%= status === item ? "selected" : "" %>><%= item[0].toUpperCase() + item.slice(1) %></option><% }) %></select>
+        </div>
+        <div class="vehicle-toolbar__actions"><button class="button button--secondary" type="submit">Search</button></div>
+      </form>
+      <section class="vehicle-card">
+        <%- include("../../partials/drivers-pagination", { page, totalPages, total, startRecord, endRecord, search, status }) %>
+        <% if (drivers.length) { %><div class="vehicle-table-wrapper"><table class="vehicle-table"><thead><tr><th>Driver</th><th>Email</th><th>Status</th><th>Profile</th><th>Licences</th><th>Documents</th><th></th></tr></thead><tbody>
+          <% drivers.forEach((driver) => { %><tr><td><a href="/drivers/<%= driver.id %>"><strong><%= driver.shortName || `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || `Driver #${driver.id}` %></strong></a></td><td><%= driver.email %></td><td><span class="status-pill status-pill--<%= (driver.status || 'unknown').toLowerCase().replace(/\s+/g, '-') %>"><%= driver.status || "Unknown" %></span></td><td><%= driver.profileComplete ? "Complete" : "Missing" %></td><td><%= driver.licenceCount %></td><td><%= driver.documentsCount %></td><td><a class="button button--secondary button--small" href="/drivers/<%= driver.id %>/edit">Edit</a></td></tr><% }) %>
+        </tbody></table></div><% } else { %><div class="empty-state"><h2><%= status === "active" ? "No active drivers found" : "No drivers found" %></h2><p>Add a driver or broaden the search<%= status ? " or status filter" : "" %>.</p></div><% } %>
+      </section>
+    </main>
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

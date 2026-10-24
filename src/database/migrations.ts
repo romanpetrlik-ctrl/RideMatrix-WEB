@@ -985,6 +985,33 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_staff_role_change_audit_occurred_at
         ON staff_role_change_audit (occurred_at DESC);
     `
+  },
+  {
+    id: "0017_driver_profiles",
+    sql: `
+      CREATE TABLE IF NOT EXISTS driver_profiles (
+        driver_id TEXT PRIMARY KEY,
+        first_name TEXT NOT NULL CHECK (
+          first_name = btrim(first_name)
+          AND char_length(first_name) BETWEEN 1 AND 100
+          AND first_name !~ '[[:cntrl:]]'
+        ),
+        last_name TEXT NOT NULL CHECK (
+          last_name = btrim(last_name)
+          AND char_length(last_name) BETWEEN 1 AND 100
+          AND last_name !~ '[[:cntrl:]]'
+        ),
+        short_name TEXT NOT NULL CHECK (
+          short_name = btrim(short_name)
+          AND char_length(short_name) BETWEEN 1 AND 160
+          AND short_name !~ '[[:cntrl:]]'
+        ),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_profiles_short_name
+        ON driver_profiles (lower(short_name), driver_id);
+    `
   }
 ];
 

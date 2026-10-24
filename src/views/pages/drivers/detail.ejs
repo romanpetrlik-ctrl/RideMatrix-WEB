@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell vehicle-page vehicle-detail-page">
+      <header class="vehicle-page__header"><div><h1><%= driver.shortName %></h1><p><%= driver.firstName %> <%= driver.lastName %> · <%= driver.email %></p></div><div><span class="status-pill status-pill--<%= (driver.status || 'unknown').toLowerCase().replace(/\s+/g, '-') %>"><%= driver.status || "Unknown" %></span> <a class="button button--primary" href="/drivers/<%= encodeURIComponent(driver.id) %>/edit">Edit</a></div></header>
+      <% const noticeMessage = new Map([
+        ["created", ["Driver created.", false]],
+        ["updated", ["Driver updated.", false]],
+        ["licence-saved", ["Driver licence saved.", false]],
+        ["licence-invalid", ["Enter valid licence details.", true]],
+        ["document-added", ["Driver document uploaded.", false]],
+        ["document-required", ["Choose a category and file to upload.", true]],
+        ["document-invalid", ["Upload a valid PDF, JPEG, or PNG file and choose a valid category.", true]]
+      ]).get(notice); %>
+      <p><a href="/drivers">&larr; All drivers</a></p>
+      <% if (noticeMessage) { %><div class="notice<%= noticeMessage[1] ? ' notice--warning' : '' %>" role="status"><%= noticeMessage[0] %></div><% } %>
+      <section class="vehicle-detail-grid">
+        <article class="vehicle-card"><h2>Driver profile</h2><dl>
+          <dt>First name</dt><dd><%= driver.firstName %></dd>
+          <dt>Last name</dt><dd><%= driver.lastName %></dd>
+          <dt>Short name</dt><dd><%= driver.shortName %></dd>
+          <dt>Email</dt><dd><%= driver.email %></dd>
+          <dt>Status</dt><dd><%= driver.status || "Unknown" %></dd>
+          <dt>Created</dt><dd><%= String(driver.createdAt).slice(0, 10) %></dd>
+          <dt>Updated</dt><dd><%= String(driver.updatedAt).slice(0, 10) %></dd>
+        </dl></article>
+        <article class="vehicle-card"><h2>Driver licences</h2>
+          <% licences.forEach((license) => { %>
+            <% const isEditingLicense = editingLicenseId === license.id; %>
+            <% if (isEditingLicense) { %>
+              <form method="post" action="/drivers/<%= driver.id %>/licences" class="vehicle-document-form">
+                <%- locals.csrfField || "" %>
+                <input type="hidden" name="licenseId" value="<%= license.id %>">
+                <label>Licensing authority<select name="licensingAuthorityId"><option value="" <%= license.licensingAuthorityId ? "" : "selected" %>>Not specified</option><% authorities.forEach((authority) => { %><option value="<%= authority.id %>" <%= license.licensingAuthorityId === authority.id ? "selected" : "" %>><%= authority.name %><%= authority.active ? "" : " (inactive)" %></option><% }) %></select></label>
+                <label>Licence reference<input name="licenseReference" value="<%= license.licenseReference || '' %>"></label>
+                <label>Valid from<input name="validFrom" type="date" required value="<%= String(license.validFrom).slice(0, 10) %>"></label>
+                <label>Valid until<input name="validUntil" type="date" value="<%= license.validUntil ? String(license.validUntil).slice(0, 10) : '' %>"></label>
+                <label>Notes<input name="notes" value="<%= license.notes || '' %>"></label>
+                <span><%= license.active ? "Active" : "Inactive" %></span>
+                <div>
+                  <button class="button button--secondary" type="submit">Save licence</button>
+                  <a class="button button--secondary" href="/drivers/<%= encodeURIComponent(driver.id) %>">Cancel</a>
+                </div>
+              </form>
+            <% } else { %>
+              <section class="vehicle-licence-summary" aria-label="Driver licence">
+                <dl>
+                  <dt>Licensing authority</dt><dd><%= license.licensingAuthorityName || "Not specified" %></dd>
+                  <dt>Licence reference</dt><dd><%= license.licenseReference || "—" %></dd>
+                  <dt>Valid from</dt><dd><%= String(license.validFrom).slice(0, 10) %></dd>
+                  <dt>Valid until</dt><dd><%= license.validUntil ? String(license.validUntil).slice(0, 10) : "—" %></dd>
+                  <dt>Notes</dt><dd><%= license.notes || "—" %></dd>
+                  <dt>Status</dt><dd><%= license.active ? "Active" : "Inactive" %></dd>
+                </dl>
+                <a class="button button--secondary" href="/drivers/<%= encodeURIComponent(driver.id) %>?editLicense=<%= encodeURIComponent(license.id) %>">Edit licence</a>
+              </section>
+            <% } %>
+          <% }) %>
+          <% if (!licences.length) { %><p>No driver licences recorded.</p><% } %>
+          <h3>Add driver licence</h3><form method="post" action="/drivers/<%= driver.id %>/licences" class="vehicle-document-form"><%- locals.csrfField || "" %>
+            <label>Licensing authority<select name="licensingAuthorityId"><option value="" selected>Not specified</option><% authorities.forEach((authority) => { %><option value="<%= authority.id %>"><%= authority.name %></option><% }) %></select></label>
+            <label>Licence reference<input name="licenseReference"></label><label>Valid from<input name="validFrom" type="date" required></label>
+            <label>Valid until<input name="validUntil" type="date"></label><label>Notes<input name="notes"></label>
+            <button class="button button--secondary" type="submit">Add licence</button>
+          </form>
+        </article>
+        <article class="vehicle-card"><h2>Driver documents</h2>
+          <form method="post" action="/drivers/<%= driver.id %>/documents" enctype="multipart/form-data" class="vehicle-document-form"><%- locals.csrfField || "" %>
+            <label>Category<select name="category" required><option value="">Select category</option><% documentLabels.forEach((document) => { %><option value="<%= document.category %>"><%= document.label %></option><% }) %></select></label>
+            <label>Document<input name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+            <button class="button button--secondary" type="submit">Upload document</button>
+          </form>
+          <h3>Uploaded documents</h3>
+          <% if (documents.length) { %><div class="vehicle-document-list"><% documents.forEach((document) => { %><div class="vehicle-document-row"><div class="vehicle-document-row__heading"><strong><%= (documentLabels.find((item) => item.category === document.category)?.label) || document.category %></strong><span class="document-status-badge document-status-badge--uploaded"><span class="document-status-badge__icon" aria-hidden="true">✓</span><span>Uploaded</span></span></div><span><%= document.original_filename %> (<%= String(document.uploaded_at).slice(0, 10) %>)</span><span><a href="/drivers/documents/<%= document.id %>/view">View</a> · <a href="/drivers/documents/<%= document.id %>/download">Download</a></span></div><% }) %></div><% } else { %><p>No driver documents uploaded yet.</p><% } %>
+        </article>
+      </section>
+    </main><%- include("../../partials/footer") %>
+  </body>
+</html>

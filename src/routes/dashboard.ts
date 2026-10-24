@@ -61,7 +61,7 @@ export const operationalMenuRows: OperationalMenuRow[] = [
   },
   {
     category: "Drivers",
-    actions: [{ label: "All drivers", href: "/dashboard?tile=drivers-all" }]
+    actions: [{ label: "All drivers", href: "/drivers" }]
   },
   {
     category: "Vehicles",
