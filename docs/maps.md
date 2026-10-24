@@ -8,11 +8,20 @@ Google Maps JavaScript API when a configured page opts into it.
 
 ## Configuration
 
-Required environment variables are `GOOGLE_MAPS_ENABLED`,
-`GOOGLE_MAPS_SERVER_API_KEY`, `GOOGLE_MAPS_BROWSER_API_KEY`, and
-`GOOGLE_MAPS_MAP_ID`. The server key is used only by the server-side Geocoding
-API adapter; the browser key is separate and may be used by the JavaScript map
-component. Keys are never hard-coded or rendered as server secrets.
+Configure `GOOGLE_MAPS_ENABLED`, `GOOGLE_MAPS_SERVER_API_KEY`,
+`GOOGLE_MAPS_BROWSER_API_KEY`, and `GOOGLE_MAPS_MAP_ID`. Browser settings also
+accept `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` or
+`NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID`,
+and `NEXT_PUBLIC_GOOGLE_MAPS_ENABLED`. The server key is used only by the
+server-side Geocoding API adapter; the browser key is separate and may be used
+by the JavaScript map component. Keys are never hard-coded or rendered as
+server secrets.
+
+The registration map preview is optional. It renders only when maps are enabled,
+a browser key is configured, and a valid default center is provided through
+`GOOGLE_MAPS_DEFAULT_LATITUDE` and `GOOGLE_MAPS_DEFAULT_LONGITUDE` (also
+available with the `NEXT_PUBLIC_GOOGLE_MAPS_` prefix). Missing or invalid map
+settings leave the form usable and show its non-blocking fallback.
 
 Enable only Geocoding API and Maps JavaScript API. Restrict the server key to
 those server-side APIs and restrict the browser key by allowed HTTP referrers.

@@ -41,6 +41,25 @@ test("map configuration keeps browser and server keys separate", () => {
   assert.equal(configuration.mapId, "map-id");
 });
 
+test("map configuration accepts public browser settings and validates its default point", () => {
+  const configuration = readMapConfiguration({
+    NEXT_PUBLIC_GOOGLE_MAPS_ENABLED: "true",
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: "browser-only",
+    NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: "map-id",
+    GOOGLE_MAPS_DEFAULT_LATITUDE: "51.5034",
+    NEXT_PUBLIC_GOOGLE_MAPS_DEFAULT_LONGITUDE: "-0.1276"
+  });
+
+  assert.equal(configuration.enabled, true);
+  assert.equal(configuration.browserApiKey, "browser-only");
+  assert.equal(configuration.mapId, "map-id");
+  assert.deepEqual(configuration.defaultPoint, { latitude: 51.5034, longitude: -0.1276 });
+  assert.equal(readMapConfiguration({
+    GOOGLE_MAPS_DEFAULT_LATITUDE: "91",
+    GOOGLE_MAPS_DEFAULT_LONGITUDE: "0"
+  }).defaultPoint, undefined);
+});
+
 test("geocodes a normalized address through the provider-neutral interface", async () => {
   let requested = "";
   const provider: MapProvider = {

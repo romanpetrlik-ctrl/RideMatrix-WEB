@@ -68,13 +68,34 @@ export function normalizeAddress(address: string): string {
 }
 
 export function readMapConfiguration(env: NodeJS.ProcessEnv = process.env): MapConfiguration {
+  const configuredValue = (...names: string[]): string | undefined => {
+    for (const name of names) {
+      const value = String(env[name] || "").trim();
+      if (value) return value;
+    }
+    return undefined;
+  };
+  const latitude = Number(configuredValue("GOOGLE_MAPS_DEFAULT_LATITUDE", "NEXT_PUBLIC_GOOGLE_MAPS_DEFAULT_LATITUDE"));
+  const longitude = Number(configuredValue("GOOGLE_MAPS_DEFAULT_LONGITUDE", "NEXT_PUBLIC_GOOGLE_MAPS_DEFAULT_LONGITUDE"));
+  const defaultPoint = Number.isFinite(latitude) && Number.isFinite(longitude) &&
+    isValidGeoPoint({ latitude, longitude })
+    ? { latitude, longitude }
+    : undefined;
+  const enabled = String(configuredValue("GOOGLE_MAPS_ENABLED", "NEXT_PUBLIC_GOOGLE_MAPS_ENABLED") || "")
+    .toLowerCase() === "true";
+
   return {
-    enabled: String(env.GOOGLE_MAPS_ENABLED || "").trim().toLowerCase() === "true",
+    enabled,
     provider: "google",
-    serverApiKey: String(env.GOOGLE_MAPS_SERVER_API_KEY || "").trim() || undefined,
-    browserApiKey: String(env.GOOGLE_MAPS_BROWSER_API_KEY || "").trim() || undefined,
-    mapId: String(env.GOOGLE_MAPS_MAP_ID || "").trim() || undefined,
-    geocodingEnabled: String(env.GOOGLE_MAPS_ENABLED || "").trim().toLowerCase() === "true"
+    serverApiKey: configuredValue("GOOGLE_MAPS_SERVER_API_KEY"),
+    browserApiKey: configuredValue(
+      "GOOGLE_MAPS_BROWSER_API_KEY",
+      "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY",
+      "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"
+    ),
+    mapId: configuredValue("GOOGLE_MAPS_MAP_ID", "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID"),
+    geocodingEnabled: enabled,
+    defaultPoint
   };
 }
 
