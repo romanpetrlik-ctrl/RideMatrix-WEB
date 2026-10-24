@@ -138,21 +138,29 @@ test("phone preview accepts the Czech mobile example and preserves metadata", as
 });
 
 test("phone preview uses GB for local numbers", async () => {
-  const response = await requestPreview(adminSession, "07777 888 999");
-  const body = await response.json();
+  for (const [value, expected] of [
+    ["07468 329114", "+447468329114"],
+    ["+447468329114", "+447468329114"],
+    ["+44 7468 329 114", "+447468329114"]
+  ]) {
+    const response = await requestPreview(adminSession, value);
+    const body = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.equal(body.valid, true);
-  assert.equal(body.normalized, "+447777888999");
-  assert.equal(body.country.isoCode, "GB");
+    assert.equal(response.status, 200);
+    assert.equal(body.valid, true, `${value} should be valid`);
+    assert.equal(body.normalized, expected);
+    assert.equal(body.country.isoCode, "GB");
+  }
 });
 
 test("phone preview rejects invalid numbers", async () => {
-  const response = await requestPreview(adminSession, "123");
-  const body = await response.json();
+  for (const value of ["123", "07468"]) {
+    const response = await requestPreview(adminSession, value);
+    const body = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.equal(body.valid, false);
+    assert.equal(response.status, 200);
+    assert.equal(body.valid, false, `${value} should be invalid`);
+  }
 });
 
 test("phone preview requires authentication and admin authorization", async () => {
