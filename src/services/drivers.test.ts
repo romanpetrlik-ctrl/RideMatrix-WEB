@@ -25,7 +25,7 @@ test("driver list resolves legacy display labels without using the id as the tit
           status: "pending_review",
           first_name: null,
           last_name: null,
-          short_name: null,
+          short_name: "Driver #4f241bd2-bdf8-4f46-b040-7d8092aef316",
           licence_count: "0",
           documents_count: "0",
           total_count: "1"
@@ -40,6 +40,19 @@ test("driver list resolves legacy display labels without using the id as the tit
   assert.notEqual(result.drivers[0].displayName, `Driver #${result.drivers[0].id}`);
 });
 
+test("driver directory can use names stored on the legacy auth user", async () => {
+  let query = "";
+  const client = {
+    query: async (sql: string) => {
+      query = sql;
+      return { rows: [] };
+    }
+  };
+  await listDrivers({ client: client as any });
+  assert.match(query, /to_jsonb\(u\) ->> 'first_name'/);
+  assert.match(query, /to_jsonb\(u\) ->> 'last_name'/);
+});
+
 test("driver detail loads a legacy account when its profile row is absent", async () => {
   const client = {
     query: async () => ({
@@ -49,7 +62,7 @@ test("driver detail loads a legacy account when its profile row is absent", asyn
         status: "pending_review",
         first_name: null,
         last_name: null,
-        short_name: null,
+        short_name: "Driver #legacy-technical-id",
         created_at: null,
         updated_at: null
       }]
@@ -61,7 +74,31 @@ test("driver detail loads a legacy account when its profile row is absent", asyn
   assert.ok(driver);
   assert.equal(driver.profileComplete, false);
   assert.equal(driver.displayName, "l***");
+  assert.equal(driver.shortName, null);
   assert.equal(driver.firstName, null);
+});
+
+test("driver detail uses existing auth names when its profile names are missing", async () => {
+  const client = {
+    query: async () => ({
+      rows: [{
+        id: "driver-legacy",
+        email: "legacy@example.com",
+        status: "pending_review",
+        first_name: "Riley",
+        last_name: "Example",
+        short_name: "Driver #driver-legacy",
+        created_at: null,
+        updated_at: null
+      }]
+    })
+  };
+
+  const driver = await getDriverById("driver-legacy", client as any);
+
+  assert.equal(driver?.displayName, "Riley Example");
+  assert.equal(driver?.firstName, "Riley");
+  assert.equal(driver?.shortName, null);
 });
 
 test("editing a legacy driver upserts missing profile fields", async () => {
