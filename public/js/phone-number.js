@@ -75,6 +75,8 @@
       clearTimeout(timer);
       var snapshot = tracker.trackRequest(input.value);
       state = null;
+      input.setCustomValidity("");
+      error.hidden = true;
       renderActions();
       if (!input.value.trim()) {
         render({ valid: false });

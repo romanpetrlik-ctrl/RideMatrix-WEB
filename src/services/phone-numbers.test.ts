@@ -11,6 +11,9 @@ import {
 
 test("normalizes supported local and international formats", () => {
   const cases = [
+    ["07468 329114", "+447468329114"],
+    ["+447468329114", "+447468329114"],
+    ["+44 7468 329 114", "+447468329114"],
     ["00420724982564", "+420724982564"],
     ["07777 888 999", "+447777888999"],
     ["07777888999", "+447777888999"],
@@ -33,6 +36,7 @@ test("normalizes supported local and international formats", () => {
 test("rejects empty and invalid numbers", () => {
   assert.equal(isValidPhoneNumberValue(""), false);
   assert.equal(isValidPhoneNumberValue("123"), false);
+  assert.equal(isValidPhoneNumberValue("07468"), false);
   assert.equal(normalizePhoneToE164("not a phone"), null);
 });
 
