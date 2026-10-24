@@ -32,12 +32,14 @@ status, and pagination links keep each other's values.
 - `GET /vehicles/:id/driver-history` – full driver assignment history.
 
 The relationship model is one active primary driver per vehicle; a driver may be linked to
-multiple vehicles. Only accounts with the `driver` role can be assigned. Re-saving the
-current driver does not add a history row. Auth `users.id` values are compared as text
+multiple vehicles. Candidates must have an active auth account and active driver lifecycle
+profile; accounts without a lifecycle profile are not eligible until completed; assignment
+also checks for a current licence from the selected authority. Re-saving the current driver
+does not add a history row. Auth `users.id` values are compared as text
 (`u.id::text = a.driver_id`) so UUID-keyed auth tables are supported.
 
-Driver personal profiles, right-to-work checks, and driver-licence records are not part of
-vehicle management.
+Driver profiles, lifecycle, right-to-work checks, and driver-licence records are managed
+from `/drivers` and are not part of vehicle management.
 
 ## Safeguards
 

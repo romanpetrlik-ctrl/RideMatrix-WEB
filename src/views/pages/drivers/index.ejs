@@ -5,12 +5,12 @@
     <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
     <%- include("../../partials/header", { appTitle }) %>
     <main class="container rm-page-shell vehicle-page vehicle-list-page">
-      <% const noticeMessage = new Map([["created", "Driver created."], ["updated", "Driver updated."]]).get(notice); %>
+      <% const noticeMessage = new Map([["created", "Driver created."], ["updated", "Driver updated."], ["archived", "Driver archived."], ["archive-invalid", "This driver could not be archived. Check its current lifecycle status."], ["archive-reason-required", "Enter a reason before archiving this driver."]]).get(notice); %>
       <header class="vehicle-page__header"><div><h1><%= status === "active" ? "Active drivers" : "Drivers" %></h1><p><%= status === "active" ? "Drivers currently in active service." : "Manage driver profiles, licences, and documents." %></p></div><a class="button button--primary" href="/drivers/new">Add driver</a></header>
       <% if (noticeMessage) { %><div class="notice" role="status"><%= noticeMessage %></div><% } %>
       <nav class="vehicle-status-tabs" aria-label="Driver status filter">
         <a href="/drivers" aria-current="<%= status === '' ? 'page' : 'false' %>" class="button button--small <%= status === '' ? 'button--primary' : 'button--secondary' %>">All drivers</a>
-        <% statuses.forEach((item) => { %><a href="/drivers?status=<%= item %>" aria-current="<%= status === item ? 'page' : 'false' %>" class="button button--small <%= status === item ? 'button--primary' : 'button--secondary' %>"><%= item[0].toUpperCase() + item.slice(1) %></a><% }) %>
+        <% statuses.forEach((item) => { %><a href="/drivers?status=<%= item %>" aria-current="<%= status === item ? 'page' : 'false' %>" class="button button--small <%= status === item ? 'button--primary' : 'button--secondary' %>"><%= item.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) %></a><% }) %>
       </nav>
       <form class="vehicle-toolbar" method="get" action="/drivers">
         <div class="vehicle-toolbar__field vehicle-toolbar__field--search">
@@ -19,17 +19,24 @@
         </div>
         <div class="vehicle-toolbar__field vehicle-toolbar__field--status">
           <label for="driver-status">Status</label>
-          <select class="vehicle-toolbar__control" id="driver-status" name="status"><option value="">All statuses</option><% statuses.forEach((item) => { %><option value="<%= item %>" <%= status === item ? "selected" : "" %>><%= item[0].toUpperCase() + item.slice(1) %></option><% }) %></select>
+          <select class="vehicle-toolbar__control" id="driver-status" name="status"><option value="">All statuses</option><% statuses.forEach((item) => { %><option value="<%= item %>" <%= status === item ? "selected" : "" %>><%= item.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) %></option><% }) %></select>
         </div>
         <div class="vehicle-toolbar__actions"><button class="button button--secondary" type="submit">Search</button></div>
       </form>
       <section class="vehicle-card">
         <%- include("../../partials/drivers-pagination", { page, totalPages, total, startRecord, endRecord, search, status }) %>
         <% if (drivers.length) { %><div class="vehicle-table-wrapper"><table class="vehicle-table"><thead><tr><th>Driver</th><th>Email</th><th>Status</th><th>Profile</th><th>Licences</th><th>Documents</th><th></th></tr></thead><tbody>
-          <% drivers.forEach((driver) => { %><tr><td><a href="/drivers/<%= driver.id %>"><strong><%= driver.shortName || `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || `Driver #${driver.id}` %></strong></a></td><td><%= driver.email %></td><td><span class="status-pill status-pill--<%= (driver.status || 'unknown').toLowerCase().replace(/\s+/g, '-') %>"><%= driver.status || "Unknown" %></span></td><td><%= driver.profileComplete ? "Complete" : "Missing" %></td><td><%= driver.licenceCount %></td><td><%= driver.documentsCount %></td><td><a class="button button--secondary button--small" href="/drivers/<%= driver.id %>/edit">Edit</a></td></tr><% }) %>
+          <% drivers.forEach((driver) => { %><tr><td><a href="/drivers/<%= encodeURIComponent(driver.id) %>"><strong><%= driver.displayName %></strong></a><br><small class="driver-id-meta"><%= driver.id %></small></td><td><%= driver.email || "—" %></td><td><span class="status-pill status-pill--<%= (driver.status || 'unknown').toLowerCase().replace(/_/g, '-') %>"><%= (driver.status || "Unknown").replace(/_/g, " ") %></span></td><td><%= driver.profileComplete ? "Complete" : "Missing" %></td><td><%= driver.licenceCount %></td><td><%= driver.documentsCount %></td><td><a class="button button--secondary button--small" href="/drivers/<%= encodeURIComponent(driver.id) %>/edit">Edit</a><% if (driver.status !== "archived") { %> <button class="button button--secondary button--small" type="button" data-archive-open="archive-driver-<%= driver.id %>">Archive</button><dialog id="archive-driver-<%= driver.id %>" aria-labelledby="archive-title-<%= driver.id %>"><form method="post" action="/drivers/<%= encodeURIComponent(driver.id) %>/archive"><%- locals.csrfField || "" %><h2 id="archive-title-<%= driver.id %>">Archive <%= driver.displayName %>?</h2><p>This driver will be removed from the default list and assignment candidates.</p><label for="archive-reason-<%= driver.id %>">Reason</label><textarea id="archive-reason-<%= driver.id %>" name="reason" required maxlength="2000" rows="4"></textarea><div><button class="button button--primary" type="submit">Save note and archive</button> <button class="button button--secondary" type="button" data-archive-close>Cancel</button></div></form></dialog><% } %></td></tr><% }) %>
         </tbody></table></div><% } else { %><div class="empty-state"><h2><%= status === "active" ? "No active drivers found" : "No drivers found" %></h2><p>Add a driver or broaden the search<%= status ? " or status filter" : "" %>.</p></div><% } %>
       </section>
     </main>
+    <script>
+      document.addEventListener("click", (event) => {
+        const openButton = event.target.closest("[data-archive-open]");
+        if (openButton) document.getElementById(openButton.dataset.archiveOpen)?.showModal();
+        if (event.target.closest("[data-archive-close]")) event.target.closest("dialog")?.close();
+      });
+    </script>
     <%- include("../../partials/footer") %>
   </body>
 </html>

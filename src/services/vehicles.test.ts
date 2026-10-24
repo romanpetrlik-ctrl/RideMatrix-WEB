@@ -394,6 +394,19 @@ test("driver candidates return an unavailable source state instead of falling ba
   assert.deepEqual(missingSource.drivers, []);
 });
 
+test("driver assignment candidates are limited to active accounts and active lifecycle profiles", async () => {
+  let query = "";
+  await listDriverCandidates({
+    query: async (sql: string) => {
+      query = sql;
+      return { rows: [] };
+    }
+  } as any);
+
+  assert.match(query, /lower\(COALESCE\(u\.status::text, ''\)\) = 'active'/);
+  assert.match(query, /COALESCE\(dp\.lifecycle_status, 'pending_review'\) = 'active'/);
+});
+
 test("driver assignment rejects any non-empty driver id when the driver source is unavailable", async () => {
   await assert.rejects(
     assignVehicleDriver("vehicle-1", "driver-1", {

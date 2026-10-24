@@ -5,7 +5,8 @@ import { getPool } from "../database/connection";
 import { buildEntityVaultRelativePath, readVaultFile, removeVaultFile, sanitizeOriginalFilename, writeVaultFile } from "./document-vault";
 import { validateVehicleDocumentUpload, VEHICLE_DOCUMENT_MAX_BYTES } from "./vehicles";
 
-export const DRIVER_STATUS_FILTERS = ["", "active", "inactive"] as const;
+export const DRIVER_STATUS_FILTERS = ["pending_review", "active", "rejected", "suspended", "archived"] as const;
+export type DriverLifecycleStatus = (typeof DRIVER_STATUS_FILTERS)[number];
 export const DRIVER_DOCUMENT_CATEGORIES = [
   "driver_licence",
   "private_hire_badge",
@@ -31,6 +32,7 @@ export type DriverDirectoryRecord = {
   firstName: string | null;
   lastName: string | null;
   shortName: string | null;
+  displayName: string;
   profileComplete: boolean;
   licenceCount: number;
   documentsCount: number;
@@ -40,11 +42,13 @@ export type DriverProfile = {
   id: string;
   email: string;
   status: string | null;
-  firstName: string;
-  lastName: string;
-  shortName: string;
-  createdAt: string;
-  updatedAt: string;
+  firstName: string | null;
+  lastName: string | null;
+  shortName: string | null;
+  displayName: string;
+  profileComplete: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 export type DriverProfileInput = {
@@ -92,7 +96,7 @@ function db(client?: Queryable): Queryable {
 
 function toDriverDirectoryRecord(row: {
   id: string;
-  email: string;
+  email: string | null;
   status: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -103,17 +107,34 @@ function toDriverDirectoryRecord(row: {
   const firstName = row.first_name?.trim() || null;
   const lastName = row.last_name?.trim() || null;
   const shortName = row.short_name?.trim() || null;
+  const email = row.email || "";
   return {
     id: row.id,
-    email: row.email,
+    email,
     status: row.status,
     firstName,
     lastName,
     shortName,
+    displayName: resolveDriverDisplayName(firstName, lastName, shortName, email),
     profileComplete: Boolean(firstName && lastName && shortName),
     licenceCount: Number(row.licence_count || 0),
     documentsCount: Number(row.documents_count || 0)
   };
+}
+
+function maskedEmailLocalPart(email: string): string {
+  const localPart = text(email).split("@", 1)[0]?.trim() || "";
+  return localPart ? `${Array.from(localPart)[0]}***` : "";
+}
+
+export function resolveDriverDisplayName(
+  firstName: string | null,
+  lastName: string | null,
+  shortName: string | null,
+  email: string
+): string {
+  const fullName = firstName && lastName ? `${firstName} ${lastName}` : "";
+  return fullName || shortName?.trim() || maskedEmailLocalPart(email) || "Unnamed driver";
 }
 
 export function isValidDriverId(value: unknown): value is string {
@@ -149,9 +170,9 @@ export function normalizeDriverProfileInput(input: DriverProfileInput): {
   return { firstName, lastName, shortName };
 }
 
-function normalizeDriverStatusFilter(value: unknown): "" | "active" | "inactive" {
+function normalizeDriverStatusFilter(value: unknown): DriverLifecycleStatus | "" {
   const normalized = text(value).toLowerCase();
-  if (normalized === "active" || normalized === "inactive") return normalized;
+  if (DRIVER_STATUS_FILTERS.includes(normalized as DriverLifecycleStatus)) return normalized as DriverLifecycleStatus;
   return "";
 }
 
@@ -187,8 +208,8 @@ function profileNameExpression(userAlias = "u", profileAlias = "dp"): string {
       NULLIF(btrim(to_jsonb(${userAlias}) ->> 'last_name'), '')
     )), ''),
     NULLIF(btrim(to_jsonb(${userAlias}) ->> 'driver_code'), ''),
-    ${userAlias}.email,
-    'Driver #' || ${userAlias}.id::text
+    NULLIF(btrim(${userAlias}.email), ''),
+    'Unnamed driver'
   )`;
 }
 
@@ -205,7 +226,7 @@ export async function listDrivers(params: {
   perPage: number;
   totalPages: number;
   search: string;
-  status: "" | "active" | "inactive";
+  status: DriverLifecycleStatus | "";
 }> {
   const search = text(params.search);
   const status = normalizeDriverStatusFilter(params.status);
@@ -230,6 +251,7 @@ export async function listDrivers(params: {
          u.id::text AS id,
          u.email,
          u.status,
+         dp.lifecycle_status,
          dp.first_name,
          dp.last_name,
          dp.short_name,
@@ -243,7 +265,8 @@ export async function listDrivers(params: {
          JOIN roles r ON r.id = ur.role_id
          WHERE ur.user_id = u.id AND r.key = 'driver'
        )
-         AND ($1 = '' OR lower(COALESCE(u.status::text, '')) = $1)
+         AND ($1 <> '' OR COALESCE(dp.lifecycle_status, 'pending_review') <> 'archived')
+         AND ($1 = '' OR COALESCE(dp.lifecycle_status, 'pending_review') = $1)
          AND (
            $2 = ''
            OR lower(u.email) LIKE $3
@@ -263,7 +286,9 @@ export async function listDrivers(params: {
            )
          )
      )
-     SELECT id, email, status, first_name, last_name, short_name,
+     SELECT id, email,
+       COALESCE(lifecycle_status, 'pending_review') AS status,
+       first_name, last_name, short_name,
        licence_count::text, documents_count::text,
        count(*) OVER()::text AS total_count
      FROM base
@@ -308,8 +333,9 @@ export async function getDriverById(driverId: string, client?: Queryable): Promi
   if (!isValidDriverId(driverId)) return null;
   const result = await db(client).query<{
     id: string;
-    email: string;
+    email: string | null;
     status: string | null;
+    lifecycle_status: string | null;
     first_name: string | null;
     last_name: string | null;
     short_name: string | null;
@@ -319,7 +345,7 @@ export async function getDriverById(driverId: string, client?: Queryable): Promi
     `SELECT
        u.id::text AS id,
        u.email,
-       u.status,
+       COALESCE(dp.lifecycle_status, 'pending_review') AS status,
        dp.first_name,
        dp.last_name,
        dp.short_name,
@@ -336,16 +362,20 @@ export async function getDriverById(driverId: string, client?: Queryable): Promi
     [driverId]
   );
   const row = result.rows[0];
-  if (!row || !row.first_name || !row.last_name || !row.short_name || !row.created_at || !row.updated_at) {
-    return null;
-  }
+  if (!row) return null;
+  const firstName = row.first_name?.trim() || null;
+  const lastName = row.last_name?.trim() || null;
+  const shortName = row.short_name?.trim() || null;
+  const email = row.email || "";
   return {
     id: row.id,
-    email: row.email,
+    email,
     status: row.status,
-    firstName: row.first_name,
-    lastName: row.last_name,
-    shortName: row.short_name,
+    firstName,
+    lastName,
+    shortName,
+    displayName: resolveDriverDisplayName(firstName, lastName, shortName, email),
+    profileComplete: Boolean(firstName && lastName && shortName),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -368,6 +398,138 @@ async function ensureDriverAccount(driverId: string, client?: Queryable): Promis
 
 export class DriverValidationError extends Error {}
 
+const DRIVER_STATUS_TRANSITIONS: Record<DriverLifecycleStatus, DriverLifecycleStatus[]> = {
+  pending_review: ["active", "rejected", "archived"],
+  active: ["suspended", "archived"],
+  rejected: ["pending_review", "archived"],
+  suspended: ["active", "archived"],
+  archived: []
+};
+
+export async function transitionDriverStatus(input: {
+  driverId: string;
+  status: DriverLifecycleStatus;
+  reason?: string;
+  actorId?: string;
+  actorEmail?: string;
+}, client?: Queryable): Promise<void> {
+  if (!isValidDriverId(input.driverId)) throw new DriverValidationError("Driver not found.");
+  const reason = text(input.reason);
+  const needsReason = ["rejected", "suspended", "archived"].includes(input.status);
+  const now = new Date().toISOString();
+
+  const outcome = await withDriverTransaction(client, async (runner) => {
+    const current = await runner.query<{
+      status: string;
+      account_status: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      short_name: string | null;
+    }>(
+      `SELECT COALESCE(dp.lifecycle_status, 'pending_review') AS status,
+              u.status::text AS account_status,
+              dp.first_name, dp.last_name, dp.short_name
+         FROM users u
+         LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
+        WHERE u.id::text = $1
+          AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                       WHERE ur.user_id = u.id AND r.key = 'driver')
+        FOR UPDATE OF u`,
+      [input.driverId]
+    );
+    const existing = current.rows[0];
+    if (!existing) return { error: "Driver not found." };
+
+    let failure = "";
+    const currentStatus = existing.status as DriverLifecycleStatus;
+    if (needsReason && !reason) {
+      failure = "A reason is required for this status transition.";
+    } else if (reason.length > 2000) {
+      failure = "Reason must be 2,000 characters or fewer.";
+    } else if (!DRIVER_STATUS_FILTERS.includes(currentStatus)) {
+      failure = "Driver has an unsupported lifecycle status.";
+    } else if (!DRIVER_STATUS_TRANSITIONS[currentStatus].includes(input.status)) {
+      failure = `Cannot transition driver from ${currentStatus} to ${input.status}.`;
+    } else if (input.status === "active" && text(existing.account_status).toLowerCase() !== "active") {
+      failure = "Driver account must be active before the driver can become active.";
+    } else if (input.status === "active") {
+      const profileComplete = Boolean(text(existing.first_name) && text(existing.last_name) && text(existing.short_name));
+      const licence = await runner.query<{ id: string }>(
+        `SELECT dl.id
+           FROM driver_licensing_authorities dl
+           JOIN licensing_authorities la ON la.id = dl.licensing_authority_id AND la.active = TRUE
+          WHERE dl.driver_id = $1 AND dl.active = TRUE AND dl.revoked_at IS NULL
+            AND dl.valid_from <= CURRENT_DATE::text
+            AND (dl.valid_until IS NULL OR dl.valid_until > CURRENT_DATE::text)
+          LIMIT 1`,
+        [input.driverId]
+      );
+      if (!profileComplete || !licence.rows[0]) {
+        failure = "Driver must have a complete profile and a current active licence before becoming active.";
+      }
+    }
+
+    if (failure) {
+      await runner.query(
+        `INSERT INTO driver_lifecycle_audit
+          (id, occurred_at, driver_id, actor_id, actor_email, previous_status, requested_status, reason, success, detail)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9)`,
+        [randomUUID(), now, input.driverId, text(input.actorId) || null, text(input.actorEmail) || null,
+          existing.status, input.status, reason || null, failure]
+      );
+      return { error: failure };
+    }
+
+    await runner.query(
+      `INSERT INTO driver_profiles
+        (driver_id, lifecycle_status, manual_review_required, created_at, updated_at)
+       VALUES ($1, $2, TRUE, $3, $3)
+       ON CONFLICT (driver_id) DO UPDATE SET
+         lifecycle_status = EXCLUDED.lifecycle_status,
+         updated_at = EXCLUDED.updated_at`,
+      [input.driverId, input.status, now]
+    );
+    await runner.query(
+      `INSERT INTO driver_lifecycle_audit
+        (id, occurred_at, driver_id, actor_id, actor_email, previous_status, requested_status, reason, success, detail)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, NULL)`,
+      [randomUUID(), now, input.driverId, text(input.actorId) || null, text(input.actorEmail) || null,
+        existing.status, input.status, reason || null]
+    );
+    return {};
+  });
+  if (outcome.error) throw new DriverValidationError(outcome.error);
+}
+
+async function activateDriverIfEligible(driverId: string, client?: Queryable): Promise<void> {
+  const result = await db(client).query<{ eligible: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM users u
+         JOIN driver_profiles dp ON dp.driver_id = u.id::text
+        WHERE u.id::text = $1
+          AND lower(COALESCE(u.status::text, '')) = 'active'
+          AND dp.lifecycle_status = 'pending_review'
+          AND NULLIF(btrim(dp.first_name), '') IS NOT NULL
+          AND NULLIF(btrim(dp.last_name), '') IS NOT NULL
+          AND NULLIF(btrim(dp.short_name), '') IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+              FROM driver_licensing_authorities dl
+              JOIN licensing_authorities la ON la.id = dl.licensing_authority_id AND la.active = TRUE
+             WHERE dl.driver_id = u.id::text
+               AND dl.active = TRUE AND dl.revoked_at IS NULL
+               AND dl.valid_from <= CURRENT_DATE::text
+               AND (dl.valid_until IS NULL OR dl.valid_until > CURRENT_DATE::text)
+          )
+     ) AS eligible`,
+    [driverId]
+  );
+  if (result.rows[0]?.eligible) {
+    await transitionDriverStatus({ driverId, status: "active" }, client);
+  }
+}
+
 export async function createDriverProfile(
   driverId: string,
   input: DriverProfileInput,
@@ -378,16 +540,26 @@ export async function createDriverProfile(
   if (!valid) throw new DriverValidationError("Select a valid driver account.");
   const profile = normalizeDriverProfileInput(input);
   const now = new Date().toISOString();
-  await db(client).query(
+  const result = await db(client).query(
     `INSERT INTO driver_profiles
       (driver_id, first_name, last_name, short_name, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $5)
-     ON CONFLICT (driver_id) DO NOTHING`,
+     ON CONFLICT (driver_id) DO UPDATE SET
+       first_name = EXCLUDED.first_name,
+       last_name = EXCLUDED.last_name,
+       short_name = EXCLUDED.short_name,
+       manual_review_required = FALSE,
+       updated_at = EXCLUDED.updated_at
+     WHERE driver_profiles.first_name IS NULL OR driver_profiles.last_name IS NULL`,
     [driverId, profile.firstName, profile.lastName, profile.shortName, now]
   );
+  if (!result.rowCount) throw new DriverValidationError("Driver profile already exists for this account.");
   const saved = await getDriverById(driverId, client);
-  if (!saved) throw new DriverValidationError("Driver profile already exists for this account.");
-  return saved;
+  if (!saved) throw new DriverValidationError("Driver account is no longer available.");
+  await activateDriverIfEligible(driverId, client);
+  const refreshed = await getDriverById(driverId, client);
+  if (!refreshed) throw new DriverValidationError("Driver account is no longer available.");
+  return refreshed;
 }
 
 export async function updateDriverProfile(
@@ -399,16 +571,20 @@ export async function updateDriverProfile(
   if (!(await ensureDriverAccount(driverId, client))) return null;
   const profile = normalizeDriverProfileInput(input);
   const now = new Date().toISOString();
-  const result = await db(client).query(
-    `UPDATE driver_profiles
-        SET first_name = $2,
-            last_name = $3,
-            short_name = $4,
-            updated_at = $5
-      WHERE driver_id = $1`,
+  await db(client).query(
+    `INSERT INTO driver_profiles
+      (driver_id, first_name, last_name, short_name, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $5)
+     ON CONFLICT (driver_id) DO UPDATE SET
+       first_name = EXCLUDED.first_name,
+       last_name = EXCLUDED.last_name,
+       short_name = EXCLUDED.short_name,
+       manual_review_required = FALSE,
+       updated_at = EXCLUDED.updated_at`,
     [driverId, profile.firstName, profile.lastName, profile.shortName, now]
   );
-  if (!result.rowCount) return null;
+  const saved = await getDriverById(driverId, client);
+  await activateDriverIfEligible(driverId, client);
   return getDriverById(driverId, client);
 }
 
@@ -509,7 +685,9 @@ export async function saveDriverLicense(
         WHERE id = $1 AND driver_id = $2`,
       [licenseId, driverId, normalized.licensingAuthorityId, normalized.licenseReference, normalized.validFrom, normalized.validUntil, normalized.notes, now]
     );
-    return update.rowCount ? licenseId : null;
+    if (!update.rowCount) return null;
+    await activateDriverIfEligible(driverId, client);
+    return licenseId;
   }
   const id = randomUUID();
   await db(client).query(
@@ -518,6 +696,7 @@ export async function saveDriverLicense(
      VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8, $8)`,
     [id, driverId, normalized.licensingAuthorityId, normalized.licenseReference, normalized.validFrom, normalized.validUntil, normalized.notes, now]
   );
+  await activateDriverIfEligible(driverId, client);
   return id;
 }
 

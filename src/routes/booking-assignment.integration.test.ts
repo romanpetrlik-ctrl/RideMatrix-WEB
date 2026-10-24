@@ -133,6 +133,20 @@ async function setupFixtures(): Promise<void> {
   driverLicenceA = await addLicense("driver", DRIVER_B_ID, {
     licensingAuthorityId: AUTHORITY_A, validFrom: "2030-01-01"
   });
+  await query(
+    `INSERT INTO driver_profiles
+       (driver_id, first_name, last_name, short_name, lifecycle_status, manual_review_required, created_at, updated_at)
+     VALUES ($1,'Driver','Alpha','Driver A','active',FALSE,$3,$3),
+            ($2,'Driver','Beta','Driver B','active',FALSE,$3,$3)
+     ON CONFLICT (driver_id) DO UPDATE SET
+       first_name=EXCLUDED.first_name,
+       last_name=EXCLUDED.last_name,
+       short_name=EXCLUDED.short_name,
+       lifecycle_status=EXCLUDED.lifecycle_status,
+       manual_review_required=FALSE,
+       updated_at=EXCLUDED.updated_at`,
+    [DRIVER_A_ID, DRIVER_B_ID, now]
+  );
 
   vehicleMain = (await createVehicle({
     registration: "ASSIGN-MAIN", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],

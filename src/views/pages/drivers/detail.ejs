@@ -5,7 +5,8 @@
     <%- include("../../partials/system-status-bar", { appTitle, systemStatus: "System status: Healthy", currentUserEmail: email, currentUserHref: "/account" }) %>
     <%- include("../../partials/header", { appTitle }) %>
     <main class="container rm-page-shell vehicle-page vehicle-detail-page">
-      <header class="vehicle-page__header"><div><h1><%= driver.shortName %></h1><p><%= driver.firstName %> <%= driver.lastName %> · <%= driver.email %></p></div><div><span class="status-pill status-pill--<%= (driver.status || 'unknown').toLowerCase().replace(/\s+/g, '-') %>"><%= driver.status || "Unknown" %></span> <a class="button button--primary" href="/drivers/<%= encodeURIComponent(driver.id) %>/edit">Edit</a></div></header>
+      <header class="vehicle-page__header"><div><h1><%= driver.displayName %></h1><p><%= [driver.firstName, driver.lastName].filter(Boolean).join(" ") || "Profile details not provided" %> · <%= driver.email || "Email not provided" %></p><small class="driver-id-meta"><%= driver.id %></small></div><div><span class="status-pill status-pill--<%= (driver.status || 'unknown').toLowerCase().replace(/_/g, '-') %>"><%= (driver.status || "Unknown").replace(/_/g, " ") %></span> <a class="button button--primary" href="/drivers/<%= encodeURIComponent(driver.id) %>/edit"><%= driver.profileComplete ? "Edit" : "Complete profile" %></a><% if (driver.status !== "archived") { %> <button class="button button--secondary" type="button" data-archive-open="archive-driver">Archive</button><% } %></div></header>
+      <% if (!driver.profileComplete) { %><div class="notice" role="status">This legacy driver record is missing profile details. Complete the profile to keep it accurate.</div><% } %>
       <% const noticeMessage = new Map([
         ["created", ["Driver created.", false]],
         ["updated", ["Driver updated.", false]],
@@ -13,19 +14,22 @@
         ["licence-invalid", ["Enter valid licence details.", true]],
         ["document-added", ["Driver document uploaded.", false]],
         ["document-required", ["Choose a category and file to upload.", true]],
-        ["document-invalid", ["Upload a valid PDF, JPEG, or PNG file and choose a valid category.", true]]
+        ["document-invalid", ["Upload a valid PDF, JPEG, or PNG file and choose a valid category.", true]],
+        ["archived", ["Driver archived.", false]],
+        ["archive-invalid", ["This driver could not be archived. Check its current lifecycle status.", true]],
+        ["archive-reason-required", ["Enter a reason before archiving this driver.", true]]
       ]).get(notice); %>
       <p><a href="/drivers">&larr; All drivers</a></p>
       <% if (noticeMessage) { %><div class="notice<%= noticeMessage[1] ? ' notice--warning' : '' %>" role="status"><%= noticeMessage[0] %></div><% } %>
       <section class="vehicle-detail-grid">
         <article class="vehicle-card"><h2>Driver profile</h2><dl>
-          <dt>First name</dt><dd><%= driver.firstName %></dd>
-          <dt>Last name</dt><dd><%= driver.lastName %></dd>
-          <dt>Short name</dt><dd><%= driver.shortName %></dd>
-          <dt>Email</dt><dd><%= driver.email %></dd>
-          <dt>Status</dt><dd><%= driver.status || "Unknown" %></dd>
-          <dt>Created</dt><dd><%= String(driver.createdAt).slice(0, 10) %></dd>
-          <dt>Updated</dt><dd><%= String(driver.updatedAt).slice(0, 10) %></dd>
+          <dt>First name</dt><dd><%= driver.firstName || "Not provided" %></dd>
+          <dt>Last name</dt><dd><%= driver.lastName || "Not provided" %></dd>
+          <dt>Short name</dt><dd><%= driver.shortName || "Not provided" %></dd>
+          <dt>Email</dt><dd><%= driver.email || "Not provided" %></dd>
+          <dt>Status</dt><dd><%= (driver.status || "Unknown").replace(/_/g, " ") %></dd>
+          <dt>Created</dt><dd><%= driver.createdAt ? String(driver.createdAt).slice(0, 10) : "Unknown" %></dd>
+          <dt>Updated</dt><dd><%= driver.updatedAt ? String(driver.updatedAt).slice(0, 10) : "Unknown" %></dd>
         </dl></article>
         <article class="vehicle-card"><h2>Driver licences</h2>
           <% licences.forEach((license) => { %>
@@ -77,6 +81,14 @@
           <% if (documents.length) { %><div class="vehicle-document-list"><% documents.forEach((document) => { %><div class="vehicle-document-row"><div class="vehicle-document-row__heading"><strong><%= (documentLabels.find((item) => item.category === document.category)?.label) || document.category %></strong><span class="document-status-badge document-status-badge--uploaded"><span class="document-status-badge__icon" aria-hidden="true">✓</span><span>Uploaded</span></span></div><span><%= document.original_filename %> (<%= String(document.uploaded_at).slice(0, 10) %>)</span><span><a href="/drivers/documents/<%= document.id %>/view">View</a> · <a href="/drivers/documents/<%= document.id %>/download">Download</a></span></div><% }) %></div><% } else { %><p>No driver documents uploaded yet.</p><% } %>
         </article>
       </section>
+      <% if (driver.status !== "archived") { %><dialog id="archive-driver" aria-labelledby="archive-driver-title"><form method="post" action="/drivers/<%= encodeURIComponent(driver.id) %>/archive"><%- locals.csrfField || "" %><h2 id="archive-driver-title">Archive <%= driver.displayName %>?</h2><p>This driver will be removed from the default list and assignment candidates.</p><label for="archive-reason">Reason</label><textarea id="archive-reason" name="reason" required maxlength="2000" rows="4"></textarea><div><button class="button button--primary" type="submit">Save note and archive</button> <button class="button button--secondary" type="button" data-archive-close>Cancel</button></div></form></dialog><% } %>
     </main><%- include("../../partials/footer") %>
+    <script>
+      document.addEventListener("click", (event) => {
+        const openButton = event.target.closest("[data-archive-open]");
+        if (openButton) document.getElementById(openButton.dataset.archiveOpen)?.showModal();
+        if (event.target.closest("[data-archive-close]")) event.target.closest("dialog")?.close();
+      });
+    </script>
   </body>
 </html>

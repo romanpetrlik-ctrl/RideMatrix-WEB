@@ -1012,6 +1012,99 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_driver_profiles_short_name
         ON driver_profiles (lower(short_name), driver_id);
     `
+  },
+  {
+    id: "0018_driver_lifecycle_legacy_profiles",
+    sql: `
+      ALTER TABLE driver_profiles
+        ALTER COLUMN first_name DROP NOT NULL,
+        ALTER COLUMN last_name DROP NOT NULL,
+        ALTER COLUMN short_name DROP NOT NULL,
+        ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'pending_review',
+        ADD COLUMN IF NOT EXISTS manual_review_required BOOLEAN NOT NULL DEFAULT FALSE;
+
+      ALTER TABLE driver_profiles
+        DROP CONSTRAINT IF EXISTS driver_profiles_lifecycle_status_check;
+      ALTER TABLE driver_profiles
+        ADD CONSTRAINT driver_profiles_lifecycle_status_check
+          CHECK (lifecycle_status IN ('pending_review', 'active', 'rejected', 'suspended', 'archived'));
+
+      UPDATE driver_profiles dp
+         SET short_name = COALESCE(
+               NULLIF(left(regexp_replace(btrim(concat_ws(' ', NULLIF(btrim(dp.first_name), ''), NULLIF(btrim(dp.last_name), ''))), '[[:cntrl:]]', '', 'g'), 160), ''),
+               NULLIF(left(regexp_replace(btrim(to_jsonb(u) ->> 'full_name'), '[[:cntrl:]]', '', 'g'), 160), ''),
+               NULLIF(left(regexp_replace(btrim(concat_ws(' ',
+                 NULLIF(btrim(to_jsonb(u) ->> 'first_name'), ''),
+                 NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')
+               )), '[[:cntrl:]]', '', 'g'), 160), ''),
+               CASE WHEN NULLIF(split_part(COALESCE(u.email, ''), '@', 1), '') IS NOT NULL
+                 THEN left(split_part(u.email, '@', 1), 1) || '***' END
+             ),
+             manual_review_required = (NULLIF(btrim(dp.first_name), '') IS NULL OR NULLIF(btrim(dp.last_name), '') IS NULL),
+             lifecycle_status = CASE
+               WHEN lower(COALESCE(u.status::text, '')) = 'active'
+                AND NULLIF(btrim(dp.first_name), '') IS NOT NULL
+                AND NULLIF(btrim(dp.last_name), '') IS NOT NULL
+                AND EXISTS (
+                  SELECT 1
+                    FROM driver_licensing_authorities dl
+                    JOIN licensing_authorities la ON la.id = dl.licensing_authority_id AND la.active = TRUE
+                   WHERE dl.driver_id = dp.driver_id
+                     AND dl.active = TRUE AND dl.revoked_at IS NULL
+                     AND dl.valid_from <= CURRENT_DATE::text
+                     AND (dl.valid_until IS NULL OR dl.valid_until > CURRENT_DATE::text)
+                ) THEN 'active'
+               ELSE 'pending_review'
+             END
+        FROM users u
+       WHERE u.id::text = dp.driver_id
+         AND (NULLIF(btrim(dp.short_name), '') IS NULL
+           OR dp.manual_review_required = FALSE
+           OR dp.lifecycle_status = 'pending_review');
+
+      INSERT INTO driver_profiles
+        (driver_id, short_name, lifecycle_status, manual_review_required, created_at, updated_at)
+      SELECT u.id::text,
+             COALESCE(
+               NULLIF(left(regexp_replace(btrim(to_jsonb(u) ->> 'full_name'), '[[:cntrl:]]', '', 'g'), 160), ''),
+               NULLIF(left(regexp_replace(btrim(concat_ws(' ',
+                 NULLIF(btrim(to_jsonb(u) ->> 'first_name'), ''),
+                 NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')
+               )), '[[:cntrl:]]', '', 'g'), 160), ''),
+               CASE WHEN NULLIF(split_part(COALESCE(u.email, ''), '@', 1), '') IS NOT NULL
+                 THEN left(split_part(u.email, '@', 1), 1) || '***' END
+             ),
+             'pending_review',
+             TRUE,
+             CURRENT_TIMESTAMP::text,
+             CURRENT_TIMESTAMP::text
+        FROM users u
+       WHERE EXISTS (
+         SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = u.id AND r.key = 'driver'
+       )
+         AND NOT EXISTS (
+           SELECT 1 FROM driver_profiles dp WHERE dp.driver_id = u.id::text
+         );
+
+      CREATE TABLE IF NOT EXISTS driver_lifecycle_audit (
+        id TEXT PRIMARY KEY,
+        occurred_at TEXT NOT NULL,
+        driver_id TEXT NOT NULL,
+        actor_id TEXT,
+        actor_email TEXT,
+        previous_status TEXT,
+        requested_status TEXT NOT NULL,
+        reason TEXT,
+        success BOOLEAN NOT NULL,
+        detail TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_lifecycle_audit_driver
+        ON driver_lifecycle_audit (driver_id, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_driver_lifecycle_audit_occurred_at
+        ON driver_lifecycle_audit (occurred_at DESC);
+    `
   }
 ];
 

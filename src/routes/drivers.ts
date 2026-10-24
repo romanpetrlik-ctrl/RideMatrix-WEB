@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import multer from "multer";
@@ -19,6 +20,7 @@ import {
   readDriverEntityDocumentContent,
   saveDriverEntityDocument,
   saveDriverLicense,
+  transitionDriverStatus,
   updateDriverProfile
 } from "../services/drivers";
 import { canManageStaff } from "../services/staff";
@@ -30,6 +32,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VEH
 type Options = {
   appTitle: string;
   loadSession?: (cookie?: string) => Promise<SessionAccount>;
+  transitionDriverStatus?: typeof transitionDriverStatus;
 };
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -38,9 +41,20 @@ function notFound(res: any, appTitle: string) {
   return res.status(404).render("pages/unavailable", { title: "Not found", appTitle });
 }
 
+function renderDriverLoadFailure(res: any, appTitle: string, driverId: string, operation: string, error: unknown) {
+  const correlationId = randomUUID();
+  console.error(`[drivers] Failed to ${operation} driver ${driverId} (reference ${correlationId}):`, error);
+  return res.status(500).render("pages/unavailable", {
+    title: "Driver record unavailable",
+    appTitle,
+    message: `We couldn't load this driver record. Reference: ${correlationId}`
+  });
+}
+
 export function createDriversRouter(options: Options): Router {
   const router = Router();
   const loadSession = options.loadSession || getSessionAccount;
+  const saveDriverStatus = options.transitionDriverStatus || transitionDriverStatus;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   router.use(noStoreProtectedResponse);
 
@@ -89,15 +103,16 @@ export function createDriversRouter(options: Options): Router {
 
   async function renderForm(res: any, data: any, status = 200) {
     return res.status(status).render("pages/drivers/form", {
-      title: data.driverId ? "Edit driver" : "New driver",
+      title: data.isNew ? "New driver" : (data.profileComplete ? "Edit driver" : "Complete driver profile"),
       appTitle: options.appTitle,
+      isNew: Boolean(data.isNew),
       ...data
     });
   }
 
   async function renderDetail(res: any, driver: any, notice = "", status = 200) {
     return res.status(status).render("pages/drivers/detail", {
-      title: driver.shortName,
+      title: driver.displayName,
       appTitle: options.appTitle,
       email: res.locals.driverUser.email,
       notice,
@@ -138,6 +153,7 @@ export function createDriversRouter(options: Options): Router {
       return renderForm(res, {
         email: res.locals.driverUser.email,
         driverId: "",
+        isNew: true,
         firstName: "",
         lastName: "",
         shortName: "",
@@ -163,6 +179,7 @@ export function createDriversRouter(options: Options): Router {
         return renderForm(res, {
           email: res.locals.driverUser.email,
           driverId,
+          isNew: true,
           firstName,
           lastName,
           shortName,
@@ -182,7 +199,7 @@ export function createDriversRouter(options: Options): Router {
       if (!driver) return notFound(res, options.appTitle);
       return renderDetail(res, driver, text(req.query.notice));
     } catch (error) {
-      next(error);
+      return renderDriverLoadFailure(res, options.appTitle, text(req.params.driverId), "load", error);
     }
   });
 
@@ -197,11 +214,12 @@ export function createDriversRouter(options: Options): Router {
         firstName: driver.firstName,
         lastName: driver.lastName,
         shortName: driver.shortName,
+        profileComplete: driver.profileComplete,
         accountOptions: [],
         errors: []
       });
     } catch (error) {
-      next(error);
+      return renderDriverLoadFailure(res, options.appTitle, text(req.params.driverId), "load edit form for", error);
     }
   });
 
@@ -223,11 +241,34 @@ export function createDriversRouter(options: Options): Router {
           firstName,
           lastName,
           shortName,
+          profileComplete: Boolean(firstName && lastName),
           accountOptions: [],
           errors: [error.message]
         }, 400);
       }
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/drivers/:driverId/archive", requireAuthorizedDriverManager, localMutationRateLimit, csrfGuard, async (req, res, next) => {
+    try {
+      const driverId = text(req.params.driverId);
+      await saveDriverStatus({
+        driverId,
+        status: "archived",
+        reason: text(req.body.reason),
+        actorId: res.locals.driverUser.id,
+        actorEmail: res.locals.driverUser.email
+      });
+      return res.redirect(`/drivers/${encodeURIComponent(driverId)}?notice=archived`);
+    } catch (error) {
+      if (error instanceof DriverValidationError) {
+        const notice = error.message === "A reason is required for this status transition."
+          ? "archive-reason-required"
+          : "archive-invalid";
+        return res.redirect(`/drivers/${encodeURIComponent(text(req.params.driverId))}?notice=${notice}`);
+      }
       next(error);
     }
   });
