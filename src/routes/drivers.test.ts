@@ -235,6 +235,68 @@ test("driver licence creation saves mapped values and detail remains usable", as
   }
 });
 
+test("Dorset Council can be selected and a driver licence is saved and listed", async () => {
+  const savedValues: Record<string, string>[] = [];
+  const licenses: DriverLicenseRecord[] = [];
+  const { server, baseUrl } = await makeServer(["admin"], async () => {}, {
+    getDriverById: async () => legacyDriver,
+    listDriverEntityDocuments: async () => [],
+    listDriverLicenses: async () => licenses,
+    listLicensingAuthoritiesForManagement: async () => [],
+    saveDriverLicense: async (_driverId, values) => {
+      savedValues.push(values as Record<string, string>);
+      licenses.push({
+        id: "dorset-licence",
+        driverId: legacyDriver.id,
+        licensingAuthorityId: values.licensingAuthorityId || null,
+        licensingAuthorityName: "Dorset Council",
+        licenseReference: values.licenseReference || null,
+        validFrom: values.validFrom || "",
+        validUntil: values.validUntil || null,
+        active: true,
+        revokedAt: null,
+        notes: values.notes || null
+      });
+      return "dorset-licence";
+    }
+  });
+
+  try {
+    const form = await fetch(`${baseUrl}/drivers/driver-legacy`);
+    const formHtml = await form.text();
+    assert.equal(form.status, 200);
+    assert.match(formHtml, /<option value="dorset_council"[^>]*>Dorset Council<\/option>/);
+    assert.match(formHtml, /name="licensingAuthorityId" required/);
+
+    const tokenResponse = await fetch(`${baseUrl}/csrf`);
+    const { token } = await tokenResponse.json() as { token: string };
+    const cookie = tokenResponse.headers.get("set-cookie")?.split(";")[0] || "";
+    const response = await fetch(`${baseUrl}/drivers/driver-legacy/licences`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        _csrf: token,
+        licensingAuthorityId: "dorset_council",
+        licenseReference: "DORSET-123",
+        validFrom: "2026-01-01"
+      }),
+      redirect: "manual"
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/drivers/driver-legacy?notice=licence-saved");
+    assert.equal(savedValues[0]?.licensingAuthorityId, "dorset_council");
+
+    const detail = await fetch(`${baseUrl}/drivers/driver-legacy?notice=licence-saved`);
+    const detailHtml = await detail.text();
+    assert.equal(detail.status, 200);
+    assert.match(detailHtml, /Dorset Council/);
+    assert.match(detailHtml, /DORSET-123/);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("invalid driver licence submission returns inline errors and retains entered values", async () => {
   const { server, baseUrl } = await makeServer(["admin"], async () => {}, {
     getDriverById: async () => legacyDriver,
