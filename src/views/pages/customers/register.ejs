@@ -289,7 +289,10 @@
               <section class="private-customer-form__column private-customer-form__column--map" aria-labelledby="private-map-heading">
                 <h2 id="private-map-heading">Address map view</h2>
                 <%- include("../../partials/map-preview", {
-                  mapView: null,
+                  mapView: typeof mapView === "undefined" ? null : mapView,
+                  mapBrowserApiKey: typeof mapBrowserApiKey === "string" ? mapBrowserApiKey : "",
+                  mapId: typeof mapId === "string" ? mapId : "",
+                  includeScript: false,
                   emptyTitle: "Map integration is not configured.",
                   emptyMessage: "Address geocoding is optional and does not block customer registration."
                 }) %>

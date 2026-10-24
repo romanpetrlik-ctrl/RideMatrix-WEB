@@ -85,6 +85,54 @@ const adminSession: SessionAccount = {
   user: { id: "admin-1", email: "admin@example.com", roles: ["admin"], active_role: "admin" }
 };
 
+const mapEnvironmentKeys = [
+  "GOOGLE_MAPS_ENABLED",
+  "GOOGLE_MAPS_SERVER_API_KEY",
+  "GOOGLE_MAPS_BROWSER_API_KEY",
+  "GOOGLE_MAPS_MAP_ID",
+  "GOOGLE_MAPS_DEFAULT_LATITUDE",
+  "GOOGLE_MAPS_DEFAULT_LONGITUDE",
+  "NEXT_PUBLIC_GOOGLE_MAPS_ENABLED",
+  "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY",
+  "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY",
+  "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID",
+  "NEXT_PUBLIC_GOOGLE_MAPS_DEFAULT_LATITUDE",
+  "NEXT_PUBLIC_GOOGLE_MAPS_DEFAULT_LONGITUDE"
+];
+
+async function withMapEnvironment<T>(
+  values: Record<string, string | undefined>,
+  run: () => Promise<T>
+): Promise<T> {
+  const previous = Object.fromEntries(mapEnvironmentKeys.map((key) => [key, process.env[key]]));
+  for (const key of mapEnvironmentKeys) {
+    const value = values[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+
+  try {
+    return await run();
+  } finally {
+    for (const key of mapEnvironmentKeys) {
+      const value = previous[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const validCustomerForm = new URLSearchParams({
+  givenName: "Ada",
+  surname: "Lovelace",
+  phone: "+447777888999",
+  houseNameNumber: "10",
+  addressLine1: "Downing Street",
+  cityTown: "London",
+  postcode: "SW1A 2AA",
+  preferredContact: "Unknown"
+});
+
 test("phone preview route is registered and returns international metadata", async () => {
   const response = await requestPreview(adminSession, "+420 555 666 777");
   const body = await response.json();
@@ -227,6 +275,93 @@ test("customer register exposes structured address inputs and only the browser m
       server.close((error) => error ? reject(error) : resolve());
     });
   }
+});
+
+test("customer registration succeeds when maps are disabled", async () => {
+  await withMapEnvironment({}, async () => {
+    let created = false;
+    const server = createTestServer(adminSession, {
+      createCustomer: async () => {
+        created = true;
+        return createTestCustomer();
+      }
+    });
+    try {
+      const address = server.address() as { port: number };
+      const response = await fetch(`http://127.0.0.1:${address.port}/customers/register`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: validCustomerForm
+      });
+
+      assert.equal(response.status, 302);
+      assert.match(response.headers.get("location") || "", /^\/customers\/cust-test-1\?/);
+      assert.equal(created, true);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
+});
+
+test("customer registration succeeds when maps are enabled and renders a configured preview", async () => {
+  await withMapEnvironment({
+    GOOGLE_MAPS_ENABLED: "true",
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: "browser-key",
+    GOOGLE_MAPS_DEFAULT_LATITUDE: "51.5034",
+    GOOGLE_MAPS_DEFAULT_LONGITUDE: "-0.1276"
+  }, async () => {
+    let created = false;
+    const server = createTestServer(adminSession, {
+      createCustomer: async () => {
+        created = true;
+        return createTestCustomer();
+      }
+    });
+    try {
+      const address = server.address() as { port: number };
+      const getResponse = await fetch(`http://127.0.0.1:${address.port}/customers/register?type=private`);
+      const page = await getResponse.text();
+      const postResponse = await fetch(`http://127.0.0.1:${address.port}/customers/register`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: validCustomerForm
+      });
+
+      assert.equal(getResponse.status, 200);
+      assert.match(page, /class="address-map-preview"/);
+      assert.match(page, /data-map-browser-key="browser-key"/);
+      assert.match(page, /data-map-latitude="51\.5034"/);
+      assert.equal(postResponse.status, 302);
+      assert.equal(created, true);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
+});
+
+test("customer registration renders the empty map fallback when map configuration is missing", async () => {
+  await withMapEnvironment({}, async () => {
+    const server = createTestServer(adminSession);
+    try {
+      const address = server.address() as { port: number };
+      const response = await fetch(`http://127.0.0.1:${address.port}/customers/register?type=private`);
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(body, /Map integration is not configured\./);
+      assert.doesNotMatch(body, /class="address-map-preview"/);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
 });
 
 test("customer register validation errors still render without fontPreview in the view model", async () => {

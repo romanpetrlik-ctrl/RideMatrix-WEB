@@ -56,6 +56,7 @@ type CustomersRouterOptions = {
   listCustomers?: typeof listCustomers;
   getCustomerCount?: typeof getCustomerCount;
   listRecentBookingsForCustomer?: typeof listRecentBookingsForCustomer;
+  createCustomer?: typeof createCustomer;
 };
 
 type NoticeTone = "warning" | "critical";
@@ -594,6 +595,20 @@ function getCustomerMapView(customer: CustomerRecord): MapView | null {
   });
 }
 
+function getRegisterMapView(): MapView | null {
+  const configuration = readMapConfiguration();
+  if (!configuration.enabled || !configuration.browserApiKey || !isValidGeoPoint(configuration.defaultPoint)) {
+    return null;
+  }
+
+  return {
+    latitude: configuration.defaultPoint.latitude,
+    longitude: configuration.defaultPoint.longitude,
+    label: "Customer address",
+    zoom: 14
+  };
+}
+
 export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const router = Router();
   router.use(noStoreProtectedResponse);
@@ -603,6 +618,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const loadCustomersList = options.listCustomers ?? listCustomers;
   const loadCustomerCount = options.getCustomerCount ?? getCustomerCount;
   const loadRecentBookingsForCustomerList = options.listRecentBookingsForCustomer ?? listRecentBookingsForCustomer;
+  const saveCustomer = options.createCustomer ?? createCustomer;
   const bookingAssignmentRateLimit = rateLimit({
     windowMs: 60_000,
     limit: 60,
@@ -834,6 +850,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       const session = await requireAdminSession(req.headers.cookie, loadSession);
       const requestedType = String(req.query.type || "").trim().toLowerCase();
       const customerType = requestedType === "private" || requestedType === "business" ? requestedType : "";
+      const mapConfiguration = readMapConfiguration();
 
       return res.render("pages/customers/register", {
         title: "New Customer",
@@ -842,8 +859,9 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         customerType,
         formData: {},
         errors: [],
-        mapBrowserApiKey: readMapConfiguration().browserApiKey,
-        mapId: readMapConfiguration().mapId
+        mapView: getRegisterMapView(),
+        mapBrowserApiKey: mapConfiguration.browserApiKey,
+        mapId: mapConfiguration.mapId
       });
 
     } catch (error) {
@@ -921,6 +939,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
     }
 
     if (registerErrors.length > 0) {
+      const mapConfiguration = readMapConfiguration();
       return res.status(400).render("pages/customers/register", {
         title: "New Customer",
         appTitle: options.appTitle,
@@ -928,15 +947,16 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         customerType: "private",
         formData: registerFormData,
         errors: registerErrors,
-        mapBrowserApiKey: readMapConfiguration().browserApiKey,
-        mapId: readMapConfiguration().mapId
+        mapView: getRegisterMapView(),
+        mapBrowserApiKey: mapConfiguration.browserApiKey,
+        mapId: mapConfiguration.mapId
       });
     }
 
     try {
       const addressData = await resolveCustomerAddressPersistence(registerFormData);
       const structuredAddress = toStructuredAddressPersistenceInput(registerFormData);
-      const newCustomer = await createCustomer({
+      const newCustomer = await saveCustomer({
         title: registerFormData.title || null,
         givenName: registerFormData.givenName,
         surname: registerFormData.surname,
@@ -960,6 +980,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       );
     } catch (err) {
       if (err instanceof DuplicateActiveCustomerEmailError) {
+        const mapConfiguration = readMapConfiguration();
         return res.status(409).render("pages/customers/register", {
           title: "New Customer",
           appTitle: options.appTitle,
@@ -967,8 +988,9 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           customerType: "private",
           formData: registerFormData,
           errors: ["An active customer with this email address already exists."],
-          mapBrowserApiKey: readMapConfiguration().browserApiKey,
-          mapId: readMapConfiguration().mapId
+          mapView: getRegisterMapView(),
+          mapBrowserApiKey: mapConfiguration.browserApiKey,
+          mapId: mapConfiguration.mapId
         });
       }
 
