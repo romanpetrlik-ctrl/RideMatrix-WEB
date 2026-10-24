@@ -37,6 +37,7 @@ type Options = {
   updateDriverProfile?: typeof updateDriverProfile;
   listDriverEntityDocuments?: typeof listDriverEntityDocuments;
   listDriverLicenses?: typeof listDriverLicenses;
+  saveDriverLicense?: typeof saveDriverLicense;
   listLicensingAuthoritiesForManagement?: typeof listLicensingAuthoritiesForManagement;
 };
 
@@ -135,7 +136,18 @@ export function createDriversRouter(options: Options): Router {
     return renderDriverPage(res, "pages/drivers/form", locals, status, text(data.driverId), "render profile form for");
   }
 
-  async function renderDetail(res: any, driver: any, notice = "", status = 200) {
+  async function renderDetail(
+    res: any,
+    driver: any,
+    notice = "",
+    status = 200,
+    licenseFeedback: {
+      values: Record<string, string>;
+      errors: string[];
+      correlationId?: string;
+      editingLicenseId?: string;
+    } | null = null
+  ) {
     const locals = {
       title: driver.displayName,
       appTitle: options.appTitle,
@@ -146,7 +158,16 @@ export function createDriversRouter(options: Options): Router {
       licences: await loadDriverLicenses(driver.id),
       documentLabels: DRIVER_DOCUMENT_LABELS,
       authorities: await loadLicensingAuthorities(),
-      editingLicenseId: text(res.req?.query?.editLicense)
+      editingLicenseId: licenseFeedback?.editingLicenseId ?? text(res.req?.query?.editLicense),
+      licenseForm: licenseFeedback?.values || {
+        licensingAuthorityId: "",
+        licenseReference: "",
+        validFrom: "",
+        validUntil: "",
+        notes: ""
+      },
+      licenseErrors: licenseFeedback?.errors || [],
+      licenseCorrelationId: licenseFeedback?.correlationId || ""
     };
     return renderDriverPage(res, "pages/drivers/detail", locals, status, driver.id, "render detail page for");
   }
@@ -299,33 +320,70 @@ export function createDriversRouter(options: Options): Router {
     }
   });
 
+  const saveLicense = options.saveDriverLicense || saveDriverLicense;
   router.post("/drivers/:driverId/licences", requireAuthorizedDriverManager, localMutationRateLimit, csrfGuard, async (req, res, next) => {
-    try {
-      const driverId = text(req.params.driverId);
-      const driver = await getDriverById(driverId);
-      if (!driver) return notFound(res, options.appTitle);
-      const licenseId = text(req.body.licenseId);
-      try {
-        const saved = await saveDriverLicense(driverId, {
-          licensingAuthorityId: text(req.body.licensingAuthorityId),
-          licenseReference: text(req.body.licenseReference),
-          validFrom: text(req.body.validFrom),
-          validUntil: text(req.body.validUntil),
-          notes: text(req.body.notes)
-        }, licenseId || undefined);
-        if (licenseId && !saved) return notFound(res, options.appTitle);
-        return res.redirect(`/drivers/${encodeURIComponent(driverId)}?notice=licence-saved`);
-      } catch (error) {
-        if (error instanceof DriverValidationError || (error as { code?: string }).code === "23503") {
-          const query = licenseId
-            ? `?notice=licence-invalid&editLicense=${encodeURIComponent(licenseId)}`
-            : "?notice=licence-invalid";
-          return res.redirect(`/drivers/${encodeURIComponent(driverId)}${query}`);
-        }
-        throw error;
+    const driverId = text(req.params.driverId);
+    const licenseId = text(req.body.licenseId);
+    const values = {
+      licensingAuthorityId: text(req.body.licensingAuthorityId),
+      licenseReference: text(req.body.licenseReference),
+      validFrom: text(req.body.validFrom),
+      validUntil: text(req.body.validUntil),
+      notes: text(req.body.notes)
+    };
+    let driver: Awaited<ReturnType<typeof loadDriver>> = null;
+
+    const renderLicenseFailure = (error: unknown) => {
+      const pgCode = (error as { code?: string } | null)?.code;
+      const isValidation = error instanceof DriverValidationError || pgCode === "23503" || pgCode === "23514";
+      const correlationId = randomUUID();
+      const actor = res.locals.driverUser;
+      console.error(JSON.stringify({
+        event: "driver_licence_create_failed",
+        driver_id: driverId,
+        actor: { id: actor?.id || null, email: actor?.email || null },
+        category: isValidation ? "validation" : "server",
+        correlation_id: correlationId,
+        error: error instanceof Error ? { name: error.name, message: error.message } : String(error)
+      }));
+      const message = isValidation
+        ? (error instanceof DriverValidationError
+          ? error.message
+          : "Choose a valid licensing authority and enter a valid licence date range.")
+        : "We couldn't save this licence. Please try again.";
+      if (!driver) {
+        return res.status(500).render("pages/drivers/unavailable", {
+          title: "Driver record unavailable",
+          appTitle: options.appTitle,
+          message: `${message} Reference: ${correlationId}`
+        });
       }
+      return renderDetail(
+        res,
+        driver,
+        "",
+        isValidation ? 400 : 500,
+        {
+          values,
+          errors: [message],
+          correlationId: isValidation ? undefined : correlationId,
+          editingLicenseId: licenseId
+        }
+      );
+    };
+
+    try {
+      driver = await loadDriver(driverId);
+      if (!driver) return notFound(res, options.appTitle);
+      const saved = await saveLicense(driverId, values, licenseId || undefined);
+      if (licenseId && !saved) return notFound(res, options.appTitle);
+      return res.redirect(`/drivers/${encodeURIComponent(driverId)}?notice=licence-saved`);
     } catch (error) {
-      next(error);
+      try {
+        return await renderLicenseFailure(error);
+      } catch (renderError) {
+        next(renderError);
+      }
     }
   });
 

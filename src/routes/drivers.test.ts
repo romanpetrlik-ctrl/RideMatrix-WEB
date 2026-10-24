@@ -6,7 +6,7 @@ import test from "node:test";
 import express from "express";
 import { createCsrfProtection } from "../middleware/csrf";
 import type { SessionAccount } from "../services/api";
-import { DriverProfile, DriverProfileInput } from "../services/drivers";
+import { DriverLicenseRecord, DriverProfile, DriverProfileInput, DriverValidationError } from "../services/drivers";
 import { createDriversRouter } from "./drivers";
 
 const legacyDriver: DriverProfile = {
@@ -113,20 +113,22 @@ test("driver archive action rejects users without driver management permission",
 
 test("legacy driver detail opens and exposes a complete-profile edit flow", async () => {
   let savedProfile: DriverProfileInput | null = null;
+  let currentDriver = legacyDriver;
   const { server, baseUrl } = await makeServer(["admin"], async () => {}, {
-    getDriverById: async () => legacyDriver,
+    getDriverById: async () => currentDriver,
     listDriverEntityDocuments: async () => [],
     listDriverLicenses: async () => [],
     listLicensingAuthoritiesForManagement: async () => [],
     updateDriverProfile: async (_driverId, input) => {
       savedProfile = input;
-      return {
+      currentDriver = {
         ...legacyDriver,
         ...input,
         shortName: "Riley E",
         displayName: "Riley Example",
         profileComplete: true
       };
+      return currentDriver;
     }
   });
 
@@ -141,6 +143,8 @@ test("legacy driver detail opens and exposes a complete-profile edit flow", asyn
     const editHtml = await edit.text();
     assert.equal(edit.status, 200);
     assert.match(editHtml, /Complete driver profile/);
+    assert.match(editHtml, />Save<\/button>/);
+    assert.match(editHtml, /href="\/drivers\/driver-legacy">Cancel<\/a>/);
 
     const tokenResponse = await fetch(`${baseUrl}/csrf`);
     const { token } = await tokenResponse.json() as { token: string };
@@ -155,6 +159,165 @@ test("legacy driver detail opens and exposes a complete-profile edit flow", asyn
     assert.equal(saveResponse.status, 302);
     assert.equal(saveResponse.headers.get("location"), "/drivers/driver-legacy?notice=updated");
     assert.deepEqual(savedProfile, { firstName: "Riley", lastName: "Example" });
+    const updatedDetail = await fetch(`${baseUrl}/drivers/driver-legacy?notice=updated`);
+    const updatedHtml = await updatedDetail.text();
+    assert.equal(updatedDetail.status, 200);
+    assert.match(updatedHtml, /Riley Example/);
+    assert.match(updatedHtml, /Driver updated\./);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("driver licence creation saves mapped values and detail remains usable", async () => {
+  let savedValues: Record<string, string> | null = null;
+  const licenses: DriverLicenseRecord[] = [];
+  const { server, baseUrl } = await makeServer(["admin"], async () => {}, {
+    getDriverById: async () => legacyDriver,
+    listDriverEntityDocuments: async () => [],
+    listDriverLicenses: async () => licenses,
+    listLicensingAuthoritiesForManagement: async () => [{
+      id: "authority-1", name: "Example Council", authorityType: "local", active: true, preferenceOrder: 1
+    }],
+    saveDriverLicense: async (_driverId, values) => {
+      savedValues = values as Record<string, string>;
+      licenses.push({
+        id: "licence-1",
+        driverId: legacyDriver.id,
+        licensingAuthorityId: values.licensingAuthorityId || null,
+        licensingAuthorityName: "Example Council",
+        licenseReference: values.licenseReference || null,
+        validFrom: values.validFrom || "",
+        validUntil: values.validUntil || null,
+        active: true,
+        revokedAt: null,
+        notes: values.notes || null
+      });
+      return "licence-1";
+    }
+  });
+
+  try {
+    const tokenResponse = await fetch(`${baseUrl}/csrf`);
+    const { token } = await tokenResponse.json() as { token: string };
+    const cookie = tokenResponse.headers.get("set-cookie")?.split(";")[0] || "";
+    const response = await fetch(`${baseUrl}/drivers/driver-legacy/licences`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        _csrf: token,
+        licensingAuthorityId: "authority-1",
+        licenseReference: "REF-123",
+        validFrom: "2026-01-01",
+        validUntil: "2027-01-01",
+        notes: "Renewal due next year"
+      }),
+      redirect: "manual"
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/drivers/driver-legacy?notice=licence-saved");
+    assert.deepEqual(savedValues, {
+      licensingAuthorityId: "authority-1",
+      licenseReference: "REF-123",
+      validFrom: "2026-01-01",
+      validUntil: "2027-01-01",
+      notes: "Renewal due next year"
+    });
+
+    const detail = await fetch(`${baseUrl}/drivers/driver-legacy?notice=licence-saved`);
+    const html = await detail.text();
+    assert.equal(detail.status, 200);
+    assert.match(html, /Driver licence saved\./);
+    assert.match(html, /REF-123/);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("invalid driver licence submission returns inline errors and retains entered values", async () => {
+  const { server, baseUrl } = await makeServer(["admin"], async () => {}, {
+    getDriverById: async () => legacyDriver,
+    listDriverEntityDocuments: async () => [],
+    listDriverLicenses: async () => [],
+    listLicensingAuthoritiesForManagement: async () => [{
+      id: "authority-1", name: "Example Council", authorityType: "local", active: true, preferenceOrder: 1
+    }],
+    saveDriverLicense: async () => {
+      throw new DriverValidationError("Licence end date must be after its start date.");
+    }
+  });
+
+  try {
+    const tokenResponse = await fetch(`${baseUrl}/csrf`);
+    const { token } = await tokenResponse.json() as { token: string };
+    const cookie = tokenResponse.headers.get("set-cookie")?.split(";")[0] || "";
+    const response = await fetch(`${baseUrl}/drivers/driver-legacy/licences`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        _csrf: token,
+        licensingAuthorityId: "authority-1",
+        licenseReference: "KEEP-ME",
+        validFrom: "2027-01-01",
+        validUntil: "2026-01-01",
+        notes: "Preserve these notes"
+      }),
+      redirect: "manual"
+    });
+    const html = await response.text();
+
+    assert.equal(response.status, 400);
+    assert.match(html, /Licence end date must be after its start date\./);
+    assert.match(html, /value="KEEP-ME"/);
+    assert.match(html, /value="Preserve these notes"/);
+    assert.doesNotMatch(html, /Unable to continue/);
+    assert.match(html, /Driver profile/);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("unexpected driver licence failure includes a reference and leaves detail stable", async () => {
+  const { server, baseUrl } = await makeServer(["admin"], async () => {}, {
+    getDriverById: async () => legacyDriver,
+    listDriverEntityDocuments: async () => [],
+    listDriverLicenses: async () => [],
+    listLicensingAuthoritiesForManagement: async () => [{
+      id: "authority-1", name: "Example Council", authorityType: "local", active: true, preferenceOrder: 1
+    }],
+    saveDriverLicense: async () => {
+      throw new Error("database unavailable");
+    }
+  });
+
+  try {
+    const tokenResponse = await fetch(`${baseUrl}/csrf`);
+    const { token } = await tokenResponse.json() as { token: string };
+    const cookie = tokenResponse.headers.get("set-cookie")?.split(";")[0] || "";
+    const response = await fetch(`${baseUrl}/drivers/driver-legacy/licences`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        _csrf: token,
+        licensingAuthorityId: "authority-1",
+        licenseReference: "KEEP-ON-SERVER-ERROR",
+        validFrom: "2026-01-01"
+      }),
+      redirect: "manual"
+    });
+    const body = await response.text();
+    assert.equal(response.status, 500);
+    assert.match(body, /We couldn&#39;t save this licence/);
+    assert.match(body, /Reference: [0-9a-f-]{36}/);
+    assert.match(body, /KEEP-ON-SERVER-ERROR/);
+    assert.doesNotMatch(body, /Unable to continue/);
+
+    const detail = await fetch(`${baseUrl}/drivers/driver-legacy`);
+    const detailBody = await detail.text();
+    assert.equal(detail.status, 200);
+    assert.match(detailBody, /Driver profile/);
+    assert.doesNotMatch(detailBody, /Unable to continue/);
   } finally {
     await closeServer(server);
   }
