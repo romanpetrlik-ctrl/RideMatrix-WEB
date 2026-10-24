@@ -35,7 +35,7 @@ async function renderDriverList(): Promise<string> {
   });
 }
 
-async function renderLegacyDriverDetail(): Promise<string> {
+async function renderLegacyDriverDetail(licences: Array<Record<string, unknown>> = []): Promise<string> {
   return ejs.renderFile(path.join(process.cwd(), "src/views/pages/drivers/detail.ejs"), {
     title: "l***",
     appTitle: "RideMatrix Test",
@@ -55,10 +55,19 @@ async function renderLegacyDriverDetail(): Promise<string> {
       updatedAt: null
     },
     documents: [],
-    licences: [],
+    licences,
     documentLabels: [],
     authorities: [],
-    editingLicenseId: ""
+    editingLicenseId: "",
+    licenseForm: {
+      licensingAuthorityId: "",
+      licenseReference: "",
+      validFrom: "",
+      validUntil: "",
+      notes: ""
+    },
+    licenseErrors: [],
+    licenseCorrelationId: ""
   });
 }
 
@@ -88,13 +97,34 @@ test("driver list uses a human-readable legacy label and keeps the UUID secondar
   assert.match(html, /Save note and archive/);
 });
 
-test("driver detail renders missing profile fields as a complete-profile state", async () => {
+test("driver detail renders missing profile fields and explicit edit/license actions", async () => {
   const html = await renderLegacyDriverDetail();
 
   assert.match(html, /Complete profile/);
   assert.match(html, /This legacy driver record is missing profile details/);
   assert.match(html, /Not provided/);
   assert.match(html, /Save note and archive/);
+  assert.match(html, /Add licence/);
+  assert.match(html, /name="licensingAuthorityId" required/);
+  assert.doesNotMatch(html, /Unable to continue/);
+});
+
+test("driver detail tolerates a partial legacy licence record", async () => {
+  const html = await renderLegacyDriverDetail([{
+    id: "legacy-licence",
+    driverId,
+    licensingAuthorityId: null,
+    licensingAuthorityName: null,
+    licenseReference: null,
+    validFrom: null,
+    validUntil: null,
+    active: true,
+    revokedAt: null,
+    notes: null
+  }]);
+
+  assert.match(html, /Not specified/);
+  assert.match(html, /Unknown/);
   assert.doesNotMatch(html, /Unable to continue/);
 });
 

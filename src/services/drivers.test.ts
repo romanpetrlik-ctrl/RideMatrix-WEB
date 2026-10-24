@@ -4,8 +4,10 @@ import {
   getDriverById,
   listDrivers,
   resolveDriverDisplayName,
+  saveDriverLicense,
   transitionDriverStatus,
-  updateDriverProfile
+  updateDriverProfile,
+  DriverValidationError
 } from "./drivers";
 
 test("driver display name fallback follows full name, short name, masked email, and unnamed order", () => {
@@ -225,4 +227,56 @@ test("a driver cannot transition to active without a complete profile and curren
     /complete profile and a current active licence/
   );
   assert.equal(auditAttempted, true);
+});
+
+test("driver licence API requires an authority and maps reference, dates, and notes to storage", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client = {
+    query: async (sql: string, params: unknown[] = []) => {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT id FROM licensing_authorities")) return { rows: [{ id: "authority-1" }] };
+      if (sql.includes("SELECT EXISTS (")) return { rows: [{ eligible: false }] };
+      return { rows: [], rowCount: 1 };
+    }
+  };
+
+  await assert.rejects(
+    saveDriverLicense("driver-1", { validFrom: "2026-01-01" }, undefined, client as any),
+    (error: unknown) => error instanceof DriverValidationError && /licensing authority/.test(error.message)
+  );
+  assert.equal(calls.length, 0);
+
+  const id = await saveDriverLicense("driver-1", {
+    licensingAuthorityId: "authority-1",
+    licenseReference: "REF-123",
+    validFrom: "2026-01-01",
+    validUntil: "2027-01-01",
+    notes: "Renewal due"
+  }, undefined, client as any);
+  const insert = calls.find(({ sql }) => sql.includes("INSERT INTO driver_licensing_authorities"));
+
+  assert.ok(id);
+  assert.ok(insert);
+  assert.deepEqual(insert.params.slice(1, 7), [
+    "driver-1", "authority-1", "REF-123", "2026-01-01", "2027-01-01", "Renewal due"
+  ]);
+});
+
+test("driver licence API rejects invalid or reversed dates", async () => {
+  const client = { query: async () => ({ rows: [] }) };
+  await assert.rejects(
+    saveDriverLicense("driver-1", {
+      licensingAuthorityId: "authority-1",
+      validFrom: "not-a-date"
+    }, undefined, client as any),
+    /valid licence start date/
+  );
+  await assert.rejects(
+    saveDriverLicense("driver-1", {
+      licensingAuthorityId: "authority-1",
+      validFrom: "2027-01-01",
+      validUntil: "2026-01-01"
+    }, undefined, client as any),
+    /must be after its start date/
+  );
 });

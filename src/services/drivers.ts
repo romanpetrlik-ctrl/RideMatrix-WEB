@@ -62,7 +62,7 @@ export type DriverLicenseRecord = {
   licensingAuthorityId: string | null;
   licensingAuthorityName: string | null;
   licenseReference: string | null;
-  validFrom: string;
+  validFrom: string | null;
   validUntil: string | null;
   active: boolean;
   revokedAt: string | null;
@@ -600,7 +600,7 @@ export async function listDriverLicenses(driverId: string, client?: Queryable): 
     licensing_authority_id: string | null;
     authority_name: string | null;
     license_reference: string | null;
-    valid_from: string;
+    valid_from: string | null;
     valid_until: string | null;
     active: boolean;
     revoked_at: string | null;
@@ -647,6 +647,8 @@ function normalizeDriverLicenseInput(input: {
   validUntil: string | null;
   notes: string | null;
 } {
+  const licensingAuthorityId = text(input.licensingAuthorityId);
+  if (!licensingAuthorityId) throw new DriverValidationError("Select a licensing authority.");
   const validFrom = text(input.validFrom);
   const validUntil = text(input.validUntil);
   if (!isValidIsoDate(validFrom)) throw new DriverValidationError("Enter a valid licence start date.");
@@ -654,7 +656,7 @@ function normalizeDriverLicenseInput(input: {
     throw new DriverValidationError("Licence end date must be after its start date.");
   }
   return {
-    licensingAuthorityId: text(input.licensingAuthorityId) || null,
+    licensingAuthorityId,
     licenseReference: text(input.licenseReference) || null,
     validFrom,
     validUntil: validUntil || null,
@@ -675,6 +677,11 @@ export async function saveDriverLicense(
   client?: Queryable
 ): Promise<string | null> {
   const normalized = normalizeDriverLicenseInput(input);
+  const authority = await db(client).query<{ id: string }>(
+    "SELECT id FROM licensing_authorities WHERE id = $1",
+    [normalized.licensingAuthorityId]
+  );
+  if (!authority.rows[0]) throw new DriverValidationError("Select a valid licensing authority.");
   const now = new Date().toISOString();
   if (licenseId) {
     const update = await db(client).query(
