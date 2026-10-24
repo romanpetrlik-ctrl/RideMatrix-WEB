@@ -106,7 +106,7 @@ function toDriverDirectoryRecord(row: {
 }): DriverDirectoryRecord {
   const firstName = row.first_name?.trim() || null;
   const lastName = row.last_name?.trim() || null;
-  const shortName = row.short_name?.trim() || null;
+  const shortName = usableDriverShortName(row.short_name);
   const email = row.email || "";
   return {
     id: row.id,
@@ -127,6 +127,11 @@ function maskedEmailLocalPart(email: string): string {
   return localPart ? `${Array.from(localPart)[0]}***` : "";
 }
 
+function usableDriverShortName(value: string | null): string | null {
+  const shortName = value?.trim() || "";
+  return shortName && !/^driver\s*#/i.test(shortName) ? shortName : null;
+}
+
 export function resolveDriverDisplayName(
   firstName: string | null,
   lastName: string | null,
@@ -134,7 +139,7 @@ export function resolveDriverDisplayName(
   email: string
 ): string {
   const fullName = firstName && lastName ? `${firstName} ${lastName}` : "";
-  return fullName || shortName?.trim() || maskedEmailLocalPart(email) || "Unnamed driver";
+  return fullName || usableDriverShortName(shortName) || maskedEmailLocalPart(email) || "Unnamed driver";
 }
 
 export function isValidDriverId(value: unknown): value is string {
@@ -252,8 +257,8 @@ export async function listDrivers(params: {
          u.email,
          u.status,
          dp.lifecycle_status,
-         dp.first_name,
-         dp.last_name,
+         COALESCE(NULLIF(btrim(dp.first_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'first_name'), '')) AS first_name,
+         COALESCE(NULLIF(btrim(dp.last_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')) AS last_name,
          dp.short_name,
          (SELECT count(*)::int FROM driver_licensing_authorities d WHERE d.driver_id = u.id::text) AS licence_count,
          (SELECT count(*)::int FROM entity_documents d WHERE d.entity_type = 'driver' AND d.entity_id = u.id::text) AS documents_count,
@@ -346,8 +351,8 @@ export async function getDriverById(driverId: string, client?: Queryable): Promi
        u.id::text AS id,
        u.email,
        COALESCE(dp.lifecycle_status, 'pending_review') AS status,
-       dp.first_name,
-       dp.last_name,
+       COALESCE(NULLIF(btrim(dp.first_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'first_name'), '')) AS first_name,
+       COALESCE(NULLIF(btrim(dp.last_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')) AS last_name,
        dp.short_name,
        dp.created_at,
        dp.updated_at
@@ -365,7 +370,7 @@ export async function getDriverById(driverId: string, client?: Queryable): Promi
   if (!row) return null;
   const firstName = row.first_name?.trim() || null;
   const lastName = row.last_name?.trim() || null;
-  const shortName = row.short_name?.trim() || null;
+  const shortName = usableDriverShortName(row.short_name);
   const email = row.email || "";
   return {
     id: row.id,

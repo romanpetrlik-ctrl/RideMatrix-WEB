@@ -1,0 +1,10 @@
+<%- include("../../layouts/base", {
+  title,
+  appTitle,
+  body: `
+    <section class="panel">
+      <h1>Driver record unavailable</h1>
+      <p>${escapeFn(message)}</p>
+    </section>
+  `
+}) %>

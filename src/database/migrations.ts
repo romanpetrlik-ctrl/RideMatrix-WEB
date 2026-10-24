@@ -1105,6 +1105,30 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_driver_lifecycle_audit_occurred_at
         ON driver_lifecycle_audit (occurred_at DESC);
     `
+  },
+  {
+    id: "0019_driver_remove_technical_display_labels",
+    sql: `
+      UPDATE driver_profiles dp
+         SET first_name = COALESCE(NULLIF(btrim(dp.first_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'first_name'), '')),
+             last_name = COALESCE(NULLIF(btrim(dp.last_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')),
+             short_name = COALESCE(
+               NULLIF(left(regexp_replace(btrim(concat_ws(' ',
+                 NULLIF(btrim(to_jsonb(u) ->> 'first_name'), ''),
+                 NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')
+               )), '[[:cntrl:]]', '', 'g'), 160), ''),
+               CASE WHEN NULLIF(split_part(COALESCE(u.email, ''), '@', 1), '') IS NOT NULL
+                 THEN left(split_part(u.email, '@', 1), 1) || '***' END
+             ),
+             manual_review_required = dp.manual_review_required OR (
+               COALESCE(NULLIF(btrim(dp.first_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'first_name'), '')) IS NULL
+               OR COALESCE(NULLIF(btrim(dp.last_name), ''), NULLIF(btrim(to_jsonb(u) ->> 'last_name'), '')) IS NULL
+             ),
+             updated_at = CURRENT_TIMESTAMP::text
+        FROM users u
+       WHERE u.id::text = dp.driver_id
+         AND dp.short_name ~* '^Driver[[:space:]]*#';
+    `
   }
 ];
 

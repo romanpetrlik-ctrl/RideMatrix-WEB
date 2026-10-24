@@ -33,6 +33,11 @@ type Options = {
   appTitle: string;
   loadSession?: (cookie?: string) => Promise<SessionAccount>;
   transitionDriverStatus?: typeof transitionDriverStatus;
+  getDriverById?: typeof getDriverById;
+  updateDriverProfile?: typeof updateDriverProfile;
+  listDriverEntityDocuments?: typeof listDriverEntityDocuments;
+  listDriverLicenses?: typeof listDriverLicenses;
+  listLicensingAuthoritiesForManagement?: typeof listLicensingAuthoritiesForManagement;
 };
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -44,10 +49,24 @@ function notFound(res: any, appTitle: string) {
 function renderDriverLoadFailure(res: any, appTitle: string, driverId: string, operation: string, error: unknown) {
   const correlationId = randomUUID();
   console.error(`[drivers] Failed to ${operation} driver ${driverId} (reference ${correlationId}):`, error);
-  return res.status(500).render("pages/unavailable", {
+  return res.status(500).render("pages/drivers/unavailable", {
     title: "Driver record unavailable",
     appTitle,
     message: `We couldn't load this driver record. Reference: ${correlationId}`
+  });
+}
+
+function renderDriverPage(
+  res: any,
+  view: string,
+  locals: Record<string, unknown>,
+  status: number,
+  driverId: string,
+  operation: string
+) {
+  return res.status(status).render(view, locals, (error: Error | null, html: string) => {
+    if (error) return renderDriverLoadFailure(res, String(locals.appTitle || "RideMatrix"), driverId, operation, error);
+    return res.send(html);
   });
 }
 
@@ -55,6 +74,11 @@ export function createDriversRouter(options: Options): Router {
   const router = Router();
   const loadSession = options.loadSession || getSessionAccount;
   const saveDriverStatus = options.transitionDriverStatus || transitionDriverStatus;
+  const loadDriver = options.getDriverById || getDriverById;
+  const saveDriverProfile = options.updateDriverProfile || updateDriverProfile;
+  const loadDriverDocuments = options.listDriverEntityDocuments || listDriverEntityDocuments;
+  const loadDriverLicenses = options.listDriverLicenses || listDriverLicenses;
+  const loadLicensingAuthorities = options.listLicensingAuthoritiesForManagement || listLicensingAuthoritiesForManagement;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   router.use(noStoreProtectedResponse);
 
@@ -102,27 +126,29 @@ export function createDriversRouter(options: Options): Router {
   }
 
   async function renderForm(res: any, data: any, status = 200) {
-    return res.status(status).render("pages/drivers/form", {
+    const locals = {
       title: data.isNew ? "New driver" : (data.profileComplete ? "Edit driver" : "Complete driver profile"),
       appTitle: options.appTitle,
       isNew: Boolean(data.isNew),
       ...data
-    });
+    };
+    return renderDriverPage(res, "pages/drivers/form", locals, status, text(data.driverId), "render profile form for");
   }
 
   async function renderDetail(res: any, driver: any, notice = "", status = 200) {
-    return res.status(status).render("pages/drivers/detail", {
+    const locals = {
       title: driver.displayName,
       appTitle: options.appTitle,
       email: res.locals.driverUser.email,
       notice,
       driver,
-      documents: await listDriverEntityDocuments(driver.id),
-      licences: await listDriverLicenses(driver.id),
+      documents: await loadDriverDocuments(driver.id),
+      licences: await loadDriverLicenses(driver.id),
       documentLabels: DRIVER_DOCUMENT_LABELS,
-      authorities: await listLicensingAuthoritiesForManagement(),
+      authorities: await loadLicensingAuthorities(),
       editingLicenseId: text(res.req?.query?.editLicense)
-    });
+    };
+    return renderDriverPage(res, "pages/drivers/detail", locals, status, driver.id, "render detail page for");
   }
 
   router.get("/drivers", async (req, res, next) => {
@@ -195,7 +221,7 @@ export function createDriversRouter(options: Options): Router {
   router.get("/drivers/:driverId", async (req, res, next) => {
     try {
       if (!(await guard(req, res))) return;
-      const driver = await getDriverById(text(req.params.driverId));
+      const driver = await loadDriver(text(req.params.driverId));
       if (!driver) return notFound(res, options.appTitle);
       return renderDetail(res, driver, text(req.query.notice));
     } catch (error) {
@@ -206,7 +232,7 @@ export function createDriversRouter(options: Options): Router {
   router.get("/drivers/:driverId/edit", async (req, res, next) => {
     try {
       if (!(await guard(req, res))) return;
-      const driver = await getDriverById(text(req.params.driverId));
+      const driver = await loadDriver(text(req.params.driverId));
       if (!driver) return notFound(res, options.appTitle);
       return renderForm(res, {
         email: res.locals.driverUser.email,
@@ -230,7 +256,7 @@ export function createDriversRouter(options: Options): Router {
       const lastName = text(req.body.lastName);
       const shortName = buildDriverShortName(firstName, lastName);
       try {
-        const updated = await updateDriverProfile(driverId, { firstName, lastName });
+        const updated = await saveDriverProfile(driverId, { firstName, lastName });
         if (!updated) return notFound(res, options.appTitle);
         return res.redirect(`/drivers/${encodeURIComponent(driverId)}?notice=updated`);
       } catch (error) {
