@@ -42,6 +42,20 @@ type Options = {
 };
 
 const text = (value: unknown) => String(value ?? "").trim();
+const DORSET_COUNCIL_AUTHORITY = {
+  id: "dorset_council",
+  name: "Dorset Council",
+  authorityType: "local",
+  active: true,
+  preferenceOrder: 0
+};
+
+function driverLicenseAuthorities(authorities: Awaited<ReturnType<typeof listLicensingAuthoritiesForManagement>>) {
+  return [
+    DORSET_COUNCIL_AUTHORITY,
+    ...authorities.filter((authority) => authority.id !== DORSET_COUNCIL_AUTHORITY.id)
+  ];
+}
 
 function notFound(res: any, appTitle: string) {
   return res.status(404).render("pages/unavailable", { title: "Not found", appTitle });
@@ -157,7 +171,7 @@ export function createDriversRouter(options: Options): Router {
       documents: await loadDriverDocuments(driver.id),
       licences: await loadDriverLicenses(driver.id),
       documentLabels: DRIVER_DOCUMENT_LABELS,
-      authorities: await loadLicensingAuthorities(),
+      authorities: driverLicenseAuthorities(await loadLicensingAuthorities()),
       editingLicenseId: licenseFeedback?.editingLicenseId ?? text(res.req?.query?.editLicense),
       licenseForm: licenseFeedback?.values || {
         licensingAuthorityId: "",

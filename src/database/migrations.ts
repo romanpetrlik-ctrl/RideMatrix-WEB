@@ -1129,6 +1129,21 @@ export const MIGRATIONS: Migration[] = [
        WHERE u.id::text = dp.driver_id
          AND dp.short_name ~* '^Driver[[:space:]]*#';
     `
+  },
+  {
+    id: "0020_seed_dorset_council_licensing_authority",
+    sql: `
+      INSERT INTO licensing_authorities
+        (id, name, authority_type, active, preference_order, created_at, updated_at)
+      VALUES
+        ('dorset_council', 'Dorset Council', 'local', TRUE, 0, CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text)
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        authority_type = EXCLUDED.authority_type,
+        active = TRUE,
+        preference_order = EXCLUDED.preference_order,
+        updated_at = EXCLUDED.updated_at;
+    `
   }
 ];
 

@@ -103,6 +103,30 @@ test("driver detail uses existing auth names when its profile names are missing"
   assert.equal(driver?.shortName, null);
 });
 
+test("driver licence save persists the Dorset Council authority id", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client = {
+    query: async (sql: string, params: unknown[] = []) => {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT id FROM licensing_authorities")) {
+        return { rows: [{ id: "dorset_council" }] };
+      }
+      return { rows: [{ eligible: false }], rowCount: 1 };
+    }
+  };
+
+  const savedId = await saveDriverLicense("driver-1", {
+    licensingAuthorityId: "dorset_council",
+    licenseReference: "DORSET-123",
+    validFrom: "2026-01-01"
+  }, undefined, client as any);
+
+  const insert = calls.find(({ sql }) => sql.includes("INSERT INTO driver_licensing_authorities"));
+  assert.ok(savedId);
+  assert.equal(insert?.params[2], "dorset_council");
+  assert.equal(insert?.params[3], "DORSET-123");
+});
+
 test("editing a legacy driver upserts missing profile fields", async () => {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client = {
