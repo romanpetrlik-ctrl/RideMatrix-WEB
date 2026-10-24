@@ -529,7 +529,9 @@ export async function assignBookingWithLicensing(input: {
          FROM users u
          JOIN user_roles ur ON ur.user_id = u.id
          JOIN roles r ON r.id = ur.role_id AND r.key = 'driver'
-        WHERE u.id::text = $1 AND lower(u.status::text) = 'active'
+         LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
+         WHERE u.id::text = $1 AND lower(u.status::text) = 'active'
+           AND COALESCE(dp.lifecycle_status, 'pending_review') = 'active'
         FOR SHARE OF u`,
       [input.driverId]
     );

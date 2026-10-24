@@ -82,6 +82,11 @@ function mapVehicle(row: any): Vehicle {
 
 function driverDisplayNameSql(userAlias: string, driverIdSql: string): string {
   return `COALESCE(
+    NULLIF(btrim(concat_ws(' ',
+      NULLIF(btrim(dp.first_name), ''),
+      NULLIF(btrim(dp.last_name), '')
+    )), ''),
+    NULLIF(btrim(dp.short_name), ''),
     NULLIF(btrim(p.display_name), ''),
     NULLIF(btrim(to_jsonb(${userAlias}) ->> 'full_name'), ''),
     NULLIF(btrim(concat_ws(' ',
@@ -90,7 +95,8 @@ function driverDisplayNameSql(userAlias: string, driverIdSql: string): string {
     )), ''),
     NULLIF(btrim(to_jsonb(${userAlias}) ->> 'driver_code'), ''),
     NULLIF(btrim(to_jsonb(${userAlias}) ->> 'employee_id'), ''),
-    CASE WHEN ${driverIdSql} IS NOT NULL AND ${driverIdSql} <> '' THEN 'Driver #' || ${driverIdSql} ELSE NULL END
+    NULLIF(btrim(${userAlias}.email), ''),
+    'Unnamed driver'
   )`;
 }
 
@@ -126,8 +132,11 @@ export async function listDriverCandidates(client?: Queryable): Promise<DriverCa
       `SELECT u.id::text AS id, u.email, ${driverDisplayNameSql("u", "u.id::text")} AS display_name
        FROM users u
        LEFT JOIN staff_profiles p ON p.account_id = u.id::text
+       LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
        WHERE EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
          WHERE ur.user_id = u.id AND r.key = 'driver')
+         AND lower(COALESCE(u.status::text, '')) = 'active'
+         AND COALESCE(dp.lifecycle_status, 'pending_review') = 'active'
        ORDER BY lower(${driverDisplayNameSql("u", "u.id::text")}), lower(u.email), u.id::text`
     );
     return {
@@ -215,6 +224,7 @@ export async function listVehicles(params: { search?: string; status?: unknown; 
      LEFT JOIN vehicle_driver_assignments a ON a.vehicle_id = v.id AND a.unassigned_at IS NULL
      LEFT JOIN users u ON u.id::text = a.driver_id
      LEFT JOIN staff_profiles p ON p.account_id = u.id::text
+     LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
      WHERE ${vehicleDirectoryWhere}
      ORDER BY lower(v.registration) LIMIT $4 OFFSET $5`,
     [text(params.search), status, normalizedSearch, perPage, (page - 1) * perPage]
@@ -227,7 +237,8 @@ export async function getVehicleById(id: string, client?: Queryable): Promise<Ve
     `SELECT ${vehicleSelect} FROM vehicles v
      LEFT JOIN vehicle_driver_assignments a ON a.vehicle_id = v.id AND a.unassigned_at IS NULL
      LEFT JOIN users u ON u.id::text = a.driver_id
-     LEFT JOIN staff_profiles p ON p.account_id = u.id::text WHERE v.id = $1`, [id]
+     LEFT JOIN staff_profiles p ON p.account_id = u.id::text
+     LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text WHERE v.id = $1`, [id]
   );
   return result.rows[0] ? mapVehicle(result.rows[0]) : null;
 }
@@ -377,6 +388,7 @@ export async function listVehicleDriverAssignments(vehicleId: string, client?: Q
      FROM vehicle_driver_assignments a
      LEFT JOIN users u ON u.id::text = a.driver_id
      LEFT JOIN staff_profiles p ON p.account_id = u.id::text
+     LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
      WHERE a.vehicle_id=$1 ORDER BY a.assigned_at DESC`, [vehicleId]
   );
   return result.rows;
@@ -388,6 +400,7 @@ export async function getVehicleDriverSummary(vehicleId: string, client?: Querya
        FROM vehicle_driver_assignments a
        JOIN users u ON u.id::text = a.driver_id
        LEFT JOIN staff_profiles p ON p.account_id = u.id::text
+       LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
        WHERE a.vehicle_id = $1 AND a.unassigned_at IS NULL
        ORDER BY a.assigned_at DESC
        LIMIT 1`,

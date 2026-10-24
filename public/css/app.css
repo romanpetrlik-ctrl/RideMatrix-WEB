@@ -1906,6 +1906,17 @@ button:visited,
   color: var(--rm-burnt-caramel);
 }
 
+.status-pill--pending-review {
+  background: rgba(238, 155, 0, 0.14);
+  color: var(--rm-burnt-caramel);
+}
+
+.status-pill--rejected,
+.status-pill--archived {
+  background: rgba(174, 32, 18, 0.1);
+  color: var(--rm-brown-red);
+}
+
 .status-pill--delete-pending {
   background: rgba(96, 56, 8, 0.12);
   color: var(--rm-walnut-2);
@@ -3322,4 +3333,37 @@ button:visited,
 .staff-list-page [data-staff-row]:focus-within {
   outline: 2px solid currentColor;
   outline-offset: -2px;
+}
+
+.driver-id-meta {
+  color: var(--rm-text-soft);
+  font-size: 0.8rem;
+}
+
+.vehicle-page dialog[aria-labelledby^="archive"] {
+  max-width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid #999;
+  border-radius: 8px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 20px #0004;
+}
+
+.vehicle-page dialog[aria-labelledby^="archive"]::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.vehicle-page dialog[aria-labelledby^="archive"] form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.vehicle-page dialog[aria-labelledby^="archive"] h2,
+.vehicle-page dialog[aria-labelledby^="archive"] p {
+  margin: 0;
+}
+
+.vehicle-page dialog[aria-labelledby^="archive"] textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
 }
