@@ -85,7 +85,7 @@ export function validateBusinessCustomer(input: unknown): {
   for (const [field, label] of [
     ["officeEmail", "Office email"], ["bookerEmail", "Booker email"], ["accountsEmail", "Accounts email"]
   ]) {
-    if (data[field] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data[field])) {
+    if (data[field] && (data[field].length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data[field]))) {
       errors.push(`${label} must be a valid email address.`);
     }
     data[field] = data[field].toLowerCase();

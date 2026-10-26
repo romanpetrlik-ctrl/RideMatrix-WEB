@@ -97,7 +97,7 @@ changing state, so message scanners cannot approve a booking. The confirmation
 form POST requires the browser's CSRF cookie/token and atomically consumes a
 pending request. Repeated or conflicting submissions report the original
 decision; expired links cannot decide. Invalid links return 404; expired links
-return 410. ****** do not prove which transport was used, so
+return 410. Possession of a link does not prove which transport was used, so
 `decided_by_channel` remains null until a verified delivery/identity integration
 can supply that audit information. Configure reverse proxies not to log these
 token-bearing paths, and use HTTPS in production.

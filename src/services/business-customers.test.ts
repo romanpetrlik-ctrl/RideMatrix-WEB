@@ -107,6 +107,16 @@ test("validates every supplied email and phone", () => {
   }
 });
 
+test("rejects oversized emails before regex evaluation for every contact", () => {
+  for (const field of ["officeEmail", "bookerEmail", "accountsEmail"]) {
+    for (const email of [`${"a".repeat(243)}@example.com`, `${"a.".repeat(10000)}@example`]) {
+      const result = validateBusinessCustomer({ ...validForm(), [field]: email });
+      assert.equal(result.input, undefined, field);
+      assert.ok(result.errors.some((error) => error.includes("valid email")));
+    }
+  }
+});
+
 test("authorization requires an explicit choice and conditional valid channel", () => {
   for (const value of ["", "true", "false", "Yes", "0"]) {
     assert.equal(validateBusinessCustomer({ ...validForm(), bookingAuthRequired: value }).input, undefined);
