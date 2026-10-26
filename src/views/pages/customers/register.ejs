@@ -17,8 +17,8 @@
       contextBarActions: [
         { label: "Back to customer type", href: "/customers/register", tone: "secondary" },
         { label: "Cancel", href: "/customers", tone: "danger" },
-        ...(selectedCustomerType === "private"
-          ? [{ label: "Create Customer", type: "submit", formId: "private-customer-form", tone: "primary" }]
+        ...(selectedCustomerType
+          ? [{ label: "Create Customer", type: "submit", formId: selectedCustomerType + "-customer-form", tone: "primary" }]
           : [])
       ]
     }) %>
@@ -48,23 +48,12 @@
 
             <a class="customer-type-card" href="/customers/register?type=business">
               <span class="customer-type-card__title">Business customer</span>
-              <span class="customer-type-card__copy">For a company, council, department, or other organisation. This registration flow is coming later.</span>
+              <span class="customer-type-card__copy">For a company, council, department, or other organisation.</span>
             </a>
           </div>
 
         <% } else if (selectedCustomerType === "business") { %>
-          <h1>Business customer</h1>
-          <p>Business customer registration will be delivered as a separate flow with the right company and organisation checks.</p>
-
-          <section class="notice notice--warning" aria-labelledby="business-customer-placeholder-title">
-            <strong id="business-customer-placeholder-title">Coming later</strong>
-            <p>
-              This area intentionally does not expose an unfinished business form or Companies House integration.
-              Use private customer only when registering an individual person.
-            </p>
-          </section>
-
-          <a class="button" href="/customers/register?type=private">Create a private customer</a>
+          <%- include("../../partials/business-customer-form") %>
         <% } else { %>
           <h1 class="private-customer-page__heading">Private customer</h1>
           <p class="private-customer-page__intro">Fill in the individual's details below. Fields marked with * are required.</p>
@@ -314,9 +303,12 @@
     </main>
 
     <%- include("../../partials/footer") %>
-    <% if (selectedCustomerType === "private") { %>
+    <% if (selectedCustomerType) { %>
       <script src="/js/google-map-preview.js" defer></script>
       <script src="/js/customer-address-autocomplete.js" defer></script>
+      <% if (selectedCustomerType === "business") { %>
+        <script src="/js/business-customer-form.js" defer></script>
+      <% } %>
     <% } %>
   </body>
 </html>

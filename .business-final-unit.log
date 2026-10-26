@@ -1,0 +1,10 @@
+
+> ridematrix-web@0.1.0 test
+> tsc --noEmit -p tsconfig.test.json && tsx src/test-run.ts --unit
+
+✔ proxy trust is disabled when no trusted proxy addresses are configured (2.931738ms)
+✔ proxy trust accepts explicit IP addresses and CIDR ranges (3.081429ms)
+✔ proxy trust rejects wildcards, booleans, aliases, and empty list entries (1.510939ms)
+✔ proxy trust rejects invalid IP addresses and CIDR ranges (0.992514ms)
+✔ migration runner holds advisory lock while checking migration state (3.821208ms)
+✔ migration runner releases advisory lock if migration check fails (0.973058ms)

@@ -23,6 +23,9 @@
       <% } %>
 
       <%- include("../../partials/customer-detail-content", { customer, mapView, mapBrowserApiKey, mapId }) %>
+      <% if (locals.business) { %>
+        <%- include("../../partials/business-customer-detail", { business }) %>
+      <% } %>
     </main>
 
     <%- include("../../partials/footer") %>

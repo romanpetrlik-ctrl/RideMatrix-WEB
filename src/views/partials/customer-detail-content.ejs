@@ -3,7 +3,7 @@
     <section class="panel customer-detail-panel">
       <div class="customer-detail-panel__header">
         <div>
-          <h1><%= customer.surname %>, <%= customer.givenName %></h1>
+          <h1><%= customer.source === "business" ? customer.company || customer.givenName : customer.surname + ", " + customer.givenName %></h1>
           <p>Customer ID: <strong><%= customer.id %></strong></p>
         </div>
         <span class="status-pill status-pill--<%= customer.status.toLowerCase().replace(/\s+/g, "-") %>"><%= customer.status %></span>
@@ -32,7 +32,7 @@
         <div><dt>Preferred Contact</dt><dd><%= customer.preferredContact %></dd></div>
         <div><dt>Company</dt><dd><%= customer.company || "—" %></dd></div>
         <div class="customer-detail-list__full">
-          <dt>Home address</dt>
+          <dt><%= customer.source === "business" ? "Registered address" : "Home address" %></dt>
           <dd><%= customer.address || "No address on file" %></dd>
         </div>
         <div class="customer-detail-list__full">
@@ -69,7 +69,7 @@
 
   <aside class="panel customer-detail-layout__map" aria-labelledby="customer-home-map-title">
     <div class="customer-detail-layout__map-header">
-      <h2 id="customer-home-map-title">Home address map</h2>
+      <h2 id="customer-home-map-title"><%= customer.source === "business" ? "Registered address map" : "Home address map" %></h2>
     </div>
     <%- include("./map-preview", {
       mapView,

@@ -10,6 +10,7 @@ import { createRoleSectionsRouter } from "./routes/role-sections";
 import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
+import { bookingAuthorizationResponseHeaders, createBookingAuthorizationRouter } from "./routes/booking-authorization";
 import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
 import { createDriversRouter } from "./routes/drivers";
@@ -46,7 +47,9 @@ async function startServer() {
 
   // Issues a signed, cookie-bound CSRF token for every response and validates
   // it on every state-changing request (see docs/csrf-protection.md).
+  app.use("/booking-authorization", bookingAuthorizationResponseHeaders);
   app.use(createCsrfProtection({ appTitle }));
+  app.use(createBookingAuthorizationRouter({ appTitle }));
   app.use(createLayoutContextMiddleware());
   app.use(createSystemStatusBarViewModelMiddleware());
   app.use(createSetupGateMiddleware());

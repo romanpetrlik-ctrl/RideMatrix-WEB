@@ -1,0 +1,75 @@
+<h1>Business customer</h1>
+<p>Fill in the organisation's details below. Fields marked with * are required.</p>
+<form id="business-customer-form" class="inline-form" method="post" action="/customers/register">
+  <%- locals.csrfField || "" %>
+  <input type="hidden" name="customerType" value="business" />
+  <section aria-labelledby="registered-company-heading">
+    <h2 id="registered-company-heading">Registered company</h2>
+    <div class="form-field">
+      <label for="registeredName">Registered name *</label>
+      <input type="text" id="registeredName" name="registeredName" value="<%= formData.registeredName || '' %>" autocomplete="organization" required />
+    </div>
+    <div class="form-row form-row--two">
+      <div class="form-field">
+        <%- include("phone-number", { phoneId: "officePhone", phoneName: "officePhone", phoneLabel: "Office phone number", phoneValue: formData.officePhone || "", phoneRequired: true }) %>
+      </div>
+      <div class="form-field">
+        <label for="officeEmail">Office contact email *</label>
+        <input type="email" id="officeEmail" name="officeEmail" value="<%= formData.officeEmail || '' %>" required />
+      </div>
+    </div>
+    <%- include("business-customer-address", { prefix: "registered", heading: "Registered address", addressRequired: true }) %>
+  </section>
+  <%- include("business-customer-address", { prefix: "operational", heading: "Operational base", addressRequired: false }) %>
+  <section aria-labelledby="booker-heading">
+    <h2 id="booker-heading">Booking manager (booker)</h2>
+    <div class="form-field">
+      <label for="bookerFullName">Full name *</label>
+      <input type="text" id="bookerFullName" name="bookerFullName" value="<%= formData.bookerFullName || '' %>" required />
+    </div>
+    <div class="form-row form-row--two">
+      <div class="form-field">
+        <label for="bookerEmail">Email *</label>
+        <input type="email" id="bookerEmail" name="bookerEmail" value="<%= formData.bookerEmail || '' %>" required />
+      </div>
+      <div class="form-field">
+        <%- include("phone-number", { phoneId: "bookerPhone", phoneName: "bookerPhone", phoneLabel: "Phone", phoneValue: formData.bookerPhone || "", phoneRequired: true }) %>
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="bookingAuthRequired">Booking auth required *</label>
+      <select id="bookingAuthRequired" name="bookingAuthRequired" required>
+        <option value="">Choose yes or no</option>
+        <% ["yes", "no"].forEach((value) => { %>
+          <option value="<%= value %>" <%= formData.bookingAuthRequired === value ? "selected" : "" %>><%= value === "yes" ? "Yes" : "No" %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="bookingAuthChannel">Booking auth channel (required when authorisation is required)</label>
+      <select id="bookingAuthChannel" name="bookingAuthChannel" aria-describedby="bookingAuthChannel-help">
+        <option value="">Choose a channel</option>
+        <% [["email", "Email"], ["whatsapp", "WhatsApp"], ["both", "Both"]].forEach(([value, label]) => { %>
+          <option value="<%= value %>" <%= formData.bookingAuthChannel === value ? "selected" : "" %>><%= label %></option>
+        <% }) %>
+      </select>
+      <p id="bookingAuthChannel-help">Saves the approval-link preference. Automatic email/WhatsApp delivery is not connected yet.</p>
+    </div>
+  </section>
+  <section aria-labelledby="accounts-heading">
+    <h2 id="accounts-heading">Accounts department</h2>
+    <div class="form-field">
+      <label for="accountsFullName">Contact full name *</label>
+      <input type="text" id="accountsFullName" name="accountsFullName" value="<%= formData.accountsFullName || '' %>" required />
+    </div>
+    <div class="form-row form-row--two">
+      <div class="form-field">
+        <label for="accountsEmail">Accounts email *</label>
+        <input type="email" id="accountsEmail" name="accountsEmail" value="<%= formData.accountsEmail || '' %>" required />
+      </div>
+      <div class="form-field">
+        <%- include("phone-number", { phoneId: "accountsPhone", phoneName: "accountsPhone", phoneLabel: "Accounts phone number", phoneValue: formData.accountsPhone || "", phoneRequired: false }) %>
+      </div>
+    </div>
+  </section>
+</form>

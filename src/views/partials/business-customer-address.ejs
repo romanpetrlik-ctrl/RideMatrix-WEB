@@ -1,0 +1,47 @@
+<section aria-labelledby="<%= prefix %>-address-heading" data-address-prefix="<%= prefix %>" data-address-autocomplete-browser-key="<%= mapBrowserApiKey || '' %>">
+  <h2 id="<%= prefix %>-address-heading"><%= heading %></h2>
+  <% if (!addressRequired) { %>
+    <p>Optional. If entered, include address line 1, Town/City, postcode/ZIP, and Country.</p>
+  <% } %>
+  <p id="<%= prefix %>AddressSearch-help">Search the address first, then adjust individual fields if needed.</p>
+  <p data-address-autocomplete-status aria-live="polite">Address suggestions load when Google Maps is available. Manual entry still works.</p>
+  <div class="form-field">
+    <label for="<%= prefix %>AddressSearchManual">Search address</label>
+    <div class="private-customer-form__autocomplete-host" data-address-autocomplete-host hidden></div>
+    <input type="search" id="<%= prefix %>AddressSearchManual" value="<%= formData[prefix + 'AddressSearch'] || '' %>" aria-describedby="<%= prefix %>AddressSearch-help" />
+    <input type="hidden" id="<%= prefix %>AddressSearch" name="<%= prefix %>AddressSearch" value="<%= formData[prefix + 'AddressSearch'] || '' %>" />
+    <input type="hidden" id="<%= prefix %>Address" name="<%= prefix %>Address" value="<%= formData[prefix + 'Address'] || '' %>" />
+  </div>
+  <%
+    const fields = [
+      ["HouseNameNumber", prefix === "registered" ? "Building/unit name or number" : "House/unit/building name or number", addressRequired],
+      ["AddressLine1", "Address line 1", addressRequired],
+      ["AddressLine2", "Address line 2", false],
+      ["AddressLine3", "Address line 3", false],
+      ["CityTown", "Town/City", addressRequired],
+      ["Postcode", "Postcode/ZIP", addressRequired],
+      ["County", "County", false],
+      ["State", "State/province", false],
+      ["Country", "Country", addressRequired],
+      ["Latitude", "Latitude", false],
+      ["Longitude", "Longitude", false]
+    ];
+  %>
+  <div class="form-row form-row--two">
+  <% fields.forEach(([suffix, label, required]) => { const id = prefix + suffix; const coordinate = suffix === "Latitude" || suffix === "Longitude"; %>
+    <div class="form-field">
+      <label for="<%= id %>"><%= label %><%= required ? " *" : "" %></label>
+      <input type="<%= coordinate ? 'number' : 'text' %>" id="<%= id %>" name="<%= id %>" value="<%= formData[id] || '' %>" <%= required ? "required" : "" %>
+        <% if (coordinate) { %>
+          step="any" min="<%= suffix === 'Latitude' ? -90 : -180 %>" max="<%= suffix === 'Latitude' ? 90 : 180 %>"
+        <% } %>
+      />
+    </div>
+  <% }) %>
+  </div>
+  <div class="address-map-preview" data-map-latitude="<%= formData[prefix + 'Latitude'] || '' %>" data-map-longitude="<%= formData[prefix + 'Longitude'] || '' %>" data-map-browser-key="<%= mapBrowserApiKey || '' %>" data-map-id="<%= mapId || '' %>" role="img" aria-label="<%= heading %> map preview">
+    <div class="address-map-preview__canvas" aria-hidden="true"></div>
+    <p data-map-coordinates>Choose an address or enter coordinates to preview its location.</p>
+    <p data-map-error hidden>Map preview is temporarily unavailable. Manual address entry still works.</p>
+  </div>
+</section>

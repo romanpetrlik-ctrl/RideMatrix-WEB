@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createBusinessCustomer, getBusinessCustomer, validateBusinessCustomer } from "../services/business-customers";
 import multer from "multer";
 import { rateLimit } from "express-rate-limit";
 import { requireCsrfToken } from "../middleware/csrf";
@@ -57,6 +58,8 @@ type CustomersRouterOptions = {
   getCustomerCount?: typeof getCustomerCount;
   listRecentBookingsForCustomer?: typeof listRecentBookingsForCustomer;
   createCustomer?: typeof createCustomer;
+  createBusinessCustomer?: typeof createBusinessCustomer;
+  getBusinessCustomer?: typeof getBusinessCustomer;
 };
 
 type NoticeTone = "warning" | "critical";
@@ -326,9 +329,14 @@ function getPagination(search: string, status: CustomerStatus, currentPage: numb
 }
 
 function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undefined {
-  const name = customer ? `${customer.surname}, ${customer.givenName}` : "This customer";
+  const name = customer ? customer.source === "business" ? customer.company || customer.givenName : `${customer.surname}, ${customer.givenName}` : "This customer";
 
   switch (String(code || "")) {
+    case "business-read-only":
+      return {
+        tone: "warning",
+        message: "Business details are read-only in this release. The private-customer editor cannot update a business profile."
+      };
     case "customer-created":
       return {
         tone: "warning",
@@ -619,6 +627,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
   const loadCustomerCount = options.getCustomerCount ?? getCustomerCount;
   const loadRecentBookingsForCustomerList = options.listRecentBookingsForCustomer ?? listRecentBookingsForCustomer;
   const saveCustomer = options.createCustomer ?? createCustomer;
+  const saveBusinessCustomer = options.createBusinessCustomer ?? createBusinessCustomer;
+  const loadBusinessCustomer = options.getBusinessCustomer ?? getBusinessCustomer;
   const bookingAssignmentRateLimit = rateLimit({
     windowMs: 60_000,
     limit: 60,
@@ -900,6 +910,36 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       return next(error);
     }
 
+    if (req.body.customerType === "business") {
+      const validation = validateBusinessCustomer(req.body);
+      const renderBusinessForm = (status: number, errors: string[]) => {
+        const configuration = readMapConfiguration();
+        return res.status(status).render("pages/customers/register", {
+          title: "New Business Customer",
+          appTitle: options.appTitle,
+          email: sessionContext.email,
+          customerType: "business",
+          formData: validation.data,
+          errors,
+          mapView: getRegisterMapView(),
+          mapBrowserApiKey: configuration.browserApiKey,
+          mapId: configuration.mapId
+        });
+      };
+      if (validation.errors.length || !validation.input) {
+        return renderBusinessForm(400, validation.errors);
+      }
+      try {
+        const customer = await saveBusinessCustomer(validation.input);
+        return res.redirect(buildCustomerHref(customer.id, { notice: "customer-created", returnTo: "/customers" }));
+      } catch (error) {
+        if (error instanceof DuplicateActiveCustomerEmailError) {
+          return renderBusinessForm(409, ["An active customer with this email address already exists."]);
+        }
+        return next(error);
+      }
+    }
+
     const registerFormData = {
       title: String(req.body.title || "").trim(),
       givenName: String(req.body.givenName || "").trim(),
@@ -1020,9 +1060,10 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const detailViewModel = {
-        title: `${customer.surname}, ${customer.givenName}`,
+        title: customer.source === "business" ? customer.company || customer.givenName : `${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: session.email,
+        business: customer.source === "business" ? await loadBusinessCustomer(customer.id) : null,
         customer: {
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
@@ -1375,6 +1416,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       }
 
       const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
+      if (customer.source === "business") {
+        return res.redirect(buildCustomerHref(customer.id, {
+          notice: "business-read-only", returnTo: backToCustomersHref,
+          layout: isChildWindowLayout(req.query.layout) ? "child" : undefined
+        }));
+      }
       const recentBookings = await loadRecentBookings(customer.id, loadRecentBookingsForCustomerList);
       const isChildWindow = isChildWindowLayout(req.query.layout);
       const editActionHref = buildCustomerEditHref(customer.id, backToCustomersHref, isChildWindow ? "child" : undefined);
@@ -1458,6 +1505,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     const backToCustomersHref = resolveReturnTo(req.query.returnTo, "/customers");
     const isChildWindow = isChildWindowLayout(req.query.layout);
+
+    if (customer.source === "business") {
+      return res.redirect(buildCustomerHref(customer.id, {
+        notice: "business-read-only", returnTo: backToCustomersHref,
+        layout: isChildWindow ? "child" : undefined
+      }));
+    }
 
     const formData = {
       givenName: String(req.body.givenName || "").trim(),

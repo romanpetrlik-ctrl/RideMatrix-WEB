@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Booking authorization | <%= appTitle %></title>
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Booking authorization</h1>
+      <% if (outcome === "csrf") { %>
+        <p>This confirmation could not be verified. Please open the original link and try again.</p>
+      <% } else if (status === "invalid") { %>
+        <p>This authorization link is invalid or unavailable.</p>
+      <% } else if (status === "expired") { %>
+        <p>This authorization link has expired. Please request a new link.</p>
+      <% } else if (status === "pending") { %>
+        <p>Confirm that you want to <%= action %> this booking authorization request.</p>
+        <% if (csrfToken) { %>
+          <form method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <button type="submit"><%= action === "approve" ? "Approve booking" : "Decline booking" %></button>
+          </form>
+        <% } else { %>
+          <p>Confirmation is temporarily unavailable. Please try again later.</p>
+        <% } %>
+      <% } else { %>
+        <p><%= outcome === "decided" ? "Your decision has been recorded." : "This request has already been decided." %></p>
+        <p>Status: <%= status %>. This decision cannot be changed using this link.</p>
+      <% } %>
+    </main>
+  </body>
+</html>

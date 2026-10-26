@@ -60,8 +60,8 @@
           : "Enter a phone number";
         country.title = country.textContent;
         country.setAttribute("aria-label", country.textContent);
-        tel.href = preview.telHref;
-        whatsapp.href = preview.whatsappHref;
+        if (tel) tel.href = preview.telHref;
+        if (whatsapp) whatsapp.href = preview.whatsappHref;
       } else {
         flag.textContent = "🌐";
         country.textContent = "Enter a phone number";
@@ -122,6 +122,10 @@
 
     if (form) {
       form.addEventListener("submit", function (event) {
+        if (!input.required && !input.value.trim()) {
+          input.setCustomValidity("");
+          return;
+        }
         if (!state || !state.valid) {
           event.preventDefault();
           input.setCustomValidity("Phone number is not valid.");

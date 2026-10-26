@@ -1,8 +1,7 @@
 (function () {
   "use strict";
 
-  var canUseWeakSet = typeof WeakSet === "function";
-  var rendered = canUseWeakSet ? new WeakSet() : [];
+  var maps = new WeakMap();
   var loadingByKey = {};
   var importedLibraries = {};
   var importingLibraries = {};
@@ -31,21 +30,35 @@
   }
 
   function render(element, googleMaps) {
-      if (!element || (canUseWeakSet ? rendered.has(element) : rendered.indexOf(element) !== -1)) return true;
+      if (!element) return false;
       var position = {
         lat: Number(element.dataset.mapLatitude),
         lng: Number(element.dataset.mapLongitude)
       };
       var canvas = element.querySelector(".address-map-preview__canvas");
-      if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng) || !googleMaps || !canvas) return false;
-      new googleMaps.Map(canvas, {
+      if (!canvas) return false;
+      if (!element.dataset.mapLatitude || !element.dataset.mapLongitude
+        || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)
+        || Math.abs(position.lat) > 90 || Math.abs(position.lng) > 180) {
+        canvas.hidden = true;
+        return false;
+      }
+      canvas.hidden = false;
+      if (!googleMaps) return false;
+      var coordinates = element.querySelector("[data-map-coordinates]");
+      if (coordinates) coordinates.textContent = position.lat.toFixed(5) + ", " + position.lng.toFixed(5);
+      var map = maps.get(element);
+      if (map) {
+        map.setCenter(position);
+        return true;
+      }
+      map = new googleMaps.Map(canvas, {
         center: position,
         zoom: Number(element.dataset.mapZoom) || 14,
         mapId: element.dataset.mapId || undefined,
         disableDefaultUI: true
       });
-      if (canUseWeakSet) rendered.add(element);
-      else rendered.push(element);
+      maps.set(element, map);
       return true;
   }
 
