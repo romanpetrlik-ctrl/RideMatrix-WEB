@@ -1,7 +1,14 @@
 (function () {
   "use strict";
 
+<<<<<<< Updated upstream
   var maps = new WeakMap();
+=======
+  var canUseWeakSet = typeof WeakSet === "function";
+  var canUseWeakMap = typeof WeakMap === "function";
+  var rendered = canUseWeakSet ? new WeakSet() : [];
+  var instances = canUseWeakMap ? new WeakMap() : [];
+>>>>>>> Stashed changes
   var loadingByKey = {};
   var importedLibraries = {};
   var importingLibraries = {};
@@ -29,7 +36,30 @@
     }));
   }
 
+  function getInstance(element) {
+    if (canUseWeakMap) return instances.get(element) || null;
+    for (var i = 0; i < instances.length; i += 1) {
+      if (instances[i].element === element) return instances[i].instance;
+    }
+    return null;
+  }
+
+  function setInstance(element, instance) {
+    if (canUseWeakMap) {
+      instances.set(element, instance);
+      return;
+    }
+    for (var i = 0; i < instances.length; i += 1) {
+      if (instances[i].element === element) {
+        instances[i].instance = instance;
+        return;
+      }
+    }
+    instances.push({ element: element, instance: instance });
+  }
+
   function render(element, googleMaps) {
+<<<<<<< Updated upstream
       if (!element) return false;
       var position = {
         lat: Number(element.dataset.mapLatitude),
@@ -59,7 +89,53 @@
         disableDefaultUI: true
       });
       maps.set(element, map);
+=======
+    if (!element || !googleMaps) return false;
+
+    var position = {
+      lat: Number(element.dataset.mapLatitude),
+      lng: Number(element.dataset.mapLongitude)
+    };
+    var zoom = Number(element.dataset.mapZoom) || 14;
+    var canvas = element.querySelector(".address-map-preview__canvas");
+
+    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng) || !canvas) return false;
+
+    var existing = getInstance(element);
+    if (existing && existing.map) {
+      if (existing.marker && typeof existing.marker.setPosition === "function") {
+        existing.marker.setPosition(position);
+      }
+      if (typeof existing.map.setCenter === "function") {
+        existing.map.setCenter(position);
+      } else if (typeof existing.map.panTo === "function") {
+        existing.map.panTo(position);
+      }
+      if (typeof existing.map.setZoom === "function") {
+        existing.map.setZoom(zoom);
+      }
+>>>>>>> Stashed changes
       return true;
+    }
+
+    var map = new googleMaps.Map(canvas, {
+      center: position,
+      zoom: zoom,
+      mapId: element.dataset.mapId || undefined,
+      disableDefaultUI: true
+    });
+
+    var marker = new googleMaps.Marker({
+      position: position,
+      map: map
+    });
+
+    setInstance(element, { map: map, marker: marker });
+
+    if (canUseWeakSet) rendered.add(element);
+    else rendered.push(element);
+
+    return true;
   }
 
   function normalizeLibraries(libraries) {

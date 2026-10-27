@@ -295,8 +295,22 @@
           var nextValues = mapPlaceToAddress(place);
           internalUpdate = true;
           applyAddress(fields, nextValues);
+<<<<<<< Updated upstream
           internalUpdate = false;
           updateMapPreview();
+=======
+          
+          var mapPreview = document.querySelector(".address-map-preview");
+          if (mapPreview && nextValues.latitude && nextValues.longitude) {
+            mapPreview.dataset.mapLatitude = nextValues.latitude;
+            mapPreview.dataset.mapLongitude = nextValues.longitude;
+            if (window.RideMatrixMaps && window.google && window.google.maps && typeof window.RideMatrixMaps.render === "function") {
+              window.RideMatrixMaps.render(mapPreview, window.google.maps);
+            }
+          }
+
+internalUpdate = false;
+>>>>>>> Stashed changes
           if (!hasStructuredAddress(nextValues)) {
             var fallbackAddress = nextValues.addressSearch || selectedAddressText;
             if (fallbackAddress) {
