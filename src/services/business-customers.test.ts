@@ -138,7 +138,7 @@ test("partial operational addresses require street, city, postcode and country b
   for (const field of ["operationalHouseNameNumber", "operationalAddressLine2", "operationalCounty", "operationalLatitude"]) {
     const result = validateBusinessCustomer({ ...validForm(), [field]: "1" });
     assert.equal(result.input, undefined);
-    assert.ok(result.errors.some((error) => error.includes("Operational address: addressLine1")));
+    assert.ok(result.errors.some((error) => error.includes("Operational address: Address line 1")));
   }
   const result = validateBusinessCustomer({
     ...validForm(), operationalAddressLine1: "Depot Road", operationalCityTown: "Poole",
@@ -187,4 +187,35 @@ test("plain SQL migration exactly matches the native migration", () => {
   assert.ok(native);
   const normalize = (sql: string) => sql.replace(/\s+/g, " ").trim();
   assert.equal(normalize(readFileSync("sql/0021_business_customers.sql", "utf8")), normalize(native.sql));
+});
+
+test("accepts UK accounts phone numbers entered with the GB selector and stores them in E.164", () => {
+  for (const accountsPhone of ["+441202353570", "+44 1202 353570", "01202 353570"]) {
+    const result = validateBusinessCustomer({ ...validForm(), accountsPhone });
+    assert.deepEqual(result.errors, [], accountsPhone);
+    assert.deepEqual(result.fieldErrors, [], accountsPhone);
+    assert.equal(result.input?.accountsPhone, "+441202353570", accountsPhone);
+  }
+  assert.equal(validateBusinessCustomer({ ...validForm(), accountsPhone: "  " }).input?.accountsPhone, null);
+});
+
+test("an invalid accounts phone is reported against that exact field and retained", () => {
+  const result = validateBusinessCustomer({ ...validForm(), accountsPhone: "12345" });
+  assert.equal(result.input, undefined);
+  assert.equal(result.data.accountsPhone, "12345");
+  assert.deepEqual(result.fieldErrors.map((error) => error.field), ["accountsPhone"]);
+  assert.match(result.fieldErrors[0].message, /^Accounts phone must be a valid phone number/);
+  assert.deepEqual(result.errors, [result.fieldErrors[0].message]);
+});
+
+test("field errors identify each invalid business form control", () => {
+  const result = validateBusinessCustomer({
+    ...validForm(), officeEmail: "invalid", registeredPostcode: "", bookingAuthChannel: "",
+    operationalAddressLine2: "Unit 4", registeredLatitude: "51.5"
+  });
+  const fields = result.fieldErrors.map((error) => error.field);
+  for (const field of ["officeEmail", "registeredPostcode", "bookingAuthChannel", "operationalAddressLine1", "registeredLongitude"]) {
+    assert.ok(fields.includes(field), field);
+  }
+  assert.equal(result.errors.length, result.fieldErrors.length);
 });

@@ -869,6 +869,43 @@ button:visited,
   }
 }
 
+.business-customer-form .form-error-summary {
+  border-width: 2px;
+  border-left-width: 6px;
+}
+
+.business-customer-form .form-error-summary:focus {
+  outline: 3px solid var(--rm-golden-orange);
+  outline-offset: 2px;
+}
+
+.business-customer-form .form-error-summary__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.business-customer-form .form-error-summary__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.business-customer-form .form-error-summary__list a {
+  color: var(--rm-oxidized-iron);
+  font-weight: 700;
+}
+
+.business-customer-form .form-field__error {
+  margin: 0.25rem 0 0;
+  color: var(--rm-oxidized-iron);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.business-customer-form [aria-invalid="true"] {
+  border-color: var(--rm-oxidized-iron);
+  box-shadow: 0 0 0 1px var(--rm-oxidized-iron);
+}
+
 .customer-bookings-panel {
   width: 100%;
   min-width: 0;

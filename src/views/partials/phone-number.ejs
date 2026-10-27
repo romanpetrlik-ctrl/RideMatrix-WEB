@@ -2,6 +2,7 @@
   const componentPhoneId = typeof phoneId === "string" ? phoneId : "phone";
   const componentPhoneValue = typeof phoneValue === "string" ? phoneValue : "";
   const componentPhoneRequired = phoneRequired !== false;
+  const componentPhoneError = typeof phoneError === "string" ? phoneError : "";
 %>
 <div class="phone-number-component" data-phone-number>
   <label for="<%= componentPhoneId %>"><%= typeof phoneLabel === "string" ? phoneLabel : "Phone / WhatsApp" %><%= componentPhoneRequired ? " *" : "" %></label>
@@ -16,9 +17,10 @@
       data-phone-input
       data-phone-default-country="GB"
       <%= componentPhoneRequired ? "required" : "" %>
-      aria-describedby="<%= componentPhoneId %>-help"
+      <% if (componentPhoneError) { %>aria-invalid="true"<% } %>
+      aria-describedby="<%= componentPhoneId %>-help<%= componentPhoneError ? " " + componentPhoneId + "-error" : "" %>"
     />
   </div>
   <span class="phone-number-component__country" data-phone-country id="<%= componentPhoneId %>-help">Enter a phone number</span>
-  <span class="form-help phone-number-component__error" data-phone-error hidden aria-hidden="true"></span>
+  <span class="form-help phone-number-component__error form-field__error" id="<%= componentPhoneId %>-error" data-phone-error<%= componentPhoneError ? "" : " hidden" %>><%= componentPhoneError %></span>
 </div>

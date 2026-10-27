@@ -29,14 +29,16 @@
   %>
   <% [fields.slice(0, 2), fields.slice(2, 4), fields.slice(4, 6), fields.slice(6, 8), fields.slice(8, 9), fields.slice(9)].forEach((row) => { %>
   <div class="form-row form-row--two">
-  <% row.forEach(([suffix, label, required]) => { const id = prefix + suffix; const coordinate = suffix === "Latitude" || suffix === "Longitude"; %>
+  <% row.forEach(([suffix, label, required]) => { const id = prefix + suffix; const coordinate = suffix === "Latitude" || suffix === "Longitude"; const fieldError = (typeof addressFieldErrors === "object" && addressFieldErrors && addressFieldErrors[id]) || ""; %>
     <div class="form-field">
       <label for="<%= id %>"><%= label %><%= required ? " *" : "" %></label>
       <input type="<%= coordinate ? 'number' : 'text' %>" id="<%= id %>" name="<%= id %>" value="<%= formData[id] || '' %>" <%= required ? "required" : "" %>
+        <% if (fieldError) { %>aria-invalid="true" aria-describedby="<%= id %>-error"<% } %>
         <% if (coordinate) { %>
           step="any" min="<%= suffix === 'Latitude' ? -90 : -180 %>" max="<%= suffix === 'Latitude' ? 90 : 180 %>"
         <% } %>
       />
+      <% if (fieldError) { %><p class="form-field__error" id="<%= id %>-error"><%= fieldError %></p><% } %>
     </div>
   <% }) %>
   </div>

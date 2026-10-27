@@ -1,7 +1,26 @@
+<%
+  const businessErrorItems = Array.isArray(locals.fieldErrors) ? locals.fieldErrors : [];
+  const businessFieldErrors = {};
+  businessErrorItems.forEach((item) => {
+    if (item && item.field && !businessFieldErrors[item.field]) businessFieldErrors[item.field] = item.message;
+  });
+  const fieldInvalidAttrs = (id, describedBy) => {
+    const ids = [describedBy, businessFieldErrors[id] ? id + "-error" : ""].filter(Boolean).join(" ");
+    return (businessFieldErrors[id] ? 'aria-invalid="true" ' : "") + (ids ? 'aria-describedby="' + ids + '"' : "");
+  };
+%>
 <h1>Business customer</h1>
 <p>Fill in the organisation's details below. Fields marked with * are required.</p>
-<form id="business-customer-form" class="inline-form private-customer-form business-customer-form" method="post" action="/customers/register">
+<form id="business-customer-form" class="inline-form private-customer-form business-customer-form" method="post" action="/customers/register" data-error-summary-form>
   <%- locals.csrfField || "" %>
+  <div class="notice notice--critical form-error-summary" id="business-customer-form-errors" tabindex="-1" aria-labelledby="business-customer-form-errors-title" data-error-summary<%= errors.length > 0 ? "" : " hidden" %>>
+    <h2 class="form-error-summary__title" id="business-customer-form-errors-title">Please correct the following errors:</h2>
+    <ul class="form-error-summary__list" data-error-summary-list>
+      <% (businessErrorItems.length > 0 ? businessErrorItems : errors.map((message) => ({ field: "", message }))).forEach((item) => { %>
+        <li><% if (item.field) { %><a href="#<%= item.field %>" data-error-field="<%= item.field %>"><%= item.message %></a><% } else { %><%= item.message %><% } %></li>
+      <% }) %>
+    </ul>
+  </div>
   <input type="hidden" name="customerType" value="business" />
   <div class="private-customer-form__grid business-customer-form__grid">
   <section class="private-customer-form__column business-customer-form__company" aria-labelledby="registered-company-heading">
@@ -9,51 +28,57 @@
     <div class="form-row form-row--three">
       <div class="form-field">
         <label for="registeredName">Registered name *</label>
-        <input type="text" id="registeredName" name="registeredName" value="<%= formData.registeredName || '' %>" autocomplete="organization" required />
+        <input type="text" id="registeredName" name="registeredName" value="<%= formData.registeredName || '' %>" autocomplete="organization" <%- fieldInvalidAttrs("registeredName") %> required />
+        <% if (businessFieldErrors.registeredName) { %><p class="form-field__error" id="registeredName-error"><%= businessFieldErrors.registeredName %></p><% } %>
       </div>
       <div class="form-field">
-        <%- include("phone-number", { phoneId: "officePhone", phoneName: "officePhone", phoneLabel: "Office phone number", phoneValue: formData.officePhone || "", phoneRequired: true }) %>
+        <%- include("phone-number", { phoneId: "officePhone", phoneName: "officePhone", phoneLabel: "Office phone number", phoneValue: formData.officePhone || "", phoneError: businessFieldErrors.officePhone || "", phoneRequired: true }) %>
       </div>
       <div class="form-field">
         <label for="officeEmail">Office contact email *</label>
-        <input type="email" id="officeEmail" name="officeEmail" value="<%= formData.officeEmail || '' %>" required />
+        <input type="email" id="officeEmail" name="officeEmail" value="<%= formData.officeEmail || '' %>" <%- fieldInvalidAttrs("officeEmail") %> required />
+        <% if (businessFieldErrors.officeEmail) { %><p class="form-field__error" id="officeEmail-error"><%= businessFieldErrors.officeEmail %></p><% } %>
       </div>
     </div>
   </section>
-  <%- include("business-customer-address", { prefix: "registered", heading: "Registered address", addressRequired: true }) %>
-  <%- include("business-customer-address", { prefix: "operational", heading: "Operational base", addressRequired: false }) %>
+  <%- include("business-customer-address", { prefix: "registered", heading: "Registered address", addressRequired: true, addressFieldErrors: businessFieldErrors }) %>
+  <%- include("business-customer-address", { prefix: "operational", heading: "Operational base", addressRequired: false, addressFieldErrors: businessFieldErrors }) %>
   <section class="private-customer-form__column" aria-labelledby="booker-heading">
     <h2 id="booker-heading">Booking manager (booker)</h2>
     <div class="form-field">
       <label for="bookerFullName">Full name *</label>
-      <input type="text" id="bookerFullName" name="bookerFullName" value="<%= formData.bookerFullName || '' %>" required />
+      <input type="text" id="bookerFullName" name="bookerFullName" value="<%= formData.bookerFullName || '' %>" <%- fieldInvalidAttrs("bookerFullName") %> required />
+      <% if (businessFieldErrors.bookerFullName) { %><p class="form-field__error" id="bookerFullName-error"><%= businessFieldErrors.bookerFullName %></p><% } %>
     </div>
     <div class="form-row form-row--two">
       <div class="form-field">
         <label for="bookerEmail">Email *</label>
-        <input type="email" id="bookerEmail" name="bookerEmail" value="<%= formData.bookerEmail || '' %>" required />
+        <input type="email" id="bookerEmail" name="bookerEmail" value="<%= formData.bookerEmail || '' %>" <%- fieldInvalidAttrs("bookerEmail") %> required />
+        <% if (businessFieldErrors.bookerEmail) { %><p class="form-field__error" id="bookerEmail-error"><%= businessFieldErrors.bookerEmail %></p><% } %>
       </div>
       <div class="form-field">
-        <%- include("phone-number", { phoneId: "bookerPhone", phoneName: "bookerPhone", phoneLabel: "Phone", phoneValue: formData.bookerPhone || "", phoneRequired: true }) %>
+        <%- include("phone-number", { phoneId: "bookerPhone", phoneName: "bookerPhone", phoneLabel: "Phone", phoneValue: formData.bookerPhone || "", phoneError: businessFieldErrors.bookerPhone || "", phoneRequired: true }) %>
       </div>
     </div>
     <div class="form-field">
       <label for="bookingAuthRequired">Booking auth required *</label>
-      <select id="bookingAuthRequired" name="bookingAuthRequired" required>
+      <select id="bookingAuthRequired" name="bookingAuthRequired" <%- fieldInvalidAttrs("bookingAuthRequired") %> required>
         <option value="">Choose yes or no</option>
         <% ["yes", "no"].forEach((value) => { %>
           <option value="<%= value %>" <%= formData.bookingAuthRequired === value ? "selected" : "" %>><%= value === "yes" ? "Yes" : "No" %></option>
         <% }) %>
       </select>
+      <% if (businessFieldErrors.bookingAuthRequired) { %><p class="form-field__error" id="bookingAuthRequired-error"><%= businessFieldErrors.bookingAuthRequired %></p><% } %>
     </div>
     <div class="form-field">
       <label for="bookingAuthChannel">Booking auth channel (required when authorisation is required)</label>
-      <select id="bookingAuthChannel" name="bookingAuthChannel" aria-describedby="bookingAuthChannel-help">
+      <select id="bookingAuthChannel" name="bookingAuthChannel" <%- fieldInvalidAttrs("bookingAuthChannel", "bookingAuthChannel-help") %>>
         <option value="">Choose a channel</option>
         <% [["email", "Email"], ["whatsapp", "WhatsApp"], ["both", "Both"]].forEach(([value, label]) => { %>
           <option value="<%= value %>" <%= formData.bookingAuthChannel === value ? "selected" : "" %>><%= label %></option>
         <% }) %>
       </select>
+      <% if (businessFieldErrors.bookingAuthChannel) { %><p class="form-field__error" id="bookingAuthChannel-error"><%= businessFieldErrors.bookingAuthChannel %></p><% } %>
       <p class="private-customer-form__section-intro" id="bookingAuthChannel-help">Saves the approval-link preference. Automatic email/WhatsApp delivery is not connected yet.</p>
     </div>
   </section>
@@ -61,15 +86,17 @@
     <h2 id="accounts-heading">Accounts department</h2>
     <div class="form-field">
       <label for="accountsFullName">Contact full name *</label>
-      <input type="text" id="accountsFullName" name="accountsFullName" value="<%= formData.accountsFullName || '' %>" required />
+      <input type="text" id="accountsFullName" name="accountsFullName" value="<%= formData.accountsFullName || '' %>" <%- fieldInvalidAttrs("accountsFullName") %> required />
+      <% if (businessFieldErrors.accountsFullName) { %><p class="form-field__error" id="accountsFullName-error"><%= businessFieldErrors.accountsFullName %></p><% } %>
     </div>
     <div class="form-row form-row--two">
       <div class="form-field">
         <label for="accountsEmail">Accounts email *</label>
-        <input type="email" id="accountsEmail" name="accountsEmail" value="<%= formData.accountsEmail || '' %>" required />
+        <input type="email" id="accountsEmail" name="accountsEmail" value="<%= formData.accountsEmail || '' %>" <%- fieldInvalidAttrs("accountsEmail") %> required />
+        <% if (businessFieldErrors.accountsEmail) { %><p class="form-field__error" id="accountsEmail-error"><%= businessFieldErrors.accountsEmail %></p><% } %>
       </div>
       <div class="form-field">
-        <%- include("phone-number", { phoneId: "accountsPhone", phoneName: "accountsPhone", phoneLabel: "Accounts phone number", phoneValue: formData.accountsPhone || "", phoneRequired: false }) %>
+        <%- include("phone-number", { phoneId: "accountsPhone", phoneName: "accountsPhone", phoneLabel: "Accounts phone number", phoneValue: formData.accountsPhone || "", phoneError: businessFieldErrors.accountsPhone || "", phoneRequired: false }) %>
       </div>
     </div>
   </section>
