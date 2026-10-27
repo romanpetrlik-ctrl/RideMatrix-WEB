@@ -50,7 +50,7 @@ test("customer registration and edit actions are supplied by the dynamic bar", (
   assert.match(edit, /class="panel panel--compact customer-form-panel(?: customer-form-panel--centered)?"/);
   assert.match(register, /class="inline-form private-customer-form"/);
   assert.match(register, /id="private-customer-form"/);
-  assert.match(register, /formId: "private-customer-form"/);
+  assert.match(register, /formId: selectedCustomerType \+ "-customer-form"/);
   assert.match(register, /data-address-autocomplete-browser-key="<%= typeof mapBrowserApiKey === 'string' \? mapBrowserApiKey : '' %>"/);
   assert.match(register, /id="addressSearch"/);
   assert.doesNotMatch(register, /<div class="action-row">[\s\S]*Create Customer/);

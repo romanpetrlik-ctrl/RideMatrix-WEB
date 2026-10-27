@@ -18,7 +18,9 @@
       <span class="button button--dynamic-cta button--disabled" aria-disabled="true">Email unavailable</span>
     <% } %>
 
-    <a class="button button--dynamic-cta" href="<%= customer.editHref %>">Edit Customer</a>
+    <% if (customer.source !== "business") { %>
+      <a class="button button--dynamic-cta" href="<%= customer.editHref %>">Edit Customer</a>
+    <% } %>
 
     <form class="inline-form" method="post" action="/customers/<%= customer.id %>/suspend?returnTo=<%= encodeURIComponent(backToCustomersHref) %>">
       <%- locals.csrfField || "" %>

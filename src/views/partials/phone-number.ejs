@@ -4,13 +4,13 @@
   const componentPhoneRequired = phoneRequired !== false;
 %>
 <div class="phone-number-component" data-phone-number>
-  <label for="<%= componentPhoneId %>">Phone / WhatsApp<%= componentPhoneRequired ? " *" : "" %></label>
+  <label for="<%= componentPhoneId %>"><%= typeof phoneLabel === "string" ? phoneLabel : "Phone / WhatsApp" %><%= componentPhoneRequired ? " *" : "" %></label>
   <div class="phone-number-component__input">
     <span class="phone-number-component__flag" data-phone-flag aria-hidden="true">🌐</span>
     <input
       type="tel"
       id="<%= componentPhoneId %>"
-      name="phone"
+      name="<%= typeof phoneName === "string" ? phoneName : "phone" %>"
       value="<%= componentPhoneValue %>"
       autocomplete="tel"
       data-phone-input

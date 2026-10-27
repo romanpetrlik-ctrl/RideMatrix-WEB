@@ -69,6 +69,41 @@ test("map preview loader exits early without browser key", async () => {
   assert.equal(loaded.scripts.length, 0);
 });
 
+test("map previews recenter independently and reject empty or invalid coordinates", () => {
+  const loaded = loadMapsBundle();
+  const centers: any[] = [];
+  let created = 0;
+  const googleMaps = {
+    Map: class {
+      constructor(_canvas: unknown, options: any) { created++; centers.push(options.center); }
+      setCenter(point: any) { centers.push(point); }
+    }
+  };
+  function element(latitude: string, longitude: string) {
+    const canvas = { hidden: false };
+    return {
+      dataset: { mapLatitude: latitude, mapLongitude: longitude },
+      querySelector: (selector: string) => selector === ".address-map-preview__canvas" ? canvas : null,
+      canvas
+    };
+  }
+  const first = element("", "");
+  const second = element("30", "40");
+  assert.equal(loaded.maps.render(first, googleMaps), false);
+  assert.equal(first.canvas.hidden, true);
+  first.dataset.mapLatitude = "0";
+  first.dataset.mapLongitude = "0";
+  assert.equal(loaded.maps.render(first, googleMaps), true);
+  assert.equal(loaded.maps.render(second, googleMaps), true);
+  first.dataset.mapLatitude = "10";
+  loaded.maps.render(first, googleMaps);
+  assert.equal(created, 2);
+  assert.equal(centers[2].lat, 10);
+  assert.equal(second.dataset.mapLatitude, "30");
+  first.dataset.mapLatitude = "91";
+  assert.equal(loaded.maps.render(first, googleMaps), false);
+});
+
 test("map preview loader rejects when requested libraries are unavailable", async () => {
   const loaded = loadMapsBundle();
   loaded.window.google = { maps: {} };

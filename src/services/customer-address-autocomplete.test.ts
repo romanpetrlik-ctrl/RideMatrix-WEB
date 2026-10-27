@@ -122,10 +122,68 @@ test("maps a selected place into structured customer address fields", () => {
     cityTown: "London",
     county: "Greater London",
     state: "England",
+    country: "",
     postcode: "SW1A 2AA",
     latitude: "51.5034",
     longitude: "-0.1276"
   });
+});
+
+test("scoped business addresses update only their own map and discard stale selections", async () => {
+    const loaded = loadAutocomplete();
+    const handlers: Array<(event: any) => void> = [];
+    class Autocomplete {
+      setAttribute() {}
+      addEventListener(_type: string, handler: (event: any) => void) { handlers.push(handler); }
+    }
+    const renders: any[] = [];
+    loaded.window.RideMatrixMaps = {
+      load: async () => true,
+      render: (preview: any) => renders.push(preview)
+    };
+    loaded.window.google = { maps: { importLibrary: async () => ({ PlaceAutocompleteElement: Autocomplete }) } };
+    function businessAddress(prefix: string) {
+      const { form, fields } = createForm("browser-key");
+      const preview = { dataset: {} as Record<string, string>, querySelector: () => null };
+      const root = {
+        dataset: { ...form.dataset, addressPrefix: prefix },
+        querySelector(selector: string): any {
+          if (selector === ".address-map-preview") return preview;
+          if (selector.startsWith("#" + prefix)) {
+            const suffix = selector.slice(prefix.length + 1);
+            return form.querySelector("#" + suffix.charAt(0).toLowerCase() + suffix.slice(1));
+          }
+          return form.querySelector(selector);
+        }
+      };
+      loaded.api.bindAutocomplete(root);
+      return { fields, preview };
+    }
+    const registered = businessAddress("registered");
+    const operational = businessAddress("operational");
+    await flushPromises();
+    const select = (handler: (event: any) => void, lat: number, fetchFields = async () => {}) => handler({
+      placePrediction: { toPlace: () => ({
+        fetchFields,
+        location: { lat, lng: 0 },
+        addressComponents: [{ longText: "Road", types: ["route"] }]
+      }) }
+    });
+    let finishOld!: () => void;
+    select(handlers[0], 10, () => new Promise<void>((resolve) => { finishOld = resolve; }));
+    select(handlers[0], 20);
+    select(handlers[1], 30);
+    await flushPromises();
+    finishOld();
+    await flushPromises();
+    assert.equal(registered.fields.latitude.value, "20");
+    assert.equal(registered.preview.dataset.mapLatitude, "20");
+    assert.equal(operational.preview.dataset.mapLatitude, "30");
+    assert.equal(registered.preview.dataset.mapLongitude, "0");
+    assert.equal(renders.length, 2);
+    registered.fields.addressLine1.trigger("input");
+    assert.equal(registered.preview.dataset.mapLatitude, "");
+    assert.equal(operational.preview.dataset.mapLatitude, "30");
 });
 
 test("handles missing address components without throwing", () => {

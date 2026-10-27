@@ -101,6 +101,7 @@
       cityTown: cityTown,
       county: county,
       state: components.administrative_area_level_1 || "",
+      country: components.country || "",
       postcode: postcode,
       latitude: location.latitude,
       longitude: location.longitude
@@ -144,22 +145,43 @@
   function bindAutocomplete(form) {
     if (!form) return;
     var browserKey = form.dataset.addressAutocompleteBrowserKey || "";
+    var prefix = form.dataset.addressPrefix || "";
+    function field(name) {
+      return form.querySelector("#" + (prefix ? prefix + name.charAt(0).toUpperCase() + name.slice(1) : name));
+    }
     var fields = {
-      address: form.querySelector("#address"),
-      addressSearch: form.querySelector("#addressSearch"),
-      addressSearchManual: form.querySelector("#addressSearchManual"),
+      address: field("address"),
+      addressSearch: field("addressSearch"),
+      addressSearchManual: field("addressSearchManual"),
       autocompleteHost: form.querySelector("[data-address-autocomplete-host]"),
-      houseNameNumber: form.querySelector("#houseNameNumber"),
-      addressLine1: form.querySelector("#addressLine1"),
-      addressLine2: form.querySelector("#addressLine2"),
-      addressLine3: form.querySelector("#addressLine3"),
-      cityTown: form.querySelector("#cityTown"),
-      county: form.querySelector("#county"),
-      state: form.querySelector("#state"),
-      postcode: form.querySelector("#postcode"),
-      latitude: form.querySelector("#latitude"),
-      longitude: form.querySelector("#longitude")
+      houseNameNumber: field("houseNameNumber"),
+      addressLine1: field("addressLine1"),
+      addressLine2: field("addressLine2"),
+      addressLine3: field("addressLine3"),
+      cityTown: field("cityTown"),
+      county: field("county"),
+      state: field("state"),
+      country: field("country"),
+      postcode: field("postcode"),
+      latitude: field("latitude"),
+      longitude: field("longitude")
     };
+    function updateMapPreview() {
+      var preview = form.querySelector(".address-map-preview");
+      if (!preview) return;
+      preview.dataset.mapLatitude = fields.latitude ? fields.latitude.value : "";
+      preview.dataset.mapLongitude = fields.longitude ? fields.longitude.value : "";
+      var coordinates = preview.querySelector("[data-map-coordinates]");
+      if (coordinates && (!preview.dataset.mapLatitude || !preview.dataset.mapLongitude)) {
+        coordinates.textContent = "Choose an address or enter coordinates to preview its location.";
+      }
+      if (window.RideMatrixMaps && typeof window.RideMatrixMaps.render === "function") {
+        window.RideMatrixMaps.render(preview, window.google && window.google.maps);
+      }
+    }
+    [fields.latitude, fields.longitude].filter(Boolean).forEach(function (coordinate) {
+      coordinate.addEventListener("input", updateMapPreview);
+    });
     var status = form.querySelector("[data-address-autocomplete-status]");
     function setStatus(message) {
       if (status) status.textContent = message;
@@ -183,11 +205,14 @@
     }
 
     var internalUpdate = false;
+    var selectionSequence = 0;
     function markManualAddressChange() {
       if (internalUpdate) return;
+      selectionSequence += 1;
       if (fields.address) fields.address.value = getSearchValue();
       syncSearchValue(getSearchValue());
       clearCoordinates(fields);
+      updateMapPreview();
     }
 
     [
@@ -199,6 +224,7 @@
       fields.cityTown,
       fields.county,
       fields.state,
+      fields.country,
       fields.postcode
     ].filter(Boolean).forEach(function (field) {
       field.addEventListener("input", markManualAddressChange);
@@ -229,13 +255,14 @@
       autocompleteElement.className = "private-customer-form__autocomplete-element";
       if (typeof autocompleteElement.setAttribute === "function") {
         autocompleteElement.setAttribute("aria-label", "Search address");
-        autocompleteElement.setAttribute("aria-describedby", "addressSearch-help");
+        autocompleteElement.setAttribute("aria-describedby", prefix ? prefix + "AddressSearch-help" : "addressSearch-help");
       }
       fields.autocompleteHost.appendChild(autocompleteElement);
       setManualVisible(false);
       setStatus(AVAILABLE_STATUS);
 
       autocompleteElement.addEventListener("gmp-select", function (event) {
+        var selection = ++selectionSequence;
         var placePrediction = event && (event.placePrediction || (event.detail && event.detail.placePrediction));
         var predictionText = readPredictionText(placePrediction);
         if (!placePrediction || typeof placePrediction.toPlace !== "function") {
@@ -244,6 +271,7 @@
             if (fields.address) fields.address.value = predictionText;
           }
           clearCoordinates(fields);
+          updateMapPreview();
           setManualVisible(true);
           setStatus("Selected place does not include usable structured fields. Enter details manually.");
           return;
@@ -255,6 +283,7 @@
             if (fields.address) fields.address.value = predictionText;
           }
           clearCoordinates(fields);
+          updateMapPreview();
           setManualVisible(true);
           setStatus("Selected place does not include usable structured fields. Enter details manually.");
           return;
@@ -262,10 +291,12 @@
         var selectedAddressText = readFormattedAddress(place) || predictionText;
 
         Promise.resolve(place.fetchFields({ fields: PLACE_FIELDS })).then(function () {
+          if (selection !== selectionSequence) return;
           var nextValues = mapPlaceToAddress(place);
           internalUpdate = true;
           applyAddress(fields, nextValues);
           internalUpdate = false;
+          updateMapPreview();
           if (!hasStructuredAddress(nextValues)) {
             var fallbackAddress = nextValues.addressSearch || selectedAddressText;
             if (fallbackAddress) {
@@ -273,6 +304,7 @@
               if (fields.address) fields.address.value = fallbackAddress;
             }
             clearCoordinates(fields);
+            updateMapPreview();
             setManualVisible(true);
             setStatus("Selected place does not include usable structured fields. Enter details manually.");
             return;
@@ -280,10 +312,12 @@
           setManualVisible(false);
           setStatus(AVAILABLE_STATUS);
         }).catch(function () {
+          if (selection !== selectionSequence) return;
           if (selectedAddressText) syncSearchValue(selectedAddressText);
           if (fields.address && selectedAddressText) fields.address.value = selectedAddressText;
           setStatus("Google address suggestions are unavailable. Continue with manual address entry.");
           clearCoordinates(fields);
+          updateMapPreview();
           setManualVisible(true);
         });
       });
@@ -304,6 +338,6 @@
 
   if (typeof document === "undefined") return;
   document.addEventListener("DOMContentLoaded", function () {
-    Array.prototype.slice.call(document.querySelectorAll("form[data-address-autocomplete-browser-key]")).forEach(bindAutocomplete);
+    Array.prototype.slice.call(document.querySelectorAll("[data-address-autocomplete-browser-key]")).forEach(bindAutocomplete);
   });
 }());

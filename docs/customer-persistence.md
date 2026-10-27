@@ -63,6 +63,62 @@ records.
 npm run db:migrate
 ```
 
+### Business customers and booking approval links
+
+Migration `0021_business_customers` adds a one-to-one `business_customers` profile
+linked to `customers`, with registered and operational addresses (including country
+and optional coordinates), office/booker/accounts contacts, and booking
+authorisation preferences. Business customers appear in the existing directory
+with `source = 'business'`; private registration is unchanged. Business profile
+details are read-only after creation in this release; the private editor is
+blocked for businesses to prevent divergent profile data. Existing suspend and
+delete actions remain available. Retention anonymization removes the business
+profile and its approval requests as well as scrubbing the base customer record.
+
+For Adminer, back up the database, select the application's PostgreSQL database,
+and run the complete contents of `sql/0021_business_customers.sql` in its SQL
+command screen. Apply earlier native migrations first. The script is the same SQL
+as native migration 0021 and is safe to run before the native runner: restart the
+app or run `npm run db:migrate` afterwards to record the migration in
+`schema_migrations`. Do not manually mark it applied before the SQL succeeds.
+
+`booking_authorization_requests` links a business and its own operational booking,
+stores only a SHA-256 hash of a random 256-bit bearer token, and tracks pending,
+approved, declined, or expired status. The backend scaffold exports
+`issueBookingAuthorizationRequest({ customerId, bookingId, channel?, expiresAt? })`
+from `src/services/booking-authorization.ts`; its returned plaintext token is for
+future delivery only, never storage or logs. Default expiry is 24 hours (custom
+expiry must be between one minute and seven days). No provider integration,
+automatic sending, or change to booking/dispatch status is included.
+
+The public links are `/booking-authorization/TOKEN/approve` and
+`/booking-authorization/TOKEN/decline`. GET displays a confirmation page without
+changing state, so message scanners cannot approve a booking. The confirmation
+form POST requires the browser's CSRF cookie/token and atomically consumes a
+pending request. Repeated or conflicting submissions report the original
+decision; expired links cannot decide. Invalid links return 404; expired links
+return 410. Possession of a link does not prove which transport was used, so
+`decided_by_channel` remains null until a verified delivery/identity integration
+can supply that audit information. Configure reverse proxies not to log these
+token-bearing paths, and use HTTPS in production.
+
+Manual verification:
+
+1. As an administrator, choose **New customer → Business customer**. Complete
+   registered company, booker, and accounts details; choose yes/no for booking
+   authorisation (a channel is required for yes).
+2. Select each address independently. Confirm each map follows its own location,
+   including selecting a second address in the same section. Edit an address
+   manually and confirm old coordinates/map are cleared. Both addresses support
+   manual entry when Maps is unavailable; operational base may be left blank.
+3. Submit invalid emails/phones or omit required fields: errors must retain the
+   business form and values. Save valid details and inspect the customer detail
+   and directory. Also create a private customer to check the unchanged flow.
+4. With a test business booking, issue a request through the scaffold service and
+   open each confirmation link. GET must not decide; approve/decline POST decides
+   once. Retry the same/opposite decision and test an expired and an invalid token.
+   Delivery itself is intentionally not wired into the booking UI yet.
+
 The command loads environment configuration, opens the PostgreSQL pool from
 `DATABASE_URL`, applies pending migrations under the advisory lock, closes the pool,
 and exits non-zero on failure. Application startup still runs the same migration gate

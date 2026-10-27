@@ -933,6 +933,7 @@ export async function anonymizeCustomer(id: string, client?: Queryable): Promise
         last_pickup_text = NULL, last_dropoff_text = NULL WHERE id = $1`,
       [id]
     );
+    await runner.query("DELETE FROM business_customers WHERE customer_id = $1", [id]);
     await runner.query("COMMIT");
     return true;
   } catch (error) {
