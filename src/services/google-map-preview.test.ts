@@ -72,11 +72,16 @@ test("map preview loader exits early without browser key", async () => {
 test("map previews recenter independently and reject empty or invalid coordinates", () => {
   const loaded = loadMapsBundle();
   const centers: any[] = [];
+  const markers: any[] = [];
   let created = 0;
   const googleMaps = {
     Map: class {
       constructor(_canvas: unknown, options: any) { created++; centers.push(options.center); }
       setCenter(point: any) { centers.push(point); }
+    },
+    Marker: class {
+      constructor(options: any) { markers.push(options.position); }
+      setPosition(point: any) { markers.push(point); }
     }
   };
   function element(latitude: string, longitude: string) {
@@ -99,6 +104,7 @@ test("map previews recenter independently and reject empty or invalid coordinate
   loaded.maps.render(first, googleMaps);
   assert.equal(created, 2);
   assert.equal(centers[2].lat, 10);
+  assert.equal(markers[2].lat, 10);
   assert.equal(second.dataset.mapLatitude, "30");
   first.dataset.mapLatitude = "91";
   assert.equal(loaded.maps.render(first, googleMaps), false);

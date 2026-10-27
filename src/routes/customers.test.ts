@@ -143,13 +143,31 @@ const validBusinessForm = new URLSearchParams({
   registeredCityTown: "London",
   registeredPostcode: "SW1A 2AA",
   registeredCountry: "United Kingdom",
+  registeredAddressLine2: "Westminster",
+  registeredAddressLine3: "Office floor",
+  registeredCounty: "Greater London",
+  registeredState: "England",
+  registeredLatitude: "51.5",
+  registeredLongitude: "-0.12",
+  operationalHouseNameNumber: "Unit 2",
+  operationalAddressLine1: "Depot Road",
+  operationalAddressLine2: "Industrial Park",
+  operationalAddressLine3: "East Gate",
+  operationalCityTown: "Poole",
+  operationalPostcode: "BH15 1AA",
+  operationalCounty: "Dorset",
+  operationalState: "England",
+  operationalCountry: "United Kingdom",
+  operationalLatitude: "50.7",
+  operationalLongitude: "0",
   bookerFullName: "Booking Manager",
   bookerEmail: "booker@example.com",
   bookerPhone: "07777 888999",
   bookingAuthRequired: "yes",
   bookingAuthChannel: "both",
   accountsFullName: "Accounts Manager",
-  accountsEmail: "accounts@example.com"
+  accountsEmail: "accounts@example.com",
+  accountsPhone: "+442079460019"
 });
 
 test("business registration replaces the placeholder with two independent address and phone components", async () => {
@@ -163,9 +181,15 @@ test("business registration replaces the placeholder with two independent addres
     assert.match(html, /formId|form="business-customer-form"/);
     assert.equal(countMatches(html, /data-address-prefix=/g), 2);
     assert.equal(countMatches(html, /class="address-map-preview"/g), 2);
-    for (const name of ["officePhone", "bookerPhone", "accountsPhone", "registeredCountry", "operationalCountry"]) {
-      assert.match(html, new RegExp(`name="${name}"`));
+    for (const name of validBusinessForm.keys()) {
+      if (name === "customerType") continue;
+      assert.match(html, new RegExp(`id="${name}"\\s+name="${name}"`), name);
+      assert.match(html, new RegExp(`<label for="${name}">`), name);
     }
+    for (const heading of ["registered-company-heading", "registered-address-heading", "operational-address-heading", "booker-heading", "accounts-heading"]) {
+      assert.match(html, new RegExp(`class="private-customer-form__column[^"]*" aria-labelledby="${heading}"`));
+    }
+    assert.match(html, /private-customer-form__grid business-customer-form__grid/);
     assert.equal(countMatches(html, /data-phone-number>/g), 3);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -189,6 +213,14 @@ test("business create validates, normalizes and redirects to the saved customer"
     assert.equal(saved.bookingAuthRequired, true);
     assert.equal(saved.bookingAuthChannel, "both");
     assert.equal(saved.registeredAddress.country, "United Kingdom");
+    for (const [prefix, address] of [["registered", saved.registeredAddress], ["operational", saved.operationalAddress]] as const) {
+      for (const field of ["houseNameNumber", "addressLine1", "addressLine2", "addressLine3", "cityTown", "postcode", "county", "state", "country", "latitude", "longitude"]) {
+        const key = prefix + field[0].toUpperCase() + field.slice(1);
+        const expected = validBusinessForm.get(key);
+        assert.equal(address[field], field === "latitude" || field === "longitude" ? Number(expected) : expected, key);
+      }
+    }
+    assert.equal(saved.accountsPhone, "+442079460019");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -205,12 +237,24 @@ test("business validation errors preserve the form and never call persistence", 
     invalid.set("officeEmail", "invalid");
     invalid.set("bookingAuthChannel", "");
     invalid.set("accountsFullName", "");
+    for (const prefix of ["registered", "operational"]) {
+      invalid.set(prefix + "AddressSearch", prefix + " search address");
+      invalid.set(prefix + "Address", prefix + " formatted address");
+    }
     const response = await fetch(`http://127.0.0.1:${port}/customers/register`, {
       method: "POST", body: invalid
     });
     const html = await response.text();
     assert.equal(response.status, 400);
-    assert.match(html, /value="Example Ltd"/);
+    for (const [name, value] of invalid) {
+      if (name === "customerType" || name === "bookingAuthRequired" || name === "bookingAuthChannel") continue;
+      const expected = name === "officePhone" ? "+442079460018" : name === "bookerPhone" ? "+447777888999" : value;
+      assert.match(html, new RegExp(`id="${name}"\\s+name="${name}"\\s+value="${expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), name);
+    }
+    assert.match(html, /<option value="yes" selected>Yes<\/option>/);
+    for (const prefix of ["registered", "operational"]) {
+      assert.match(html, new RegExp(`id="${prefix}AddressSearchManual" value="${prefix} search address"`));
+    }
     assert.match(html, /Please correct the following errors/);
     assert.match(html, /id="business-customer-form"/);
     assert.equal(calls, 0);

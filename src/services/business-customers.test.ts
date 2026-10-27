@@ -147,6 +147,21 @@ test("partial operational addresses require street, city, postcode and country b
   assert.deepEqual(result.errors, []);
 });
 
+test("retains each address search on errors without treating search text as a structured address", () => {
+  const search = {
+    registeredAddressSearch: "  Office search  ", registeredAddress: "Office formatted address",
+    operationalAddressSearch: "Depot search", operationalAddress: "Depot formatted address"
+  };
+  const valid = validateBusinessCustomer({ ...validForm(), ...search });
+  assert.deepEqual(valid.errors, []);
+  assert.equal(valid.input?.operationalAddress.addressLine1, "");
+  const invalid = validateBusinessCustomer({ ...validForm(), ...search, officeEmail: "invalid" });
+  assert.ok(invalid.errors.length > 0);
+  for (const [field, value] of Object.entries(search)) {
+    assert.equal(invalid.data[field], value.trim(), field);
+  }
+});
+
 test("coordinates must be strictly numeric, finite, paired and within their respective ranges", () => {
   for (const prefix of ["registered", "operational"]) {
     const base = {
