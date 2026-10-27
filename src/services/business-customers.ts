@@ -49,15 +49,33 @@ function addressFormKey(prefix: string, field: string): string {
   return prefix + field[0].toUpperCase() + field.slice(1);
 }
 
+const ADDRESS_FIELD_LABELS: Record<string, string> = {
+  houseNameNumber: "Building/unit name or number",
+  addressLine1: "Address line 1",
+  cityTown: "Town/City",
+  postcode: "Postcode/ZIP",
+  country: "Country",
+  latitude: "Latitude",
+  longitude: "Longitude"
+};
+
+export type BusinessFieldError = { field: string; message: string };
+
 export function validateBusinessCustomer(input: unknown): {
   data: BusinessFormData;
   errors: string[];
+  fieldErrors: BusinessFieldError[];
   input?: BusinessCustomerInput;
 } {
   const source = input && typeof input === "object" && !Array.isArray(input)
     ? input as Record<string, unknown>
     : {};
   const errors: string[] = [];
+  const fieldErrors: BusinessFieldError[] = [];
+  const fail = (field: string, message: string) => {
+    errors.push(message);
+    fieldErrors.push({ field, message });
+  };
   const data: BusinessFormData = {};
   const keys = [
     ...CONTACT_FIELDS,
@@ -68,7 +86,7 @@ export function validateBusinessCustomer(input: unknown): {
     const value = source[key];
     data[key] = typeof value === "string" ? value.trim() : "";
     if (value !== undefined && value !== null && typeof value !== "string") {
-      errors.push(`${key} must be a single text value.`);
+      fail(key, `${key} must be a single text value.`);
     }
   }
 
@@ -79,14 +97,14 @@ export function validateBusinessCustomer(input: unknown): {
     ["bookerPhone", "Booker phone"],
     ["accountsFullName", "Accounts full name"], ["accountsEmail", "Accounts email"]
   ]) {
-    if (!data[field]) errors.push(`${label} is required.`);
+    if (!data[field]) fail(field, `${label} is required.`);
   }
 
   for (const [field, label] of [
     ["officeEmail", "Office email"], ["bookerEmail", "Booker email"], ["accountsEmail", "Accounts email"]
   ]) {
     if (data[field] && (data[field].length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data[field]))) {
-      errors.push(`${label} must be a valid email address.`);
+      fail(field, `${label} must be a valid email address.`);
     }
     data[field] = data[field].toLowerCase();
   }
@@ -96,7 +114,7 @@ export function validateBusinessCustomer(input: unknown): {
     if (!data[field]) continue;
     const normalized = normalizePhoneToE164(data[field]);
     if (normalized) data[field] = normalized;
-    else errors.push(`${label} must be a valid phone number.`);
+    else fail(field, `${label} must be a valid phone number, for example +44 1202 353570 or 01202 353570.`);
   }
 
   function address(prefix: "registered" | "operational"): BusinessAddress {
@@ -107,20 +125,23 @@ export function validateBusinessCustomer(input: unknown): {
         ? ["houseNameNumber", "addressLine1", "cityTown", "postcode", "country"]
         : ["addressLine1", "cityTown", "postcode", "country"];
       for (const field of required) {
-        if (!data[addressFormKey(prefix, field)]) errors.push(`${label}: ${field} is required.`);
+        if (!data[addressFormKey(prefix, field)]) {
+          fail(addressFormKey(prefix, field), `${label}: ${ADDRESS_FIELD_LABELS[field]} is required.`);
+        }
       }
     }
     const latitudeText = data[addressFormKey(prefix, "latitude")];
     const longitudeText = data[addressFormKey(prefix, "longitude")];
     if (Boolean(latitudeText) !== Boolean(longitudeText)) {
-      errors.push(`${label}: latitude and longitude must be provided together.`);
+      fail(addressFormKey(prefix, latitudeText ? "longitude" : "latitude"),
+        `${label}: latitude and longitude must be provided together.`);
     }
     function coordinate(text: string, field: string, limit: number): number | null {
       if (!text) return null;
       // Decimal notation only: reject coercions such as hexadecimal and partial numbers.
       if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)
         || !Number.isFinite(Number(text)) || Math.abs(Number(text)) > limit) {
-        errors.push(`${label}: ${field} must be a finite number between -${limit} and ${limit}.`);
+        fail(addressFormKey(prefix, field), `${label}: ${field} must be a finite number between -${limit} and ${limit}.`);
         return null;
       }
       return Number(text);
@@ -142,19 +163,19 @@ export function validateBusinessCustomer(input: unknown): {
   const registeredAddress = address("registered");
   const operationalAddress = address("operational");
   if (data.bookingAuthRequired !== "yes" && data.bookingAuthRequired !== "no") {
-    errors.push("Booking authorization required must explicitly be yes or no.");
+    fail("bookingAuthRequired", "Booking authorization required must explicitly be yes or no.");
   }
   let bookingAuthChannel: BusinessCustomerInput["bookingAuthChannel"] = null;
   if (data.bookingAuthRequired === "yes") {
     const channel = data.bookingAuthChannel;
     if (channel === "email" || channel === "whatsapp" || channel === "both") bookingAuthChannel = channel;
-    else errors.push("Choose a booking authorization channel: email, whatsapp or both.");
+    else fail("bookingAuthChannel", "Choose a booking authorization channel: email, whatsapp or both.");
   } else if (data.bookingAuthRequired === "no") {
     data.bookingAuthChannel = "";
   }
-  if (errors.length) return { data, errors };
+  if (errors.length) return { data, errors, fieldErrors };
   return {
-    data, errors,
+    data, errors, fieldErrors,
     input: {
       registeredName: data.registeredName,
       registeredAddress, operationalAddress,

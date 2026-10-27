@@ -263,6 +263,67 @@ test("business validation errors preserve the form and never call persistence", 
   }
 });
 
+test("business accounts phone accepts a GB number and persists it in canonical form", async () => {
+  let saved: any;
+  const server = createTestServer(adminSession, {
+    createBusinessCustomer: async (input) => { saved = input; return createTestCustomer(); }
+  });
+  try {
+    const { port } = server.address() as { port: number };
+    const form = new URLSearchParams(validBusinessForm);
+    form.set("accountsPhone", "+441202353570");
+    const response = await fetch(`http://127.0.0.1:${port}/customers/register`, {
+      method: "POST", body: form, redirect: "manual"
+    });
+    assert.equal(response.status, 302);
+    assert.equal(saved.accountsPhone, "+441202353570");
+
+    form.set("accountsPhone", "");
+    const empty = await fetch(`http://127.0.0.1:${port}/customers/register`, {
+      method: "POST", body: form, redirect: "manual"
+    });
+    assert.equal(empty.status, 302);
+    assert.equal(saved.accountsPhone, null);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("business validation errors render an accessible summary linked to inline field errors", async () => {
+  let calls = 0;
+  const server = createTestServer(adminSession, {
+    createBusinessCustomer: async () => { calls++; return createTestCustomer(); }
+  });
+  try {
+    const { port } = server.address() as { port: number };
+    const blank = await (await fetch(`http://127.0.0.1:${port}/customers/register?type=business`)).text();
+    assert.match(blank, /id="business-customer-form-errors" tabindex="-1" aria-labelledby="business-customer-form-errors-title" data-error-summary hidden>/);
+    assert.match(blank, /data-error-summary-form/);
+    assert.match(blank, /id="accountsPhone-error" data-phone-error hidden>/);
+
+    const invalid = new URLSearchParams(validBusinessForm);
+    invalid.set("accountsPhone", "12345");
+    invalid.set("officeEmail", "invalid");
+    const response = await fetch(`http://127.0.0.1:${port}/customers/register`, { method: "POST", body: invalid });
+    const html = await response.text();
+    assert.equal(response.status, 400);
+    assert.equal(calls, 0);
+    assert.match(html, /id="business-customer-form-errors" tabindex="-1" aria-labelledby="business-customer-form-errors-title" data-error-summary>/);
+    assert.equal(countMatches(html, /notice notice--critical/g), 1);
+    assert.match(html, /<a href="#accountsPhone" data-error-field="accountsPhone">Accounts phone must be a valid phone number/);
+    assert.match(html, /<a href="#officeEmail" data-error-field="officeEmail">Office email must be a valid email address\.<\/a>/);
+    assert.match(html, /id="accountsPhone"\s+name="accountsPhone"\s+value="12345"/);
+    assert.match(html, /aria-invalid="true"\s+aria-describedby="accountsPhone-help accountsPhone-error"/);
+    assert.match(html, /id="accountsPhone-error" data-phone-error>Accounts phone must be a valid phone number/);
+    assert.match(html, /id="officeEmail" name="officeEmail" value="invalid" aria-invalid="true" aria-describedby="officeEmail-error" required/);
+    assert.match(html, /<p class="form-field__error" id="officeEmail-error">Office email must be a valid email address\.<\/p>/);
+    assert.doesNotMatch(html, /id="bookerPhone-error" data-phone-error>/);
+    assert.doesNotMatch(html, /id="bookerEmail"[^>]*aria-invalid/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("business registration requires the existing administrator role", async () => {
   let calls = 0;
   const server = createTestServer({

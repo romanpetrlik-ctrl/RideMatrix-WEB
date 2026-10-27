@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { createBusinessCustomer, getBusinessCustomer, validateBusinessCustomer } from "../services/business-customers";
+import {
+  createBusinessCustomer,
+  getBusinessCustomer,
+  validateBusinessCustomer,
+  type BusinessFieldError
+} from "../services/business-customers";
 import multer from "multer";
 import { rateLimit } from "express-rate-limit";
 import { requireCsrfToken } from "../middleware/csrf";
@@ -912,7 +917,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
 
     if (req.body.customerType === "business") {
       const validation = validateBusinessCustomer(req.body);
-      const renderBusinessForm = (status: number, errors: string[]) => {
+      const renderBusinessForm = (status: number, fieldErrors: BusinessFieldError[]) => {
         const configuration = readMapConfiguration();
         return res.status(status).render("pages/customers/register", {
           title: "New Business Customer",
@@ -920,21 +925,24 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           email: sessionContext.email,
           customerType: "business",
           formData: validation.data,
-          errors,
+          errors: fieldErrors.map((error) => error.message),
+          fieldErrors,
           mapView: getRegisterMapView(),
           mapBrowserApiKey: configuration.browserApiKey,
           mapId: configuration.mapId
         });
       };
       if (validation.errors.length || !validation.input) {
-        return renderBusinessForm(400, validation.errors);
+        return renderBusinessForm(400, validation.fieldErrors);
       }
       try {
         const customer = await saveBusinessCustomer(validation.input);
         return res.redirect(buildCustomerHref(customer.id, { notice: "customer-created", returnTo: "/customers" }));
       } catch (error) {
         if (error instanceof DuplicateActiveCustomerEmailError) {
-          return renderBusinessForm(409, ["An active customer with this email address already exists."]);
+          return renderBusinessForm(409, [
+            { field: "officeEmail", message: "An active customer with this email address already exists." }
+          ]);
         }
         return next(error);
       }

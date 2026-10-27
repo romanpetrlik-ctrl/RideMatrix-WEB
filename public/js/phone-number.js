@@ -58,8 +58,54 @@
     var timer;
     var state = null;
     var tracker = phonePreviewStateFactory();
+    // Value the current `state` was resolved for; re-previewing an unchanged
+    // value (for example on blur when the submit button is clicked) must not
+    // discard the resolved state, otherwise the submit handler sees no state.
+    var resolvedValue = null;
+    var pendingSubmit = null;
+    var labelElement = component.querySelector("label");
+    var labelText = ((labelElement && labelElement.textContent) || "").replace(/\s*\*\s*$/, "").trim() || "Phone number";
+    var usesErrorSummary = Boolean(form && typeof form.hasAttribute === "function" && form.hasAttribute("data-error-summary-form"));
+    var errorValue = null;
 
     if (!input || !flag || !country || !error) return;
+
+    if (!error.hidden) errorValue = input.value;
+
+    function describedByIds() {
+      var value = typeof input.getAttribute === "function" ? input.getAttribute("aria-describedby") : "";
+      return (value || "").split(/\s+/).filter(Boolean);
+    }
+
+    function showError(message) {
+      errorValue = input.value;
+      error.textContent = message;
+      error.hidden = false;
+      if (typeof input.setAttribute === "function") {
+        input.setAttribute("aria-invalid", "true");
+        if (error.id) {
+          var ids = describedByIds();
+          if (ids.indexOf(error.id) === -1) ids.push(error.id);
+          input.setAttribute("aria-describedby", ids.join(" "));
+        }
+      }
+    }
+
+    function hideError() {
+      errorValue = null;
+      error.hidden = true;
+      error.textContent = "";
+      if (typeof input.removeAttribute === "function") input.removeAttribute("aria-invalid");
+      if (error.id && typeof input.setAttribute === "function") {
+        var ids = describedByIds().filter(function (id) { return id !== error.id; });
+        if (ids.length) input.setAttribute("aria-describedby", ids.join(" "));
+        else input.removeAttribute("aria-describedby");
+      }
+    }
+
+    function hideErrorIfChanged() {
+      if (errorValue === null || input.value !== errorValue) hideError();
+    }
 
     function hasUsableEmail() {
       var value = emailInput && emailInput.value ? emailInput.value.trim() : "";
@@ -115,7 +161,7 @@
         : { valid: false };
 
       input.setCustomValidity("");
-      error.hidden = true;
+      hideErrorIfChanged();
 
       if (valid) {
         if (finalNormalized && input.value !== finalNormalized) input.value = finalNormalized;
@@ -134,16 +180,27 @@
         country.removeAttribute("aria-label");
       }
 
+      resolvedValue = input.value;
       renderActions();
+
+      if (pendingSubmit && form) {
+        var submitter = pendingSubmit.submitter;
+        pendingSubmit = null;
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+        }
+      }
     }
 
     function preview() {
+      if (state && input.value === resolvedValue) return;
+
       clearTimeout(timer);
 
       var snapshot = tracker.trackRequest(input.value);
       state = null;
       input.setCustomValidity("");
-      error.hidden = true;
+      hideErrorIfChanged();
       renderActions();
 
       if (!input.value.trim()) {
@@ -184,17 +241,40 @@
 
     if (form) {
       form.addEventListener("submit", function (event) {
-        if (!input.required && !input.value.trim()) {
+        var message;
+        if (!input.value.trim()) {
           input.setCustomValidity("");
-          return;
-        }
-        if (!state || !state.valid) {
+          if (!input.required) {
+            hideError();
+            return;
+          }
           event.preventDefault();
-          input.setCustomValidity("Phone number is not valid.");
-          input.reportValidity();
+          message = labelText + " is required.";
+          input.setCustomValidity(message);
+          showError(message);
+          if (!usesErrorSummary) input.reportValidity();
           return;
         }
+        if (!state || input.value !== resolvedValue) {
+          // The preview for the current value has not resolved yet: wait for it
+          // and resubmit instead of rejecting a possibly valid number.
+          event.preventDefault();
+          pendingSubmit = { submitter: event.submitter || null };
+          if (state) preview();
+          return;
+        }
+        if (!state.valid) {
+          event.preventDefault();
+          message = labelText + " must be a valid phone number, for example +44 1202 353570 or 01202 353570.";
+          input.setCustomValidity(message);
+          showError(message);
+          if (!usesErrorSummary) input.reportValidity();
+          return;
+        }
+        input.setCustomValidity("");
+        hideError();
         input.value = state.normalized;
+        resolvedValue = input.value;
       });
     }
     preview();

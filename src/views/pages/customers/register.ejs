@@ -24,7 +24,7 @@
     }) %>
 
     <main class="container rm-page-shell customer-page<%= selectedCustomerType === "private" ? " customer-page--private customer-form-page customer-form-page--private" : "" %>">
-      <% if (errors.length > 0) { %>
+      <% if (errors.length > 0 && selectedCustomerType !== "business") { %>
         <section class="notice notice--critical">
           <strong>Please correct the following errors:</strong>
           <ul>
@@ -307,7 +307,7 @@
       <script src="/js/google-map-preview.js" defer></script>
       <script src="/js/customer-address-autocomplete.js" defer></script>
       <% if (selectedCustomerType === "business") { %>
-        <script src="/js/business-customer-form.js" defer></script>
+        <script src="/js/business-customer-form.js?v=20261027-1" defer></script>
       <% } %>
     <% } %>
   </body>

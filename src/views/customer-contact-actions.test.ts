@@ -27,7 +27,7 @@ test("phone actions are resolved from the shared form-level container", () => {
   const phoneScript = read("public/js/phone-number.js");
 
   assert.match(phoneScript, /form && form\.querySelector\("\[data-phone-actions\]"\)/);
-  assert.match(phoneScript, /function preview\(\)[\s\S]*?input\.setCustomValidity\(""\);[\s\S]*?error\.hidden = true;/);
+  assert.match(phoneScript, /function preview\(\)[\s\S]*?input\.setCustomValidity\(""\);[\s\S]*?hideErrorIfChanged\(\);/);
   assert.match(phoneScript, /email\.hidden = !validEmail/);
   assert.match(phoneScript, /tel\.hidden = !validPhone/);
   assert.match(phoneScript, /whatsapp\.hidden = !validPhone/);
