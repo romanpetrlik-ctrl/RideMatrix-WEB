@@ -1,38 +1,45 @@
-<section class="panel">
-  <h2>Business customer details</h2>
-  <p>Business details are read-only in this release.</p>
-  <dl class="customer-detail-list">
-    <% [
-      ["Registered name", business.registeredName],
-      ["Office phone number", business.officePhone],
-      ["Office contact email", business.officeEmail],
-      ["Booking manager", business.bookerFullName],
-      ["Booker email", business.bookerEmail],
-      ["Booker phone", business.bookerPhone],
-      ["Booking auth required", business.bookingAuthRequired ? "Yes" : "No"],
-      ["Booking auth channel", business.bookingAuthChannel],
-      ["Accounts contact full name", business.accountsFullName],
-      ["Accounts email", business.accountsEmail],
-      ["Accounts phone number", business.accountsPhone]
-    ].forEach(([label, value]) => { %>
-      <div><dt><%= label %></dt><dd><%= value || "—" %></dd></div>
-    <% }) %>
-  </dl>
-  <% [["Registered address", business.registeredAddress], ["Operational base", business.operationalAddress]].forEach(([heading, address]) => { %>
-    <h3><%= heading %></h3>
+<div class="business-customer-detail">
+  <section class="business-customer-detail__section" aria-labelledby="business-customer-details-heading">
+    <h2 id="business-customer-details-heading">Business customer details</h2>
+    <p>Business details are read-only in this release.</p>
     <dl class="customer-detail-list">
-      <% if (address) { %>
-        <% [
-          ["Building/unit name or number", "houseNameNumber"],
-          ["Address line 1", "addressLine1"], ["Address line 2", "addressLine2"], ["Address line 3", "addressLine3"],
-          ["Town/City", "cityTown"], ["Postcode/ZIP", "postcode"], ["County", "county"],
-          ["State/province", "state"], ["Country", "country"], ["Latitude", "latitude"], ["Longitude", "longitude"]
-        ].forEach(([label, key]) => { %>
-          <div><dt><%= label %></dt><dd><%= address[key] ?? "—" %></dd></div>
-        <% }) %>
-      <% } else { %>
-        <div><dt>Address</dt><dd>Not provided</dd></div>
-      <% } %>
+      <% [
+        ["Registered name", business.registeredName],
+        ["Office phone number", business.officePhone],
+        ["Office contact email", business.officeEmail],
+        ["Booking manager", business.bookerFullName],
+        ["Booker email", business.bookerEmail],
+        ["Booker phone", business.bookerPhone],
+        ["Booking auth required", business.bookingAuthRequired ? "Yes" : "No"],
+        ["Booking auth channel", business.bookingAuthChannel],
+        ["Accounts contact full name", business.accountsFullName],
+        ["Accounts email", business.accountsEmail],
+        ["Accounts phone number", business.accountsPhone]
+      ].forEach(([label, value]) => { %>
+        <div><dt><%= label %></dt><dd><%= value || "—" %></dd></div>
+      <% }) %>
     </dl>
+  </section>
+  <% [
+    ["registered-address", "Registered address", business.registeredAddress],
+    ["operational-base", "Operational base", business.operationalAddress]
+  ].forEach(([sectionId, heading, address]) => { %>
+    <section class="business-customer-detail__section" aria-labelledby="<%= sectionId %>-heading">
+      <h2 id="<%= sectionId %>-heading"><%= heading %></h2>
+      <dl class="customer-detail-list">
+        <% if (address) { %>
+          <% [
+            ["Building/unit name or number", "houseNameNumber"],
+            ["Address line 1", "addressLine1"], ["Address line 2", "addressLine2"], ["Address line 3", "addressLine3"],
+            ["Town/City", "cityTown"], ["Postcode/ZIP", "postcode"], ["County", "county"],
+            ["State/province", "state"], ["Country", "country"], ["Latitude", "latitude"], ["Longitude", "longitude"]
+          ].forEach(([label, key]) => { %>
+            <div><dt><%= label %></dt><dd><%= address[key] ?? "—" %></dd></div>
+          <% }) %>
+        <% } else { %>
+          <div><dt>Address</dt><dd>Not provided</dd></div>
+        <% } %>
+      </dl>
+    </section>
   <% }) %>
-</section>
+</div>

@@ -4,6 +4,7 @@ import express from "express";
 import path from "node:path";
 import type { SessionAccount } from "../services/api";
 import type { CustomerRecord } from "../services/customers";
+import type { BusinessCustomerInput } from "../services/business-customers";
 import { createCustomersRouter } from "./customers";
 
 function createTestCustomer(): CustomerRecord {
@@ -84,6 +85,26 @@ const adminSession: SessionAccount = {
   authenticated: true,
   user: { id: "admin-1", email: "admin@example.com", roles: ["admin"], active_role: "admin" }
 };
+
+function createTestBusinessCustomer(): BusinessCustomerInput {
+  return {
+    registeredName: "Example Ltd",
+    registeredAddress: {
+      houseNameNumber: "12A", addressLine1: "High Street", addressLine2: "",
+      addressLine3: "Dorset", cityTown: "Dorchester", postcode: "DT1 1AA",
+      county: "Dorset", state: "England", country: "United Kingdom",
+      latitude: 50.71, longitude: -2.44
+    },
+    operationalAddress: {
+      houseNameNumber: "", addressLine1: "", addressLine2: "", addressLine3: "",
+      cityTown: "", postcode: "", county: "", state: "", country: "", latitude: null, longitude: null
+    },
+    officePhone: "+442079460018", officeEmail: "office@example.com",
+    bookerFullName: "Booking Manager", bookerEmail: "booker@example.com", bookerPhone: "+447777888999",
+    bookingAuthRequired: false, bookingAuthChannel: null,
+    accountsFullName: "Accounts Manager", accountsEmail: "accounts@example.com", accountsPhone: null
+  };
+}
 
 const mapEnvironmentKeys = [
   "GOOGLE_MAPS_ENABLED",
@@ -743,6 +764,118 @@ test("customer detail keeps New Booking unchanged and points Edit Customer to th
       server.close((error) => error ? reject(error) : resolve());
     });
   }
+});
+
+test("business detail centers its map on registered profile coordinates and separates its three sections", async () => {
+  await withMapEnvironment({
+    GOOGLE_MAPS_ENABLED: "true",
+    GOOGLE_MAPS_SERVER_API_KEY: "server-only-secret",
+    GOOGLE_MAPS_BROWSER_API_KEY: "browser-key"
+  }, async () => {
+    const businessCustomer = {
+      ...createTestCustomer(),
+      source: "business" as const,
+      company: "Example Ltd",
+      latitude: 1,
+      longitude: 2,
+      address: "Old duplicate address"
+    };
+    const server = createTestServer(adminSession, {
+      getCustomerById: async () => businessCustomer,
+      getBusinessCustomer: async () => createTestBusinessCustomer()
+    });
+    try {
+      const address = server.address() as { port: number };
+      const response = await fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1`);
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(body, /data-map-latitude="50\.71" data-map-longitude="-2\.44"/);
+      assert.doesNotMatch(body, /data-map-latitude="1" data-map-longitude="2"/);
+      assert.match(body, /data-map-browser-key="browser-key"/);
+      assert.doesNotMatch(body, /server-only-secret/);
+      assert.match(body, /Registered address map/);
+      assert.match(body, /<dd>12A, High Street, Dorset, Dorchester, England, DT1 1AA, United Kingdom<\/dd>/);
+      assert.equal(countMatches(body, /class="business-customer-detail__section"/g), 3);
+      for (const heading of ["Business customer details", "Registered address", "Operational base"]) {
+        assert.match(body, new RegExp(`<h2[^>]*>${heading}<\\/h2>`));
+      }
+      assert.match(body, /<dd>50\.71<\/dd>/);
+      assert.match(body, /<dd>-2\.44<\/dd>/);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
+});
+
+test("business detail shows a clear map fallback when coordinates are missing or maps are disabled", async () => {
+  for (const { config, businessProfile } of [
+    {
+      config: { GOOGLE_MAPS_ENABLED: "true", GOOGLE_MAPS_BROWSER_API_KEY: "browser-key" },
+      businessProfile: "missing-coordinates"
+    },
+    { config: {}, businessProfile: "available" },
+    {
+      config: { GOOGLE_MAPS_ENABLED: "true", GOOGLE_MAPS_BROWSER_API_KEY: "browser-key" },
+      businessProfile: "missing"
+    }
+  ]) {
+    await withMapEnvironment(config, async () => {
+      const business = createTestBusinessCustomer();
+      if (businessProfile === "missing-coordinates") {
+        business.registeredAddress.latitude = null;
+        business.registeredAddress.longitude = null;
+      }
+      const server = createTestServer(adminSession, {
+        getCustomerById: async () => ({
+          ...createTestCustomer(), source: "business", latitude: 10, longitude: 20
+        }),
+        getBusinessCustomer: async () => businessProfile === "missing" ? null : business
+      });
+      try {
+        const address = server.address() as { port: number };
+        const response = await fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1`);
+        const body = await response.text();
+
+        assert.equal(response.status, 200);
+        assert.match(body, /class="address-map-placeholder" role="status"/);
+        assert.match(body, /Registered address map is unavailable\./);
+        assert.match(body, /valid registered-address coordinates are required/);
+        assert.doesNotMatch(body, /data-map-browser-key="server/);
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => error ? reject(error) : resolve());
+        });
+      }
+    });
+  }
+});
+
+test("private customer detail continues to center its home map on customer coordinates", async () => {
+  await withMapEnvironment({
+    GOOGLE_MAPS_ENABLED: "true",
+    GOOGLE_MAPS_BROWSER_API_KEY: "browser-key"
+  }, async () => {
+    const server = createTestServer(adminSession, {
+      getCustomerById: async () => createTestCustomer()
+    });
+    try {
+      const address = server.address() as { port: number };
+      const response = await fetch(`http://127.0.0.1:${address.port}/customers/cust-test-1`);
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(body, /Home address map/);
+      assert.match(body, /data-map-latitude="51\.5034" data-map-longitude="-0\.1276"/);
+      assert.doesNotMatch(body, /Registered address map is unavailable/);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
 });
 
 test("customer pages render customer dynamic controls without legacy breadcrumb rows", async () => {

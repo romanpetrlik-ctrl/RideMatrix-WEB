@@ -20,10 +20,13 @@ after(async () => safeCleanupTestDatabase(context));
 function validBusiness(email: string): BusinessCustomerInput {
   const result = validateBusinessCustomer({
     registeredName: "Example Business Ltd", registeredHouseNameNumber: "12A",
-    registeredAddressLine1: "High Street", registeredAddressLine2: "Business Park",
+    registeredAddressLine1: "High Street", registeredAddressLine2: "Business Park", registeredAddressLine3: "Dorset",
     registeredCityTown: "Dorchester", registeredCounty: "Dorset", registeredState: "England",
     registeredPostcode: "DT1 1AA", registeredCountry: "United Kingdom",
     registeredLatitude: "50.71", registeredLongitude: "-2.44",
+    operationalHouseNameNumber: "Depot 2", operationalAddressLine1: "Depot Road",
+    operationalCityTown: "Poole", operationalPostcode: "BH15 1AA",
+    operationalCountry: "United Kingdom", operationalLatitude: "50.72", operationalLongitude: "-2.45",
     officePhone: "020 7946 0958", officeEmail: email,
     bookerFullName: "Alex Booker", bookerEmail: "booker@example.com", bookerPhone: "+44 7911 123456",
     bookingAuthRequired: "yes", bookingAuthChannel: "both",
@@ -46,6 +49,7 @@ test("persists both rows atomically and reads JSONB business data across a pool 
   assert.equal(customer.cityTown, "Dorchester");
   assert.equal(customer.latitude, 50.71);
   assert.ok(customer.address?.includes("United Kingdom"));
+  assert.equal(customer.address?.split("Dorset").length, 2);
   await closeDatabase();
   assert.deepEqual(await getBusinessCustomer(customer.id), input);
   assert.ok(await getCustomerById(customer.id));

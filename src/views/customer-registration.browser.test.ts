@@ -115,6 +115,11 @@ test("customer registration cards, fields and scoped maps work at desktop and mo
       })()`);
       await page.waitForFunction(() => document.querySelector("[data-address-prefix=operational] .address-map-preview__canvas")?.textContent === "52, -2");
       assert.equal(await page.locator("[data-address-prefix=registered] .address-map-preview__canvas").textContent(), "51, -1");
+      const selectedAddress = await page.locator("#business-customer-form").evaluate((form: HTMLFormElement) => Object.fromEntries(new FormData(form)));
+      assert.equal(selectedAddress.registeredLatitude, "51");
+      assert.equal(selectedAddress.registeredLongitude, "-1");
+      assert.equal(selectedAddress.operationalLatitude, "52");
+      assert.equal(selectedAddress.operationalLongitude, "-2");
       await page.fill("#registeredAddressLine1", "Manual office road");
       assert.equal(await page.locator("#registeredLatitude").inputValue(), "");
       assert.equal(await page.locator("#operationalLatitude").inputValue(), "52");
@@ -122,6 +127,8 @@ test("customer registration cards, fields and scoped maps work at desktop and mo
       const submitted = await page.locator("#business-customer-form").evaluate((form: HTMLFormElement) => Object.fromEntries(new FormData(form)));
       assert.equal(submitted.registeredAddressLine1, "Manual office road");
       assert.equal(submitted.operationalAddressLine1, "operational road");
+      assert.equal(submitted.registeredLatitude, "");
+      assert.equal(submitted.registeredLongitude, "");
       assert.equal(submitted.operationalLatitude, "52");
       assert.equal(submitted.bookingAuthChannel, "both");
 
