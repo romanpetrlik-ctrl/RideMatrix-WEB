@@ -33,7 +33,17 @@
         <div><dt>Company</dt><dd><%= customer.company || "—" %></dd></div>
         <div class="customer-detail-list__full">
           <dt><%= customer.source === "business" ? "Registered address" : "Home address" %></dt>
-          <dd><%= customer.address || "No address on file" %></dd>
+          <dd><%=
+            customer.source === "business" && locals.business
+              ? [
+                business.registeredAddress.houseNameNumber, business.registeredAddress.addressLine1,
+                business.registeredAddress.addressLine2, business.registeredAddress.addressLine3,
+                business.registeredAddress.cityTown, business.registeredAddress.county,
+                business.registeredAddress.state, business.registeredAddress.postcode,
+                business.registeredAddress.country
+              ].filter((part, index, parts) => part && parts.indexOf(part) === index).join(", ") || "No address on file"
+              : customer.address || "No address on file"
+          %></dd>
         </div>
         <div class="customer-detail-list__full">
           <dt>Notes</dt>
@@ -41,6 +51,10 @@
         </div>
       </dl>
     </section>
+
+    <% if (locals.business) { %>
+      <%- include("./business-customer-detail", { business }) %>
+    <% } %>
 
     <section class="panel customer-bookings-panel">
       <div class="customer-bookings-panel__header">
@@ -75,8 +89,8 @@
       mapView,
       mapBrowserApiKey,
       mapId,
-      emptyTitle: "Home address map is unavailable for this customer.",
-      emptyMessage: "A configured map and valid customer coordinates are required."
+      emptyTitle: mapEmptyTitle,
+      emptyMessage: mapEmptyMessage
     }) %>
   </aside>
 </section>

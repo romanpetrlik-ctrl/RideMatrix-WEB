@@ -213,7 +213,7 @@ export async function createBusinessCustomer(input: BusinessCustomerInput): Prom
       address: [
         address.houseNameNumber, address.addressLine1, address.addressLine2, address.addressLine3,
         address.cityTown, address.county, address.state, address.postcode, address.country
-      ].filter(Boolean).join(", "),
+      ].filter((part, index, parts) => part && parts.indexOf(part) === index).join(", "),
       source: "business"
     }, client);
     await client.query(

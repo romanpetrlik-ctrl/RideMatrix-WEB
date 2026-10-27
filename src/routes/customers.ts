@@ -591,19 +591,24 @@ async function resolveCustomerAddressPersistence(formData: {
   }
 }
 
-function getCustomerMapView(customer: CustomerRecord): MapView | null {
+function getCustomerMapView(customer: CustomerRecord, business?: Awaited<ReturnType<typeof getBusinessCustomer>>): MapView | null {
   const mapConfiguration = readMapConfiguration();
   if (!mapConfiguration.enabled || !mapConfiguration.browserApiKey) {
     return null;
   }
 
-  const point = { latitude: customer.latitude, longitude: customer.longitude };
+  const point = customer.source === "business"
+    ? {
+      latitude: business?.registeredAddress.latitude ?? null,
+      longitude: business?.registeredAddress.longitude ?? null
+    }
+    : { latitude: customer.latitude, longitude: customer.longitude };
   if (!isValidGeoPoint(point)) {
     return null;
   }
 
   return toMapView({
-    formattedAddress: customer.address || "Customer address",
+    formattedAddress: customer.source === "business" ? "Registered business address" : customer.address || "Customer address",
     point
   });
 }
@@ -1067,11 +1072,12 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         );
       }
 
+      const business = customer.source === "business" ? await loadBusinessCustomer(customer.id) : null;
       const detailViewModel = {
         title: customer.source === "business" ? customer.company || customer.givenName : `${customer.surname}, ${customer.givenName}`,
         appTitle: options.appTitle,
         email: session.email,
-        business: customer.source === "business" ? await loadBusinessCustomer(customer.id) : null,
+        business,
         customer: {
           ...customer,
           formattedCreatedAt: formatDate(customer.createdAt),
@@ -1098,7 +1104,11 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         backToCustomersHref,
         isChildWindow,
         notice: getNotice(req.query.notice, customer),
-        mapView: getCustomerMapView(customer),
+        mapView: getCustomerMapView(customer, business),
+        mapEmptyTitle: customer.source === "business" ? "Registered address map is unavailable." : "Home address map is unavailable for this customer.",
+        mapEmptyMessage: customer.source === "business"
+          ? "A configured map and valid registered-address coordinates are required. The address details remain available below."
+          : "A configured map and valid customer coordinates are required.",
         mapBrowserApiKey: readMapConfiguration().browserApiKey,
         mapId: readMapConfiguration().mapId
       };
