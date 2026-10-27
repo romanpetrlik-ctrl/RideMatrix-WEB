@@ -184,7 +184,9 @@ test("an invalid accounts phone shows a field-specific inline error and keeps th
   phone.fire("input");
   await phone.flush();
   assert.equal(phone.error.hidden, true);
+  assert.equal(phone.error.textContent, "");
   assert.equal(phone.attributes["aria-invalid"], undefined);
+  assert.equal(phone.attributes["aria-describedby"], "accountsPhone-help");
   assert.equal(phone.submit(), false);
 });
 

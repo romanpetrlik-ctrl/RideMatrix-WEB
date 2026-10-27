@@ -94,7 +94,13 @@
     function hideError() {
       errorValue = null;
       error.hidden = true;
+      error.textContent = "";
       if (typeof input.removeAttribute === "function") input.removeAttribute("aria-invalid");
+      if (error.id && typeof input.setAttribute === "function") {
+        var ids = describedByIds().filter(function (id) { return id !== error.id; });
+        if (ids.length) input.setAttribute("aria-describedby", ids.join(" "));
+        else input.removeAttribute("aria-describedby");
+      }
     }
 
     function hideErrorIfChanged() {
