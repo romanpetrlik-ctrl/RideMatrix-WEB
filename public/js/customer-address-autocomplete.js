@@ -166,22 +166,6 @@
       latitude: field("latitude"),
       longitude: field("longitude")
     };
-    function updateMapPreview() {
-      var preview = form.querySelector(".address-map-preview");
-      if (!preview) return;
-      preview.dataset.mapLatitude = fields.latitude ? fields.latitude.value : "";
-      preview.dataset.mapLongitude = fields.longitude ? fields.longitude.value : "";
-      var coordinates = preview.querySelector("[data-map-coordinates]");
-      if (coordinates && (!preview.dataset.mapLatitude || !preview.dataset.mapLongitude)) {
-        coordinates.textContent = "Choose an address or enter coordinates to preview its location.";
-      }
-      if (window.RideMatrixMaps && typeof window.RideMatrixMaps.render === "function") {
-        window.RideMatrixMaps.render(preview, window.google && window.google.maps);
-      }
-    }
-    [fields.latitude, fields.longitude].filter(Boolean).forEach(function (coordinate) {
-      coordinate.addEventListener("input", updateMapPreview);
-    });
     var status = form.querySelector("[data-address-autocomplete-status]");
     function setStatus(message) {
       if (status) status.textContent = message;
@@ -212,7 +196,6 @@
       if (fields.address) fields.address.value = getSearchValue();
       syncSearchValue(getSearchValue());
       clearCoordinates(fields);
-      updateMapPreview();
     }
 
     [
@@ -271,7 +254,6 @@
             if (fields.address) fields.address.value = predictionText;
           }
           clearCoordinates(fields);
-          updateMapPreview();
           setManualVisible(true);
           setStatus("Selected place does not include usable structured fields. Enter details manually.");
           return;
@@ -283,7 +265,6 @@
             if (fields.address) fields.address.value = predictionText;
           }
           clearCoordinates(fields);
-          updateMapPreview();
           setManualVisible(true);
           setStatus("Selected place does not include usable structured fields. Enter details manually.");
           return;
@@ -296,7 +277,6 @@
           internalUpdate = true;
           applyAddress(fields, nextValues);
           internalUpdate = false;
-          updateMapPreview();
           if (!hasStructuredAddress(nextValues)) {
             var fallbackAddress = nextValues.addressSearch || selectedAddressText;
             if (fallbackAddress) {
@@ -304,7 +284,6 @@
               if (fields.address) fields.address.value = fallbackAddress;
             }
             clearCoordinates(fields);
-            updateMapPreview();
             setManualVisible(true);
             setStatus("Selected place does not include usable structured fields. Enter details manually.");
             return;
@@ -317,7 +296,6 @@
           if (fields.address && selectedAddressText) fields.address.value = selectedAddressText;
           setStatus("Google address suggestions are unavailable. Continue with manual address entry.");
           clearCoordinates(fields);
-          updateMapPreview();
           setManualVisible(true);
         });
       });

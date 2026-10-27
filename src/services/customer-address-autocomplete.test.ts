@@ -129,26 +129,22 @@ test("maps a selected place into structured customer address fields", () => {
   });
 });
 
-test("scoped business addresses update only their own map and discard stale selections", async () => {
+test("scoped business address selections preserve coordinates and discard stale selections", async () => {
     const loaded = loadAutocomplete();
     const handlers: Array<(event: any) => void> = [];
     class Autocomplete {
       setAttribute() {}
       addEventListener(_type: string, handler: (event: any) => void) { handlers.push(handler); }
     }
-    const renders: any[] = [];
     loaded.window.RideMatrixMaps = {
-      load: async () => true,
-      render: (preview: any) => renders.push(preview)
+      load: async () => true
     };
     loaded.window.google = { maps: { importLibrary: async () => ({ PlaceAutocompleteElement: Autocomplete }) } };
     function businessAddress(prefix: string) {
       const { form, fields } = createForm("browser-key");
-      const preview = { dataset: {} as Record<string, string>, querySelector: () => null };
       const root = {
         dataset: { ...form.dataset, addressPrefix: prefix },
         querySelector(selector: string): any {
-          if (selector === ".address-map-preview") return preview;
           if (selector.startsWith("#" + prefix)) {
             const suffix = selector.slice(prefix.length + 1);
             return form.querySelector("#" + suffix.charAt(0).toLowerCase() + suffix.slice(1));
@@ -157,7 +153,7 @@ test("scoped business addresses update only their own map and discard stale sele
         }
       };
       loaded.api.bindAutocomplete(root);
-      return { fields, preview };
+      return { fields };
     }
     const registered = businessAddress("registered");
     const operational = businessAddress("operational");
@@ -177,13 +173,13 @@ test("scoped business addresses update only their own map and discard stale sele
     finishOld();
     await flushPromises();
     assert.equal(registered.fields.latitude.value, "20");
-    assert.equal(registered.preview.dataset.mapLatitude, "20");
-    assert.equal(operational.preview.dataset.mapLatitude, "30");
-    assert.equal(registered.preview.dataset.mapLongitude, "0");
-    assert.equal(renders.length, 2);
+    assert.equal(registered.fields.longitude.value, "0");
+    assert.equal(operational.fields.latitude.value, "30");
+    assert.equal(operational.fields.longitude.value, "0");
     registered.fields.addressLine1.trigger("input");
-    assert.equal(registered.preview.dataset.mapLatitude, "");
-    assert.equal(operational.preview.dataset.mapLatitude, "30");
+    assert.equal(registered.fields.latitude.value, "");
+    assert.equal(registered.fields.longitude.value, "");
+    assert.equal(operational.fields.latitude.value, "30");
 });
 
 test("handles missing address components without throwing", () => {

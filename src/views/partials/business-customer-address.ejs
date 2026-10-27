@@ -43,9 +43,4 @@
   <% }) %>
   </div>
   <% }) %>
-  <div class="address-map-preview" data-map-latitude="<%= formData[prefix + 'Latitude'] || '' %>" data-map-longitude="<%= formData[prefix + 'Longitude'] || '' %>" data-map-browser-key="<%= mapBrowserApiKey || '' %>" data-map-id="<%= mapId || '' %>" role="img" aria-label="<%= heading %> map preview">
-    <div class="address-map-preview__canvas" aria-hidden="true" hidden></div>
-    <p data-map-coordinates>Choose an address or enter coordinates to preview its location.</p>
-    <p data-map-error hidden>Map preview is temporarily unavailable. Manual address entry still works.</p>
-  </div>
 </section>
