@@ -1,10 +1,10 @@
-<section aria-labelledby="<%= prefix %>-address-heading" data-address-prefix="<%= prefix %>" data-address-autocomplete-browser-key="<%= mapBrowserApiKey || '' %>">
+<section class="private-customer-form__column" aria-labelledby="<%= prefix %>-address-heading" data-address-prefix="<%= prefix %>" data-address-autocomplete-browser-key="<%= mapBrowserApiKey || '' %>">
   <h2 id="<%= prefix %>-address-heading"><%= heading %></h2>
   <% if (!addressRequired) { %>
-    <p>Optional. If entered, include address line 1, Town/City, postcode/ZIP, and Country.</p>
+    <p class="private-customer-form__section-intro">Optional. If entered, include address line 1, Town/City, postcode/ZIP, and Country.</p>
   <% } %>
-  <p id="<%= prefix %>AddressSearch-help">Search the address first, then adjust individual fields if needed.</p>
-  <p data-address-autocomplete-status aria-live="polite">Address suggestions load when Google Maps is available. Manual entry still works.</p>
+  <p class="private-customer-form__section-intro" id="<%= prefix %>AddressSearch-help">Search the address first, then adjust individual fields if needed.</p>
+  <p class="private-customer-form__autocomplete-status" data-address-autocomplete-status aria-live="polite">Address suggestions load when Google Maps is available. Manual entry still works.</p>
   <div class="form-field">
     <label for="<%= prefix %>AddressSearchManual">Search address</label>
     <div class="private-customer-form__autocomplete-host" data-address-autocomplete-host hidden></div>
@@ -14,7 +14,7 @@
   </div>
   <%
     const fields = [
-      ["HouseNameNumber", prefix === "registered" ? "Building/unit name or number" : "House/unit/building name or number", addressRequired],
+      ["HouseNameNumber", "Building/unit name or number", addressRequired],
       ["AddressLine1", "Address line 1", addressRequired],
       ["AddressLine2", "Address line 2", false],
       ["AddressLine3", "Address line 3", false],
@@ -27,8 +27,9 @@
       ["Longitude", "Longitude", false]
     ];
   %>
+  <% [fields.slice(0, 2), fields.slice(2, 4), fields.slice(4, 6), fields.slice(6, 8), fields.slice(8, 9), fields.slice(9)].forEach((row) => { %>
   <div class="form-row form-row--two">
-  <% fields.forEach(([suffix, label, required]) => { const id = prefix + suffix; const coordinate = suffix === "Latitude" || suffix === "Longitude"; %>
+  <% row.forEach(([suffix, label, required]) => { const id = prefix + suffix; const coordinate = suffix === "Latitude" || suffix === "Longitude"; %>
     <div class="form-field">
       <label for="<%= id %>"><%= label %><%= required ? " *" : "" %></label>
       <input type="<%= coordinate ? 'number' : 'text' %>" id="<%= id %>" name="<%= id %>" value="<%= formData[id] || '' %>" <%= required ? "required" : "" %>
@@ -39,8 +40,9 @@
     </div>
   <% }) %>
   </div>
+  <% }) %>
   <div class="address-map-preview" data-map-latitude="<%= formData[prefix + 'Latitude'] || '' %>" data-map-longitude="<%= formData[prefix + 'Longitude'] || '' %>" data-map-browser-key="<%= mapBrowserApiKey || '' %>" data-map-id="<%= mapId || '' %>" role="img" aria-label="<%= heading %> map preview">
-    <div class="address-map-preview__canvas" aria-hidden="true"></div>
+    <div class="address-map-preview__canvas" aria-hidden="true" hidden></div>
     <p data-map-coordinates>Choose an address or enter coordinates to preview its location.</p>
     <p data-map-error hidden>Map preview is temporarily unavailable. Manual address entry still works.</p>
   </div>

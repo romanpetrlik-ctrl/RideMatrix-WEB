@@ -1,15 +1,16 @@
 <h1>Business customer</h1>
 <p>Fill in the organisation's details below. Fields marked with * are required.</p>
-<form id="business-customer-form" class="inline-form" method="post" action="/customers/register">
+<form id="business-customer-form" class="inline-form private-customer-form business-customer-form" method="post" action="/customers/register">
   <%- locals.csrfField || "" %>
   <input type="hidden" name="customerType" value="business" />
-  <section aria-labelledby="registered-company-heading">
+  <div class="private-customer-form__grid business-customer-form__grid">
+  <section class="private-customer-form__column business-customer-form__company" aria-labelledby="registered-company-heading">
     <h2 id="registered-company-heading">Registered company</h2>
-    <div class="form-field">
-      <label for="registeredName">Registered name *</label>
-      <input type="text" id="registeredName" name="registeredName" value="<%= formData.registeredName || '' %>" autocomplete="organization" required />
-    </div>
-    <div class="form-row form-row--two">
+    <div class="form-row form-row--three">
+      <div class="form-field">
+        <label for="registeredName">Registered name *</label>
+        <input type="text" id="registeredName" name="registeredName" value="<%= formData.registeredName || '' %>" autocomplete="organization" required />
+      </div>
       <div class="form-field">
         <%- include("phone-number", { phoneId: "officePhone", phoneName: "officePhone", phoneLabel: "Office phone number", phoneValue: formData.officePhone || "", phoneRequired: true }) %>
       </div>
@@ -18,10 +19,10 @@
         <input type="email" id="officeEmail" name="officeEmail" value="<%= formData.officeEmail || '' %>" required />
       </div>
     </div>
-    <%- include("business-customer-address", { prefix: "registered", heading: "Registered address", addressRequired: true }) %>
   </section>
+  <%- include("business-customer-address", { prefix: "registered", heading: "Registered address", addressRequired: true }) %>
   <%- include("business-customer-address", { prefix: "operational", heading: "Operational base", addressRequired: false }) %>
-  <section aria-labelledby="booker-heading">
+  <section class="private-customer-form__column" aria-labelledby="booker-heading">
     <h2 id="booker-heading">Booking manager (booker)</h2>
     <div class="form-field">
       <label for="bookerFullName">Full name *</label>
@@ -53,10 +54,10 @@
           <option value="<%= value %>" <%= formData.bookingAuthChannel === value ? "selected" : "" %>><%= label %></option>
         <% }) %>
       </select>
-      <p id="bookingAuthChannel-help">Saves the approval-link preference. Automatic email/WhatsApp delivery is not connected yet.</p>
+      <p class="private-customer-form__section-intro" id="bookingAuthChannel-help">Saves the approval-link preference. Automatic email/WhatsApp delivery is not connected yet.</p>
     </div>
   </section>
-  <section aria-labelledby="accounts-heading">
+  <section class="private-customer-form__column" aria-labelledby="accounts-heading">
     <h2 id="accounts-heading">Accounts department</h2>
     <div class="form-field">
       <label for="accountsFullName">Contact full name *</label>
@@ -72,4 +73,5 @@
       </div>
     </div>
   </section>
+  </div>
 </form>

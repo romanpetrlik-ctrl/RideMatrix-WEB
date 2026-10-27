@@ -1,14 +1,8 @@
 (function () {
   "use strict";
 
-<<<<<<< Updated upstream
-  var maps = new WeakMap();
-=======
-  var canUseWeakSet = typeof WeakSet === "function";
   var canUseWeakMap = typeof WeakMap === "function";
-  var rendered = canUseWeakSet ? new WeakSet() : [];
   var instances = canUseWeakMap ? new WeakMap() : [];
->>>>>>> Stashed changes
   var loadingByKey = {};
   var importedLibraries = {};
   var importingLibraries = {};
@@ -59,38 +53,7 @@
   }
 
   function render(element, googleMaps) {
-<<<<<<< Updated upstream
-      if (!element) return false;
-      var position = {
-        lat: Number(element.dataset.mapLatitude),
-        lng: Number(element.dataset.mapLongitude)
-      };
-      var canvas = element.querySelector(".address-map-preview__canvas");
-      if (!canvas) return false;
-      if (!element.dataset.mapLatitude || !element.dataset.mapLongitude
-        || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)
-        || Math.abs(position.lat) > 90 || Math.abs(position.lng) > 180) {
-        canvas.hidden = true;
-        return false;
-      }
-      canvas.hidden = false;
-      if (!googleMaps) return false;
-      var coordinates = element.querySelector("[data-map-coordinates]");
-      if (coordinates) coordinates.textContent = position.lat.toFixed(5) + ", " + position.lng.toFixed(5);
-      var map = maps.get(element);
-      if (map) {
-        map.setCenter(position);
-        return true;
-      }
-      map = new googleMaps.Map(canvas, {
-        center: position,
-        zoom: Number(element.dataset.mapZoom) || 14,
-        mapId: element.dataset.mapId || undefined,
-        disableDefaultUI: true
-      });
-      maps.set(element, map);
-=======
-    if (!element || !googleMaps) return false;
+    if (!element) return false;
 
     var position = {
       lat: Number(element.dataset.mapLatitude),
@@ -99,7 +62,17 @@
     var zoom = Number(element.dataset.mapZoom) || 14;
     var canvas = element.querySelector(".address-map-preview__canvas");
 
-    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng) || !canvas) return false;
+    if (!canvas) return false;
+    if (!element.dataset.mapLatitude || !element.dataset.mapLongitude
+      || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)
+      || Math.abs(position.lat) > 90 || Math.abs(position.lng) > 180) {
+      canvas.hidden = true;
+      return false;
+    }
+    canvas.hidden = false;
+    if (!googleMaps) return false;
+    var coordinates = element.querySelector("[data-map-coordinates]");
+    if (coordinates) coordinates.textContent = position.lat.toFixed(5) + ", " + position.lng.toFixed(5);
 
     var existing = getInstance(element);
     if (existing && existing.map) {
@@ -114,7 +87,6 @@
       if (typeof existing.map.setZoom === "function") {
         existing.map.setZoom(zoom);
       }
->>>>>>> Stashed changes
       return true;
     }
 
@@ -131,9 +103,6 @@
     });
 
     setInstance(element, { map: map, marker: marker });
-
-    if (canUseWeakSet) rendered.add(element);
-    else rendered.push(element);
 
     return true;
   }

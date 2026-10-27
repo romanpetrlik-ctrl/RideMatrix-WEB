@@ -62,7 +62,7 @@ export function validateBusinessCustomer(input: unknown): {
   const keys = [
     ...CONTACT_FIELDS,
     ...(["registered", "operational"] as const).flatMap((prefix) =>
-      ADDRESS_FIELDS.map((field) => addressFormKey(prefix, field)))
+      [...ADDRESS_FIELDS.map((field) => addressFormKey(prefix, field)), prefix + "AddressSearch", prefix + "Address"])
   ];
   for (const key of keys) {
     const value = source[key];

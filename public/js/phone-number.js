@@ -114,9 +114,7 @@
           }
         : { valid: false };
 
-      var hasValue = Boolean((input.value || "").trim());
       input.setCustomValidity("");
-      var actuallyInvalid = hasValue && !input.checkValidity();
       error.hidden = true;
 
       if (valid) {
@@ -129,11 +127,6 @@
         country.textContent = (state.country.countryName || "United Kingdom") + " (" + (state.country.callingCode || "+44") + ")";
         country.title = country.textContent;
         country.setAttribute("aria-label", country.textContent);
-<<<<<<< Updated upstream
-        if (tel) tel.href = preview.telHref;
-        if (whatsapp) whatsapp.href = preview.whatsappHref;
-=======
->>>>>>> Stashed changes
       } else {
         flag.textContent = "🌐";
         country.textContent = "Enter a phone number";
@@ -189,7 +182,6 @@
       emailInput.addEventListener("change", renderActions);
     }
 
-<<<<<<< Updated upstream
     if (form) {
       form.addEventListener("submit", function (event) {
         if (!input.required && !input.value.trim()) {
@@ -205,8 +197,6 @@
         input.value = state.normalized;
       });
     }
-=======
     preview();
->>>>>>> Stashed changes
   });
 }());
