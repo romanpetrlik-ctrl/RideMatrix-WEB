@@ -201,7 +201,8 @@ test("business registration replaces the placeholder with two independent addres
     assert.doesNotMatch(html, /Coming later/);
     assert.match(html, /formId|form="business-customer-form"/);
     assert.equal(countMatches(html, /data-address-prefix=/g), 2);
-    assert.equal(countMatches(html, /class="address-map-preview"/g), 2);
+    assert.equal(countMatches(html, /class="address-map-preview"/g), 0);
+    assert.equal(countMatches(html, /data-address-autocomplete-host hidden/g), 2);
     for (const name of validBusinessForm.keys()) {
       if (name === "customerType") continue;
       assert.match(html, new RegExp(`id="${name}"\\s+name="${name}"`), name);
