@@ -3450,6 +3450,73 @@ button:visited,
   height: 100% !important;
 }
 
+.toll-fees-page > h1 {
+  color: #172b38;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+}
+
+.toll-fees-nav {
+  margin: 1.25rem 0;
+}
+
+.toll-fees-nav__categories,
+.toll-fees-nav__sections,
+.toll-fees-category-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.toll-fees-nav__categories a,
+.toll-fees-nav__sections a,
+.toll-fees-category-list > li {
+  display: block;
+  min-height: 2.75rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--rm-admin-cta-border);
+  border-radius: var(--rm-control-border-radius);
+  background: var(--rm-admin-cta-bg);
+  color: var(--rm-admin-cta-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.toll-fees-nav__categories a:hover,
+.toll-fees-nav__sections a:hover,
+.toll-fees-nav__categories a:focus-visible,
+.toll-fees-nav__sections a:focus-visible {
+  border-color: var(--rm-admin-cta-border-hover);
+  background: var(--rm-admin-cta-bg-hover);
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+}
+
+.toll-fees-nav__categories a[aria-current="location"],
+.toll-fees-nav__sections a[aria-current="page"] {
+  border-color: var(--rm-faded-copper);
+  background: var(--rm-camel);
+  color: var(--rm-antique-white);
+}
+
+.toll-fees-category-list > li > a {
+  font-weight: 700;
+}
+
+.toll-fees-category-list > li > p {
+  margin-bottom: 0;
+  color: var(--rm-text-soft);
+}
+
+@media (max-width: 40rem) {
+  .toll-fees-nav__categories,
+  .toll-fees-nav__sections,
+  .toll-fees-category-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 [data-map-preview] {
   width: 100%;
   min-height: 320px;

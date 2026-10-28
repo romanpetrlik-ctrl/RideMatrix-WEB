@@ -1,0 +1,64 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: title,
+  pageMeta: "System Settings · Toll & Fees",
+  activeRoleLabel: "System settings",
+  hintsLabel: "Hints: Off",
+  body: `
+    <section class="panel toll-fees-page">
+      <p><a href="/settings">System Settings</a> / <a href="/settings/toll-fees">Toll &amp; Fees</a>${category ? ` / ${category.title}` : ""}</p>
+      <h1>${title}</h1>
+      <p class="notice" role="status"><strong>Access granted.</strong> Granted by your current session role(s): ${grantedByLabel}.</p>
+
+      <nav class="toll-fees-nav" aria-label="Toll & Fees categories">
+        <ul class="toll-fees-nav__categories">
+          ${categories.map((item) => `
+            <li>
+              <a href="/settings/toll-fees/${item.slug}"${category?.slug === item.slug ? ' aria-current="location"' : ""}>${item.title}</a>
+            </li>
+          `).join("")}
+        </ul>
+      </nav>
+
+      ${!category ? `
+        <p>Manage the structure for external tolls and fees. Each category keeps managed reference data separate from configurable fee schedules.</p>
+        <div class="notice notice--warning" role="status"><strong>Not configured yet.</strong> No toll or fee reference data or schedules are configured here. Fees are not calculated or charged.</div>
+        <ul class="toll-fees-category-list">
+          ${categories.map((item) => `
+            <li>
+              <a href="/settings/toll-fees/${item.slug}">${item.title}</a>
+              <p>${item.description}</p>
+            </li>
+          `).join("")}
+        </ul>
+      ` : `
+        <p>${category.description}</p>
+        <p>Choose a separate placeholder area for this category:</p>
+        <nav class="toll-fees-nav" aria-label="${category.title} settings">
+          <ul class="toll-fees-nav__sections">
+            <li><a href="/settings/toll-fees/${category.slug}/reference-data"${section === "reference-data" ? ' aria-current="page"' : ""}>Reference data (managed)</a></li>
+            <li><a href="/settings/toll-fees/${category.slug}/fee-settings"${section === "fee-settings" ? ' aria-current="page"' : ""}>Fee settings</a></li>
+          </ul>
+        </nav>
+        ${section === "reference-data" ? `
+          <section aria-labelledby="toll-fees-detail-title">
+            <h2 id="toll-fees-detail-title">Reference data (managed)</h2>
+            <p>${referenceDataDescription}</p>
+            <div class="notice notice--warning" role="status"><strong>Not configured yet.</strong> No reference dataset is configured. This area does not display maps, calculate fees, or charge customers.</div>
+          </section>
+        ` : section === "fee-settings" ? `
+          <section aria-labelledby="toll-fees-detail-title">
+            <h2 id="toll-fees-detail-title">Fee settings</h2>
+            <p>${feeSettingsDescription}</p>
+            <div class="notice notice--warning" role="status"><strong>Not configured yet.</strong> No fee schedule is configured. This area does not calculate fees or charge customers.</div>
+          </section>
+        ` : `
+          <div class="notice notice--warning" role="status"><strong>Not configured yet.</strong> Both reference data and fee settings are placeholders. They do not calculate or charge fees.</div>
+        `}
+      `}
+    </section>
+  `
+}) %>
