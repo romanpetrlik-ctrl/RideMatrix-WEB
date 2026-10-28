@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import test, { after, before, describe } from "node:test";
 import express from "express";
-import { createRoleSectionsRouter, grantingRoles, workspaceModules } from "./role-sections";
+import { createRoleSectionsRouter, grantingRoles, tollFeeCategories, workspaceModules } from "./role-sections";
 
 // Role keys the Staff directory shows for bookings@romanairporttransfers.co.uk
 // (admin, customer, driver, partner, staff, superuser, tech_support).
@@ -67,8 +67,44 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(body, /System settings/);
     assert.match(body, /Access granted\./);
     assert.match(body, /System Control \(superuser\)/);
-    assert.match(body, /no system settings are configurable here yet/);
+    assert.match(body, /Not yet configured/);
+    assert.match(body, /href="\/settings\/toll-fees"/);
     assert.doesNotMatch(body, /Unable to continue/);
+  });
+
+  test("Toll & Fees and every category destination are reachable with clear placeholders", async () => {
+    const headers = withSession("sid=toll-fees", ["superuser"]);
+    const categoryResponse = await fetch(`${baseUrl}/settings/toll-fees`, { headers });
+    assert.equal(categoryResponse.status, 200);
+    const categoryBody = await categoryResponse.text();
+    assert.match(categoryBody, /<h1>Toll & Fees<\/h1>/);
+    assert.match(categoryBody, /Not configured yet/);
+    assert.match(categoryBody, /not calculated or charged/i);
+
+    for (const category of tollFeeCategories) {
+      const categoryUrl = `${baseUrl}/settings/toll-fees/${category.slug}`;
+      const response = await fetch(categoryUrl, { headers });
+      assert.equal(response.status, 200, `${category.title} category should be reachable`);
+      const body = await response.text();
+      assert.ok(body.includes(category.title), `${category.title} should be visible`);
+      const categoryPath = `/settings/toll-fees/${category.slug}`;
+      assert.ok(body.includes(`${categoryPath}/reference-data`), "reference data destination should be linked");
+      assert.ok(body.includes(`${categoryPath}/fee-settings`), "fee settings destination should be linked");
+
+      for (const destination of [
+        { path: "reference-data", title: "Reference data (managed)", explanation: /versioned geographic boundaries/ },
+        { path: "fee-settings", title: "Fee settings", explanation: /configurable fee schedules/ }
+      ]) {
+        const destinationResponse = await fetch(`${categoryUrl}/${destination.path}`, { headers });
+        assert.equal(destinationResponse.status, 200, `${category.title} ${destination.title} should be reachable`);
+        const destinationBody = await destinationResponse.text();
+        assert.ok(destinationBody.includes(destination.title), `${destination.title} should be visible`);
+        assert.match(destinationBody, destination.explanation);
+        assert.match(destinationBody, /Not configured yet/);
+        assert.match(destinationBody, /aria-current="page"/);
+        assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
+      }
+    }
   });
 
   test("a session without the superuser role key is denied /settings with 403 even with every other role", async () => {
@@ -100,6 +136,18 @@ describe("role workspaces authorize against the /auth/session role contract", ()
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.get("location"), "/access");
+  });
+
+  test("nested Toll & Fees pages preserve the System Settings authorization boundary", async () => {
+    const destinationUrl = `${baseUrl}/settings/toll-fees/airport-fees/fee-settings`;
+    const deniedHeaders = withSession("sid=nested-denied", ["admin", "staff", "tech_support"]);
+    const deniedResponse = await fetch(destinationUrl, { headers: deniedHeaders, redirect: "manual" });
+    assert.equal(deniedResponse.status, 403);
+    assert.match(await deniedResponse.text(), /does not include the System Control role required for System settings/);
+
+    const unauthenticatedResponse = await fetch(destinationUrl, { headers: { cookie: "sid=nested-unknown" }, redirect: "manual" });
+    assert.equal(unauthenticatedResponse.status, 302);
+    assert.equal(unauthenticatedResponse.headers.get("location"), "/access");
   });
 
   test("other workspaces keep their own role requirements", async () => {
