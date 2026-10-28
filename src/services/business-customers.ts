@@ -1,5 +1,5 @@
 import { getPool, withTransaction } from "../database/connection";
-import { createCustomer, type CustomerRecord } from "./customers";
+import { createCustomer, type CustomerRecord, updateCustomer } from "./customers";
 import { normalizePhoneToE164 } from "./phone-numbers";
 
 export type BusinessFormData = Record<string, string>;
@@ -49,6 +49,28 @@ function addressFormKey(prefix: string, field: string): string {
   return prefix + field[0].toUpperCase() + field.slice(1);
 }
 
+function businessInputToFormData(input: BusinessCustomerInput): BusinessFormData {
+  const form: BusinessFormData = {};
+  for (const field of CONTACT_FIELDS) {
+    form[field] = field === "bookingAuthRequired"
+      ? (input[field] === true ? "yes" : input[field] === false ? "no" : "")
+      : String(input[field] ?? "");
+  }
+  for (const prefix of ["registered", "operational"] as const) {
+    for (const field of ADDRESS_FIELDS) {
+      form[addressFormKey(prefix, field)] = String(input[`${prefix}Address`]?.[field] ?? "");
+    }
+  }
+  return form;
+}
+
+function formatBusinessAddress(address: BusinessAddress): string {
+  return [
+    address.houseNameNumber, address.addressLine1, address.addressLine2, address.addressLine3,
+    address.cityTown, address.county, address.state, address.postcode, address.country
+  ].filter((part, index, parts) => part && parts.indexOf(part) === index).join(", ");
+}
+
 const ADDRESS_FIELD_LABELS: Record<string, string> = {
   houseNameNumber: "Building/unit name or number",
   addressLine1: "Address line 1",
@@ -72,6 +94,8 @@ export function validateBusinessCustomer(input: unknown): {
     : {};
   const errors: string[] = [];
   const fieldErrors: BusinessFieldError[] = [];
+  const normalizedEmails: Record<string, string> = {};
+  const normalizedPhones: Record<string, string> = {};
   const fail = (field: string, message: string) => {
     errors.push(message);
     fieldErrors.push({ field, message });
@@ -106,14 +130,14 @@ export function validateBusinessCustomer(input: unknown): {
     if (data[field] && (data[field].length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data[field]))) {
       fail(field, `${label} must be a valid email address.`);
     }
-    data[field] = data[field].toLowerCase();
+    normalizedEmails[field] = data[field].toLowerCase();
   }
   for (const [field, label] of [
     ["officePhone", "Office phone"], ["bookerPhone", "Booker phone"], ["accountsPhone", "Accounts phone"]
   ]) {
     if (!data[field]) continue;
     const normalized = normalizePhoneToE164(data[field]);
-    if (normalized) data[field] = normalized;
+    if (normalized) normalizedPhones[field] = normalized;
     else fail(field, `${label} must be a valid phone number, for example +44 1202 353570 or 01202 353570.`);
   }
 
@@ -179,29 +203,19 @@ export function validateBusinessCustomer(input: unknown): {
     input: {
       registeredName: data.registeredName,
       registeredAddress, operationalAddress,
-      officePhone: data.officePhone, officeEmail: data.officeEmail,
-      bookerFullName: data.bookerFullName, bookerEmail: data.bookerEmail, bookerPhone: data.bookerPhone,
+      officePhone: normalizedPhones.officePhone, officeEmail: normalizedEmails.officeEmail,
+      bookerFullName: data.bookerFullName, bookerEmail: normalizedEmails.bookerEmail,
+      bookerPhone: normalizedPhones.bookerPhone,
       bookingAuthRequired: data.bookingAuthRequired === "yes", bookingAuthChannel,
       accountsFullName: data.accountsFullName,
-      accountsEmail: data.accountsEmail,
-      accountsPhone: data.accountsPhone || null
+      accountsEmail: normalizedEmails.accountsEmail,
+      accountsPhone: normalizedPhones.accountsPhone || null
     }
   };
 }
 
 export async function createBusinessCustomer(input: BusinessCustomerInput): Promise<CustomerRecord> {
-  const form: BusinessFormData = {};
-  for (const field of CONTACT_FIELDS) {
-    form[field] = field === "bookingAuthRequired"
-      ? (input[field] === true ? "yes" : input[field] === false ? "no" : "")
-      : String(input[field] ?? "");
-  }
-  for (const prefix of ["registered", "operational"] as const) {
-    for (const field of ADDRESS_FIELDS) {
-      form[addressFormKey(prefix, field)] = String(input[`${prefix}Address`]?.[field] ?? "");
-    }
-  }
-  const validation = validateBusinessCustomer(form);
+  const validation = validateBusinessCustomer(businessInputToFormData(input));
   if (!validation.input) throw new Error(validation.errors.join(" "));
   const business = validation.input;
   return withTransaction(async (client) => {
@@ -210,10 +224,7 @@ export async function createBusinessCustomer(input: BusinessCustomerInput): Prom
       givenName: business.registeredName, surname: "", company: business.registeredName,
       email: business.officeEmail, phone: business.officePhone,
       ...address,
-      address: [
-        address.houseNameNumber, address.addressLine1, address.addressLine2, address.addressLine3,
-        address.cityTown, address.county, address.state, address.postcode, address.country
-      ].filter((part, index, parts) => part && parts.indexOf(part) === index).join(", "),
+      address: formatBusinessAddress(address),
       source: "business"
     }, client);
     await client.query(
@@ -230,6 +241,48 @@ export async function createBusinessCustomer(input: BusinessCustomerInput): Prom
         business.accountsFullName, business.accountsEmail, business.accountsPhone
       ]
     );
+    return customer;
+  });
+}
+
+export async function updateBusinessCustomer(
+  customerId: string,
+  input: BusinessCustomerInput
+): Promise<CustomerRecord | undefined> {
+  const validation = validateBusinessCustomer(businessInputToFormData(input));
+  if (!validation.input) throw new Error(validation.errors.join(" "));
+  const business = validation.input;
+
+  return withTransaction(async (client) => {
+    const address = business.registeredAddress;
+    const customer = await updateCustomer(customerId, {
+      givenName: business.registeredName,
+      company: business.registeredName,
+      email: business.officeEmail,
+      phone: business.officePhone,
+      ...address,
+      address: formatBusinessAddress(address)
+    }, client);
+    if (!customer) return undefined;
+
+    const result = await client.query(
+      `UPDATE business_customers SET
+        registered_name = $2, registered_address = $3::jsonb, operational_address = $4::jsonb,
+        office_phone = $5, office_email = $6, booker_full_name = $7, booker_email = $8,
+        booker_phone = $9, booking_auth_required = $10, booking_auth_channel = $11,
+        accounts_full_name = $12, accounts_email = $13, accounts_phone = $14
+       WHERE customer_id = $1`,
+      [
+        customerId, business.registeredName, JSON.stringify(business.registeredAddress),
+        JSON.stringify(business.operationalAddress), business.officePhone, business.officeEmail,
+        business.bookerFullName, business.bookerEmail, business.bookerPhone,
+        business.bookingAuthRequired, business.bookingAuthChannel,
+        business.accountsFullName, business.accountsEmail, business.accountsPhone
+      ]
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      throw new Error(`Business profile for customer ${customerId} could not be updated.`);
+    }
     return customer;
   });
 }

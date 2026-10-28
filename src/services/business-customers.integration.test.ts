@@ -6,7 +6,8 @@ import {
 } from "../database/test-helper";
 import { anonymizeCustomer, createCustomer, deleteCustomer, getCustomerById } from "./customers";
 import {
-  createBusinessCustomer, getBusinessCustomer, validateBusinessCustomer, type BusinessCustomerInput
+  createBusinessCustomer, getBusinessCustomer, updateBusinessCustomer, validateBusinessCustomer,
+  type BusinessCustomerInput
 } from "./business-customers";
 
 let context: TestDatabaseContext | undefined;
@@ -66,6 +67,53 @@ test("rolls back the base customer when inserting its business row fails", async
     assert.equal(result.rowCount, 0);
   } finally {
     await query("ALTER TABLE business_customers DROP CONSTRAINT test_reject_business");
+  }
+});
+
+test("updates the existing base customer and business profile while preserving identity, status and bookings", async () => {
+  const original = await createBusinessCustomer(validBusiness("business-update-original@example.com"));
+  await query("UPDATE customers SET status = 'Suspended' WHERE id = $1", [original.id]);
+  await query(`INSERT INTO customer_bookings
+    (id, customer_id, reference, service_date, pickup, dropoff, status, created_at)
+    VALUES ('business-update-booking', $1, 'BUS-UPDATE', '2026-10-28', 'Office', 'Station',
+      'Scheduled', CURRENT_TIMESTAMP::text)`, [original.id]);
+  const before = await query<{ created_at: string }>(
+    "SELECT created_at FROM customers WHERE id = $1", [original.id]
+  );
+  const updatedInput = validBusiness("business-update-next@example.com");
+  updatedInput.registeredName = "Updated Business Ltd";
+  updatedInput.bookingAuthRequired = false;
+  updatedInput.bookingAuthChannel = null;
+
+  const updated = await updateBusinessCustomer(original.id, updatedInput);
+  assert.equal(updated?.id, original.id);
+  assert.equal(updated?.givenName, "Updated Business Ltd");
+  assert.equal(updated?.company, "Updated Business Ltd");
+  assert.equal(updated?.email, "business-update-next@example.com");
+  assert.equal(updated?.status, "Suspended");
+  assert.equal(updated?.createdAt, before.rows[0].created_at);
+  assert.equal((await getBusinessCustomer(original.id))?.registeredName, "Updated Business Ltd");
+  assert.equal((await getBusinessCustomer(original.id))?.bookingAuthRequired, false);
+  assert.equal((await getBusinessCustomer(original.id))?.bookingAuthChannel, null);
+  assert.equal((await query("SELECT id FROM customer_bookings WHERE customer_id = $1", [original.id])).rowCount, 1);
+  assert.equal((await query("SELECT id FROM customers WHERE email = $1", [original.email])).rowCount, 0);
+});
+
+test("rolls back the base-customer update if the business-profile update fails", async () => {
+  const original = await createBusinessCustomer(validBusiness("business-update-rollback@example.com"));
+  await query(`ALTER TABLE business_customers ADD CONSTRAINT test_reject_business_update
+    CHECK (registered_name <> 'Reject Update')`);
+  try {
+    const updatedInput = validBusiness("business-update-rollback-next@example.com");
+    updatedInput.registeredName = "Reject Update";
+    await assert.rejects(updateBusinessCustomer(original.id, updatedInput), /test_reject_business_update/);
+    const customer = await getCustomerById(original.id);
+    const business = await getBusinessCustomer(original.id);
+    assert.equal(customer?.givenName, original.givenName);
+    assert.equal(customer?.email, original.email);
+    assert.equal(business?.registeredName, original.company);
+  } finally {
+    await query("ALTER TABLE business_customers DROP CONSTRAINT test_reject_business_update");
   }
 });
 
