@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account",
+      isChildWindow
+    }) %>
+
+    <%- include("../../partials/header", {
+      appTitle,
+      contextBarActions: [
+        { label: "Back to customer list", href: backToCustomersHref, tone: "execute-helper" },
+        { label: "Cancel", href: cancelHref, tone: "execute-helper" },
+        { label: "Save Changes", type: "submit", formId: "business-customer-form", tone: "execute" }
+      ]
+    }) %>
+
+    <main class="container rm-page-shell customer-page customer-form-page customer-form-page--business">
+      <section class="panel panel--compact customer-form-panel customer-form-panel--centered">
+        <%- include("../../partials/business-customer-form", {
+          formHeading: `Edit ${customer.company || customer.givenName}`,
+          formIntro: "Update the organisation's details below. Fields marked with * are required.",
+          formAction: editActionHref
+        }) %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+    <script src="/js/customer-address-autocomplete.js" defer></script>
+    <script src="/js/business-customer-form.js?v=20261027-1" defer></script>
+  </body>
+</html>

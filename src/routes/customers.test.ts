@@ -270,7 +270,7 @@ test("business validation errors preserve the form and never call persistence", 
     assert.equal(response.status, 400);
     for (const [name, value] of invalid) {
       if (name === "customerType" || name === "bookingAuthRequired" || name === "bookingAuthChannel") continue;
-      const expected = name === "officePhone" ? "+442079460018" : name === "bookerPhone" ? "+447777888999" : value;
+      const expected = value;
       assert.match(html, new RegExp(`id="${name}"\\s+name="${name}"\\s+value="${expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), name);
     }
     assert.match(html, /<option value="yes" selected>Yes<\/option>/);
@@ -365,22 +365,166 @@ test("business registration requires the existing administrator role", async () 
   }
 });
 
-test("business customers cannot enter or submit the private editor", async () => {
+test("business edit form is prefilled from its profile without requiring a map preview", async () => {
+  const businessCustomer = {
+    ...createTestCustomer(), givenName: "Example Ltd", surname: "", company: "Example Ltd", source: "business"
+  };
+  const business = createTestBusinessCustomer();
+  business.bookingAuthRequired = true;
+  business.bookingAuthChannel = "both";
+  business.accountsPhone = "+442079460019";
   const server = createTestServer(adminSession, {
-    getCustomerById: async () => ({ ...createTestCustomer(), source: "business", surname: "", company: "Example Ltd" })
+    getCustomerById: async () => businessCustomer,
+    getBusinessCustomer: async () => business
   });
   try {
     const { port } = server.address() as { port: number };
-    for (const method of ["GET", "POST"]) {
-      const response = await fetch(`http://127.0.0.1:${port}/customers/cust-test-1/edit`, {
-        method, redirect: "manual", ...(method === "POST" ? { body: validCustomerForm } : {})
-      });
-      assert.equal(response.status, 302);
-      assert.match(response.headers.get("location") || "", /notice=business-read-only/);
-    }
+    const response = await fetch(
+      `http://127.0.0.1:${port}/customers/cust-test-1/edit?returnTo=${encodeURIComponent("/customers?q=company")}&layout=child`
+    );
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /id="business-customer-form"[^>]*action="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers%3Fq%3Dcompany&amp;layout=child"/);
+    assert.match(html, /id="registeredName" name="registeredName" value="Example Ltd"/);
+    assert.match(html, /id="officePhone"[^>]*value="[^"]+"/);
+    assert.match(html, /id="officeEmail" name="officeEmail" value="office@example\.com"/);
+    assert.match(html, /id="bookerFullName" name="bookerFullName" value="Booking Manager"/);
+    assert.match(html, /id="bookerEmail" name="bookerEmail" value="booker@example\.com"/);
+    assert.match(html, /id="bookerPhone"[^>]*value="[^"]+"/);
+    assert.match(html, /<option value="yes" selected>Yes<\/option>/);
+    assert.match(html, /<option value="both" selected>Both<\/option>/);
+    assert.match(html, /id="accountsFullName" name="accountsFullName" value="Accounts Manager"/);
+    assert.match(html, /id="accountsEmail" name="accountsEmail" value="accounts@example\.com"/);
+    assert.match(html, /id="accountsPhone"[^>]*value="[^"]+"/);
+    assert.match(html, /id="registeredAddressLine1" name="registeredAddressLine1" value="High Street"/);
+    assert.match(html, /id="registeredAddressLine2" name="registeredAddressLine2" value=""/);
+    assert.match(html, /id="operationalAddressLine1" name="operationalAddressLine1" value=""/);
+    assert.match(html, /id="registeredLatitude" name="registeredLatitude" value="50\.71"/);
+    assert.equal(countMatches(html, /data-address-prefix=/g), 2);
+    assert.equal(countMatches(html, /class="address-map-preview"/g), 0);
+    assert.doesNotMatch(html, /Business details are read-only/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+test("business customer directory and detail pages both link to the edit route", async () => {
+  const businessCustomer = {
+    ...createTestCustomer(), givenName: "Example Ltd", surname: "", company: "Example Ltd", source: "business"
+  };
+  const server = createTestServer(adminSession, {
+    listCustomers: async () => ({
+      customers: [businessCustomer], totalRecords: 1, totalPages: 1, page: 1, perPage: 10
+    }),
+    getCustomerCount: async () => 1,
+    getCustomerById: async () => businessCustomer,
+    getBusinessCustomer: async () => createTestBusinessCustomer()
+  });
+  try {
+    const { port } = server.address() as { port: number };
+    const listHtml = await (await fetch(`http://127.0.0.1:${port}/customers`)).text();
+    const detailHtml = await (await fetch(
+      `http://127.0.0.1:${port}/customers/cust-test-1?returnTo=%2Fcustomers&layout=child`
+    )).text();
+    assert.match(listHtml, /href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers">Edit<\/a>/);
+    assert.match(detailHtml, /href="\/customers\/cust-test-1\/edit\?returnTo=%2Fcustomers&amp;layout=child">Edit Customer<\/a>/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("business edit updates the existing customer and redirects to its detail page", async () => {
+  let updatedId = "";
+  let saved: BusinessCustomerInput | undefined;
+  const businessCustomer = {
+    ...createTestCustomer(), givenName: "Example Ltd", surname: "", company: "Example Ltd", source: "business"
+  };
+  const server = createTestServer(adminSession, {
+    getCustomerById: async () => businessCustomer,
+    updateBusinessCustomer: async (customerId, input) => {
+      updatedId = customerId;
+      saved = input;
+      return businessCustomer;
+    }
+  });
+  try {
+    const { port } = server.address() as { port: number };
+    const response = await fetch(`http://127.0.0.1:${port}/customers/cust-test-1/edit?returnTo=%2Fcustomers`, {
+      method: "POST", body: validBusinessForm, redirect: "manual"
+    });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/customers/cust-test-1?returnTo=%2Fcustomers&notice=customer-updated");
+    assert.equal(updatedId, "cust-test-1");
+    assert.equal(saved?.registeredName, "Example Ltd");
+    assert.equal(saved?.officePhone, "+442079460018");
+    assert.equal(saved?.operationalAddress.latitude, 50.7);
+    assert.equal(saved?.bookingAuthRequired, true);
+    assert.equal(saved?.bookingAuthChannel, "both");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("business edit validation errors keep submitted values and do not update persistence", async () => {
+  let calls = 0;
+  const businessCustomer = {
+    ...createTestCustomer(), givenName: "Example Ltd", surname: "", company: "Example Ltd", source: "business"
+  };
+  const server = createTestServer(adminSession, {
+    getCustomerById: async () => businessCustomer,
+    updateBusinessCustomer: async () => { calls++; return businessCustomer; }
+  });
+  try {
+    const { port } = server.address() as { port: number };
+    const invalid = new URLSearchParams(validBusinessForm);
+    invalid.set("registeredName", "Changed Name");
+    invalid.set("officeEmail", "not-an-email");
+    invalid.set("officePhone", "020 7946 0018");
+    invalid.set("accountsPhone", "+44 1202 353570");
+    const response = await fetch(`http://127.0.0.1:${port}/customers/cust-test-1/edit`, {
+      method: "POST", body: invalid
+    });
+    const html = await response.text();
+    assert.equal(response.status, 400);
+    assert.match(html, /id="registeredName" name="registeredName" value="Changed Name"/);
+    assert.match(html, /id="officeEmail" name="officeEmail" value="not-an-email"/);
+    assert.match(html, /id="officePhone"[^>]*value="020 7946 0018"/);
+    assert.match(html, /id="accountsPhone"[^>]*value="\+44 1202 353570"/);
+    assert.match(html, /href="#officeEmail" data-error-field="officeEmail">Office email must be a valid email address\./);
+    assert.equal(calls, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("private customer edit still validates and updates through the private-customer service", async () => {
+  await withMapEnvironment({}, async () => {
+    let updatedId = "";
+    let saved: Record<string, unknown> | undefined;
+    const server = createTestServer(adminSession, {
+      getCustomerById: async () => createTestCustomer(),
+      listRecentBookingsForCustomer: async () => [],
+      updateCustomer: async (customerId, input) => {
+        updatedId = customerId;
+        saved = input;
+        return createTestCustomer();
+      }
+    });
+    try {
+      const { port } = server.address() as { port: number };
+      const response = await fetch(`http://127.0.0.1:${port}/customers/cust-test-1/edit?returnTo=%2Fcustomers`, {
+        method: "POST", body: validCustomerForm, redirect: "manual"
+      });
+      assert.equal(response.status, 302);
+      assert.equal(updatedId, "cust-test-1");
+      assert.equal(saved?.givenName, "Ada");
+      assert.equal(saved?.surname, "Lovelace");
+      assert.equal(saved?.status, "Active");
+      assert.match(response.headers.get("location") || "", /notice=customer-updated/);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });
 
 test("phone preview route is registered and returns international metadata", async () => {

@@ -9,9 +9,9 @@
     return (businessFieldErrors[id] ? 'aria-invalid="true" ' : "") + (ids ? 'aria-describedby="' + ids + '"' : "");
   };
 %>
-<h1>Business customer</h1>
-<p>Fill in the organisation's details below. Fields marked with * are required.</p>
-<form id="business-customer-form" class="inline-form private-customer-form business-customer-form" method="post" action="/customers/register" data-error-summary-form>
+<h1><%= locals.formHeading || "Business customer" %></h1>
+<p><%= locals.formIntro || "Fill in the organisation's details below. Fields marked with * are required." %></p>
+<form id="business-customer-form" class="inline-form private-customer-form business-customer-form" method="post" action="<%= locals.formAction || '/customers/register' %>" data-error-summary-form>
   <%- locals.csrfField || "" %>
   <div class="notice notice--critical form-error-summary" id="business-customer-form-errors" tabindex="-1" aria-labelledby="business-customer-form-errors-title" data-error-summary<%= errors.length > 0 ? "" : " hidden" %>>
     <h2 class="form-error-summary__title" id="business-customer-form-errors-title">Please correct the following errors:</h2>
