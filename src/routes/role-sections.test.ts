@@ -80,8 +80,17 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(categoryBody, /<h1>Toll & Fees<\/h1>/);
     assert.match(categoryBody, /Not configured yet/);
     assert.match(categoryBody, /not calculated or charged/i);
+    assert.match(categoryBody, /aria-label="Toll & Fees categories"/);
+    assert.equal((categoryBody.match(/class="toll-fees-card"/g) ?? []).length, tollFeeCategories.length);
+    assert.doesNotMatch(categoryBody, /class="toll-fees-subnav__item"/);
 
     for (const category of tollFeeCategories) {
+      assert.equal(categoryBody.split(category.title).length - 1, 1, `${category.title} should appear once on the landing page`);
+      assert.equal(
+        categoryBody.split(`href="/settings/toll-fees/${category.slug}"`).length - 1,
+        1,
+        `${category.title} should have one landing-page destination`
+      );
       const categoryUrl = `${baseUrl}/settings/toll-fees/${category.slug}`;
       const response = await fetch(categoryUrl, { headers });
       assert.equal(response.status, 200, `${category.title} category should be reachable`);
@@ -90,6 +99,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       const categoryPath = `/settings/toll-fees/${category.slug}`;
       assert.ok(body.includes(`${categoryPath}/reference-data`), "reference data destination should be linked");
       assert.ok(body.includes(`${categoryPath}/fee-settings`), "fee settings destination should be linked");
+      assert.equal((body.match(/class="toll-fees-subnav__item"/g) ?? []).length, 2);
+      assert.match(body, /aria-label="Breadcrumb"/);
+      assert.match(body, /href="\/settings\/toll-fees">Toll &amp; Fees<\/a>/);
 
       for (const destination of [
         { path: "reference-data", title: "Reference data (managed)", explanation: /versioned geographic boundaries/ },
@@ -101,7 +113,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         assert.ok(destinationBody.includes(destination.title), `${destination.title} should be visible`);
         assert.match(destinationBody, destination.explanation);
         assert.match(destinationBody, /Not configured yet/);
-        assert.match(destinationBody, /aria-current="page"/);
+        const selectedSubnav = destinationBody.match(/<a class="toll-fees-subnav__item"[^>]*aria-current="page"[^>]*>/g) ?? [];
+        assert.equal(selectedSubnav.length, 1, "exactly one subpage should be marked as selected");
+        assert.ok(selectedSubnav[0].includes(`${categoryPath}/${destination.path}`), "the selected subpage should match the current destination");
         assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
       }
     }
