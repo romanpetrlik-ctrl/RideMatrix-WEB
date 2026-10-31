@@ -40,10 +40,23 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   let authServer: http.Server;
   let appServer: http.Server;
   let baseUrl: string;
+  const previousMapEnvironment = {
+    enabled: process.env.GOOGLE_MAPS_ENABLED,
+    publicEnabled: process.env.NEXT_PUBLIC_GOOGLE_MAPS_ENABLED,
+    browserKey: process.env.GOOGLE_MAPS_BROWSER_API_KEY,
+    publicBrowserKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY,
+    nextBrowserKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  };
   const sessionsByCookie = new Map<string, unknown>();
   const seenCookies: Array<string | undefined> = [];
 
   before(async () => {
+    process.env.GOOGLE_MAPS_ENABLED = "false";
+    delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_ENABLED;
+    delete process.env.GOOGLE_MAPS_BROWSER_API_KEY;
+    delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY;
+    delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
     // Stand-in for the external auth service (API_BASE_URL defaults to
     // http://127.0.0.1:4000). The real getSessionAccount() client is used, so
     // the cookie forwarding and JSON session shape are exercised end-to-end.
@@ -72,6 +85,16 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   after(async () => {
     await new Promise<void>((resolve) => appServer.close(() => resolve()));
     await new Promise<void>((resolve) => authServer.close(() => resolve()));
+    for (const [name, value] of Object.entries({
+      GOOGLE_MAPS_ENABLED: previousMapEnvironment.enabled,
+      NEXT_PUBLIC_GOOGLE_MAPS_ENABLED: previousMapEnvironment.publicEnabled,
+      GOOGLE_MAPS_BROWSER_API_KEY: previousMapEnvironment.browserKey,
+      NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY: previousMapEnvironment.publicBrowserKey,
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: previousMapEnvironment.nextBrowserKey
+    })) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   });
 
   function withSession(cookie: string, roles: unknown) {
@@ -160,13 +183,58 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         const destinationBody = await destinationResponse.text();
         assert.ok(destinationBody.includes(`${scheme.title}: ${destination.title}`), `${scheme.title} ${destination.title} should have a page title`);
         assert.match(destinationBody, destination.explanation);
-        assert.match(destinationBody, /Not configured yet/);
+        const isLondonLezReference = scheme.title === "London LEZ" && destination.path === "reference-data";
+        if (isLondonLezReference) {
+          assert.match(destinationBody, /London Low Emission Zone boundary/);
+          assert.match(destinationBody, /Map preview unavailable/);
+          assert.doesNotMatch(destinationBody, /Not configured yet/);
+        } else {
+          assert.match(destinationBody, /Not configured yet/);
+        }
         const selectedSubnav = destinationBody.match(/<a class="toll-fees-subnav__item"[^>]*aria-current="page"[^>]*>/g) ?? [];
         assert.equal(selectedSubnav.length, 1, "exactly one subpage should be marked as selected");
         assert.ok(selectedSubnav[0].includes(`${scheme.path}/${destination.path}`), "the selected subpage should match the current destination");
         assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
       }
     }
+  });
+
+  test("London LEZ boundary metadata, map configuration and data endpoint are protected", async () => {
+    const cookie = "sid=london-lez-boundary";
+    const headers = withSession(cookie, ["superuser"]);
+    process.env.GOOGLE_MAPS_ENABLED = "true";
+    process.env.GOOGLE_MAPS_BROWSER_API_KEY = "browser-key-for-test";
+
+    const pageUrl = `${baseUrl}/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/reference-data`;
+    const pageResponse = await fetch(pageUrl, { headers });
+    assert.equal(pageResponse.status, 200);
+    const page = await pageResponse.text();
+    assert.match(page, /data-london-lez-map/);
+    assert.match(page, /browser-key-for-test/);
+    assert.match(page, /2021-10-26/);
+    assert.match(page, /2007-11-13/);
+    assert.match(page, /2026-10-31/);
+    assert.match(page, /Powered by TfL Open Data/);
+    assert.match(page, /EPSG:27700 \(British National Grid\)/);
+    assert.match(page, /WGS 84 \(RFC 7946 longitude, latitude\)/);
+    assert.match(page, /LEZ_Boundary_20211026_Shape_Files\.zip/);
+
+    const dataUrl = `${baseUrl}/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/reference-data/boundary.json`;
+    const dataResponse = await fetch(dataUrl, { headers });
+    assert.equal(dataResponse.status, 200);
+    assert.match(dataResponse.headers.get("cache-control") ?? "", /no-store/);
+    const boundary = await dataResponse.json() as { type: string; features: Array<{ properties: { UNIQUE_ID: string } }> };
+    assert.equal(boundary.type, "FeatureCollection");
+    assert.equal(boundary.features.length, 22);
+
+    const deniedHeaders = withSession("sid=london-lez-boundary-denied", ["admin"]);
+    const deniedData = await fetch(dataUrl, { headers: deniedHeaders });
+    assert.equal(deniedData.status, 403);
+    assert.deepEqual(await deniedData.json(), { error: "System settings access is required." });
+
+    const unauthenticatedData = await fetch(dataUrl, { headers: { cookie: "sid=london-lez-boundary-unknown" } });
+    assert.equal(unauthenticatedData.status, 401);
+    assert.deepEqual(await unauthenticatedData.json(), { error: "Authentication required." });
   });
 
   test("every Clean Air Zone and London scheme has reference data and fee settings destinations", () => {

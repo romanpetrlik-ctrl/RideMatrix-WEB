@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/reference-data/toll-fees/london-lez && cp src/reference-data/toll-fees/london-lez/boundary.geojson dist/reference-data/toll-fees/london-lez/boundary.geojson",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsc --noEmit -p tsconfig.test.json && tsx src/test-run.ts --unit",
