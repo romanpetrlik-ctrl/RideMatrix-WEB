@@ -31,13 +31,53 @@ export const workspaceModules: WorkspaceModule[] = [
   { key: "manage-vps", title: "Manage VPS", description: "Privileged reboot and recovery entry point.", href: "/vps", allowedRoles: ["superuser"] }
 ];
 
-export const tollFeeCategories = [
+export type TollFeeArea = {
+  slug: string;
+  title: string;
+  description: string;
+};
+
+export type TollFeeCategory = {
+  slug: string;
+  title: string;
+  description: string;
+  /** Scheme areas nested under the category. Each area has its own two destinations. */
+  areas?: readonly TollFeeArea[];
+};
+
+export const tollFeeCategories: readonly TollFeeCategory[] = [
   { slug: "airport-fees", title: "Airport fees", description: "Airport-specific fees and associated reference information." },
-  { slug: "clean-air-zones", title: "Clean Air Zones (CAZ)", description: "Clean Air Zone boundaries, rules, and fee schedules." },
-  { slug: "london-lez-ulez-congestion-charge", title: "London: LEZ, ULEZ & Congestion Charge", description: "London zone boundaries, rules, and fee schedules." },
+  {
+    slug: "clean-air-zones",
+    title: "Clean Air Zones (CAZ)",
+    description: "Clean Air Zone boundaries, rules, and fee schedules.",
+    areas: [
+      { slug: "bath", title: "Bath", description: "Clean Air Zone boundaries, rules, and fee schedules for Bath." },
+      { slug: "birmingham", title: "Birmingham", description: "Clean Air Zone boundaries, rules, and fee schedules for Birmingham." },
+      { slug: "bradford", title: "Bradford", description: "Clean Air Zone boundaries, rules, and fee schedules for Bradford." },
+      { slug: "bristol", title: "Bristol", description: "Clean Air Zone boundaries, rules, and fee schedules for Bristol." },
+      { slug: "portsmouth", title: "Portsmouth", description: "Clean Air Zone boundaries, rules, and fee schedules for Portsmouth." },
+      { slug: "sheffield", title: "Sheffield", description: "Clean Air Zone boundaries, rules, and fee schedules for Sheffield." },
+      {
+        slug: "tyneside",
+        title: "Tyneside (Newcastle and Gateshead)",
+        description: "Clean Air Zone boundaries, rules, and fee schedules for Tyneside (Newcastle and Gateshead)."
+      }
+    ]
+  },
+  {
+    slug: "london-lez-ulez-congestion-charge",
+    title: "London: LEZ, ULEZ & Congestion Charge",
+    description: "London zone boundaries, rules, and fee schedules.",
+    areas: [
+      { slug: "london-lez", title: "London LEZ", description: "London Low Emission Zone boundaries, rules, and fee schedules." },
+      { slug: "london-ulez", title: "London ULEZ", description: "London Ultra Low Emission Zone boundaries, rules, and fee schedules." },
+      { slug: "london-congestion-charge", title: "London Congestion Charge", description: "London Congestion Charge boundaries, rules, and fee schedules." }
+    ]
+  },
   { slug: "dartford-crossing", title: "Dartford Crossing", description: "Crossing rules and fee schedules." },
   { slug: "blackwall-silvertown-tunnels", title: "Blackwall & Silvertown tunnels", description: "Tunnel rules and fee schedules." }
-] as const;
+];
 
 const referenceDataDescription =
   "Reference data (managed) is for versioned geographic boundaries and source/rule metadata. It will be updated through a controlled process, separately from ordinary fee settings.";
@@ -47,9 +87,49 @@ const feeSettingsDescription =
 type TollFeeSection = "reference-data" | "fee-settings";
 
 type TollFeesPage = {
-  category?: (typeof tollFeeCategories)[number];
+  category?: TollFeeCategory;
+  area?: TollFeeArea;
   section?: TollFeeSection;
 };
+
+type Breadcrumb = { label: string; href?: string };
+
+function sectionLabel(section: TollFeeSection): string {
+  return section === "reference-data" ? "Reference data (managed)" : "Fee settings";
+}
+
+/**
+ * Builds the breadcrumb trail for a page. The final entry has no href so the
+ * template renders it as the current page; its parent is the back link.
+ */
+function buildBreadcrumbs(page: TollFeesPage): Breadcrumb[] {
+  const crumbs: Breadcrumb[] = [
+    { label: "System Settings", href: "/settings" },
+    { label: "Toll & Fees", href: "/settings/toll-fees" }
+  ];
+
+  if (page.category) {
+    const categoryPath = `/settings/toll-fees/${page.category.slug}`;
+    crumbs.push({ label: page.category.title, href: categoryPath });
+    if (page.area) crumbs.push({ label: page.area.title, href: `${categoryPath}/${page.area.slug}` });
+  }
+  if (page.section) crumbs.push({ label: sectionLabel(page.section) });
+  // The last crumb is the current page, so it is rendered without a link.
+  delete crumbs[crumbs.length - 1].href;
+  return crumbs;
+}
+
+function leafPathFor(page: TollFeesPage): string | undefined {
+  if (!page.category) return undefined;
+  return `/settings/toll-fees/${page.category.slug}${page.area ? `/${page.area.slug}` : ""}`;
+}
+
+
+function pageTitle(page: TollFeesPage): string {
+  if (!page.category) return "Toll & Fees";
+  const name = page.area?.title ?? page.category.title;
+  return page.section ? `${name}: ${sectionLabel(page.section)}` : name;
+}
 
 export function availableWorkspaceModules(roles: string[]): WorkspaceModule[] {
   return workspaceModules.filter((module) => module.allowedRoles.some((role) => roles.includes(role)));
@@ -104,17 +184,20 @@ async function renderTollFeesPage(
       return;
     }
 
-    const title = page.section && page.category
-      ? `${page.category.title}: ${page.section === "reference-data" ? "Reference data (managed)" : "Fee settings"}`
-      : page.category?.title ?? "Toll & Fees";
+    const breadcrumbs = buildBreadcrumbs(page);
     res.render("pages/toll-fees", {
-      title,
+      title: pageTitle(page),
       appTitle,
       email: session.user.email,
       grantedByLabel: grantingRoles(roles, systemSettingsModule).map(formatRoleLabel).join(", "),
       categories: tollFeeCategories,
       category: page.category,
+      area: page.area,
       section: page.section,
+      breadcrumbs,
+      parentCrumb: breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2] : undefined,
+      leafPath: leafPathFor(page),
+      leafTitle: page.area?.title ?? page.category?.title,
       referenceDataDescription,
       feeSettingsDescription
     });
@@ -136,6 +219,22 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     router.get(categoryPath, (req, res, next) => {
       void renderTollFeesPage(req, res, next, options.appTitle, { category });
     });
+
+    if (category.areas) {
+      for (const area of category.areas) {
+        const areaPath = `${categoryPath}/${area.slug}`;
+        router.get(areaPath, (req, res, next) => {
+          void renderTollFeesPage(req, res, next, options.appTitle, { category, area });
+        });
+
+        for (const section of ["reference-data", "fee-settings"] as const) {
+          router.get(`${areaPath}/${section}`, (req, res, next) => {
+            void renderTollFeesPage(req, res, next, options.appTitle, { category, area, section });
+          });
+        }
+      }
+      continue;
+    }
 
     for (const section of ["reference-data", "fee-settings"] as const) {
       router.get(`${categoryPath}/${section}`, (req, res, next) => {

@@ -9,6 +9,33 @@ import { createRoleSectionsRouter, grantingRoles, tollFeeCategories, workspaceMo
 // (admin, customer, driver, partner, staff, superuser, tech_support).
 const BOOKINGS_ROLES = ["admin", "customer", "driver", "partner", "staff", "superuser", "tech_support"];
 
+type SchemeLeaf = {
+  title: string;
+  path: string;
+  parentPath: string;
+  parentTitle: string;
+  categorySlug: string;
+};
+
+/** Every leaf destination: areas for nested categories, the category itself otherwise. */
+function schemeLeaves(): SchemeLeaf[] {
+  return tollFeeCategories.flatMap((category) => {
+    const categoryPath = `/settings/toll-fees/${category.slug}`;
+    if (!category.areas) {
+      return [{ title: category.title, path: categoryPath, parentPath: "/settings/toll-fees", parentTitle: "Toll & Fees", categorySlug: category.slug }];
+    }
+    return category.areas.map((area) => ({
+      title: area.title,
+      path: `${categoryPath}/${area.slug}`,
+      parentPath: categoryPath,
+      parentTitle: category.title,
+      categorySlug: category.slug
+    }));
+  });
+}
+
+const escapeHtml = (value: string) => value.replace(/&/g, "&amp;");
+
 describe("role workspaces authorize against the /auth/session role contract", () => {
   let authServer: http.Server;
   let appServer: http.Server;
@@ -91,35 +118,130 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         1,
         `${category.title} should have one landing-page destination`
       );
-      const categoryUrl = `${baseUrl}/settings/toll-fees/${category.slug}`;
-      const response = await fetch(categoryUrl, { headers });
+      const categoryPath = `/settings/toll-fees/${category.slug}`;
+      const response = await fetch(`${baseUrl}${categoryPath}`, { headers });
       assert.equal(response.status, 200, `${category.title} category should be reachable`);
       const body = await response.text();
       assert.ok(body.includes(category.title), `${category.title} should be visible`);
-      const categoryPath = `/settings/toll-fees/${category.slug}`;
+      assert.match(body, /aria-label="Breadcrumb"/);
+      assert.match(body, /href="\/settings\/toll-fees">Toll &amp; Fees<\/a>/);
+
+      if (category.areas) {
+        assert.equal((body.match(/class="toll-fees-card"/g) ?? []).length, category.areas.length);
+        assert.doesNotMatch(body, /class="toll-fees-subnav__item"/);
+        for (const area of category.areas) {
+          assert.ok(body.includes(`href="${categoryPath}/${area.slug}"`), `${area.title} should be linked from ${category.title}`);
+        }
+        continue;
+      }
+
       assert.ok(body.includes(`${categoryPath}/reference-data`), "reference data destination should be linked");
       assert.ok(body.includes(`${categoryPath}/fee-settings`), "fee settings destination should be linked");
       assert.equal((body.match(/class="toll-fees-subnav__item"/g) ?? []).length, 2);
-      assert.match(body, /aria-label="Breadcrumb"/);
-      assert.match(body, /href="\/settings\/toll-fees">Toll &amp; Fees<\/a>/);
+    }
+
+    for (const scheme of schemeLeaves()) {
+      const schemeUrl = `${baseUrl}${scheme.path}`;
+      const schemeResponse = await fetch(schemeUrl, { headers });
+      assert.equal(schemeResponse.status, 200, `${scheme.title} should be reachable`);
+      const schemeBody = await schemeResponse.text();
+      assert.ok(schemeBody.includes(scheme.title), `${scheme.title} should be visible`);
+      assert.match(schemeBody, /aria-label="Breadcrumb"/);
+      assert.ok(schemeBody.includes(`href="${scheme.parentPath}">${escapeHtml(scheme.parentTitle)}</a>`), "parent breadcrumb should be linked");
+      assert.ok(schemeBody.includes(`&larr; Back to ${escapeHtml(scheme.parentTitle)}</a>`), "a back link to the parent should be shown");
+      assert.equal((schemeBody.match(/class="toll-fees-subnav__item"/g) ?? []).length, 2);
 
       for (const destination of [
         { path: "reference-data", title: "Reference data (managed)", explanation: /versioned geographic boundaries/ },
         { path: "fee-settings", title: "Fee settings", explanation: /configurable fee schedules/ }
       ]) {
-        const destinationResponse = await fetch(`${categoryUrl}/${destination.path}`, { headers });
-        assert.equal(destinationResponse.status, 200, `${category.title} ${destination.title} should be reachable`);
+        const destinationResponse = await fetch(`${schemeUrl}/${destination.path}`, { headers });
+        assert.equal(destinationResponse.status, 200, `${scheme.title} ${destination.title} should be reachable`);
         const destinationBody = await destinationResponse.text();
-        assert.ok(destinationBody.includes(destination.title), `${destination.title} should be visible`);
+        assert.ok(destinationBody.includes(`${scheme.title}: ${destination.title}`), `${scheme.title} ${destination.title} should have a page title`);
         assert.match(destinationBody, destination.explanation);
         assert.match(destinationBody, /Not configured yet/);
         const selectedSubnav = destinationBody.match(/<a class="toll-fees-subnav__item"[^>]*aria-current="page"[^>]*>/g) ?? [];
         assert.equal(selectedSubnav.length, 1, "exactly one subpage should be marked as selected");
-        assert.ok(selectedSubnav[0].includes(`${categoryPath}/${destination.path}`), "the selected subpage should match the current destination");
+        assert.ok(selectedSubnav[0].includes(`${scheme.path}/${destination.path}`), "the selected subpage should match the current destination");
         assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
       }
     }
   });
+
+  test("every Clean Air Zone and London scheme has reference data and fee settings destinations", () => {
+    const caz = tollFeeCategories.find((category) => category.slug === "clean-air-zones");
+    assert.deepEqual(
+      caz?.areas?.map((area) => area.title),
+      [
+        "Bath",
+        "Birmingham",
+        "Bradford",
+        "Bristol",
+        "Portsmouth",
+        "Sheffield",
+        "Tyneside (Newcastle and Gateshead)"
+      ]
+    );
+
+    const london = tollFeeCategories.find((category) => category.slug === "london-lez-ulez-congestion-charge");
+    assert.deepEqual(
+      london?.areas?.map((area) => area.title),
+      ["London LEZ", "London ULEZ", "London Congestion Charge"]
+    );
+
+    const leaves = schemeLeaves().filter((leaf) => ["clean-air-zones", "london-lez-ulez-congestion-charge"].includes(leaf.categorySlug));
+    assert.equal(leaves.length, 7 + 3, "Clean Air Zone and London destinations should be complete");
+    assert.equal(new Set(schemeLeaves().map((leaf) => leaf.path)).size, schemeLeaves().length, "every scheme path must be unique");
+  });
+
+  test("London LEZ, ULEZ and Congestion Charge remain separate destinations", async () => {
+    const headers = withSession("sid=london-separate", ["superuser"]);
+    const londonPath = "/settings/toll-fees/london-lez-ulez-congestion-charge";
+    const londonSchemes = [
+      { title: "London LEZ", path: `${londonPath}/london-lez` },
+      { title: "London ULEZ", path: `${londonPath}/london-ulez` },
+      { title: "London Congestion Charge", path: `${londonPath}/london-congestion-charge` }
+    ];
+
+    for (const scheme of londonSchemes) {
+      const body = await (await fetch(`${baseUrl}${scheme.path}`, { headers })).text();
+      assert.ok(body.includes(scheme.title));
+      for (const other of londonSchemes.filter((item) => item.title !== scheme.title)) {
+        assert.ok(!body.includes(other.title), `${scheme.title} page must not mention ${other.title}`);
+        assert.ok(!body.includes(`href="${other.path}`), `${scheme.title} page must not link to ${other.title}`);
+      }
+    }
+
+    const combined = await fetch(`${baseUrl}${londonPath}/london-lez-ulez`, { headers });
+    assert.equal(combined.status, 404, "a combined London destination must not exist");
+  });
+
+  test("every Toll & Fees scheme destination is denied without the superuser role", async () => {
+    const deniedHeaders = withSession("sid=caz-denied", ["admin", "staff", "tech_support"]);
+    for (const scheme of schemeLeaves()) {
+      const response = await fetch(`${baseUrl}${scheme.path}/fee-settings`, { headers: deniedHeaders, redirect: "manual" });
+      assert.equal(response.status, 403, `${scheme.title} must be denied`);
+    }
+
+    const unauthenticated = await fetch(`${baseUrl}${schemeLeaves()[0].path}/reference-data`, {
+      headers: { cookie: "sid=caz-unknown" },
+      redirect: "manual"
+    });
+    assert.equal(unauthenticated.status, 302);
+    assert.equal(unauthenticated.headers.get("location"), "/access");
+  });
+
+  test("unrelated Toll & Fees destinations keep their category-level sections", async () => {
+    const headers = withSession("sid=unrelated-toll", ["superuser"]);
+    for (const slug of ["airport-fees", "dartford-crossing", "blackwall-silvertown-tunnels"]) {
+      const body = await (await fetch(`${baseUrl}/settings/toll-fees/${slug}/fee-settings`, { headers })).text();
+      assert.match(body, new RegExp(`href="/settings/toll-fees/${slug}/reference-data"`));
+      assert.equal((body.match(/class="toll-fees-subnav__item"/g) ?? []).length, 2);
+      assert.equal((body.match(/aria-current="page"/g) ?? []).length, 2, "current item plus the selected subpage only");
+    }
+  });
+
 
   test("a session without the superuser role key is denied /settings with 403 even with every other role", async () => {
     const headers = withSession(

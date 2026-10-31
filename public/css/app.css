@@ -3487,7 +3487,13 @@ button:visited,
   text-underline-offset: 0.15em;
 }
 
+.toll-fees-back a {
+  color: var(--rm-menu-action-text);
+  text-underline-offset: 0.15em;
+}
+
 .toll-fees-hierarchy a:focus-visible,
+.toll-fees-back a:focus-visible,
 .toll-fees-card:focus-visible,
 .toll-fees-subnav__item:focus-visible {
   outline: var(--rm-control-focus-outline);
