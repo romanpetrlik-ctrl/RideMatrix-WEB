@@ -2,6 +2,8 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { getSessionAccount } from "../services/api";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getInternalRoleLabel } from "../services/staff-users";
+import { getLondonLezBoundary, londonLezBoundaryMetadata } from "../services/london-lez-boundary";
+import { readMapConfiguration } from "../services/maps";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
@@ -185,6 +187,7 @@ async function renderTollFeesPage(
     }
 
     const breadcrumbs = buildBreadcrumbs(page);
+    const mapConfiguration = readMapConfiguration();
     res.render("pages/toll-fees", {
       title: pageTitle(page),
       appTitle,
@@ -199,7 +202,17 @@ async function renderTollFeesPage(
       leafPath: leafPathFor(page),
       leafTitle: page.area?.title ?? page.category?.title,
       referenceDataDescription,
-      feeSettingsDescription
+      feeSettingsDescription,
+      londonLezBoundaryMetadata,
+      londonLezMapConfigured: Boolean(mapConfiguration.enabled && mapConfiguration.browserApiKey),
+      londonLezMapBrowserApiKey: mapConfiguration.enabled
+        ? mapConfiguration.browserApiKey?.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        : undefined,
+      londonLezMapId: mapConfiguration.mapId
+        ?.replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
     });
   } catch (error) {
     next(error);
@@ -209,6 +222,29 @@ async function renderTollFeesPage(
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
   router.use(noStoreProtectedResponse);
+
+  router.get(
+    "/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/reference-data/boundary.json",
+    async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) {
+          res.status(401).json({ error: "Authentication required." });
+          return;
+        }
+
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          res.status(403).json({ error: "System settings access is required." });
+          return;
+        }
+
+        res.json(getLondonLezBoundary());
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   router.get("/settings/toll-fees", (req, res, next) => {
     void renderTollFeesPage(req, res, next, options.appTitle, {});

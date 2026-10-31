@@ -62,7 +62,43 @@
           <section class="toll-fees-detail" aria-labelledby="toll-fees-detail-title">
             <h2 id="toll-fees-detail-title">Reference data (managed)</h2>
             <p>${referenceDataDescription}</p>
-            <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No reference dataset is configured. This area does not display maps, calculate fees, or charge customers.</div>
+            ${area?.slug === "london-lez" ? `
+              <section class="london-lez-reference" aria-labelledby="london-lez-reference-title">
+                <h3 id="london-lez-reference-title">${londonLezBoundaryMetadata.title}</h3>
+                <p>This versioned, read-only boundary is reference data only and is separate from fee settings. It does not calculate fees or charge customers.</p>
+                <dl class="london-lez-reference__metadata">
+                  <div><dt>Source</dt><dd><a href="${londonLezBoundaryMetadata.sourceUrl}" rel="noreferrer">Transport for London (TfL)</a></dd></div>
+                  <div><dt>Source archive</dt><dd>${londonLezBoundaryMetadata.sourceArchive}</dd></div>
+                  <div><dt>Dataset version</dt><dd>${londonLezBoundaryMetadata.datasetVersion}</dd></div>
+                  <div><dt>Original feature date (DATE_CREAT)</dt><dd>${londonLezBoundaryMetadata.originalFeatureDate}</dd></div>
+                  <div><dt>Verification date</dt><dd>${londonLezBoundaryMetadata.verificationDate}</dd></div>
+                  <div><dt>Coverage</dt><dd>London Low Emission Zone; ${londonLezBoundaryMetadata.featureCount} features</dd></div>
+                  <div><dt>Coordinate systems</dt><dd>Source: ${londonLezBoundaryMetadata.sourceCoordinateSystem}; map data: ${londonLezBoundaryMetadata.displayCoordinateSystem}</dd></div>
+                  <div><dt>Licence / terms</dt><dd><a href="${londonLezBoundaryMetadata.termsUrl}" rel="noreferrer">${londonLezBoundaryMetadata.licence}</a></dd></div>
+                  <div><dt>Attribution</dt><dd>${londonLezBoundaryMetadata.attribution}</dd></div>
+                </dl>
+                ${londonLezMapConfigured ? `
+                  <div
+                    class="london-lez-boundary-map"
+                    data-london-lez-map
+                    data-map-browser-key="${londonLezMapBrowserApiKey}"
+                    data-map-id="${londonLezMapId || ""}"
+                    data-boundary-url="/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/reference-data/boundary.json"
+                    role="region"
+                    aria-label="Map of the London Low Emission Zone boundary"
+                  ></div>
+                  <p class="london-lez-map-status" data-london-lez-map-status role="status" aria-live="polite">Loading the London LEZ boundary preview.</p>
+                  <script src="/js/google-map-preview.js" defer></script>
+                  <script src="/js/london-lez-map.js" defer></script>
+                ` : `
+                  <div class="notice london-lez-map-status" role="status">
+                    <strong>Map preview unavailable.</strong> Google Maps is not configured with an enabled browser key. The verified boundary data and source metadata are available above; no map is being shown.
+                  </div>
+                `}
+              </section>
+            ` : `
+              <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No reference dataset is configured. This area does not display maps, calculate fees, or charge customers.</div>
+            `}
           </section>
         ` : section === "fee-settings" ? `
           <section class="toll-fees-detail" aria-labelledby="toll-fees-detail-title">
