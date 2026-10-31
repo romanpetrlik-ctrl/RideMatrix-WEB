@@ -11,16 +11,12 @@
     <section class="panel toll-fees-page">
       <nav class="toll-fees-hierarchy" aria-label="Breadcrumb">
         <ol>
-          <li><a href="/settings">System Settings</a></li>
-          ${category ? `
-            <li><a href="/settings/toll-fees">Toll &amp; Fees</a></li>
-            ${section ? `
-              <li><a href="/settings/toll-fees/${category.slug}">${category.title}</a></li>
-              <li aria-current="page">${section === "reference-data" ? "Reference data (managed)" : "Fee settings"}</li>
-            ` : `<li aria-current="page">${category.title}</li>`}
-          ` : `<li aria-current="page">Toll &amp; Fees</li>`}
+          ${breadcrumbs.map((crumb) => `
+            <li${crumb.href ? "" : ' aria-current="page"'}>${crumb.href ? `<a href="${crumb.href}">${crumb.label.replace(/&/g, "&amp;")}</a>` : crumb.label.replace(/&/g, "&amp;")}</li>
+          `).join("")}
         </ol>
       </nav>
+      ${parentCrumb?.href ? `<p class="toll-fees-back"><a href="${parentCrumb.href}">&larr; Back to ${parentCrumb.label.replace(/&/g, "&amp;")}</a></p>` : ""}
       <h1>${title}</h1>
       <p class="notice toll-fees-page__access" role="status"><strong>Access granted.</strong> Granted by your current session role(s): ${grantedByLabel}.</p>
 
@@ -36,15 +32,27 @@
             </a>
           `).join("")}
         </nav>
-      ` : `
+      ` : category.areas && !area ? `
         <p class="toll-fees-page__intro">${category.description}</p>
-        <nav class="toll-fees-subnav" aria-label="${category.title} sections">
-          <a class="toll-fees-subnav__item"${section === "reference-data" ? ' aria-current="page"' : ""} href="/settings/toll-fees/${category.slug}/reference-data">
+        <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No areas have reference data or fee settings configured. Fees are not calculated or charged.</div>
+        <nav class="toll-fees-cards" aria-label="${category.title} areas">
+          ${category.areas.map((item) => `
+            <a class="toll-fees-card" href="/settings/toll-fees/${category.slug}/${item.slug}">
+              <span class="toll-fees-card__title">${item.title}</span>
+              <span class="toll-fees-card__description">${item.description}</span>
+              <span class="toll-fees-card__action">Open area</span>
+            </a>
+          `).join("")}
+        </nav>
+      ` : `
+        <p class="toll-fees-page__intro">${(area ?? category).description}</p>
+        <nav class="toll-fees-subnav" aria-label="${leafTitle} sections">
+          <a class="toll-fees-subnav__item"${section === "reference-data" ? ' aria-current="page"' : ""} href="${leafPath}/reference-data">
             <span class="toll-fees-subnav__title">Reference data (managed)</span>
             <span class="toll-fees-subnav__description">${referenceDataDescription}</span>
             <span class="toll-fees-subnav__action">Open reference data</span>
           </a>
-          <a class="toll-fees-subnav__item"${section === "fee-settings" ? ' aria-current="page"' : ""} href="/settings/toll-fees/${category.slug}/fee-settings">
+          <a class="toll-fees-subnav__item"${section === "fee-settings" ? ' aria-current="page"' : ""} href="${leafPath}/fee-settings">
             <span class="toll-fees-subnav__title">Fee settings</span>
             <span class="toll-fees-subnav__description">${feeSettingsDescription}</span>
             <span class="toll-fees-subnav__action">Open fee settings</span>
