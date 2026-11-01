@@ -205,7 +205,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.match(destinationBody, /Effective date<\/dt><dd>Unknown \(not provided\)/);
           assert.match(destinationBody, /Source URL<\/dt><dd>Not provided/);
           assert.match(destinationBody, /Verification<\/dt><dd>Unverified/);
-          assert.doesNotMatch(destinationBody, /data-london-.*map|boundary\.json|Map preview/);
+          assert.match(destinationBody, /Map preview unavailable/);
           assert.doesNotMatch(destinationBody, /Not configured yet/);
         } else if (scheme.title === "London ULEZ" && destination.path === "fee-settings") {
           assert.match(destinationBody, /No fee schedule is configured/);
@@ -341,6 +341,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   test("London Congestion Charge reference data and fee settings are separate protected destinations", async () => {
     const headers = withSession("sid=congestion-charge", ["superuser"]);
     const basePath = "/settings/toll-fees/london-lez-ulez-congestion-charge/london-congestion-charge";
+    process.env.GOOGLE_MAPS_ENABLED = "true";
+    process.env.GOOGLE_MAPS_BROWSER_API_KEY = "browser-key-for-test";
     const referenceResponse = await fetch(`${baseUrl}${basePath}/reference-data`, { headers });
     const feesResponse = await fetch(`${baseUrl}${basePath}/fee-settings`, { headers });
     assert.equal(referenceResponse.status, 200);
@@ -348,6 +350,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const referenceBody = await referenceResponse.text();
     const feesBody = await feesResponse.text();
     assert.match(referenceBody, /London Congestion Charge boundary/);
+    assert.match(referenceBody, /data-london-congestion-charge-map/);
+    assert.match(referenceBody, /data-boundary-url="[^"]*london-congestion-charge\/reference-data\/boundary\.json"/);
+    assert.match(referenceBody, /aria-labelledby="london-congestion-charge-preview-title"/);
+    assert.match(referenceBody, /Both supplied Polygon features/);
+    assert.match(referenceBody, /Unknown \(not provided\)/);
     assert.match(referenceBody, /does not calculate fees or charge customers/);
     assert.match(feesBody, /No fee schedule is configured/);
     assert.match(feesBody, /does not calculate fees or charge customers/);
