@@ -33,8 +33,11 @@
   }
 
   function renderBoundary(element, maps, boundary) {
+    var boundaryLabel = element.dataset.londonUlezMap !== undefined
+      ? "London ULEZ"
+      : "London LEZ";
     if (!boundary || boundary.type !== "FeatureCollection" || !Array.isArray(boundary.features) || boundary.features.length !== 22) {
-      throw new Error("The London LEZ boundary response is invalid");
+      throw new Error("The " + boundaryLabel + " boundary response is invalid");
     }
 
     var bounds = new maps.LatLngBounds();
@@ -42,7 +45,7 @@
 
     boundary.features.forEach(function (feature) {
       if (!feature || feature.type !== "Feature" || !feature.geometry) {
-        throw new Error("The London LEZ boundary contains an invalid feature");
+        throw new Error("The " + boundaryLabel + " boundary contains an invalid feature");
       }
       var polygons;
       if (feature.geometry.type === "Polygon") {
@@ -50,7 +53,7 @@
       } else if (feature.geometry.type === "MultiPolygon") {
         polygons = feature.geometry.coordinates;
       } else {
-        throw new Error("The London LEZ boundary contains an unsupported geometry");
+        throw new Error("The " + boundaryLabel + " boundary contains an unsupported geometry");
       }
       polygons.forEach(function (rings) {
         pathsByPolygon.push(polygonPaths(rings, bounds));
@@ -77,7 +80,9 @@
     });
 
     map.fitBounds(bounds);
-    setStatus(element, "London LEZ boundary displayed. 22 source features are shown. Powered by TfL Open Data.");
+    var statusMessage = boundaryLabel + " boundary displayed. 22 source features are shown.";
+    if (boundaryLabel === "London LEZ") statusMessage += " Powered by TfL Open Data.";
+    setStatus(element, statusMessage);
     return pathsByPolygon.length;
   }
 
@@ -85,7 +90,7 @@
 
   if (typeof document === "undefined") return;
   document.addEventListener("DOMContentLoaded", function () {
-    var elements = Array.prototype.slice.call(document.querySelectorAll("[data-london-lez-map]"));
+    var elements = Array.prototype.slice.call(document.querySelectorAll("[data-london-lez-map], [data-london-ulez-map]"));
     return Promise.all(elements.map(function (element) {
       var key = element.dataset.mapBrowserKey || "";
       if (!key) {
