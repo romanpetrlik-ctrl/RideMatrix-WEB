@@ -143,6 +143,29 @@
                     <div><dt>Verification</dt><dd>${londonCongestionChargeBoundaryMetadata.verificationDate}</dd></div>
                     <div><dt>Coverage</dt><dd>Central London Congestion Charging Scheme; ${londonCongestionChargeBoundaryMetadata.featureCount} Polygon features</dd></div>
                   </dl>
+                  <section class="london-congestion-charge-preview" aria-labelledby="london-congestion-charge-preview-title">
+                    <h4 id="london-congestion-charge-preview-title">Boundary preview map</h4>
+                    <p>Both supplied Polygon features are shown in this read-only map preview. GeoJSON coordinates are shown as longitude, latitude.</p>
+                    ${londonCongestionChargeMapConfigured ? `
+                      <div
+                        class="london-lez-boundary-map"
+                        data-london-congestion-charge-map
+                        data-map-browser-key="${londonCongestionChargeMapBrowserApiKey}"
+                        data-map-id="${londonCongestionChargeMapId || ""}"
+                        data-boundary-url="/settings/toll-fees/london-lez-ulez-congestion-charge/london-congestion-charge/reference-data/boundary.json"
+                        role="region"
+                        aria-labelledby="london-congestion-charge-preview-title"
+                        aria-describedby="london-congestion-charge-preview-summary"
+                      ></div>
+                      <p id="london-congestion-charge-preview-summary" class="london-lez-map-status" data-london-congestion-charge-map-status role="status" aria-live="polite">Loading the London Congestion Charge boundary preview.</p>
+                      <script src="/js/google-map-preview.js" defer></script>
+                      <script src="/js/london-congestion-charge-map.js" defer></script>
+                    ` : `
+                      <div class="notice london-lez-map-status" role="status">
+                        <strong>Map preview unavailable.</strong> Google Maps is not configured with an enabled browser key. The feature count and dataset metadata remain available above.
+                      </div>
+                    `}
+                  </section>
                 </section>
               ` : `
               <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No reference dataset is configured. This area does not display maps, calculate fees, or charge customers.</div>

@@ -196,9 +196,6 @@ async function renderTollFeesPage(
     const londonUlezBoundary = page.area?.slug === "london-ulez" && page.section === "reference-data"
       ? getLondonUlezBoundary()
       : undefined;
-    const londonCongestionChargeBoundary = page.area?.slug === "london-congestion-charge" && page.section === "reference-data"
-      ? getLondonCongestionChargeBoundary()
-      : undefined;
     res.render("pages/toll-fees", {
       title: pageTitle(page),
       appTitle,
@@ -215,7 +212,7 @@ async function renderTollFeesPage(
       referenceDataDescription,
       feeSettingsDescription,
       londonLezBoundaryMetadata,
-      londonCongestionChargeBoundaryMetadata: londonCongestionChargeBoundary
+      londonCongestionChargeBoundaryMetadata: page.area?.slug === "london-congestion-charge" && page.section === "reference-data"
         ? londonCongestionChargeBoundaryMetadata
         : undefined,
       londonLezMapConfigured: Boolean(mapConfiguration.enabled && mapConfiguration.browserApiKey),
@@ -239,6 +236,15 @@ async function renderTollFeesPage(
         ? mapConfiguration.browserApiKey?.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         : undefined,
       londonUlezMapId: mapConfiguration.mapId
+        ?.replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;"),
+      londonCongestionChargeMapConfigured: Boolean(mapConfiguration.enabled && mapConfiguration.browserApiKey),
+      londonCongestionChargeMapBrowserApiKey: mapConfiguration.enabled
+        ? mapConfiguration.browserApiKey?.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        : undefined,
+      londonCongestionChargeMapId: mapConfiguration.mapId
         ?.replace(/&/g, "&amp;")
         .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;")
