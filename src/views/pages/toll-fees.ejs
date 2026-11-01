@@ -131,7 +131,22 @@
                   `}
                 </section>
               ` : `
+              ${area?.slug === "london-congestion-charge" ? `
+                <section class="london-lez-reference" aria-labelledby="london-congestion-charge-reference-title">
+                  <h3 id="london-congestion-charge-reference-title">${londonCongestionChargeBoundaryMetadata.title}</h3>
+                  <p>This read-only boundary reference is separate from fee settings. It does not calculate fees or charge customers.</p>
+                  <dl class="london-lez-reference__metadata">
+                    <div><dt>Source URL</dt><dd>${londonCongestionChargeBoundaryMetadata.sourceUrl}</dd></div>
+                    <div><dt>Source archive</dt><dd>${londonCongestionChargeBoundaryMetadata.sourceArchive}</dd></div>
+                    <div><dt>Licence / terms</dt><dd>${londonCongestionChargeBoundaryMetadata.licence}</dd></div>
+                    <div><dt>Effective date</dt><dd>${londonCongestionChargeBoundaryMetadata.effectiveDate}</dd></div>
+                    <div><dt>Verification</dt><dd>${londonCongestionChargeBoundaryMetadata.verificationDate}</dd></div>
+                    <div><dt>Coverage</dt><dd>Central London Congestion Charging Scheme; ${londonCongestionChargeBoundaryMetadata.featureCount} Polygon features</dd></div>
+                  </dl>
+                </section>
+              ` : `
               <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No reference dataset is configured. This area does not display maps, calculate fees, or charge customers.</div>
+              `}
               `}
             `}
           </section>

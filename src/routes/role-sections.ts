@@ -4,6 +4,10 @@ import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getInternalRoleLabel } from "../services/staff-users";
 import { getLondonLezBoundary, londonLezBoundaryMetadata } from "../services/london-lez-boundary";
 import { getLondonUlezBoundary, londonUlezBoundaryMetadata } from "../services/london-ulez-boundary";
+import {
+  getLondonCongestionChargeBoundary,
+  londonCongestionChargeBoundaryMetadata
+} from "../services/london-congestion-charge-boundary";
 import { readMapConfiguration } from "../services/maps";
 
 type RoleSectionsRouterOptions = {
@@ -192,6 +196,9 @@ async function renderTollFeesPage(
     const londonUlezBoundary = page.area?.slug === "london-ulez" && page.section === "reference-data"
       ? getLondonUlezBoundary()
       : undefined;
+    const londonCongestionChargeBoundary = page.area?.slug === "london-congestion-charge" && page.section === "reference-data"
+      ? getLondonCongestionChargeBoundary()
+      : undefined;
     res.render("pages/toll-fees", {
       title: pageTitle(page),
       appTitle,
@@ -208,6 +215,9 @@ async function renderTollFeesPage(
       referenceDataDescription,
       feeSettingsDescription,
       londonLezBoundaryMetadata,
+      londonCongestionChargeBoundaryMetadata: londonCongestionChargeBoundary
+        ? londonCongestionChargeBoundaryMetadata
+        : undefined,
       londonLezMapConfigured: Boolean(mapConfiguration.enabled && mapConfiguration.browserApiKey),
       londonLezMapBrowserApiKey: mapConfiguration.enabled
         ? mapConfiguration.browserApiKey?.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -283,6 +293,29 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }
 
         res.json(getLondonUlezBoundary());
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get(
+    "/settings/toll-fees/london-lez-ulez-congestion-charge/london-congestion-charge/reference-data/boundary.json",
+    async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) {
+          res.status(401).json({ error: "Authentication required." });
+          return;
+        }
+
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          res.status(403).json({ error: "System settings access is required." });
+          return;
+        }
+
+        res.json(getLondonCongestionChargeBoundary());
       } catch (error) {
         next(error);
       }
