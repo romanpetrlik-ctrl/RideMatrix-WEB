@@ -3642,6 +3642,119 @@ button:visited,
   margin-top: 0.75rem;
 }
 
+.london-fee-draft {
+  margin-top: 1.5rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid var(--rm-border);
+  border-radius: 0.75rem;
+  background: var(--rm-surface, #fff);
+}
+
+.london-fee-draft__status {
+  border-left: 0.3rem solid var(--rm-faded-copper);
+}
+
+.london-fee-draft__saved {
+  border-left: 0.3rem solid var(--rm-dark-teal);
+}
+
+.london-fee-draft__error,
+.london-fee-draft__field-error {
+  color: var(--rm-danger, #8b1e1e);
+}
+
+.london-fee-draft__rates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+}
+
+.london-fee-draft__rate {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  border-radius: 0.5rem;
+}
+
+.london-fee-draft__rate legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+}
+
+.london-fee-draft__rate label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+}
+
+.london-fee-draft__amount {
+  display: flex;
+  max-width: 18rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.london-fee-draft__amount input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--rm-border);
+  border-radius: 0.35rem;
+  color: var(--rm-text);
+  font: inherit;
+}
+
+.london-fee-draft__amount input:focus-visible,
+.london-fee-draft__actions button:focus-visible {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+}
+
+.london-fee-draft__field-error {
+  min-height: 1.4em;
+  margin: 0.35rem 0;
+}
+
+.london-fee-draft__rate p,
+.london-fee-draft__details p {
+  line-height: 1.5;
+}
+
+.london-fee-draft__actions {
+  margin-top: 1rem;
+}
+
+.london-fee-draft__details,
+.london-fee-draft__history {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rm-border);
+}
+
+.london-fee-draft__details dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 0.75rem 1.5rem;
+}
+
+.london-fee-draft__details dl > div {
+  min-width: 0;
+}
+
+.london-fee-draft__details dt {
+  font-weight: 700;
+}
+
+.london-fee-draft__details dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.london-fee-draft__history li {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 40rem) {
   .toll-fees-page {
     padding: 1rem;
@@ -3654,6 +3767,10 @@ button:visited,
 
   .toll-fees-card {
     min-height: 0;
+  }
+
+  .london-fee-draft__actions button {
+    width: 100%;
   }
 }
 

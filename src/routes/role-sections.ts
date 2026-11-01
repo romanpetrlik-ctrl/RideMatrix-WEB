@@ -1,7 +1,16 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { getSessionAccount } from "../services/api";
 import { noStoreProtectedResponse } from "../middleware/no-store";
+import { requireCsrfToken } from "../middleware/csrf";
 import { getInternalRoleLabel } from "../services/staff-users";
+import {
+  londonFeeScheduleStore,
+  LondonFeeScheduleVersionConflictError,
+  type LondonFeeScheduleScheme,
+  type LondonFeeScheduleSnapshot,
+  type LondonFeeScheduleStore,
+  validateLondonFeeRateAmounts
+} from "../services/london-fee-schedules";
 import { getLondonLezBoundary, londonLezBoundaryMetadata } from "../services/london-lez-boundary";
 import { getLondonUlezBoundary, londonUlezBoundaryMetadata } from "../services/london-ulez-boundary";
 import {
@@ -12,6 +21,15 @@ import { readMapConfiguration } from "../services/maps";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
+  feeScheduleStore?: LondonFeeScheduleStore;
+};
+
+type TollFeesRenderOptions = {
+  feeScheduleSnapshot?: LondonFeeScheduleSnapshot;
+  feeScheduleErrors?: Record<string, string>;
+  feeScheduleFormError?: string;
+  submittedAmounts?: Record<string, string>;
+  statusCode?: number;
 };
 
 export type WorkspaceModule = {
@@ -176,7 +194,9 @@ async function renderTollFeesPage(
   res: Response,
   next: NextFunction,
   appTitle: string,
-  page: TollFeesPage
+  page: TollFeesPage,
+  feeScheduleStore: LondonFeeScheduleStore,
+  renderOptions: TollFeesRenderOptions = {}
 ): Promise<void> {
   try {
     const session = await getSessionAccount(req.headers.cookie);
@@ -193,10 +213,18 @@ async function renderTollFeesPage(
 
     const breadcrumbs = buildBreadcrumbs(page);
     const mapConfiguration = readMapConfiguration();
+    const feeScheduleScheme: LondonFeeScheduleScheme | undefined =
+      page.section === "fee-settings" && page.area?.slug === "london-lez"
+        ? "london-lez"
+        : page.section === "fee-settings" && page.area?.slug === "london-ulez"
+          ? "london-ulez"
+          : undefined;
+    const feeScheduleSnapshot = renderOptions.feeScheduleSnapshot ??
+      (feeScheduleScheme ? await feeScheduleStore.load(feeScheduleScheme) : undefined);
     const londonUlezBoundary = page.area?.slug === "london-ulez" && page.section === "reference-data"
       ? getLondonUlezBoundary()
       : undefined;
-    res.render("pages/toll-fees", {
+    res.status(renderOptions.statusCode ?? 200).render("pages/toll-fees", {
       title: pageTitle(page),
       appTitle,
       email: session.user.email,
@@ -211,6 +239,15 @@ async function renderTollFeesPage(
       leafTitle: page.area?.title ?? page.category?.title,
       referenceDataDescription,
       feeSettingsDescription,
+      feeScheduleSnapshot,
+      feeScheduleErrors: renderOptions.feeScheduleErrors ?? {},
+      feeScheduleFormError: renderOptions.feeScheduleFormError,
+      feeScheduleSaved: req.query.saved === "1",
+      submittedAmounts: renderOptions.submittedAmounts ?? {},
+      escapedFeeScheduleHistory: feeScheduleSnapshot?.history.map((record) => ({
+        ...record,
+        actorEmail: record.actorEmail?.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;") ?? "Initial supplied draft"
+      })),
       londonLezBoundaryMetadata,
       londonCongestionChargeBoundaryMetadata: page.area?.slug === "london-congestion-charge" && page.section === "reference-data"
         ? londonCongestionChargeBoundaryMetadata
@@ -257,6 +294,7 @@ async function renderTollFeesPage(
 
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
+  const feeScheduleStore = options.feeScheduleStore ?? londonFeeScheduleStore;
   router.use(noStoreProtectedResponse);
 
   router.get(
@@ -329,26 +367,93 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
   );
 
   router.get("/settings/toll-fees", (req, res, next) => {
-    void renderTollFeesPage(req, res, next, options.appTitle, {});
+    void renderTollFeesPage(req, res, next, options.appTitle, {}, feeScheduleStore);
   });
 
   for (const category of tollFeeCategories) {
     const categoryPath = `/settings/toll-fees/${category.slug}`;
     router.get(categoryPath, (req, res, next) => {
-      void renderTollFeesPage(req, res, next, options.appTitle, { category });
+      void renderTollFeesPage(req, res, next, options.appTitle, { category }, feeScheduleStore);
     });
 
     if (category.areas) {
       for (const area of category.areas) {
         const areaPath = `${categoryPath}/${area.slug}`;
         router.get(areaPath, (req, res, next) => {
-          void renderTollFeesPage(req, res, next, options.appTitle, { category, area });
+          void renderTollFeesPage(req, res, next, options.appTitle, { category, area }, feeScheduleStore);
         });
 
         for (const section of ["reference-data", "fee-settings"] as const) {
           router.get(`${areaPath}/${section}`, (req, res, next) => {
-            void renderTollFeesPage(req, res, next, options.appTitle, { category, area, section });
+            void renderTollFeesPage(req, res, next, options.appTitle, { category, area, section }, feeScheduleStore);
           });
+        }
+
+        if (area.slug === "london-lez" || area.slug === "london-ulez") {
+          const scheme: LondonFeeScheduleScheme = area.slug;
+          router.post(
+            `${areaPath}/fee-settings`,
+            requireCsrfToken({ appTitle: options.appTitle }),
+            async (req, res, next) => {
+              try {
+                const session = await getSessionAccount(req.headers.cookie);
+                if (!session.authenticated || !session.user) return res.redirect("/access");
+
+                const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+                if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+                  return renderUnavailable(res, options.appTitle, systemSettingsModule);
+                }
+
+                const snapshot = await feeScheduleStore.load(scheme);
+                const { amounts, errors } = validateLondonFeeRateAmounts(snapshot.schedule, req.body);
+                const rawVersion = req.body?.baseVersion;
+                const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
+                  ? Number(rawVersion)
+                  : NaN;
+                const submittedAmounts = Object.fromEntries(snapshot.schedule.rates.map((rate) => {
+                  const raw = req.body?.[`amount_${rate.key}`];
+                  return [rate.key, typeof raw === "string" ? raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;") : ""];
+                }));
+
+                if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+                  return renderTollFeesPage(req, res, next, options.appTitle, { category, area, section: "fee-settings" }, feeScheduleStore, {
+                    feeScheduleSnapshot: snapshot,
+                    feeScheduleErrors: errors,
+                    feeScheduleFormError: "The draft version is missing or invalid. Reload this page before saving.",
+                    submittedAmounts,
+                    statusCode: 400
+                  });
+                }
+                if (Object.keys(errors).length > 0) {
+                  return renderTollFeesPage(req, res, next, options.appTitle, { category, area, section: "fee-settings" }, feeScheduleStore, {
+                    feeScheduleSnapshot: snapshot,
+                    feeScheduleErrors: errors,
+                    submittedAmounts,
+                    statusCode: 400
+                  });
+                }
+
+                try {
+                  await feeScheduleStore.save(scheme, expectedVersion, amounts, {
+                    accountId: session.user.id,
+                    email: session.user.email
+                  });
+                } catch (error) {
+                  if (!(error instanceof LondonFeeScheduleVersionConflictError)) throw error;
+                  const latest = await feeScheduleStore.load(scheme);
+                  return renderTollFeesPage(req, res, next, options.appTitle, { category, area, section: "fee-settings" }, feeScheduleStore, {
+                    feeScheduleSnapshot: latest,
+                    feeScheduleFormError: error.message,
+                    statusCode: 409
+                  });
+                }
+
+                return res.redirect(303, `${areaPath}/fee-settings?saved=1`);
+              } catch (error) {
+                return next(error);
+              }
+            }
+          );
         }
       }
       continue;
@@ -356,7 +461,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
 
     for (const section of ["reference-data", "fee-settings"] as const) {
       router.get(`${categoryPath}/${section}`, (req, res, next) => {
-        void renderTollFeesPage(req, res, next, options.appTitle, { category, section });
+        void renderTollFeesPage(req, res, next, options.appTitle, { category, section }, feeScheduleStore);
       });
     }
   }

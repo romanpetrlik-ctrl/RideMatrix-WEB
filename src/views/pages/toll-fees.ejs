@@ -22,7 +22,7 @@
 
       ${!category ? `
         <p class="toll-fees-page__intro">Manage external tolls and fees. Each category keeps managed reference data separate from configurable fee schedules.</p>
-        <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No toll or fee reference data or schedules are configured here. Fees are not calculated or charged.</div>
+        <div class="notice toll-fees-page__placeholder" role="status"><strong>Draft schedules only.</strong> London LEZ and ULEZ have separate editable draft fee schedules; no Toll &amp; Fees schedule is active. Fees are not calculated or charged.</div>
         <nav class="toll-fees-cards" aria-label="Toll & Fees categories">
           ${categories.map((item) => `
             <a class="toll-fees-card" href="/settings/toll-fees/${item.slug}">
@@ -34,7 +34,9 @@
         </nav>
       ` : category.areas && !area ? `
         <p class="toll-fees-page__intro">${category.description}</p>
-        <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No areas have reference data or fee settings configured. Fees are not calculated or charged.</div>
+        ${category.slug === "london-lez-ulez-congestion-charge"
+          ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Separate London settings.</strong> LEZ and ULEZ each have an editable draft fee schedule on their own settings page. Both drafts are inactive; fees are not calculated or charged.</div>`
+          : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No areas have reference data or fee settings configured. Fees are not calculated or charged.</div>`}
         <nav class="toll-fees-cards" aria-label="${category.title} areas">
           ${category.areas.map((item) => `
             <a class="toll-fees-card" href="/settings/toll-fees/${category.slug}/${item.slug}">
@@ -177,10 +179,93 @@
           <section class="toll-fees-detail" aria-labelledby="toll-fees-detail-title">
             <h2 id="toll-fees-detail-title">Fee settings</h2>
             <p>${feeSettingsDescription}</p>
-            <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No fee schedule is configured. This area does not calculate fees or charge customers.</div>
+            ${feeScheduleSnapshot ? `
+              <section class="london-fee-draft" aria-labelledby="london-fee-draft-title">
+                <h3 id="london-fee-draft-title">${feeScheduleSnapshot.schedule.title} draft schedule</h3>
+                <div class="notice london-fee-draft__status" role="status"><strong>Draft / Inactive — not used for booking prices</strong></div>
+                <p>This editable draft is isolated from route estimates, booking totals, invoices, notifications, and customer charges. This area does not calculate fees or charge customers. Saving creates a new history version. There is no activation action.</p>
+                ${feeScheduleSaved ? `<p class="notice london-fee-draft__saved" role="status">Draft changes saved as version ${feeScheduleSnapshot.currentVersion}.</p>` : ""}
+                ${feeScheduleFormError ? `<div class="notice london-fee-draft__error" role="alert">${feeScheduleFormError}</div>` : ""}
+                <form class="london-fee-draft__form" method="post" action="${leafPath}/fee-settings">
+                  ${locals.csrfField || ""}
+                  <input type="hidden" name="baseVersion" value="${feeScheduleSnapshot.currentVersion}" />
+                  <div class="london-fee-draft__rates">
+                    ${feeScheduleSnapshot.schedule.rates.map((rate) => {
+                      const amountValue = Object.prototype.hasOwnProperty.call(submittedAmounts, rate.key)
+                        ? submittedAmounts[rate.key]
+                        : rate.amount.toFixed(2);
+                      const errorId = `london-fee-error-${rate.key}`;
+                      return `
+                        <fieldset class="london-fee-draft__rate">
+                          <legend>${rate.label}</legend>
+                          <label for="london-fee-amount-${rate.key}">Daily rate (GBP)</label>
+                          <div class="london-fee-draft__amount">
+                            <span aria-hidden="true">£</span>
+                            <input
+                              id="london-fee-amount-${rate.key}"
+                              name="amount_${rate.key}"
+                              type="number"
+                              min="0.01"
+                              max="999999.99"
+                              step="0.01"
+                              inputmode="decimal"
+                              required
+                              value="${amountValue}"
+                              aria-invalid="${feeScheduleErrors[rate.key] ? "true" : "false"}"
+                              aria-describedby="${errorId}"
+                            />
+                          </div>
+                          <p><strong>Current draft rate:</strong> £${rate.amount.toFixed(2)} per charging day</p>
+                          <p id="${errorId}" class="london-fee-draft__field-error" ${feeScheduleErrors[rate.key] ? 'role="alert"' : ""}>${feeScheduleErrors[rate.key] || "Enter a positive GBP amount with up to 2 decimal places."}</p>
+                          <p><strong>Charging period:</strong> ${rate.chargingPeriod}</p>
+                          <p><strong>Applicability:</strong> ${rate.applicability}</p>
+                          <p><strong>Emissions threshold:</strong> ${rate.emissionsThresholds}</p>
+                        </fieldset>
+                      `;
+                    }).join("")}
+                  </div>
+                  <div class="london-fee-draft__actions">
+                    <button class="button button--primary" type="submit">Save draft rates</button>
+                  </div>
+                </form>
+
+                <section class="london-fee-draft__details" aria-labelledby="london-fee-draft-details-title">
+                  <h4 id="london-fee-draft-details-title">Schedule conditions and provenance</h4>
+                  <dl>
+                    <div><dt>Status</dt><dd>Draft / Inactive</dd></div>
+                    <div><dt>Currency</dt><dd>GBP</dd></div>
+                    <div><dt>Charging period</dt><dd>${feeScheduleSnapshot.schedule.chargingPeriod}</dd></div>
+                    <div><dt>Effective date</dt><dd>Unknown / unverified; not supplied.</dd></div>
+                    <div><dt>Discount and exemption rules</dt><dd>Unknown / unverified; complete rules were not supplied.</dd></div>
+                    <div><dt>Source / provenance</dt><dd>${feeScheduleSnapshot.schedule.provenance}</dd></div>
+                    ${feeScheduleSnapshot.schedule.sources.map((source) => `
+                      <div><dt>Source: ${source.label}</dt><dd>${source.url ? `<a href="${source.url.replace(/&/g, "&amp;")}" rel="noreferrer">${source.url.replace(/&/g, "&amp;")}</a>` : "URL not provided; unknown."}</dd></div>
+                    `).join("")}
+                  </dl>
+                  <h4>Operating rules</h4>
+                  <ul>${feeScheduleSnapshot.schedule.operatingRules.map((rule) => `<li>${rule}</li>`).join("")}</ul>
+                  ${feeScheduleSnapshot.schedule.nonChargeableCategories.length ? `
+                    <h4>Not charged under the supplied text</h4>
+                    <ul>${feeScheduleSnapshot.schedule.nonChargeableCategories.map((item) => `<li><strong>${item.label}:</strong> ${item.applicability} ${item.emissionsThresholds}</li>`).join("")}</ul>
+                  ` : ""}
+                  ${feeScheduleSnapshot.schedule.scheme === "london-ulez" ? `<p>ULEZ enforcement penalties are not fee rates and are not included in this schedule.</p>` : ""}
+                </section>
+
+                <section class="london-fee-draft__history" aria-labelledby="london-fee-history-title">
+                  <h4 id="london-fee-history-title">Draft version history</h4>
+                  <ol>
+                    ${escapedFeeScheduleHistory.map((record) => `<li><strong>Version ${record.version}</strong> — ${record.actorEmail} — ${record.createdAt}</li>`).join("")}
+                  </ol>
+                </section>
+              </section>
+            ` : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No fee schedule is configured. This area does not calculate fees or charge customers.</div>`}
           </section>
         ` : `
-          <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> Both reference data and fee settings are placeholders. They do not calculate or charge fees.</div>
+          ${area?.slug === "london-lez" || area?.slug === "london-ulez"
+            ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Draft fee schedule available.</strong> This scheme has an editable Draft / Inactive fee schedule on its Fee settings page. The draft is not used for booking prices and does not calculate or charge fees.</div>`
+            : area?.slug === "london-congestion-charge"
+              ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Reference data and fee settings are separate.</strong> The boundary reference is available on its Reference data page. No Congestion Charge fee schedule is configured; fees are not calculated or charged.</div>`
+              : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> Both reference data and fee settings are placeholders. They do not calculate or charge fees.</div>`}
         `}
       `}
     </section>
