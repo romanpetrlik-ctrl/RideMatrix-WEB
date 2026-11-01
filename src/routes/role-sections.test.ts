@@ -185,6 +185,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         assert.match(destinationBody, destination.explanation);
         const isLondonLezReference = scheme.title === "London LEZ" && destination.path === "reference-data";
         const isLondonUlezReference = scheme.title === "London ULEZ" && destination.path === "reference-data";
+        const isLondonCongestionChargeReference = scheme.title === "London Congestion Charge" && destination.path === "reference-data";
         if (isLondonLezReference) {
           assert.match(destinationBody, /London Low Emission Zone boundary/);
           assert.match(destinationBody, /Map preview unavailable/);
@@ -197,6 +198,14 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.match(destinationBody, /Effective date<\/dt><dd>Not provided/);
           assert.match(destinationBody, /Verification<\/dt><dd>Unverified/);
           assert.match(destinationBody, /Map preview unavailable/);
+          assert.doesNotMatch(destinationBody, /Not configured yet/);
+        } else if (isLondonCongestionChargeReference) {
+          assert.match(destinationBody, /London Congestion Charge boundary/);
+          assert.match(destinationBody, /2 Polygon features/);
+          assert.match(destinationBody, /Effective date<\/dt><dd>Unknown \(not provided\)/);
+          assert.match(destinationBody, /Source URL<\/dt><dd>Not provided/);
+          assert.match(destinationBody, /Verification<\/dt><dd>Unverified/);
+          assert.doesNotMatch(destinationBody, /data-london-.*map|boundary\.json|Map preview/);
           assert.doesNotMatch(destinationBody, /Not configured yet/);
         } else if (scheme.title === "London ULEZ" && destination.path === "fee-settings") {
           assert.match(destinationBody, /No fee schedule is configured/);
@@ -327,6 +336,39 @@ describe("role workspaces authorize against the /auth/session role contract", ()
 
     const combined = await fetch(`${baseUrl}${londonPath}/london-lez-ulez`, { headers });
     assert.equal(combined.status, 404, "a combined London destination must not exist");
+  });
+
+  test("London Congestion Charge reference data and fee settings are separate protected destinations", async () => {
+    const headers = withSession("sid=congestion-charge", ["superuser"]);
+    const basePath = "/settings/toll-fees/london-lez-ulez-congestion-charge/london-congestion-charge";
+    const referenceResponse = await fetch(`${baseUrl}${basePath}/reference-data`, { headers });
+    const feesResponse = await fetch(`${baseUrl}${basePath}/fee-settings`, { headers });
+    assert.equal(referenceResponse.status, 200);
+    assert.equal(feesResponse.status, 200);
+    const referenceBody = await referenceResponse.text();
+    const feesBody = await feesResponse.text();
+    assert.match(referenceBody, /London Congestion Charge boundary/);
+    assert.match(referenceBody, /does not calculate fees or charge customers/);
+    assert.match(feesBody, /No fee schedule is configured/);
+    assert.match(feesBody, /does not calculate fees or charge customers/);
+    assert.doesNotMatch(feesBody, /boundary\.json|CLoCCS|SHAPE_AREA/);
+
+    const dataResponse = await fetch(`${baseUrl}${basePath}/reference-data/boundary.json`, { headers });
+    assert.equal(dataResponse.status, 200);
+    assert.match(dataResponse.headers.get("cache-control") ?? "", /no-store/);
+    const boundary = await dataResponse.json() as {
+      type: string;
+      features: Array<{ properties: Record<string, string | number>; geometry: { type: string } }>;
+    };
+    assert.equal(boundary.type, "FeatureCollection");
+    assert.equal(boundary.features.length, 2);
+    assert.ok(boundary.features.every((feature) => feature.geometry.type === "Polygon"));
+    assert.deepEqual(boundary.features.map((feature) => feature.properties.OBJECTID), [1, 2]);
+
+    const deniedHeaders = withSession("sid=congestion-charge-denied", ["admin"]);
+    const deniedData = await fetch(`${baseUrl}${basePath}/reference-data/boundary.json`, { headers: deniedHeaders });
+    assert.equal(deniedData.status, 403);
+    assert.deepEqual(await deniedData.json(), { error: "System settings access is required." });
   });
 
   test("every Toll & Fees scheme destination is denied without the superuser role", async () => {
