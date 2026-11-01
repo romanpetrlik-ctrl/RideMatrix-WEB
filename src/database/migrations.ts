@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { londonFeeScheduleDrafts } from "../services/london-fee-schedule-data";
 
 export type Migration = {
   id: string;
@@ -1192,6 +1193,64 @@ export const MIGRATIONS: Migration[] = [
         ON booking_authorization_requests (customer_id);
       CREATE INDEX IF NOT EXISTS idx_booking_authorization_requests_booking_id
         ON booking_authorization_requests (booking_id);
+    `
+  },
+  {
+    id: "0022_london_fee_schedule_drafts",
+    sql: `
+      CREATE TABLE IF NOT EXISTS london_fee_schedule_versions (
+        id TEXT PRIMARY KEY,
+        scheme TEXT NOT NULL CHECK (scheme IN ('london-lez', 'london-ulez')),
+        version INTEGER NOT NULL CHECK (version > 0),
+        status TEXT NOT NULL CHECK (status = 'draft_inactive'),
+        payload JSONB NOT NULL CHECK (
+          jsonb_typeof(payload) = 'object'
+          AND payload->>'status' = 'draft_inactive'
+          AND payload->>'active' = 'false'
+          AND payload->>'bookingPriceUsage' = 'never'
+        ),
+        actor_account_id TEXT,
+        actor_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (scheme, version)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_london_fee_schedule_versions_scheme_version
+        ON london_fee_schedule_versions (scheme, version DESC);
+
+      CREATE OR REPLACE FUNCTION rm_reject_london_fee_schedule_version_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'London fee schedule versions are append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS london_fee_schedule_versions_append_only
+        ON london_fee_schedule_versions;
+      CREATE TRIGGER london_fee_schedule_versions_append_only
+        BEFORE UPDATE OR DELETE ON london_fee_schedule_versions
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_london_fee_schedule_version_mutation();
+
+      INSERT INTO london_fee_schedule_versions
+        (id, scheme, version, status, payload, actor_email)
+      VALUES
+        (
+          'london-lez-draft-v1',
+          'london-lez',
+          1,
+          'draft_inactive',
+          '${JSON.stringify(londonFeeScheduleDrafts["london-lez"]).replace(/'/g, "''")}'::jsonb,
+          'Initial supplied draft'
+        ),
+        (
+          'london-ulez-draft-v1',
+          'london-ulez',
+          1,
+          'draft_inactive',
+          '${JSON.stringify(londonFeeScheduleDrafts["london-ulez"]).replace(/'/g, "''")}'::jsonb,
+          'Initial supplied draft'
+        )
+      ON CONFLICT (scheme, version) DO NOTHING;
     `
   }
 ];

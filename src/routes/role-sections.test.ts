@@ -3,6 +3,14 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import test, { after, before, describe } from "node:test";
 import express from "express";
+import { createCsrfProtection } from "../middleware/csrf";
+import { londonFeeScheduleDrafts } from "../services/london-fee-schedule-data";
+import type {
+  LondonFeeScheduleActor,
+  LondonFeeScheduleScheme,
+  LondonFeeScheduleSnapshot,
+  LondonFeeScheduleStore
+} from "../services/london-fee-schedules";
 import { createRoleSectionsRouter, grantingRoles, tollFeeCategories, workspaceModules } from "./role-sections";
 
 // Role keys the Staff directory shows for bookings@romanairporttransfers.co.uk
@@ -36,6 +44,48 @@ function schemeLeaves(): SchemeLeaf[] {
 
 const escapeHtml = (value: string) => value.replace(/&/g, "&amp;");
 
+function createMemoryFeeScheduleStore(): { store: LondonFeeScheduleStore; reset: () => void } {
+  const snapshots = new Map<LondonFeeScheduleScheme, LondonFeeScheduleSnapshot>();
+  const reset = () => {
+    snapshots.clear();
+    for (const scheme of ["london-lez", "london-ulez"] as const) {
+      snapshots.set(scheme, {
+        schedule: structuredClone(londonFeeScheduleDrafts[scheme]),
+        currentVersion: 1,
+        history: [{ version: 1, actorEmail: "Initial supplied draft", createdAt: "2026-11-01T00:00:00.000Z" }]
+      });
+    }
+  };
+  reset();
+
+  return {
+    reset,
+    store: {
+      async load(scheme) {
+        const snapshot = snapshots.get(scheme);
+        assert.ok(snapshot);
+        return structuredClone(snapshot);
+      },
+      async save(scheme, expectedVersion, amounts, actor: LondonFeeScheduleActor) {
+        const current = snapshots.get(scheme);
+        assert.ok(current);
+        assert.equal(current.currentVersion, expectedVersion);
+        snapshots.set(scheme, {
+          schedule: {
+            ...current.schedule,
+            rates: current.schedule.rates.map((rate) => ({ ...rate, amount: Number(amounts[rate.key]) }))
+          },
+          currentVersion: current.currentVersion + 1,
+          history: [
+            { version: current.currentVersion + 1, actorEmail: actor.email, createdAt: "2026-11-01T00:01:00.000Z" },
+            ...current.history
+          ]
+        });
+      }
+    }
+  };
+}
+
 describe("role workspaces authorize against the /auth/session role contract", () => {
   let authServer: http.Server;
   let appServer: http.Server;
@@ -49,6 +99,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   };
   const sessionsByCookie = new Map<string, unknown>();
   const seenCookies: Array<string | undefined> = [];
+  const feeSchedules = createMemoryFeeScheduleStore();
 
   before(async () => {
     process.env.GOOGLE_MAPS_ENABLED = "false";
@@ -76,7 +127,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const app = express();
     app.set("view engine", "ejs");
     app.set("views", `${process.cwd()}/src/views`);
-    app.use(createRoleSectionsRouter({ appTitle: "RideMatrix Test" }));
+    app.use(express.urlencoded({ extended: true }));
+    app.use(createCsrfProtection({ appTitle: "RideMatrix Test", cookieSecure: false }));
+    app.use(createRoleSectionsRouter({ appTitle: "RideMatrix Test", feeScheduleStore: feeSchedules.store }));
     appServer = app.listen(0);
     await new Promise<void>((resolve) => appServer.once("listening", resolve));
     baseUrl = `http://127.0.0.1:${(appServer.address() as AddressInfo).port}`;
@@ -128,7 +181,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(categoryResponse.status, 200);
     const categoryBody = await categoryResponse.text();
     assert.match(categoryBody, /<h1>Toll & Fees<\/h1>/);
-    assert.match(categoryBody, /Not configured yet/);
+    assert.match(categoryBody, /Draft schedules only/);
     assert.match(categoryBody, /not calculated or charged/i);
     assert.match(categoryBody, /aria-label="Toll & Fees categories"/);
     assert.equal((categoryBody.match(/class="toll-fees-card"/g) ?? []).length, tollFeeCategories.length);
@@ -208,9 +261,21 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.match(destinationBody, /Map preview unavailable/);
           assert.doesNotMatch(destinationBody, /Not configured yet/);
         } else if (scheme.title === "London ULEZ" && destination.path === "fee-settings") {
-          assert.match(destinationBody, /No fee schedule is configured/);
-          assert.match(destinationBody, /does not calculate fees or charge customers/);
+          assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
+          assert.match(destinationBody, /£12\.50/);
+          assert.match(destinationBody, /Euro 6 \(NOx and PM\)/);
+          assert.match(destinationBody, /Unknown \/ unverified; not supplied/);
+          assert.match(destinationBody, /Source: Cars/);
+          assert.match(destinationBody, /cars\?intcmp=52215/);
           assert.doesNotMatch(destinationBody, /data-london-ulez-map|DATE_CREAT|boundary\.json/);
+        } else if (scheme.title === "London LEZ" && destination.path === "fee-settings") {
+          assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
+          assert.match(destinationBody, /£100\.00/);
+          assert.match(destinationBody, /£300\.00/);
+          assert.match(destinationBody, /Euro 3/);
+          assert.match(destinationBody, /Euro IV \(PM\)/);
+          assert.match(destinationBody, /source URL was not supplied/);
+          assert.match(destinationBody, /Unknown \/ unverified; not supplied/);
         } else {
           assert.match(destinationBody, /Not configured yet/);
         }
@@ -220,6 +285,101 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
       }
     }
+  });
+
+  test("London LEZ and ULEZ drafts are distinct, inactive, editable, and retain append-only form history", async () => {
+    feeSchedules.reset();
+    const headers = withSession("sid=fee-schedules", ["superuser"]);
+    const londonBase = "/settings/toll-fees/london-lez-ulez-congestion-charge";
+    const lezResponse = await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers });
+    const lezBody = await lezResponse.text();
+    assert.equal(lezResponse.status, 200);
+    assert.match(lezBody, /£100\.00/);
+    assert.match(lezBody, /£300\.00/);
+    assert.match(lezBody, /Cars and motorcycles\/L-category vehicles/);
+    assert.match(lezBody, /Small vans up to and including 1\.205 tonnes unladen/);
+    assert.match(lezBody, /Draft \/ Inactive — not used for booking prices/);
+
+    const ulezResponse = await fetch(`${baseUrl}${londonBase}/london-ulez/fee-settings`, { headers });
+    const ulezBody = await ulezResponse.text();
+    assert.equal(ulezResponse.status, 200);
+    assert.match(ulezBody, /£12\.50/);
+    assert.match(ulezBody, /Petrol: Euro 4 \(NOx\)\. Diesel: Euro 6 \(NOx and PM\)/);
+    assert.match(ulezBody, /Euro 3 \(NOx\)/);
+    assert.match(ulezBody, /24 hours a day every day except Christmas Day/);
+    assert.match(ulezBody, /does not include the M25/);
+    assert.match(ulezBody, /TfL registration is an operational requirement/);
+    assert.match(ulezBody, /ULEZ enforcement penalties are not fee rates/);
+    assert.match(ulezBody, /cars\?intcmp=52215/);
+    assert.match(ulezBody, /vans-minibuses-and-more\?intcmp=52212/);
+    assert.match(ulezBody, /motorcycles-mopeds-and-more\?intcmp=52209/);
+    assert.match(ulezBody, /larger-vehicles\?intcmp=52206/);
+    assert.match(ulezBody, /Unknown \/ unverified; not supplied/);
+    assert.match(ulezBody, /complete rules were not supplied/);
+    assert.doesNotMatch(ulezBody, /£180|£90/);
+
+    const ulezCookie = ulezResponse.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+    const token = ulezBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(ulezCookie);
+    assert.ok(token);
+    sessionsByCookie.set(`sid=fee-schedules; ${ulezCookie}`, {
+      authenticated: true,
+      user: { id: "u-1", email: "bookings@romanairporttransfers.co.uk", roles: ["superuser"], active_role: "superuser" }
+    });
+    const updatePath = `${londonBase}/london-ulez/fee-settings`;
+    const invalidForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
+    for (const rate of londonFeeScheduleDrafts["london-ulez"].rates) {
+      invalidForm.set(`amount_${rate.key}`, rate.key === "ulez-cars" ? "12.345" : rate.amount.toFixed(2));
+    }
+    const invalidResponse = await fetch(`${baseUrl}${updatePath}`, {
+      method: "POST",
+      headers: { cookie: `sid=fee-schedules; ${ulezCookie}`, "content-type": "application/x-www-form-urlencoded" },
+      body: invalidForm,
+      redirect: "manual"
+    });
+    assert.equal(invalidResponse.status, 400);
+    assert.match(await invalidResponse.text(), /no more than 2 decimal places/);
+
+    const validForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
+    for (const rate of londonFeeScheduleDrafts["london-ulez"].rates) {
+      validForm.set(`amount_${rate.key}`, rate.key === "ulez-cars" ? "13.25" : rate.amount.toFixed(2));
+    }
+    const savedResponse = await fetch(`${baseUrl}${updatePath}`, {
+      method: "POST",
+      headers: { cookie: `sid=fee-schedules; ${ulezCookie}`, "content-type": "application/x-www-form-urlencoded" },
+      body: validForm,
+      redirect: "manual"
+    });
+    assert.equal(savedResponse.status, 303);
+    assert.equal(savedResponse.headers.get("location"), `${updatePath}?saved=1`);
+
+    const savedPage = await (await fetch(`${baseUrl}${updatePath}?saved=1`, { headers })).text();
+    assert.match(savedPage, /Draft changes saved as version 2/);
+    assert.match(savedPage, /value="13\.25"/);
+    assert.match(savedPage, /<li><strong>Version 2<\/strong> — bookings@romanairporttransfers\.co\.uk/);
+    assert.match(savedPage, /isolated from route estimates, booking totals, invoices, notifications, and customer charges/);
+    assert.doesNotMatch(savedPage, /Activate|active rate|customer charge total/i);
+
+    const lezPage = await (await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers })).text();
+    assert.match(lezPage, /Current draft rate:<\/strong> £100\.00/);
+    assert.match(lezPage, /name="baseVersion" value="1"/);
+
+    const deniedCookie = `sid=fee-schedules-denied; ${ulezCookie}`;
+    sessionsByCookie.set(deniedCookie, {
+      authenticated: true,
+      user: { id: "u-2", email: "admin@example.com", roles: ["admin"], active_role: "admin" }
+    });
+    const deniedForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
+    for (const rate of londonFeeScheduleDrafts["london-ulez"].rates) {
+      deniedForm.set(`amount_${rate.key}`, rate.amount.toFixed(2));
+    }
+    const deniedSave = await fetch(`${baseUrl}${updatePath}`, {
+      method: "POST",
+      headers: { cookie: deniedCookie, "content-type": "application/x-www-form-urlencoded" },
+      body: deniedForm,
+      redirect: "manual"
+    });
+    assert.equal(deniedSave.status, 403);
   });
 
   test("London LEZ boundary metadata, map configuration and data endpoint are protected", async () => {
