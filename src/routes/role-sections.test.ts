@@ -184,10 +184,24 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         assert.ok(destinationBody.includes(`${scheme.title}: ${destination.title}`), `${scheme.title} ${destination.title} should have a page title`);
         assert.match(destinationBody, destination.explanation);
         const isLondonLezReference = scheme.title === "London LEZ" && destination.path === "reference-data";
+        const isLondonUlezReference = scheme.title === "London ULEZ" && destination.path === "reference-data";
         if (isLondonLezReference) {
           assert.match(destinationBody, /London Low Emission Zone boundary/);
           assert.match(destinationBody, /Map preview unavailable/);
           assert.doesNotMatch(destinationBody, /Not configured yet/);
+        } else if (isLondonUlezReference) {
+          assert.match(destinationBody, /London Ultra Low Emission Zone boundary/);
+          assert.match(destinationBody, /Low Emission Zone/);
+          assert.match(destinationBody, /DATE_CREAT; not an effective date/);
+          assert.match(destinationBody, /Source URL<\/dt><dd>Not provided/);
+          assert.match(destinationBody, /Effective date<\/dt><dd>Not provided/);
+          assert.match(destinationBody, /Verification<\/dt><dd>Unverified/);
+          assert.match(destinationBody, /Map preview unavailable/);
+          assert.doesNotMatch(destinationBody, /Not configured yet/);
+        } else if (scheme.title === "London ULEZ" && destination.path === "fee-settings") {
+          assert.match(destinationBody, /No fee schedule is configured/);
+          assert.match(destinationBody, /does not calculate fees or charge customers/);
+          assert.doesNotMatch(destinationBody, /data-london-ulez-map|DATE_CREAT|boundary\.json/);
         } else {
           assert.match(destinationBody, /Not configured yet/);
         }
@@ -220,6 +234,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(page, /LEZ_Boundary_20211026_Shape_Files\.zip/);
 
     const dataUrl = `${baseUrl}/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/reference-data/boundary.json`;
+    const ulezDataUrl = `${baseUrl}/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/reference-data/boundary.json`;
     const dataResponse = await fetch(dataUrl, { headers });
     assert.equal(dataResponse.status, 200);
     assert.match(dataResponse.headers.get("cache-control") ?? "", /no-store/);
@@ -235,6 +250,35 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const unauthenticatedData = await fetch(dataUrl, { headers: { cookie: "sid=london-lez-boundary-unknown" } });
     assert.equal(unauthenticatedData.status, 401);
     assert.deepEqual(await unauthenticatedData.json(), { error: "Authentication required." });
+
+    const ulezPageUrl = `${baseUrl}/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/reference-data`;
+    const ulezPage = await (await fetch(ulezPageUrl, { headers })).text();
+    assert.match(ulezPage, /data-london-ulez-map/);
+    assert.match(ulezPage, /London ULEZ boundary preview/);
+    assert.match(ulezPage, /data-boundary-url="[^"]*london-ulez\/reference-data\/boundary\.json"/);
+
+    const ulezResponse = await fetch(ulezDataUrl, { headers });
+    assert.equal(ulezResponse.status, 200);
+    assert.match(ulezResponse.headers.get("cache-control") ?? "", /no-store/);
+    const ulezBoundary = await ulezResponse.json() as {
+      type: string;
+      features: Array<{ properties: { UNIQUE_ID: string; "@id": string; DATASET: string; DATE_CREAT: string }; geometry: { type: string } }>;
+    };
+    assert.equal(ulezBoundary.type, "FeatureCollection");
+    assert.equal(ulezBoundary.features.length, 22);
+    assert.equal(new Set(ulezBoundary.features.map((feature) => feature.properties["@id"])).size, 22);
+    assert.ok(ulezBoundary.features.every((feature) => feature.properties.DATASET === "Low Emission Zone"));
+    assert.ok(ulezBoundary.features.every((feature) => feature.properties.DATE_CREAT === "20071113"));
+    assert.equal(ulezBoundary.features.filter((feature) => feature.geometry.type === "Polygon").length, 21);
+    assert.equal(ulezBoundary.features.filter((feature) => feature.geometry.type === "MultiPolygon").length, 1);
+
+    const deniedUlezData = await fetch(ulezDataUrl, { headers: deniedHeaders });
+    assert.equal(deniedUlezData.status, 403);
+    assert.deepEqual(await deniedUlezData.json(), { error: "System settings access is required." });
+
+    const unauthenticatedUlezData = await fetch(ulezDataUrl, { headers: { cookie: "sid=london-ulez-boundary-unknown" } });
+    assert.equal(unauthenticatedUlezData.status, 401);
+    assert.deepEqual(await unauthenticatedUlezData.json(), { error: "Authentication required." });
   });
 
   test("every Clean Air Zone and London scheme has reference data and fee settings destinations", () => {

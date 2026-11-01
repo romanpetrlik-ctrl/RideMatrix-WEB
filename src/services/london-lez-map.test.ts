@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { getLondonLezBoundary } from "./london-lez-boundary";
+import { getLondonUlezBoundary } from "./london-ulez-boundary";
 
 type MapElement = {
   dataset: Record<string, string>;
@@ -12,7 +13,8 @@ type MapElement = {
 
 function loadMapComponent(
   fetchResponse: { ok: boolean; status: number; json: () => Promise<unknown> },
-  loadMaps: () => Promise<boolean> = async () => true
+  loadMaps: () => Promise<boolean> = async () => true,
+  isUlez = false
 ) {
   const source = fs.readFileSync(path.join(process.cwd(), "public/js/london-lez-map.js"), "utf8");
   let ready: (() => Promise<void>) | undefined;
@@ -21,7 +23,8 @@ function loadMapComponent(
     dataset: {
       mapBrowserKey: "test-browser-key",
       mapId: "test-map-id",
-      boundaryUrl: "/protected/london-lez-boundary.json"
+      boundaryUrl: "/protected/london-lez-boundary.json",
+      ...(isUlez ? { londonUlezMap: "" } : {})
     },
     parentElement: { querySelector: () => status }
   };
@@ -94,6 +97,26 @@ test("Google Maps preview renders every supplied LEZ feature as boundary polygon
   assert.ok(harness.boundsCount > 20_000);
   assert.match(harness.status.textContent, /London LEZ boundary displayed/);
   assert.match(harness.status.textContent, /Powered by TfL Open Data/);
+});
+
+test("Google Maps preview renders every supplied ULEZ feature without invented attribution", async () => {
+  const boundary = getLondonUlezBoundary();
+  const harness = loadMapComponent({
+    ok: true,
+    status: 200,
+    json: async () => boundary
+  }, async () => true, true);
+
+  await harness.start();
+
+  assert.equal(harness.mapCount, 1);
+  assert.equal(harness.polygons.length, boundary.features.reduce(
+    (count, feature) => count + (feature.geometry.type === "MultiPolygon" ? feature.geometry.coordinates.length : 1),
+    0
+  ));
+  assert.ok(harness.boundsCount > 20_000);
+  assert.match(harness.status.textContent, /London ULEZ boundary displayed/);
+  assert.doesNotMatch(harness.status.textContent, /Powered by TfL Open Data/);
 });
 
 test("map preview reports protected boundary-data failures without claiming success", async () => {

@@ -97,7 +97,42 @@
                 `}
               </section>
             ` : `
+              ${area?.slug === "london-ulez" ? `
+                <section class="london-lez-reference" aria-labelledby="london-ulez-reference-title">
+                  <h3 id="london-ulez-reference-title">${londonUlezBoundaryMetadata.title}</h3>
+                  <p>This read-only reference dataset is separate from fee settings. The source boundary geometries match the existing LEZ dataset; the ULEZ remains a distinct scheme. This reference data does not calculate fees or charge customers.</p>
+                  <dl class="london-lez-reference__metadata">
+                    <div><dt>Source dataset label (DATASET)</dt><dd>${londonUlezBoundaryMetadata.sourceDatasetLabels.join(", ")}</dd></div>
+                    <div><dt>Source metadata (DATE_CREAT; not an effective date)</dt><dd>${londonUlezBoundaryMetadata.dateCreatedValues.join(", ")}</dd></div>
+                    <div><dt>Coverage</dt><dd>London Ultra Low Emission Zone; ${londonUlezBoundaryMetadata.featureCount} features</dd></div>
+                    <div><dt>Source URL</dt><dd>${londonUlezBoundaryMetadata.sourceUrl}</dd></div>
+                    <div><dt>Source archive</dt><dd>${londonUlezBoundaryMetadata.sourceArchive}</dd></div>
+                    <div><dt>Licence / terms</dt><dd>${londonUlezBoundaryMetadata.licence}</dd></div>
+                    <div><dt>Effective date</dt><dd>${londonUlezBoundaryMetadata.effectiveDate}</dd></div>
+                    <div><dt>Verification</dt><dd>${londonUlezBoundaryMetadata.verificationDate}</dd></div>
+                  </dl>
+                  ${londonUlezMapConfigured ? `
+                    <div
+                      class="london-lez-boundary-map"
+                      data-london-ulez-map
+                      data-map-browser-key="${londonUlezMapBrowserApiKey}"
+                      data-map-id="${londonUlezMapId || ""}"
+                      data-boundary-url="/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/reference-data/boundary.json"
+                      role="region"
+                      aria-label="Map of the London Ultra Low Emission Zone boundary"
+                    ></div>
+                    <p class="london-lez-map-status" data-london-lez-map-status role="status" aria-live="polite">Loading the London ULEZ boundary preview.</p>
+                    <script src="/js/google-map-preview.js" defer></script>
+                    <script src="/js/london-lez-map.js" defer></script>
+                  ` : `
+                    <div class="notice london-lez-map-status" role="status">
+                      <strong>Map preview unavailable.</strong> Google Maps is not configured with an enabled browser key. The source boundary data and metadata are available above; no map is being shown.
+                    </div>
+                  `}
+                </section>
+              ` : `
               <div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No reference dataset is configured. This area does not display maps, calculate fees, or charge customers.</div>
+              `}
             `}
           </section>
         ` : section === "fee-settings" ? `
