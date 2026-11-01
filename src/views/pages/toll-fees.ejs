@@ -22,7 +22,7 @@
 
       ${!category ? `
         <p class="toll-fees-page__intro">Manage external tolls and fees. Each category keeps managed reference data separate from configurable fee schedules.</p>
-        <div class="notice toll-fees-page__placeholder" role="status"><strong>Draft schedules only.</strong> London LEZ and ULEZ have separate editable draft fee schedules; no Toll &amp; Fees schedule is active. Fees are not calculated or charged.</div>
+        <div class="notice toll-fees-page__placeholder" role="status"><strong>Draft schedules only.</strong> Four schedules are configured as editable inactive drafts. None is used in booking prices; fees are not calculated or charged.</div>
         <nav class="toll-fees-cards" aria-label="Toll & Fees categories">
           ${categories.map((item) => `
             <a class="toll-fees-card" href="/settings/toll-fees/${item.slug}">
@@ -191,21 +191,23 @@
                   <input type="hidden" name="baseVersion" value="${feeScheduleSnapshot.currentVersion}" />
                   <div class="london-fee-draft__rates">
                     ${feeScheduleSnapshot.schedule.rates.map((rate) => {
+                      const isCrossing = feeScheduleSnapshot.schedule.kind === "crossing";
                       const amountValue = Object.prototype.hasOwnProperty.call(submittedAmounts, rate.key)
                         ? submittedAmounts[rate.key]
-                        : rate.amount.toFixed(2);
+                        : typeof rate.amount === "number" ? rate.amount.toFixed(2) : rate.amount;
                       const errorId = `london-fee-error-${rate.key}`;
+                      const formattedAmount = typeof rate.amount === "number" ? rate.amount.toFixed(2) : rate.amount;
                       return `
                         <fieldset class="london-fee-draft__rate">
-                          <legend>${rate.label}</legend>
-                          <label for="london-fee-amount-${rate.key}">Daily rate (GBP)</label>
+                          <legend>${isCrossing ? `${rate.vehicleClass} — ${rate.paymentMethod}` : rate.label}</legend>
+                          <label for="london-fee-amount-${rate.key}">${isCrossing ? "Amount (GBP per crossing)" : "Daily rate (GBP)"}</label>
                           <div class="london-fee-draft__amount">
                             <span aria-hidden="true">£</span>
                             <input
                               id="london-fee-amount-${rate.key}"
                               name="amount_${rate.key}"
                               type="number"
-                              min="0.01"
+                              min="${isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" && feeScheduleSnapshot.schedule.allowZeroAmounts ? "0" : "0.01"}"
                               max="999999.99"
                               step="0.01"
                               inputmode="decimal"
@@ -215,11 +217,19 @@
                               aria-describedby="${errorId}"
                             />
                           </div>
-                          <p><strong>Current draft rate:</strong> £${rate.amount.toFixed(2)} per charging day</p>
-                          <p id="${errorId}" class="london-fee-draft__field-error" ${feeScheduleErrors[rate.key] ? 'role="alert"' : ""}>${feeScheduleErrors[rate.key] || "Enter a positive GBP amount with up to 2 decimal places."}</p>
-                          <p><strong>Charging period:</strong> ${rate.chargingPeriod}</p>
-                          <p><strong>Applicability:</strong> ${rate.applicability}</p>
-                          <p><strong>Emissions threshold:</strong> ${rate.emissionsThresholds}</p>
+                          <p><strong>Current draft amount:</strong> £${formattedAmount} ${isCrossing ? "per individual crossing" : "per charging day"}</p>
+                          <p id="${errorId}" class="london-fee-draft__field-error" ${feeScheduleErrors[rate.key] ? 'role="alert"' : ""}>${feeScheduleErrors[rate.key] || (isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" && feeScheduleSnapshot.schedule.allowZeroAmounts ? "Enter a GBP amount from £0.00 with up to 2 decimal places." : "Enter a positive GBP amount with up to 2 decimal places.")}</p>
+                          ${isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" ? `
+                            <p><strong>Vehicle class/type:</strong> ${rate.vehicleClass}</p>
+                            <p><strong>Payment method:</strong> ${rate.paymentMethod}</p>
+                            <p><strong>Chargeable time:</strong> ${rate.chargingPeriod}</p>
+                            <p><strong>Applicability:</strong> ${rate.applicability}</p>
+                            <p><strong>Crossing basis:</strong> ${rate.crossingBasis}</p>
+                          ` : `
+                            <p><strong>Charging period:</strong> ${rate.chargingPeriod}</p>
+                            <p><strong>Applicability:</strong> ${rate.applicability}</p>
+                            <p><strong>Emissions threshold:</strong> ${rate.emissionsThresholds}</p>
+                          `}
                         </fieldset>
                       `;
                     }).join("")}
@@ -244,7 +254,11 @@
                   </dl>
                   <h4>Operating rules</h4>
                   <ul>${feeScheduleSnapshot.schedule.operatingRules.map((rule) => `<li>${rule}</li>`).join("")}</ul>
-                  ${feeScheduleSnapshot.schedule.nonChargeableCategories.length ? `
+                  ${feeScheduleSnapshot.schedule.kind === "crossing" && feeScheduleSnapshot.schedule.eligibilityNotes.length ? `
+                    <h4>Eligibility notes (not applied)</h4>
+                    <ul>${feeScheduleSnapshot.schedule.eligibilityNotes.map((note) => `<li>${note}</li>`).join("")}</ul>
+                  ` : ""}
+                  ${feeScheduleSnapshot.schedule.kind === "london_daily" && feeScheduleSnapshot.schedule.nonChargeableCategories.length ? `
                     <h4>Not charged under the supplied text</h4>
                     <ul>${feeScheduleSnapshot.schedule.nonChargeableCategories.map((item) => `<li><strong>${item.label}:</strong> ${item.applicability} ${item.emissionsThresholds}</li>`).join("")}</ul>
                   ` : ""}
@@ -263,6 +277,8 @@
         ` : `
           ${area?.slug === "london-lez" || area?.slug === "london-ulez"
             ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Draft fee schedule available.</strong> This scheme has an editable Draft / Inactive fee schedule on its Fee settings page. The draft is not used for booking prices and does not calculate or charge fees.</div>`
+            : category?.slug === "dartford-crossing" || category?.slug === "blackwall-silvertown-tunnels"
+              ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Draft fee schedule available.</strong> This crossing scheme has an editable Draft / Inactive fee schedule on its Fee settings page. It is not used for booking prices and does not calculate or charge fees.</div>`
             : area?.slug === "london-congestion-charge"
               ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Reference data and fee settings are separate.</strong> The boundary reference is available on its Reference data page. No Congestion Charge fee schedule is configured; fees are not calculated or charged.</div>`
               : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> Both reference data and fee settings are placeholders. They do not calculate or charge fees.</div>`}

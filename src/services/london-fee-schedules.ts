@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { LondonFeeScheduleDraft } from "./london-fee-schedule-data";
+import type { FeeScheduleDraft } from "./london-fee-schedule-data";
 import { query, withTransaction } from "../database/connection";
 
-export type LondonFeeScheduleScheme = LondonFeeScheduleDraft["scheme"];
+export type LondonFeeScheduleScheme = FeeScheduleDraft["scheme"];
 
 export type LondonFeeScheduleVersionRecord = {
   version: number;
@@ -11,7 +11,7 @@ export type LondonFeeScheduleVersionRecord = {
 };
 
 export type LondonFeeScheduleSnapshot = {
-  schedule: LondonFeeScheduleDraft;
+  schedule: FeeScheduleDraft;
   currentVersion: number;
   history: LondonFeeScheduleVersionRecord[];
 };
@@ -34,7 +34,7 @@ export type LondonFeeScheduleStore = {
 type ScheduleVersionRow = {
   version: number;
   status: string;
-  payload: LondonFeeScheduleDraft;
+  payload: FeeScheduleDraft;
   actor_email: string | null;
   created_at: string | Date;
 };
@@ -47,7 +47,7 @@ export class LondonFeeScheduleVersionConflictError extends Error {
 }
 
 export function validateLondonFeeRateAmounts(
-  schedule: LondonFeeScheduleDraft,
+  schedule: FeeScheduleDraft,
   submitted: unknown
 ): { amounts: Record<string, string>; errors: Record<string, string> } {
   const body = submitted && typeof submitted === "object" ? submitted as Record<string, unknown> : {};
@@ -61,12 +61,19 @@ export function validateLondonFeeRateAmounts(
       continue;
     }
 
-    if (Number(raw) <= 0) {
+    const isZero = /^0(?:\.0{1,2})?$/.test(raw);
+    if (isZero && (schedule.kind !== "crossing" || !schedule.allowZeroAmounts)) {
       errors[rate.key] = "Enter a GBP amount greater than £0.00.";
       continue;
     }
 
-    amounts[rate.key] = raw;
+    if (isZero) {
+      amounts[rate.key] = "0.00";
+    } else if (raw.includes(".")) {
+      amounts[rate.key] = raw.padEnd(raw.indexOf(".") + 3, "0");
+    } else {
+      amounts[rate.key] = `${raw}.00`;
+    }
   }
 
   return { amounts, errors };
@@ -131,13 +138,21 @@ export const londonFeeScheduleStore: LondonFeeScheduleStore = {
         throw new Error("Invalid London fee schedule amounts reached persistence.");
       }
 
-      const nextPayload: LondonFeeScheduleDraft = {
-        ...latest.payload,
-        rates: latest.payload.rates.map((rate) => ({
-          ...rate,
-          amount: Number(validation.amounts[rate.key])
-        }))
-      };
+      const nextPayload: FeeScheduleDraft = latest.payload.kind === "london_daily"
+        ? {
+          ...latest.payload,
+          rates: latest.payload.rates.map((rate) => ({
+            ...rate,
+            amount: Number(validation.amounts[rate.key])
+          }))
+        }
+        : {
+          ...latest.payload,
+          rates: latest.payload.rates.map((rate) => ({
+            ...rate,
+            amount: validation.amounts[rate.key]
+          }))
+        };
 
       await client.query(
         `INSERT INTO london_fee_schedule_versions

@@ -213,12 +213,17 @@ async function renderTollFeesPage(
 
     const breadcrumbs = buildBreadcrumbs(page);
     const mapConfiguration = readMapConfiguration();
-    const feeScheduleScheme: LondonFeeScheduleScheme | undefined =
-      page.section === "fee-settings" && page.area?.slug === "london-lez"
+    const feeScheduleScheme: LondonFeeScheduleScheme | undefined = page.section !== "fee-settings"
+      ? undefined
+      : page.area?.slug === "london-lez" || page.category?.slug === "london-lez"
         ? "london-lez"
-        : page.section === "fee-settings" && page.area?.slug === "london-ulez"
+        : page.area?.slug === "london-ulez" || page.category?.slug === "london-ulez"
           ? "london-ulez"
-          : undefined;
+          : page.category?.slug === "dartford-crossing" || page.area?.slug === "dartford-crossing"
+            ? "dartford-crossing"
+            : page.category?.slug === "blackwall-silvertown-tunnels" || page.area?.slug === "blackwall-silvertown-tunnels"
+              ? "blackwall-silvertown-tunnels"
+              : undefined;
     const feeScheduleSnapshot = renderOptions.feeScheduleSnapshot ??
       (feeScheduleScheme ? await feeScheduleStore.load(feeScheduleScheme) : undefined);
     const londonUlezBoundary = page.area?.slug === "london-ulez" && page.section === "reference-data"
@@ -366,6 +371,73 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     }
   );
 
+  const registerFeeSchedulePost = (
+    path: string,
+    scheme: LondonFeeScheduleScheme,
+    page: TollFeesPage
+  ) => {
+    router.post(path, requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const snapshot = await feeScheduleStore.load(scheme);
+        const { amounts, errors } = validateLondonFeeRateAmounts(snapshot.schedule, req.body);
+        const rawVersion = req.body?.baseVersion;
+        const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
+          ? Number(rawVersion)
+          : NaN;
+        const submittedAmounts = Object.fromEntries(snapshot.schedule.rates.map((rate) => {
+          const raw = req.body?.[`amount_${rate.key}`];
+          return [rate.key, typeof raw === "string" ? raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;") : ""];
+        }));
+        const feeSettingsPage: TollFeesPage = { ...page, section: "fee-settings" };
+
+        if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, {
+            feeScheduleSnapshot: snapshot,
+            feeScheduleErrors: errors,
+            feeScheduleFormError: "The draft version is missing or invalid. Reload this page before saving.",
+            submittedAmounts,
+            statusCode: 400
+          });
+        }
+        if (Object.keys(errors).length > 0) {
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, {
+            feeScheduleSnapshot: snapshot,
+            feeScheduleErrors: errors,
+            submittedAmounts,
+            statusCode: 400
+          });
+        }
+
+        try {
+          await feeScheduleStore.save(scheme, expectedVersion, amounts, {
+            accountId: session.user.id,
+            email: session.user.email
+          });
+        } catch (error) {
+          if (!(error instanceof LondonFeeScheduleVersionConflictError)) throw error;
+          const latest = await feeScheduleStore.load(scheme);
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, {
+            feeScheduleSnapshot: latest,
+            feeScheduleFormError: error.message,
+            statusCode: 409
+          });
+        }
+
+        return res.redirect(303, `${path}?saved=1`);
+      } catch (error) {
+        return next(error);
+      }
+    });
+  };
+
   router.get("/settings/toll-fees", (req, res, next) => {
     void renderTollFeesPage(req, res, next, options.appTitle, {}, feeScheduleStore);
   });
@@ -391,69 +463,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
 
         if (area.slug === "london-lez" || area.slug === "london-ulez") {
           const scheme: LondonFeeScheduleScheme = area.slug;
-          router.post(
-            `${areaPath}/fee-settings`,
-            requireCsrfToken({ appTitle: options.appTitle }),
-            async (req, res, next) => {
-              try {
-                const session = await getSessionAccount(req.headers.cookie);
-                if (!session.authenticated || !session.user) return res.redirect("/access");
-
-                const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-                if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
-                  return renderUnavailable(res, options.appTitle, systemSettingsModule);
-                }
-
-                const snapshot = await feeScheduleStore.load(scheme);
-                const { amounts, errors } = validateLondonFeeRateAmounts(snapshot.schedule, req.body);
-                const rawVersion = req.body?.baseVersion;
-                const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
-                  ? Number(rawVersion)
-                  : NaN;
-                const submittedAmounts = Object.fromEntries(snapshot.schedule.rates.map((rate) => {
-                  const raw = req.body?.[`amount_${rate.key}`];
-                  return [rate.key, typeof raw === "string" ? raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;") : ""];
-                }));
-
-                if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
-                  return renderTollFeesPage(req, res, next, options.appTitle, { category, area, section: "fee-settings" }, feeScheduleStore, {
-                    feeScheduleSnapshot: snapshot,
-                    feeScheduleErrors: errors,
-                    feeScheduleFormError: "The draft version is missing or invalid. Reload this page before saving.",
-                    submittedAmounts,
-                    statusCode: 400
-                  });
-                }
-                if (Object.keys(errors).length > 0) {
-                  return renderTollFeesPage(req, res, next, options.appTitle, { category, area, section: "fee-settings" }, feeScheduleStore, {
-                    feeScheduleSnapshot: snapshot,
-                    feeScheduleErrors: errors,
-                    submittedAmounts,
-                    statusCode: 400
-                  });
-                }
-
-                try {
-                  await feeScheduleStore.save(scheme, expectedVersion, amounts, {
-                    accountId: session.user.id,
-                    email: session.user.email
-                  });
-                } catch (error) {
-                  if (!(error instanceof LondonFeeScheduleVersionConflictError)) throw error;
-                  const latest = await feeScheduleStore.load(scheme);
-                  return renderTollFeesPage(req, res, next, options.appTitle, { category, area, section: "fee-settings" }, feeScheduleStore, {
-                    feeScheduleSnapshot: latest,
-                    feeScheduleFormError: error.message,
-                    statusCode: 409
-                  });
-                }
-
-                return res.redirect(303, `${areaPath}/fee-settings?saved=1`);
-              } catch (error) {
-                return next(error);
-              }
-            }
-          );
+          registerFeeSchedulePost(`${areaPath}/fee-settings`, scheme, { category, area });
         }
       }
       continue;
@@ -463,6 +473,10 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       router.get(`${categoryPath}/${section}`, (req, res, next) => {
         void renderTollFeesPage(req, res, next, options.appTitle, { category, section }, feeScheduleStore);
       });
+    }
+
+    if (category.slug === "dartford-crossing" || category.slug === "blackwall-silvertown-tunnels") {
+      registerFeeSchedulePost(`${categoryPath}/fee-settings`, category.slug, { category });
     }
   }
 

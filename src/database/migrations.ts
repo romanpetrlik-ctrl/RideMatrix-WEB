@@ -1,5 +1,8 @@
 import type { Pool, PoolClient } from "pg";
-import { londonFeeScheduleDrafts } from "../services/london-fee-schedule-data";
+import {
+  crossingFeeScheduleDrafts,
+  londonFeeScheduleDrafts
+} from "../services/london-fee-schedule-data";
 
 export type Migration = {
   id: string;
@@ -1248,6 +1251,37 @@ export const MIGRATIONS: Migration[] = [
           1,
           'draft_inactive',
           '${JSON.stringify(londonFeeScheduleDrafts["london-ulez"]).replace(/'/g, "''")}'::jsonb,
+          'Initial supplied draft'
+        )
+      ON CONFLICT (scheme, version) DO NOTHING;
+    `
+  },
+  {
+    id: "0023_crossing_fee_schedule_drafts",
+    sql: `
+      ALTER TABLE london_fee_schedule_versions
+        DROP CONSTRAINT IF EXISTS london_fee_schedule_versions_scheme_check;
+      ALTER TABLE london_fee_schedule_versions
+        ADD CONSTRAINT london_fee_schedule_versions_scheme_check
+        CHECK (scheme IN ('london-lez', 'london-ulez', 'dartford-crossing', 'blackwall-silvertown-tunnels'));
+
+      INSERT INTO london_fee_schedule_versions
+        (id, scheme, version, status, payload, actor_email)
+      VALUES
+        (
+          'dartford-crossing-draft-v1',
+          'dartford-crossing',
+          1,
+          'draft_inactive',
+          '${JSON.stringify(crossingFeeScheduleDrafts["dartford-crossing"]).replace(/'/g, "''")}'::jsonb,
+          'Initial supplied draft'
+        ),
+        (
+          'blackwall-silvertown-tunnels-draft-v1',
+          'blackwall-silvertown-tunnels',
+          1,
+          'draft_inactive',
+          '${JSON.stringify(crossingFeeScheduleDrafts["blackwall-silvertown-tunnels"]).replace(/'/g, "''")}'::jsonb,
           'Initial supplied draft'
         )
       ON CONFLICT (scheme, version) DO NOTHING;
