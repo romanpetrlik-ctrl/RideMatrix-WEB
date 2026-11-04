@@ -38,6 +38,8 @@
       status.textContent = "Google Places is unavailable. This location cannot be saved until suggestions load.";
     }
 
+    var selectionSequence = 0;
+
     if (!window.RideMatrixMaps || typeof window.RideMatrixMaps.load !== "function") {
       unavailable();
       return;
@@ -60,6 +62,7 @@
       status.textContent = "Search and select a Google Places result to save its operational point.";
 
       autocomplete.addEventListener("gmp-select", function (event) {
+        var selection = ++selectionSequence;
         var prediction = event && (event.placePrediction || (event.detail && event.detail.placePrediction));
         if (!prediction || typeof prediction.toPlace !== "function") {
           clearSelection();
@@ -74,12 +77,14 @@
           return;
         }
 
+        clearSelection();
         Promise.resolve(place.fetchFields({ fields: PLACE_FIELDS })).then(function () {
+          if (selection !== selectionSequence) return;
           var point = readLocation(place);
           var id = text(place.id || place.placeId);
           var displayName = place.displayName && typeof place.displayName.text === "string"
             ? text(place.displayName.text)
-            : "";
+            : text(place.displayName);
           var label = displayName || text(place.formattedAddress);
           if (!id || !label || !point) {
             clearSelection();
@@ -93,7 +98,9 @@
           input.value = label;
           input.setAttribute("aria-invalid", "false");
           status.textContent = "Google Place selected. Its Place ID and operational coordinates will be saved.";
-        }).catch(unavailable);
+        }).catch(function () {
+          if (selection === selectionSequence) unavailable();
+        });
       });
     }).catch(unavailable);
   }
