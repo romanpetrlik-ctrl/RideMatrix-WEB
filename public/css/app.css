@@ -3870,12 +3870,28 @@ button:visited,
 }
 
 .airport-fees__amount input {
-  flex: 1;
+  box-sizing: border-box;
+  flex: 1 1 auto;
   min-width: 0;
-  width: auto;
+  width: 100%;
+  max-width: none;
+  min-height: var(--rm-control-height);
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--rm-light-bronze);
+  background: #fff9f2;
+  color: var(--rm-text);
+  font: inherit;
+  margin: 0;
+}
+
+.airport-fees__amount input:focus {
+  border-color: var(--rm-control-focus-color);
+  outline: none;
+  box-shadow: var(--rm-control-focus-shadow);
 }
 
 .airport-fees__amount > span {
+  flex: 0 0 auto;
   font-weight: 700;
 }
 

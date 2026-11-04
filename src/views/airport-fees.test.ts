@@ -26,7 +26,7 @@ const formMarkup = `
               </div>
               <div class="airport-fees__field">
                 <label for="airport-${operation}-fee">${title} fee (GBP)</label>
-                <div class="airport-fees__amount"><span aria-hidden="true">£</span><input id="airport-${operation}-fee" name="${operation}Fee" type="number" step="0.01"></div>
+                <div class="airport-fees__amount"><span aria-hidden="true">£</span><input id="airport-${operation}-fee" name="${operation}Fee" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required></div>
                 <p class="airport-fees__field-error">Enter an amount.</p>
               </div>
             </fieldset>`;
@@ -45,10 +45,16 @@ type AirportFormLayout = {
   formBottom: number;
   recordsTop: number;
   displayName: { left: number; right: number; top: number; width: number };
-  dropoffLocation: { left: number; right: number; top: number; width: number };
-  dropoffFee: { left: number; right: number; top: number; width: number };
-  pickupLocation: { left: number; right: number; top: number; width: number };
-  pickupFee: { left: number; right: number; top: number; width: number };
+  dropoffLocation: { left: number; right: number; top: number; width: number; height: number };
+  dropoffFee: { left: number; right: number; top: number; width: number; height: number };
+  pickupLocation: { left: number; right: number; top: number; width: number; height: number };
+  pickupFee: { left: number; right: number; top: number; width: number; height: number };
+  dropoffFeeStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
+  pickupFeeStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
+  dropoffLocationStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
+  pickupLocationStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
+  dropoffAmount: { right: number; width: number };
+  pickupAmount: { right: number; width: number };
   save: { left: number; right: number; top: number; width: number };
 };
 
@@ -77,6 +83,8 @@ test("Airport Fees form labels, field order, and saved list placement are access
   assert.ok(template.indexOf("</form>") < template.indexOf('aria-labelledby="airport-fees-records-title"'));
   assert.match(form, /aria-describedby="\$\{locationId\}-help \$\{locationId\}-error"/);
   assert.match(form, /aria-describedby="\$\{feeId\}-error"/);
+  assert.match(form, /<span aria-hidden="true">£<\/span><input id="\$\{feeId\}" name="\$\{operation\}Fee" type="number" min="0" max="999999\.99" step="0\.01" inputmode="decimal" required/);
+  assert.match(form, /Enter an amount with up to 2 decimal places; £0\.00 is allowed\./);
 });
 
 test("Airport Fees form fits desktop in one row and wraps without overflow on smaller screens", async (t) => {
@@ -92,10 +100,10 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
     const page = await browser.newPage();
     await page.setContent(`<body style="margin:0">${formMarkup}</body>`);
     const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8")
-      .replace(/^@import[^;]+;\s*/m, "");
+      .replace(/^@import[^\r\n]*\r?\n/, "");
     await page.addStyleTag({ content: css });
 
-    for (const [width, columns] of [[1440, 4], [1280, 4], [1024, 2], [800, 1], [390, 1]] as const) {
+    for (const [width, columns] of [[1440, 4], [1280, 4], [1024, 2], [800, 1], [390, 1], [320, 1]] as const) {
       await page.setViewportSize({ width, height: 900 });
       const layout = await page.evaluate<AirportFormLayout>(`(() => {
         const form = document.querySelector(".airport-fees__form");
@@ -104,7 +112,16 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
         const rect = (selector) => {
           const element = document.querySelector(selector);
           const bounds = element.getBoundingClientRect();
-          return { left: bounds.left, right: bounds.right, top: bounds.top, width: bounds.width };
+          return { left: bounds.left, right: bounds.right, top: bounds.top, width: bounds.width, height: bounds.height };
+        };
+        const controlStyle = (selector) => {
+          const style = getComputedStyle(document.querySelector(selector));
+          return {
+            padding: style.padding,
+            font: style.font,
+            borderColor: style.borderTopColor,
+            backgroundColor: style.backgroundColor
+          };
         };
         return {
           gridTemplateColumns: getComputedStyle(form).gridTemplateColumns,
@@ -118,6 +135,12 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
           dropoffFee: rect("#airport-dropoff-fee"),
           pickupLocation: rect("#airport-pickup-location"),
           pickupFee: rect("#airport-pickup-fee"),
+          dropoffFeeStyle: controlStyle("#airport-dropoff-fee"),
+          pickupFeeStyle: controlStyle("#airport-pickup-fee"),
+          dropoffLocationStyle: controlStyle("#airport-dropoff-location"),
+          pickupLocationStyle: controlStyle("#airport-pickup-location"),
+          dropoffAmount: rect(".airport-fees__operation[data-operation='dropoff'] .airport-fees__amount"),
+          pickupAmount: rect(".airport-fees__operation[data-operation='pickup'] .airport-fees__amount"),
           save: rect(".airport-fees__actions button")
         };
       })()`);
@@ -127,6 +150,12 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
       assert.ok(layout.recordsTop >= layout.formBottom, "records should remain below the form");
       assert.ok(layout.dropoffFee.width >= 100, `drop-off fee input should be usable at ${width}px`);
       assert.ok(layout.pickupFee.width >= 100, `pick-up fee input should be usable at ${width}px`);
+      assert.equal(layout.dropoffFee.height, layout.dropoffLocation.height, "drop-off fee should match the location control height");
+      assert.equal(layout.pickupFee.height, layout.pickupLocation.height, "pick-up fee should match the location control height");
+      assert.deepEqual(layout.dropoffFeeStyle, layout.dropoffLocationStyle, "drop-off fee should match the location control styling");
+      assert.deepEqual(layout.pickupFeeStyle, layout.pickupLocationStyle, "pick-up fee should match the location control styling");
+      assert.ok(Math.abs(layout.dropoffFee.right - layout.dropoffAmount.right) < 1, "drop-off fee should fill its fee column");
+      assert.ok(Math.abs(layout.pickupFee.right - layout.pickupAmount.right) < 1, "pick-up fee should fill its fee column");
 
       if (width >= 1280) {
         const controls = [layout.displayName, layout.dropoffLocation, layout.dropoffFee, layout.pickupLocation, layout.pickupFee, layout.save];
@@ -141,6 +170,11 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
     assert.equal(await page.getByLabel("Drop-off fee (GBP)").count(), 1);
     assert.equal(await page.getByLabel("Pick-up location").count(), 1);
     assert.equal(await page.getByLabel("Pick-up fee (GBP)").count(), 1);
+    for (const id of ["airport-dropoff-fee", "airport-pickup-fee"]) {
+      await page.locator(`#${id}`).focus();
+      const focusShadow = await page.evaluate(() => getComputedStyle(document.activeElement as Element).boxShadow);
+      assert.notEqual(focusShadow, "none", `${id} should have a visible focus treatment`);
+    }
   } finally {
     await browser?.close();
   }
