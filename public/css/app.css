@@ -3803,6 +3803,139 @@ button:visited,
   overflow-wrap: anywhere;
 }
 
+.airport-fees__form-section,
+.airport-fees__records {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rm-border);
+}
+
+.airport-fees__form-section > p {
+  max-width: 72ch;
+  color: var(--rm-text-soft);
+  line-height: 1.55;
+}
+
+.airport-fees__form {
+  display: grid;
+  gap: 1rem;
+  max-width: 58rem;
+}
+
+.airport-fees__field {
+  min-width: 0;
+}
+
+.airport-fees__field > label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+}
+
+.airport-fees__field input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.airport-fees__operation {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+}
+
+.airport-fees__operation legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+}
+
+.airport-fees__autocomplete-host {
+  margin-top: 0.5rem;
+}
+
+.airport-fees__autocomplete-host > gmp-place-autocomplete {
+  width: 100%;
+}
+
+.airport-fees__amount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.airport-fees__amount > span {
+  font-weight: 700;
+}
+
+.airport-fees__help,
+.airport-fees__field-error {
+  margin: 0.3rem 0 0;
+  color: var(--rm-text-soft);
+  font-size: 0.9rem;
+}
+
+.airport-fees__field-error--invalid,
+.airport-fees__error {
+  color: var(--rm-error, #a32323);
+}
+
+.airport-fees__actions,
+.airport-fees__record-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.airport-fees__record-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.airport-fees__record {
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+}
+
+.airport-fees__record-heading {
+  justify-content: space-between;
+}
+
+.airport-fees__record-heading h3 {
+  margin: 0;
+}
+
+.airport-fees__record dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 1rem 0 0;
+}
+
+.airport-fees__record dt {
+  font-weight: 700;
+}
+
+.airport-fees__record dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.airport-fees__record dialog {
+  max-width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+  color: var(--rm-text);
+}
+
+.airport-fees__record dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
 @media (max-width: 40rem) {
   .toll-fees-page {
     padding: 1rem;
@@ -3818,6 +3951,10 @@ button:visited,
   }
 
   .london-fee-draft__actions button {
+    width: 100%;
+  }
+
+  .airport-fees__actions > * {
     width: 100%;
   }
 }

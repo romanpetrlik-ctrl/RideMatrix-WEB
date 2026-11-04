@@ -5,6 +5,12 @@ import test, { after, before, describe } from "node:test";
 import express from "express";
 import { MIGRATIONS } from "../database/migrations";
 import { createCsrfProtection } from "../middleware/csrf";
+import type {
+  AirportFeeActor,
+  AirportFeeFormValues,
+  AirportFeeRecord,
+  AirportFeeStore
+} from "../services/airport-fees";
 import {
   crossingFeeScheduleDrafts,
   londonFeeScheduleDrafts
@@ -31,7 +37,7 @@ type SchemeLeaf = {
 
 /** Every leaf destination: areas for nested categories, the category itself otherwise. */
 function schemeLeaves(): SchemeLeaf[] {
-  return tollFeeCategories.flatMap((category) => {
+  return tollFeeCategories.filter((category) => category.slug !== "airport-fees").flatMap((category) => {
     const categoryPath = `/settings/toll-fees/${category.slug}`;
     if (!category.areas) {
       return [{ title: category.title, path: categoryPath, parentPath: "/settings/toll-fees", parentTitle: "Toll & Fees", categorySlug: category.slug }];
@@ -47,6 +53,61 @@ function schemeLeaves(): SchemeLeaf[] {
 }
 
 const escapeHtml = (value: string) => value.replace(/&/g, "&amp;");
+
+function createMemoryAirportFeeStore(): { store: AirportFeeStore; reset: () => void; records: AirportFeeRecord[] } {
+  const records: AirportFeeRecord[] = [];
+  let nextId = 1;
+  const reset = () => {
+    records.splice(0, records.length);
+    nextId = 1;
+  };
+  const toRecord = (id: string, values: AirportFeeFormValues): AirportFeeRecord => ({
+    id,
+    displayName: values.displayName,
+    dropoffPlaceId: values.dropoffPlaceId,
+    dropoffLocationLabel: values.dropoffLocationLabel,
+    dropoffLatitude: Number(values.dropoffLatitude),
+    dropoffLongitude: Number(values.dropoffLongitude),
+    dropoffFee: values.dropoffFee,
+    pickupPlaceId: values.pickupPlaceId,
+    pickupLocationLabel: values.pickupLocationLabel,
+    pickupLatitude: Number(values.pickupLatitude),
+    pickupLongitude: Number(values.pickupLongitude),
+    pickupFee: values.pickupFee,
+    createdAt: "2026-11-04T00:00:00.000Z",
+    updatedAt: "2026-11-04T00:00:00.000Z"
+  });
+  return {
+    records,
+    reset,
+    store: {
+      async list() {
+        return structuredClone(records);
+      },
+      async get(id) {
+        const record = records.find((item) => item.id === id);
+        return record ? structuredClone(record) : null;
+      },
+      async save(id: string | null, values: AirportFeeFormValues, _actor: AirportFeeActor) {
+        if (id) {
+          const index = records.findIndex((item) => item.id === id);
+          if (index < 0) return null;
+          records[index] = toRecord(id, values);
+          return structuredClone(records[index]);
+        }
+        const record = toRecord(`airport-${nextId++}`, values);
+        records.push(record);
+        return structuredClone(record);
+      },
+      async archive(id, _actor) {
+        const index = records.findIndex((item) => item.id === id);
+        if (index < 0) return false;
+        records.splice(index, 1);
+        return true;
+      }
+    }
+  };
+}
 
 function createMemoryFeeScheduleStore(): { store: LondonFeeScheduleStore; reset: () => void } {
   const snapshots = new Map<LondonFeeScheduleScheme, LondonFeeScheduleSnapshot>();
@@ -118,6 +179,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   const sessionsByCookie = new Map<string, unknown>();
   const seenCookies: Array<string | undefined> = [];
   const feeSchedules = createMemoryFeeScheduleStore();
+  const airportFees = createMemoryAirportFeeStore();
 
   before(async () => {
     process.env.GOOGLE_MAPS_ENABLED = "false";
@@ -147,7 +209,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     app.set("views", `${process.cwd()}/src/views`);
     app.use(express.urlencoded({ extended: true }));
     app.use(createCsrfProtection({ appTitle: "RideMatrix Test", cookieSecure: false }));
-    app.use(createRoleSectionsRouter({ appTitle: "RideMatrix Test", feeScheduleStore: feeSchedules.store }));
+    app.use(createRoleSectionsRouter({
+      appTitle: "RideMatrix Test",
+      feeScheduleStore: feeSchedules.store,
+      airportFeeStore: airportFees.store
+    }));
     appServer = app.listen(0);
     await new Promise<void>((resolve) => appServer.once("listening", resolve));
     baseUrl = `http://127.0.0.1:${(appServer.address() as AddressInfo).port}`;
@@ -219,6 +285,14 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.ok(body.includes(category.title), `${category.title} should be visible`);
       assert.match(body, /aria-label="Breadcrumb"/);
       assert.match(body, /href="\/settings\/toll-fees">Toll &amp; Fees<\/a>/);
+
+      if (category.slug === "airport-fees") {
+        assert.match(body, /Add Airport and Fee/);
+        assert.match(body, /Saved airports/);
+        assert.match(body, /Pricing integration will be added with the pricing work/);
+        assert.doesNotMatch(body, /Reference data \(managed\)|Fee settings|Not configured yet/);
+        continue;
+      }
 
       if (category.areas) {
         assert.equal((body.match(/class="toll-fees-card"/g) ?? []).length, category.areas.length);
@@ -307,6 +381,131 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         assert.ok(selectedSubnav[0].includes(`${scheme.path}/${destination.path}`), "the selected subpage should match the current destination");
         assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
       }
+    }
+  });
+
+  test("Airport Fees creates, edits, validates, and archives airport records without pricing or booking changes", async () => {
+    airportFees.reset();
+    const previousEnabled = process.env.GOOGLE_MAPS_ENABLED;
+    const previousBrowserKey = process.env.GOOGLE_MAPS_BROWSER_API_KEY;
+    process.env.GOOGLE_MAPS_ENABLED = "true";
+    process.env.GOOGLE_MAPS_BROWSER_API_KEY = "airport-test-browser-key";
+    const airportPath = "/settings/toll-fees/airport-fees";
+    const sessionCookie = "sid=airport-admin";
+    const headers = withSession(sessionCookie, ["superuser"]);
+
+    try {
+      const pageResponse = await fetch(`${baseUrl}${airportPath}`, { headers });
+      assert.equal(pageResponse.status, 200);
+      const pageBody = await pageResponse.text();
+      const csrfCookie = pageResponse.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      assert.match(pageBody, /data-airport-place-root/);
+      assert.match(pageBody, /Bournemouth Airport Car Park 1/);
+      assert.match(pageBody, /airport-display-name/);
+      assert.match(pageBody, /not applied to fares/);
+      assert.match(pageBody, /Pricing integration will be added with the pricing work/);
+      assert.doesNotMatch(pageBody, /fare total|booking price|customer charge/i);
+
+      const postCookie = `${sessionCookie}; ${csrfCookie}`;
+      sessionsByCookie.set(postCookie, {
+        authenticated: true,
+        user: { id: "u-1", email: "bookings@romanairporttransfers.co.uk", roles: ["superuser"], active_role: "superuser" }
+      });
+      const formValues = {
+        id: "",
+        displayName: "Bournemouth Airport (BOH)",
+        dropoffPlaceId: "ChIJ-dropoff-car-park",
+        dropoffLocationLabel: "Bournemouth Airport Car Park 1",
+        dropoffLatitude: "50.7799",
+        dropoffLongitude: "-1.8425",
+        dropoffFee: "0",
+        pickupPlaceId: "ChIJ-pickup-terminal",
+        pickupLocationLabel: "Bournemouth Airport terminal pickup",
+        pickupLatitude: "50.7801",
+        pickupLongitude: "-1.8420",
+        pickupFee: "4.50"
+      };
+      const submit = (values: Record<string, string>, url = airportPath) => fetch(`${baseUrl}${url}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ ...values, _csrf: token }),
+        redirect: "manual"
+      });
+
+      const invalid = await submit({
+        ...formValues,
+        dropoffPlaceId: "",
+        pickupPlaceId: "",
+        dropoffFee: "",
+        pickupFee: "1.234"
+      });
+      assert.equal(invalid.status, 400);
+      const invalidBody = await invalid.text();
+      assert.match(invalidBody, /Select a drop-off location from Google Places/);
+      assert.match(invalidBody, /Select a pick-up location from Google Places/);
+      assert.match(invalidBody, /Enter a GBP amount/);
+      assert.match(invalidBody, /value="1\.234"/);
+      assert.equal(airportFees.records.length, 0);
+
+      const created = await submit(formValues);
+      assert.equal(created.status, 303);
+      assert.equal(created.headers.get("location"), `${airportPath}?saved=1`);
+      assert.equal(airportFees.records.length, 1, "create should insert one airport configuration");
+      assert.equal(airportFees.records[0].displayName, "Bournemouth Airport (BOH)");
+      assert.equal(airportFees.records[0].dropoffPlaceId, "ChIJ-dropoff-car-park");
+      assert.equal(airportFees.records[0].pickupPlaceId, "ChIJ-pickup-terminal");
+      assert.equal(airportFees.records[0].dropoffFee, "0.00", "£0.00 is an explicit zero amount");
+      assert.equal(airportFees.records[0].pickupFee, "4.50");
+
+      const editPage = await fetch(`${baseUrl}${airportPath}?edit=airport-1`, { headers });
+      const editBody = await editPage.text();
+      assert.equal(editPage.status, 200);
+      assert.match(editBody, /Edit Airport and Fee/);
+      assert.match(editBody, /name="id" value="airport-1"/);
+      assert.match(editBody, /name="pickupPlaceId" value="ChIJ-pickup-terminal"/);
+      const updated = await submit({
+        ...formValues,
+        id: "airport-1",
+        displayName: "Bournemouth Airport (BOH) — updated",
+        dropoffFee: "3.25"
+      });
+      assert.equal(updated.status, 303);
+      assert.equal(airportFees.records.length, 1, "editing must not create a duplicate");
+      assert.equal(airportFees.records[0].displayName, "Bournemouth Airport (BOH) — updated");
+      assert.equal(airportFees.records[0].dropoffFee, "3.25");
+
+      const confirmationPage = await fetch(`${baseUrl}${airportPath}`, { headers });
+      const confirmationBody = await confirmationPage.text();
+      assert.match(confirmationBody, /data-airport-delete-open="airport-delete-airport-1"/);
+      assert.match(confirmationBody, /data-airport-delete-cancel/);
+      assert.equal(airportFees.records.length, 1, "canceling confirmation must leave the record saved");
+
+      const deleted = await submit({}, `${airportPath}/airport-1/delete`);
+      assert.equal(deleted.status, 303);
+      assert.equal(deleted.headers.get("location"), `${airportPath}?archived=1`);
+      assert.equal(airportFees.records.length, 0, "confirmed deletion archives and removes the record from the list");
+
+      const sameLocationValues = {
+        ...formValues,
+        id: "",
+        pickupPlaceId: formValues.dropoffPlaceId,
+        pickupLocationLabel: formValues.dropoffLocationLabel,
+        pickupLatitude: formValues.dropoffLatitude,
+        pickupLongitude: formValues.dropoffLongitude
+      };
+      const sameLocationSaved = await submit(sameLocationValues);
+      assert.equal(sameLocationSaved.status, 303);
+      assert.equal(airportFees.records.length, 1);
+      assert.equal(airportFees.records[0].pickupPlaceId, airportFees.records[0].dropoffPlaceId);
+      assert.equal(airportFees.records[0].pickupLatitude, airportFees.records[0].dropoffLatitude);
+    } finally {
+      if (previousEnabled === undefined) delete process.env.GOOGLE_MAPS_ENABLED;
+      else process.env.GOOGLE_MAPS_ENABLED = previousEnabled;
+      if (previousBrowserKey === undefined) delete process.env.GOOGLE_MAPS_BROWSER_API_KEY;
+      else process.env.GOOGLE_MAPS_BROWSER_API_KEY = previousBrowserKey;
     }
   });
 
@@ -749,16 +948,25 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     });
     assert.equal(unauthenticated.status, 302);
     assert.equal(unauthenticated.headers.get("location"), "/access");
+
+    const airportDenied = await fetch(`${baseUrl}/settings/toll-fees/airport-fees`, {
+      headers: deniedHeaders,
+      redirect: "manual"
+    });
+    assert.equal(airportDenied.status, 403);
   });
 
   test("unrelated Toll & Fees destinations keep their category-level sections", async () => {
     const headers = withSession("sid=unrelated-toll", ["superuser"]);
-    for (const slug of ["airport-fees", "dartford-crossing", "blackwall-silvertown-tunnels"]) {
+    for (const slug of ["dartford-crossing", "blackwall-silvertown-tunnels"]) {
       const body = await (await fetch(`${baseUrl}/settings/toll-fees/${slug}/fee-settings`, { headers })).text();
       assert.match(body, new RegExp(`href="/settings/toll-fees/${slug}/reference-data"`));
       assert.equal((body.match(/class="toll-fees-subnav__item"/g) ?? []).length, 2);
       assert.equal((body.match(/aria-current="page"/g) ?? []).length, 2, "current item plus the selected subpage only");
     }
+    const airportBody = await (await fetch(`${baseUrl}/settings/toll-fees/airport-fees`, { headers })).text();
+    assert.doesNotMatch(airportBody, /toll-fees-subnav__item|Reference data \(managed\)|Fee settings/);
+    assert.match(airportBody, /Add Airport and Fee/);
   });
 
 
@@ -793,8 +1001,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(response.headers.get("location"), "/access");
   });
 
-  test("nested Toll & Fees pages preserve the System Settings authorization boundary", async () => {
-    const destinationUrl = `${baseUrl}/settings/toll-fees/airport-fees/fee-settings`;
+  test("Airport Fees preserves the System Settings authorization boundary and has no placeholder subpage", async () => {
+    const destinationUrl = `${baseUrl}/settings/toll-fees/airport-fees`;
     const deniedHeaders = withSession("sid=nested-denied", ["admin", "staff", "tech_support"]);
     const deniedResponse = await fetch(destinationUrl, { headers: deniedHeaders, redirect: "manual" });
     assert.equal(deniedResponse.status, 403);
@@ -803,6 +1011,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const unauthenticatedResponse = await fetch(destinationUrl, { headers: { cookie: "sid=nested-unknown" }, redirect: "manual" });
     assert.equal(unauthenticatedResponse.status, 302);
     assert.equal(unauthenticatedResponse.headers.get("location"), "/access");
+    const removedPlaceholder = await fetch(`${destinationUrl}/fee-settings`, { headers: withSession("sid=airport-old-path", ["superuser"]) });
+    assert.equal(removedPlaceholder.status, 404);
   });
 
   test("other workspaces keep their own role requirements", async () => {
