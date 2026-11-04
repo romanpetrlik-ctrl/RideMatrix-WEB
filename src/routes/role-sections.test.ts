@@ -405,6 +405,31 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(pageBody, /data-airport-place-root/);
       assert.match(pageBody, /Bournemouth Airport Car Park 1/);
       assert.match(pageBody, /airport-display-name/);
+      const airportForm = pageBody.match(/<form class="airport-fees__form"[\s\S]*?<\/form>/)?.[0];
+      assert.ok(airportForm, "the airport form should be rendered");
+      for (const [id, label] of [
+        ["airport-display-name", "Airport display name"],
+        ["airport-dropoff-location", "Drop-off location"],
+        ["airport-dropoff-fee", "Drop-off fee (GBP)"],
+        ["airport-pickup-location", "Pick-up location"],
+        ["airport-pickup-fee", "Pick-up fee (GBP)"]
+      ]) {
+        assert.ok(airportForm.includes(`<label for="${id}">${label}</label>`), `${label} should have an associated visible label`);
+        assert.ok(airportForm.includes(`id="${id}"`), `${label} should point to a form control`);
+      }
+      const formFieldOrder = Array.from(
+        airportForm.matchAll(/name="(displayName|dropoffLocationLabel|dropoffFee|pickupLocationLabel|pickupFee)"/g),
+        (match) => match[1]
+      );
+      assert.deepEqual(formFieldOrder, ["displayName", "dropoffLocationLabel", "dropoffFee", "pickupLocationLabel", "pickupFee"]);
+      assert.ok(airportForm.indexOf('name="pickupFee"') < airportForm.indexOf("Save airport and fees"));
+      assert.ok(pageBody.indexOf("</form>") < pageBody.indexOf('aria-labelledby="airport-fees-records-title"'));
+      assert.match(airportForm, /name="dropoffPlaceId"/);
+      assert.match(airportForm, /name="dropoffLatitude"/);
+      assert.match(airportForm, /name="dropoffLongitude"/);
+      assert.match(airportForm, /name="pickupPlaceId"/);
+      assert.match(airportForm, /name="pickupLatitude"/);
+      assert.match(airportForm, /name="pickupLongitude"/);
       assert.match(pageBody, /not applied to fares/);
       assert.match(pageBody, /Pricing integration will be added with the pricing work/);
       assert.doesNotMatch(pageBody, /fare total|booking price|customer charge/i);
@@ -457,6 +482,10 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.equal(airportFees.records[0].displayName, "Bournemouth Airport (BOH)");
       assert.equal(airportFees.records[0].dropoffPlaceId, "ChIJ-dropoff-car-park");
       assert.equal(airportFees.records[0].pickupPlaceId, "ChIJ-pickup-terminal");
+      assert.equal(airportFees.records[0].dropoffLatitude, 50.7799);
+      assert.equal(airportFees.records[0].dropoffLongitude, -1.8425);
+      assert.equal(airportFees.records[0].pickupLatitude, 50.7801);
+      assert.equal(airportFees.records[0].pickupLongitude, -1.842);
       assert.equal(airportFees.records[0].dropoffFee, "0.00", "£0.00 is an explicit zero amount");
       assert.equal(airportFees.records[0].pickupFee, "4.50");
 
@@ -466,6 +495,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(editBody, /Edit Airport and Fee/);
       assert.match(editBody, /name="id" value="airport-1"/);
       assert.match(editBody, /name="pickupPlaceId" value="ChIJ-pickup-terminal"/);
+      assert.match(editBody, /name="dropoffLatitude" value="50\.7799"/);
+      assert.match(editBody, /name="pickupLongitude" value="-1\.842"/);
       const updated = await submit({
         ...formValues,
         id: "airport-1",
