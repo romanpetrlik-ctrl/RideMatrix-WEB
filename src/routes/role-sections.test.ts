@@ -280,7 +280,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.doesNotMatch(destinationBody, /Not configured yet/);
         } else if (scheme.title === "London ULEZ" && destination.path === "fee-settings") {
           assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
-          assert.match(destinationBody, /£12\.50/);
+          assert.match(destinationBody, /value="12\.50"/);
           assert.match(destinationBody, /Euro 6 \(NOx and PM\)/);
           assert.match(destinationBody, /Unknown \/ unverified; not supplied/);
           assert.match(destinationBody, /Source: Cars/);
@@ -288,8 +288,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.doesNotMatch(destinationBody, /data-london-ulez-map|DATE_CREAT|boundary\.json/);
         } else if (scheme.title === "London LEZ" && destination.path === "fee-settings") {
           assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
-          assert.match(destinationBody, /£100\.00/);
-          assert.match(destinationBody, /£300\.00/);
+          assert.match(destinationBody, /value="100\.00"/);
+          assert.match(destinationBody, /value="300\.00"/);
           assert.match(destinationBody, /Euro 3/);
           assert.match(destinationBody, /Euro IV \(PM\)/);
           assert.match(destinationBody, /source URL was not supplied/);
@@ -317,16 +317,24 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const lezResponse = await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers });
     const lezBody = await lezResponse.text();
     assert.equal(lezResponse.status, 200);
-    assert.match(lezBody, /£100\.00/);
-    assert.match(lezBody, /£300\.00/);
+    assert.match(lezBody, /value="100\.00"/);
+    assert.match(lezBody, /value="300\.00"/);
     assert.match(lezBody, /Cars and motorcycles\/L-category vehicles/);
     assert.match(lezBody, /Small vans up to and including 1\.205 tonnes unladen/);
     assert.match(lezBody, /Draft \/ Inactive — not used for booking prices/);
+    for (const rate of londonFeeScheduleDrafts["london-lez"].rates) {
+      const rateCard = lezBody.match(new RegExp(`<fieldset class="london-fee-draft__rate">[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?</fieldset>`))?.[0];
+      assert.ok(rateCard, `rate card should include ${rate.key}`);
+      assert.ok(rateCard.includes(`<legend>${rate.label}</legend>`));
+      assert.ok(rateCard.includes(`<label for="london-fee-amount-${rate.key}">Daily rate (GBP per charging day)</label>`));
+      assert.ok(rateCard.includes(rate.applicability));
+      assert.ok(rateCard.includes(rate.emissionsThresholds));
+    }
 
     const ulezResponse = await fetch(`${baseUrl}${londonBase}/london-ulez/fee-settings`, { headers });
     const ulezBody = await ulezResponse.text();
     assert.equal(ulezResponse.status, 200);
-    assert.match(ulezBody, /£12\.50/);
+    assert.match(ulezBody, /value="12\.50"/);
     assert.match(ulezBody, /Petrol: Euro 4 \(NOx\)\. Diesel: Euro 6 \(NOx and PM\)/);
     assert.match(ulezBody, /Euro 3 \(NOx\)/);
     assert.match(ulezBody, /24 hours a day every day except Christmas Day/);
@@ -380,11 +388,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(savedPage, /Draft changes saved as version 2/);
     assert.match(savedPage, /value="13\.25"/);
     assert.match(savedPage, /<li><strong>Version 2<\/strong> — bookings@romanairporttransfers\.co\.uk/);
-    assert.match(savedPage, /isolated from route estimates, booking totals, invoices, notifications, and customer charges/);
-    assert.doesNotMatch(savedPage, /Activate|active rate|customer charge total/i);
+    assert.match(savedPage, /Changes do not affect estimates, bookings, invoices, notifications, or customer charges/);
+    assert.doesNotMatch(savedPage, /active rate|customer charge total/i);
 
     const lezPage = await (await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers })).text();
-    assert.match(lezPage, /Current draft amount:<\/strong> £100\.00/);
+    assert.match(lezPage, /id="london-fee-amount-lez-vans-specialist-minibuses"[\s\S]*?value="100\.00"/);
     assert.match(lezPage, /name="baseVersion" value="1"/);
 
     const deniedCookie = `sid=fee-schedules-denied; ${ulezCookie}`;
@@ -425,7 +433,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     ]);
     assert.match(dartfordBody, /Dartford Crossing draft schedule/);
     assert.match(dartfordBody, /Draft \/ Inactive — not used for booking prices/);
-    assert.match(dartfordBody, /isolated from route estimates, booking totals, invoices, notifications, and customer charges/);
+    assert.match(dartfordBody, /Changes do not affect estimates, bookings, invoices, notifications, or customer charges/);
+    assert.match(dartfordBody, /Saving records a new history version; this schedule cannot be activated here/);
+    assert.doesNotMatch(dartfordBody, /Current draft amount/);
     assert.match(dartfordBody, /06:00–22:00 UK local time every day, including weekends and bank holidays/);
     assert.match(dartfordBody, /free from 22:00 to 06:00 UK local time/);
     assert.match(dartfordBody, /droppable axles whether raised or lowered/);
@@ -434,16 +444,17 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(dartfordBody, /vehicle is checked automatically/);
     assert.match(dartfordBody, /£25 for unlimited crossings or £12\.50 for 50 crossings/);
     assert.match(dartfordBody, /Effective date<\/dt><dd>Unknown \/ unverified/);
-    assert.match(dartfordBody, /There is no activation action/);
-    assert.equal((dartfordBody.match(/Crossing basis:<\/strong> Per individual crossing/g) ?? []).length, dartford.rates.length);
+    assert.match(dartfordBody, /this schedule cannot be activated here/);
     for (const rate of dartford.rates) {
-      assert.match(dartfordBody, new RegExp(`name="amount_${rate.key}"[\\s\\S]*?value="${rate.amount}"`));
-      assert.ok(dartfordBody.includes(rate.vehicleClass));
-      assert.ok(dartfordBody.includes(rate.paymentMethod));
-      assert.ok(dartfordBody.includes(rate.chargingPeriod));
-      assert.ok(dartfordBody.includes(rate.applicability));
-      assert.ok(dartfordBody.includes(rate.crossingBasis));
-      assert.ok(dartfordBody.includes(`£${rate.amount} per individual crossing`));
+      const rateCard = dartfordBody.match(new RegExp(`<fieldset class="london-fee-draft__rate">[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?</fieldset>`))?.[0];
+      assert.ok(rateCard, `rate card should include ${rate.key}`);
+      assert.ok(rateCard.includes(`<legend>${rate.vehicleClass} — ${rate.paymentMethod}</legend>`));
+      assert.match(rateCard, new RegExp(`<label for="london-fee-amount-${rate.key}">Amount \\(GBP per crossing\\)<\\/label>`));
+      assert.match(rateCard, new RegExp(`id="london-fee-amount-${rate.key}"[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?value="${rate.amount}"`));
+      assert.match(rateCard, /<summary>Rate conditions<\/summary>/);
+      assert.ok(rateCard.includes(rate.chargingPeriod));
+      assert.ok(rateCard.includes(rate.applicability));
+      assert.ok(rateCard.includes(rate.crossingBasis));
     }
 
     const tunnelPath = "/settings/toll-fees/blackwall-silvertown-tunnels/fee-settings";
@@ -470,7 +481,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     ]);
     assert.match(tunnelBody, /Blackwall and Silvertown tunnels draft schedule/);
     assert.match(tunnelBody, /Draft \/ Inactive — not used for booking prices/);
-    assert.match(tunnelBody, /isolated from route estimates, booking totals, invoices, notifications, and customer charges/);
+    assert.match(tunnelBody, /Changes do not affect estimates, bookings, invoices, notifications, or customer charges/);
     assert.match(tunnelBody, /One shared charging schedule covers Blackwall and Silvertown tunnels/);
     assert.match(tunnelBody, /each crossing must retain its actual tunnel identity \(Blackwall or Silvertown\)/);
     assert.match(tunnelBody, /per crossing, in either direction/);
@@ -489,15 +500,16 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(tunnelBody, /Eligible residents on certain benefits, sole traders, small businesses and charities may qualify/);
     assert.match(tunnelBody, /some vehicles may be exempt or receive 100% discount/);
     assert.doesNotMatch(tunnelBody, /£180|£90|PCN|penalt/i);
-    assert.equal((tunnelBody.match(/Crossing basis:<\/strong> Per individual crossing/g) ?? []).length, tunnels.rates.length);
     for (const rate of tunnels.rates) {
-      assert.match(tunnelBody, new RegExp(`name="amount_${rate.key}"[\\s\\S]*?value="${rate.amount}"`));
-      assert.ok(tunnelBody.includes(rate.vehicleClass));
-      assert.ok(tunnelBody.includes(rate.paymentMethod));
-      assert.ok(tunnelBody.includes(rate.chargingPeriod));
-      assert.ok(tunnelBody.includes(rate.applicability));
-      assert.ok(tunnelBody.includes(rate.crossingBasis));
-      assert.ok(tunnelBody.includes(`£${rate.amount} per individual crossing`));
+      const rateCard = tunnelBody.match(new RegExp(`<fieldset class="london-fee-draft__rate">[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?</fieldset>`))?.[0];
+      assert.ok(rateCard, `rate card should include ${rate.key}`);
+      assert.ok(rateCard.includes(`<legend>${rate.vehicleClass} — ${rate.paymentMethod}</legend>`));
+      assert.match(rateCard, new RegExp(`<label for="london-fee-amount-${rate.key}">Amount \\(GBP per crossing\\)<\\/label>`));
+      assert.match(rateCard, new RegExp(`id="london-fee-amount-${rate.key}"[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?value="${rate.amount}"`));
+      assert.match(rateCard, /<summary>Rate conditions<\/summary>/);
+      assert.ok(rateCard.includes(rate.chargingPeriod));
+      assert.ok(rateCard.includes(rate.applicability));
+      assert.ok(rateCard.includes(rate.crossingBasis));
     }
     for (const rate of [...dartford.rates, ...tunnels.rates]) {
       assert.equal(rate.currency, "GBP");
