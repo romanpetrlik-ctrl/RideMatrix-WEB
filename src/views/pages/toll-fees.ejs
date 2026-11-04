@@ -178,12 +178,12 @@
         ` : section === "fee-settings" ? `
           <section class="toll-fees-detail" aria-labelledby="toll-fees-detail-title">
             <h2 id="toll-fees-detail-title">Fee settings</h2>
-            <p>${feeSettingsDescription}</p>
+            <p>Edit the draft schedule below. Rate conditions and reference information are available alongside the rates.</p>
             ${feeScheduleSnapshot ? `
               <section class="london-fee-draft" aria-labelledby="london-fee-draft-title">
                 <h3 id="london-fee-draft-title">${feeScheduleSnapshot.schedule.title} draft schedule</h3>
                 <div class="notice london-fee-draft__status" role="status"><strong>Draft / Inactive — not used for booking prices</strong></div>
-                <p>This editable draft is isolated from route estimates, booking totals, invoices, notifications, and customer charges. This area does not calculate fees or charge customers. Saving creates a new history version. There is no activation action.</p>
+                <p class="london-fee-draft__intro">This draft does not calculate fees or charge customers. Changes do not affect estimates, bookings, invoices, notifications, or customer charges. Saving records a new history version; this schedule cannot be activated here.</p>
                 ${feeScheduleSaved ? `<p class="notice london-fee-draft__saved" role="status">Draft changes saved as version ${feeScheduleSnapshot.currentVersion}.</p>` : ""}
                 ${feeScheduleFormError ? `<div class="notice london-fee-draft__error" role="alert">${feeScheduleFormError}</div>` : ""}
                 <form class="london-fee-draft__form" method="post" action="${leafPath}/fee-settings">
@@ -196,11 +196,10 @@
                         ? submittedAmounts[rate.key]
                         : typeof rate.amount === "number" ? rate.amount.toFixed(2) : rate.amount;
                       const errorId = `london-fee-error-${rate.key}`;
-                      const formattedAmount = typeof rate.amount === "number" ? rate.amount.toFixed(2) : rate.amount;
                       return `
                         <fieldset class="london-fee-draft__rate">
                           <legend>${isCrossing ? `${rate.vehicleClass} — ${rate.paymentMethod}` : rate.label}</legend>
-                          <label for="london-fee-amount-${rate.key}">${isCrossing ? "Amount (GBP per crossing)" : "Daily rate (GBP)"}</label>
+                          <label for="london-fee-amount-${rate.key}">${isCrossing ? "Amount (GBP per crossing)" : "Daily rate (GBP per charging day)"}</label>
                           <div class="london-fee-draft__amount">
                             <span aria-hidden="true">£</span>
                             <input
@@ -217,19 +216,25 @@
                               aria-describedby="${errorId}"
                             />
                           </div>
-                          <p><strong>Current draft amount:</strong> £${formattedAmount} ${isCrossing ? "per individual crossing" : "per charging day"}</p>
-                          <p id="${errorId}" class="london-fee-draft__field-error" ${feeScheduleErrors[rate.key] ? 'role="alert"' : ""}>${feeScheduleErrors[rate.key] || (isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" && feeScheduleSnapshot.schedule.allowZeroAmounts ? "Enter a GBP amount from £0.00 with up to 2 decimal places." : "Enter a positive GBP amount with up to 2 decimal places.")}</p>
-                          ${isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" ? `
-                            <p><strong>Vehicle class/type:</strong> ${rate.vehicleClass}</p>
-                            <p><strong>Payment method:</strong> ${rate.paymentMethod}</p>
-                            <p><strong>Chargeable time:</strong> ${rate.chargingPeriod}</p>
-                            <p><strong>Applicability:</strong> ${rate.applicability}</p>
-                            <p><strong>Crossing basis:</strong> ${rate.crossingBasis}</p>
-                          ` : `
-                            <p><strong>Charging period:</strong> ${rate.chargingPeriod}</p>
-                            <p><strong>Applicability:</strong> ${rate.applicability}</p>
-                            <p><strong>Emissions threshold:</strong> ${rate.emissionsThresholds}</p>
-                          `}
+                          <p id="${errorId}" class="london-fee-draft__field-error${feeScheduleErrors[rate.key] ? " london-fee-draft__field-error--invalid" : ""}" ${feeScheduleErrors[rate.key] ? 'role="alert"' : ""}>${feeScheduleErrors[rate.key] || (isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" && feeScheduleSnapshot.schedule.allowZeroAmounts ? "Enter a GBP amount from £0.00 with up to 2 decimal places." : "Enter a positive GBP amount with up to 2 decimal places.")}</p>
+                          <details class="london-fee-draft__conditions">
+                            <summary>Rate conditions</summary>
+                            ${isCrossing && feeScheduleSnapshot.schedule.kind === "crossing" ? `
+                              <dl>
+                                <div><dt>Vehicle class/type</dt><dd>${rate.vehicleClass}</dd></div>
+                                <div><dt>Payment method</dt><dd>${rate.paymentMethod}</dd></div>
+                                <div><dt>Chargeable time</dt><dd>${rate.chargingPeriod}</dd></div>
+                                <div><dt>Applicability</dt><dd>${rate.applicability}</dd></div>
+                                <div><dt>Crossing basis</dt><dd>${rate.crossingBasis}</dd></div>
+                              </dl>
+                            ` : `
+                              <dl>
+                                <div><dt>Charging period</dt><dd>${rate.chargingPeriod}</dd></div>
+                                <div><dt>Applicability</dt><dd>${rate.applicability}</dd></div>
+                                <div><dt>Emissions threshold</dt><dd>${rate.emissionsThresholds}</dd></div>
+                              </dl>
+                            `}
+                          </details>
                         </fieldset>
                       `;
                     }).join("")}

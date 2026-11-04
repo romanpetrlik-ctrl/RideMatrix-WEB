@@ -3651,7 +3651,12 @@ button:visited,
 }
 
 .london-fee-draft__status {
-  border-left: 0.3rem solid var(--rm-faded-copper);
+  border-left: 0.3rem solid var(--rm-dark-teal);
+  background: #f2f8f7;
+}
+
+.london-fee-draft__intro {
+  max-width: 72ch;
 }
 
 .london-fee-draft__saved {
@@ -3659,7 +3664,7 @@ button:visited,
 }
 
 .london-fee-draft__error,
-.london-fee-draft__field-error {
+.london-fee-draft__field-error--invalid {
   color: var(--rm-danger, #8b1e1e);
 }
 
@@ -3679,28 +3684,37 @@ button:visited,
 .london-fee-draft__rate legend {
   padding: 0 0.35rem;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .london-fee-draft__rate label {
   display: block;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.5rem;
   font-weight: 700;
 }
 
 .london-fee-draft__amount {
   display: flex;
   max-width: 18rem;
+  min-height: 3.25rem;
   align-items: center;
   gap: 0.5rem;
+  padding: 0 0.65rem;
+  border: 1px solid #9bbab6;
+  border-radius: 0.35rem;
+  background: #f2f8f7;
+  color: var(--rm-text);
+  font-weight: 700;
 }
 
 .london-fee-draft__amount input {
   width: 100%;
   min-width: 0;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--rm-border);
-  border-radius: 0.35rem;
+  min-height: 3rem;
+  padding: 0.5rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--rm-text);
   font: inherit;
 }
@@ -3709,6 +3723,7 @@ button:visited,
 .london-fee-draft__actions button:focus-visible {
   outline: var(--rm-control-focus-outline);
   outline-offset: var(--rm-control-focus-offset);
+  border-radius: 0.15rem;
 }
 
 .london-fee-draft__field-error {
@@ -3719,6 +3734,39 @@ button:visited,
 .london-fee-draft__rate p,
 .london-fee-draft__details p {
   line-height: 1.5;
+}
+
+.london-fee-draft__conditions {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--rm-border);
+}
+
+.london-fee-draft__conditions summary {
+  width: fit-content;
+  color: var(--rm-dark-teal);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.london-fee-draft__conditions summary:focus-visible {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+}
+
+.london-fee-draft__conditions dl {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.london-fee-draft__conditions dt {
+  font-weight: 700;
+}
+
+.london-fee-draft__conditions dd {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
 }
 
 .london-fee-draft__actions {
