@@ -1286,6 +1286,64 @@ export const MIGRATIONS: Migration[] = [
         )
       ON CONFLICT (scheme, version) DO NOTHING;
     `
+  },
+  {
+    id: "0024_airport_fee_configurations",
+    sql: `
+      CREATE TABLE IF NOT EXISTS airport_fee_configurations (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL CHECK (length(trim(display_name)) BETWEEN 1 AND 160),
+        dropoff_place_id TEXT NOT NULL CHECK (length(trim(dropoff_place_id)) BETWEEN 1 AND 500),
+        dropoff_location_label TEXT NOT NULL CHECK (length(trim(dropoff_location_label)) BETWEEN 1 AND 500),
+        dropoff_latitude NUMERIC(10, 7) NOT NULL CHECK (dropoff_latitude BETWEEN -90 AND 90),
+        dropoff_longitude NUMERIC(10, 7) NOT NULL CHECK (dropoff_longitude BETWEEN -180 AND 180),
+        dropoff_fee NUMERIC(8, 2) NOT NULL CHECK (dropoff_fee BETWEEN 0 AND 999999.99),
+        pickup_place_id TEXT NOT NULL CHECK (length(trim(pickup_place_id)) BETWEEN 1 AND 500),
+        pickup_location_label TEXT NOT NULL CHECK (length(trim(pickup_location_label)) BETWEEN 1 AND 500),
+        pickup_latitude NUMERIC(10, 7) NOT NULL CHECK (pickup_latitude BETWEEN -90 AND 90),
+        pickup_longitude NUMERIC(10, 7) NOT NULL CHECK (pickup_longitude BETWEEN -180 AND 180),
+        pickup_fee NUMERIC(8, 2) NOT NULL CHECK (pickup_fee BETWEEN 0 AND 999999.99),
+        created_by_account_id TEXT,
+        created_by_email TEXT,
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        archived_at TIMESTAMPTZ,
+        archived_by_account_id TEXT,
+        archived_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_airport_fee_configurations_active
+        ON airport_fee_configurations (display_name, id)
+        WHERE archived_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS airport_fee_configuration_audit (
+        id BIGSERIAL PRIMARY KEY,
+        airport_id TEXT NOT NULL REFERENCES airport_fee_configurations(id),
+        event_type TEXT NOT NULL CHECK (event_type IN ('created', 'updated', 'archived')),
+        snapshot JSONB NOT NULL CHECK (jsonb_typeof(snapshot) = 'object'),
+        actor_account_id TEXT,
+        actor_email TEXT,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_airport_fee_configuration_audit_airport
+        ON airport_fee_configuration_audit (airport_id, occurred_at DESC);
+
+      CREATE OR REPLACE FUNCTION rm_reject_airport_fee_configuration_audit_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Airport fee configuration audit events are append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS airport_fee_configuration_audit_append_only
+        ON airport_fee_configuration_audit;
+      CREATE TRIGGER airport_fee_configuration_audit_append_only
+        BEFORE UPDATE OR DELETE ON airport_fee_configuration_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_airport_fee_configuration_audit_mutation();
+    `
   }
 ];
 

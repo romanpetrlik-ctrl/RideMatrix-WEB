@@ -32,6 +32,95 @@
             </a>
           `).join("")}
         </nav>
+      ` : category.slug === "airport-fees" ? `
+        <p class="toll-fees-page__intro">${category.description}</p>
+        <div class="notice toll-fees-page__placeholder" role="status">Configured airport fees are not applied to fares. Pricing integration will be added with the pricing work.</div>
+        ${airportFeeSaved ? `<p class="notice airport-fees__notice" role="status">Airport and fees saved.</p>` : ""}
+        ${airportFeeArchived ? `<p class="notice airport-fees__notice" role="status">Airport record archived.</p>` : ""}
+        ${airportFeeFormError ? `<div class="notice airport-fees__error" role="alert">${airportFeeFormError}</div>` : ""}
+        <section class="airport-fees__form-section" aria-labelledby="airport-fees-form-title">
+          <h2 id="airport-fees-form-title">${airportFeeForm.id ? "Edit Airport and Fee" : "Add Airport and Fee"}</h2>
+          <p>Choose the operational pickup and drop-off points separately. For Bournemouth Airport, search for Bournemouth Airport Car Park 1 for the verified operational point; the airport display name remains your choice.</p>
+          ${airportFeeErrors.form ? `<div class="notice airport-fees__error" role="alert">${airportFeeErrors.form}</div>` : ""}
+          ${airportFeeMapConfigured ? `
+            <form class="airport-fees__form" method="post" action="${leafPath}">
+              ${locals.csrfField || ""}
+              <input type="hidden" name="id" value="${airportFeeForm.id}" />
+              <div class="airport-fees__field">
+                <label for="airport-display-name">Airport display name</label>
+                <input id="airport-display-name" name="displayName" type="text" maxlength="160" required value="${airportFeeForm.displayName}" aria-invalid="${airportFeeErrors.displayName ? "true" : "false"}" aria-describedby="airport-display-name-error" />
+                <p id="airport-display-name-error" class="airport-fees__field-error${airportFeeErrors.displayName ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors.displayName ? 'role="alert"' : ""}>${airportFeeErrors.displayName || "For example, Bournemouth Airport (BOH)."}</p>
+              </div>
+              ${["dropoff", "pickup"].map((operation) => {
+                const title = operation === "dropoff" ? "Drop-off" : "Pick-up";
+                const locationId = `airport-${operation}-location`;
+                const feeId = `airport-${operation}-fee`;
+                const errorKey = `${operation}Location`;
+                return `
+                  <fieldset class="airport-fees__operation" data-airport-place-root data-airport-place-browser-key="${airportFeeMapBrowserApiKey}">
+                    <legend>${title}</legend>
+                    <div class="airport-fees__field">
+                      <label for="${locationId}">${title} location</label>
+                      <input id="${locationId}" name="${operation}LocationLabel" type="text" readonly required value="${airportFeeForm[`${operation}LocationLabel`]}" placeholder="Choose a Google Places result" aria-invalid="${airportFeeErrors[errorKey] ? "true" : "false"}" aria-describedby="${locationId}-help ${locationId}-error" />
+                      <input type="hidden" name="${operation}PlaceId" value="${airportFeeForm[`${operation}PlaceId`]}" />
+                      <input type="hidden" name="${operation}Latitude" value="${airportFeeForm[`${operation}Latitude`]}" />
+                      <input type="hidden" name="${operation}Longitude" value="${airportFeeForm[`${operation}Longitude`]}" />
+                      <div class="airport-fees__autocomplete-host" data-airport-place-autocomplete-host></div>
+                      <p id="${locationId}-help" class="airport-fees__help" data-airport-place-status>Search and select a Google Places result to save its operational point.</p>
+                      <p id="${locationId}-error" class="airport-fees__field-error${airportFeeErrors[errorKey] ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors[errorKey] ? 'role="alert"' : ""}>${airportFeeErrors[errorKey] || "A Google Places selection is required."}</p>
+                    </div>
+                    <div class="airport-fees__field">
+                      <label for="${feeId}">${title} fee (GBP)</label>
+                      <div class="airport-fees__amount"><span aria-hidden="true">£</span><input id="${feeId}" name="${operation}Fee" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required value="${airportFeeForm[`${operation}Fee`]}" aria-invalid="${airportFeeErrors[`${operation}Fee`] ? "true" : "false"}" aria-describedby="${feeId}-error" /></div>
+                      <p id="${feeId}-error" class="airport-fees__field-error${airportFeeErrors[`${operation}Fee`] ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors[`${operation}Fee`] ? 'role="alert"' : ""}>${airportFeeErrors[`${operation}Fee`] || "Enter an amount with up to 2 decimal places; £0.00 is allowed."}</p>
+                    </div>
+                  </fieldset>
+                `;
+              }).join("")}
+              <div class="airport-fees__actions">
+                <button class="button button--primary" type="submit">${airportFeeForm.id ? "Save airport changes" : "Save airport and fees"}</button>
+                ${airportFeeForm.id ? `<a class="button button--secondary" href="${leafPath}">Cancel edit</a>` : ""}
+              </div>
+            </form>
+            <script src="/js/google-map-preview.js" defer></script>
+            <script src="/js/airport-fees.js" defer></script>
+          ` : `
+            <div class="notice airport-fees__error" role="alert"><strong>Google Places is unavailable.</strong> Enable Google Maps and configure a browser API key to select operational airport locations.</div>
+          `}
+        </section>
+        <section class="airport-fees__records" aria-labelledby="airport-fees-records-title">
+          <h2 id="airport-fees-records-title">Saved airports</h2>
+          ${airportFeeRecords.length ? `
+            <div class="airport-fees__record-list">
+              ${airportFeeRecords.map((record) => `
+                <article class="airport-fees__record">
+                  <div class="airport-fees__record-heading">
+                    <h3>${record.displayName}</h3>
+                    <div class="airport-fees__actions">
+                      <a class="button button--secondary button--small" href="${leafPath}?edit=${encodeURIComponent(record.id)}">Edit</a>
+                      <button class="button button--secondary button--small" type="button" data-airport-delete-open="airport-delete-${record.id}">Delete</button>
+                    </div>
+                  </div>
+                  <dl>
+                    <div><dt>Drop-off</dt><dd>${record.dropoffLocationLabel} — £${record.dropoffFee}</dd></div>
+                    <div><dt>Pick-up</dt><dd>${record.pickupLocationLabel} — £${record.pickupFee}</dd></div>
+                  </dl>
+                  <dialog id="airport-delete-${record.id}" aria-labelledby="airport-delete-title-${record.id}">
+                    <form method="post" action="${leafPath}/${encodeURIComponent(record.id)}/delete">
+                      ${locals.csrfField || ""}
+                      <h3 id="airport-delete-title-${record.id}">Delete ${record.displayName}?</h3>
+                      <p>This archives the airport record and removes it from the saved list.</p>
+                      <div class="airport-fees__actions">
+                        <button class="button button--primary" type="submit">Confirm delete</button>
+                        <button class="button button--secondary" type="button" data-airport-delete-cancel>Cancel</button>
+                      </div>
+                    </form>
+                  </dialog>
+                </article>
+              `).join("")}
+            </div>
+          ` : `<p>No airport records have been saved.</p>`}
+        </section>
       ` : category.areas && !area ? `
         <p class="toll-fees-page__intro">${category.description}</p>
         ${category.slug === "london-lez-ulez-congestion-charge"

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MIGRATION_ADVISORY_LOCK_KEY, runMigrations } from "./migrations";
+import { MIGRATIONS, MIGRATION_ADVISORY_LOCK_KEY, runMigrations } from "./migrations";
 
 test("migration runner holds advisory lock while checking migration state", async () => {
   const calls: { text: string; params?: unknown[] }[] = [];
@@ -46,4 +46,18 @@ test("migration runner releases advisory lock if migration check fails", async (
 
   assert.equal(calls[0], "SELECT pg_advisory_lock($1, $2)");
   assert.equal(calls[calls.length - 1], "SELECT pg_advisory_unlock($1, $2)");
+});
+
+test("airport fee migration stores separate operational Places and preserves archived audit history", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0024_airport_fee_configurations");
+  assert.ok(migration);
+  assert.match(migration.sql, /dropoff_place_id TEXT NOT NULL/);
+  assert.match(migration.sql, /pickup_place_id TEXT NOT NULL/);
+  assert.match(migration.sql, /dropoff_latitude NUMERIC/);
+  assert.match(migration.sql, /pickup_longitude NUMERIC/);
+  assert.match(migration.sql, /dropoff_fee NUMERIC\(8, 2\) NOT NULL CHECK \(dropoff_fee BETWEEN 0 AND 999999\.99\)/);
+  assert.match(migration.sql, /pickup_fee NUMERIC\(8, 2\) NOT NULL CHECK \(pickup_fee BETWEEN 0 AND 999999\.99\)/);
+  assert.match(migration.sql, /archived_at TIMESTAMPTZ/);
+  assert.match(migration.sql, /airport_fee_configuration_audit_append_only/);
+  assert.doesNotMatch(migration.sql, /customer_bookings|fare_totals/i);
 });

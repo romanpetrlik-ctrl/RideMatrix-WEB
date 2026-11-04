@@ -4,6 +4,14 @@ import { noStoreProtectedResponse } from "../middleware/no-store";
 import { requireCsrfToken } from "../middleware/csrf";
 import { getInternalRoleLabel } from "../services/staff-users";
 import {
+  airportFeeRecordToForm,
+  airportFeeStore,
+  validateAirportFeeForm,
+  type AirportFeeFormValues,
+  type AirportFeeRecord,
+  type AirportFeeStore
+} from "../services/airport-fees";
+import {
   londonFeeScheduleStore,
   LondonFeeScheduleVersionConflictError,
   type LondonFeeScheduleScheme,
@@ -22,6 +30,7 @@ import { readMapConfiguration } from "../services/maps";
 type RoleSectionsRouterOptions = {
   appTitle: string;
   feeScheduleStore?: LondonFeeScheduleStore;
+  airportFeeStore?: AirportFeeStore;
 };
 
 type TollFeesRenderOptions = {
@@ -29,6 +38,12 @@ type TollFeesRenderOptions = {
   feeScheduleErrors?: Record<string, string>;
   feeScheduleFormError?: string;
   submittedAmounts?: Record<string, string>;
+  airportFeeRecords?: AirportFeeRecord[];
+  airportFeeForm?: AirportFeeFormValues;
+  airportFeeErrors?: Record<string, string>;
+  airportFeeFormError?: string;
+  airportFeeSaved?: boolean;
+  airportFeeArchived?: boolean;
   statusCode?: number;
 };
 
@@ -71,7 +86,7 @@ export type TollFeeCategory = {
 };
 
 export const tollFeeCategories: readonly TollFeeCategory[] = [
-  { slug: "airport-fees", title: "Airport fees", description: "Airport-specific fees and associated reference information." },
+  { slug: "airport-fees", title: "Airport fees", description: "Configure airport pickup and drop-off locations and fees." },
   {
     slug: "clean-air-zones",
     title: "Clean Air Zones (CAZ)",
@@ -118,6 +133,25 @@ type TollFeesPage = {
 };
 
 type Breadcrumb = { label: string; href?: string };
+
+const emptyAirportFeeForm: AirportFeeFormValues = {
+  id: "",
+  displayName: "",
+  dropoffPlaceId: "",
+  dropoffLocationLabel: "",
+  dropoffLatitude: "",
+  dropoffLongitude: "",
+  dropoffFee: "",
+  pickupPlaceId: "",
+  pickupLocationLabel: "",
+  pickupLatitude: "",
+  pickupLongitude: "",
+  pickupFee: ""
+};
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
 
 function sectionLabel(section: TollFeeSection): string {
   return section === "reference-data" ? "Reference data (managed)" : "Fee settings";
@@ -196,6 +230,7 @@ async function renderTollFeesPage(
   appTitle: string,
   page: TollFeesPage,
   feeScheduleStore: LondonFeeScheduleStore,
+  airportFeesStore: AirportFeeStore,
   renderOptions: TollFeesRenderOptions = {}
 ): Promise<void> {
   try {
@@ -226,6 +261,29 @@ async function renderTollFeesPage(
               : undefined;
     const feeScheduleSnapshot = renderOptions.feeScheduleSnapshot ??
       (feeScheduleScheme ? await feeScheduleStore.load(feeScheduleScheme) : undefined);
+    const airportEditingId = page.category?.slug === "airport-fees" && typeof req.query.edit === "string"
+      ? req.query.edit
+      : "";
+    const airportEditingRecord = airportEditingId ? await airportFeesStore.get(airportEditingId) : null;
+    if (airportEditingId && !airportEditingRecord) {
+      res.status(404).render("pages/unavailable", { title: "Not found", appTitle });
+      return;
+    }
+    const airportFeeRecords = page.category?.slug === "airport-fees"
+      ? (renderOptions.airportFeeRecords ?? await airportFeesStore.list()).map((record) => ({
+        ...record,
+        id: escapeHtml(record.id),
+        displayName: escapeHtml(record.displayName),
+        dropoffLocationLabel: escapeHtml(record.dropoffLocationLabel),
+        dropoffFee: escapeHtml(record.dropoffFee),
+        pickupLocationLabel: escapeHtml(record.pickupLocationLabel),
+        pickupFee: escapeHtml(record.pickupFee)
+      }))
+      : [];
+    const airportFeeForm = Object.fromEntries(
+      Object.entries(renderOptions.airportFeeForm ?? (airportEditingRecord ? airportFeeRecordToForm(airportEditingRecord) : emptyAirportFeeForm))
+        .map(([key, value]) => [key, escapeHtml(value)])
+    ) as AirportFeeFormValues;
     const londonUlezBoundary = page.area?.slug === "london-ulez" && page.section === "reference-data"
       ? getLondonUlezBoundary()
       : undefined;
@@ -245,6 +303,16 @@ async function renderTollFeesPage(
       referenceDataDescription,
       feeSettingsDescription,
       feeScheduleSnapshot,
+      airportFeeRecords,
+      airportFeeForm,
+      airportFeeErrors: renderOptions.airportFeeErrors ?? {},
+      airportFeeFormError: renderOptions.airportFeeFormError,
+      airportFeeSaved: renderOptions.airportFeeSaved ?? req.query.saved === "1",
+      airportFeeArchived: renderOptions.airportFeeArchived ?? req.query.archived === "1",
+      airportFeeMapConfigured: Boolean(mapConfiguration.enabled && mapConfiguration.browserApiKey),
+      airportFeeMapBrowserApiKey: mapConfiguration.enabled
+        ? escapeHtml(mapConfiguration.browserApiKey ?? "")
+        : "",
       feeScheduleErrors: renderOptions.feeScheduleErrors ?? {},
       feeScheduleFormError: renderOptions.feeScheduleFormError,
       feeScheduleSaved: req.query.saved === "1",
@@ -300,6 +368,8 @@ async function renderTollFeesPage(
 export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Router {
   const router = Router();
   const feeScheduleStore = options.feeScheduleStore ?? londonFeeScheduleStore;
+  const airportFeesStore = options.airportFeeStore ?? airportFeeStore;
+  const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   router.use(noStoreProtectedResponse);
 
   router.get(
@@ -399,7 +469,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         const feeSettingsPage: TollFeesPage = { ...page, section: "fee-settings" };
 
         if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
-          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, {
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, airportFeesStore, {
             feeScheduleSnapshot: snapshot,
             feeScheduleErrors: errors,
             feeScheduleFormError: "The draft version is missing or invalid. Reload this page before saving.",
@@ -408,7 +478,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           });
         }
         if (Object.keys(errors).length > 0) {
-          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, {
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, airportFeesStore, {
             feeScheduleSnapshot: snapshot,
             feeScheduleErrors: errors,
             submittedAmounts,
@@ -424,7 +494,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         } catch (error) {
           if (!(error instanceof LondonFeeScheduleVersionConflictError)) throw error;
           const latest = await feeScheduleStore.load(scheme);
-          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, {
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, airportFeesStore, {
             feeScheduleSnapshot: latest,
             feeScheduleFormError: error.message,
             statusCode: 409
@@ -438,26 +508,93 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     });
   };
 
+  const registerAirportFeesRoutes = (path: string, category: TollFeeCategory) => {
+    router.get(path, (req, res, next) => {
+      void renderTollFeesPage(req, res, next, options.appTitle, { category }, feeScheduleStore, airportFeesStore);
+    });
+
+    router.post(path, csrfGuard, async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const { values, errors } = validateAirportFeeForm(req.body);
+        const recordId = values.id || null;
+        if (!recordId && req.body?.id) errors.form = "The selected airport record is invalid. Reload the page and try again.";
+        if (Object.keys(errors).length > 0) {
+          return renderTollFeesPage(req, res, next, options.appTitle, { category }, feeScheduleStore, airportFeesStore, {
+            airportFeeRecords: await airportFeesStore.list(),
+            airportFeeForm: values,
+            airportFeeErrors: errors,
+            statusCode: 400
+          });
+        }
+
+        const record = await airportFeesStore.save(recordId, values, {
+          accountId: session.user.id,
+          email: session.user.email
+        });
+        if (!record) {
+          return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+        }
+        return res.redirect(303, `${path}?saved=1`);
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    router.post(`${path}/:airportId/delete`, csrfGuard, async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const archived = await airportFeesStore.archive(String(req.params.airportId), {
+          accountId: session.user.id,
+          email: session.user.email
+        });
+        if (!archived) {
+          return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+        }
+        return res.redirect(303, `${path}?archived=1`);
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+
   router.get("/settings/toll-fees", (req, res, next) => {
-    void renderTollFeesPage(req, res, next, options.appTitle, {}, feeScheduleStore);
+    void renderTollFeesPage(req, res, next, options.appTitle, {}, feeScheduleStore, airportFeesStore);
   });
 
   for (const category of tollFeeCategories) {
     const categoryPath = `/settings/toll-fees/${category.slug}`;
+    if (category.slug === "airport-fees") {
+      registerAirportFeesRoutes(categoryPath, category);
+      continue;
+    }
+
     router.get(categoryPath, (req, res, next) => {
-      void renderTollFeesPage(req, res, next, options.appTitle, { category }, feeScheduleStore);
+      void renderTollFeesPage(req, res, next, options.appTitle, { category }, feeScheduleStore, airportFeesStore);
     });
 
     if (category.areas) {
       for (const area of category.areas) {
         const areaPath = `${categoryPath}/${area.slug}`;
         router.get(areaPath, (req, res, next) => {
-          void renderTollFeesPage(req, res, next, options.appTitle, { category, area }, feeScheduleStore);
+          void renderTollFeesPage(req, res, next, options.appTitle, { category, area }, feeScheduleStore, airportFeesStore);
         });
 
         for (const section of ["reference-data", "fee-settings"] as const) {
           router.get(`${areaPath}/${section}`, (req, res, next) => {
-            void renderTollFeesPage(req, res, next, options.appTitle, { category, area, section }, feeScheduleStore);
+            void renderTollFeesPage(req, res, next, options.appTitle, { category, area, section }, feeScheduleStore, airportFeesStore);
           });
         }
 
@@ -471,7 +608,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
 
     for (const section of ["reference-data", "fee-settings"] as const) {
       router.get(`${categoryPath}/${section}`, (req, res, next) => {
-        void renderTollFeesPage(req, res, next, options.appTitle, { category, section }, feeScheduleStore);
+        void renderTollFeesPage(req, res, next, options.appTitle, { category, section }, feeScheduleStore, airportFeesStore);
       });
     }
 
