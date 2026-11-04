@@ -3818,8 +3818,8 @@ button:visited,
 
 .airport-fees__form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
-  max-width: 58rem;
 }
 
 .airport-fees__field {
@@ -3839,10 +3839,12 @@ button:visited,
 
 .airport-fees__operation {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(9.5rem, 0.65fr);
+  align-items: start;
+  gap: 0.75rem;
+  min-width: 0;
   margin: 0;
-  padding: 1rem;
+  padding: 0.75rem;
   border: 1px solid var(--rm-border);
   border-radius: var(--rm-control-border-radius);
 }
@@ -3864,6 +3866,13 @@ button:visited,
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
+}
+
+.airport-fees__amount input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 .airport-fees__amount > span {
@@ -3934,6 +3943,29 @@ button:visited,
 
 .airport-fees__record dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
+}
+
+@media (min-width: 80rem) {
+  .airport-fees__form {
+    grid-template-columns: minmax(12rem, 1fr) minmax(25rem, 2fr) minmax(25rem, 2fr) max-content;
+    align-items: start;
+    gap: 0.75rem;
+  }
+
+  .airport-fees__actions {
+    align-self: center;
+  }
+}
+
+@media (min-width: 52.01rem) and (max-width: 79.99rem) {
+  .airport-fees__form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .airport-fees__form > .airport-fees__field,
+  .airport-fees__form > .airport-fees__actions {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 40rem) {
