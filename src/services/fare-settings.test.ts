@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { MIGRATIONS } from "../database/migrations";
+import calculateBrowserDistanceSlabFare from "../../public/js/distance-slab-calculator";
 import {
   EMPTY_FARE_SETTINGS,
+  calculateDistanceSlabFare,
+  validateDistanceSlabsForm,
   validateFareSettingsForm,
-  type BankHolidaySurchargePeriod
+  type BankHolidaySurchargePeriod,
+  type DistanceSlab
 } from "./fare-settings";
 
 const dailyAndBankDisabled = {
@@ -226,4 +231,120 @@ test("Fare Settings persistence uses versioned append-only configuration, separa
   assert.match(migration.sql, /fare_settings_history/);
   assert.match(migration.sql, /fare_settings_history_append_only/);
   assert.doesNotMatch(migration.sql, /customer_bookings|fare_totals|booking_total/i);
+});
+
+const distanceSlabs: DistanceSlab[] = [
+  { startMiles: "0", endMiles: "10", ratePerMile: "3.00" },
+  { startMiles: "10", endMiles: "", ratePerMile: "2.70" }
+];
+
+test("distance slabs require a zero start, contiguous ranges, and exactly one open-ended final slab", () => {
+  assert.deepEqual(validateDistanceSlabsForm({ distanceSlabs }).errors, {});
+  assert.deepEqual(validateDistanceSlabsForm({
+    distanceSlabs: [{ startMiles: "0.0", endMiles: "", ratePerMile: "1.25" }]
+  }).errors, {});
+
+  const invalidSchedules: Array<{ slabs: DistanceSlab[]; errorKey: string }> = [
+    { slabs: [], errorKey: "distanceSlabs.0.startMiles" },
+    { slabs: [{ startMiles: "1", endMiles: "", ratePerMile: "2" }], errorKey: "distanceSlabs.0.startMiles" },
+    {
+      slabs: [
+        { startMiles: "0", endMiles: "10", ratePerMile: "2" },
+        { startMiles: "11", endMiles: "", ratePerMile: "1" }
+      ],
+      errorKey: "distanceSlabs.1.startMiles"
+    },
+    {
+      slabs: [
+        { startMiles: "0", endMiles: "10", ratePerMile: "2" },
+        { startMiles: "9", endMiles: "", ratePerMile: "1" }
+      ],
+      errorKey: "distanceSlabs.1.startMiles"
+    },
+    {
+      slabs: [
+        { startMiles: "0", endMiles: "", ratePerMile: "2" },
+        { startMiles: "10", endMiles: "", ratePerMile: "1" }
+      ],
+      errorKey: "distanceSlabs.0.endMiles"
+    },
+    {
+      slabs: [{ startMiles: "0", endMiles: "10", ratePerMile: "2" }],
+      errorKey: "distanceSlabs.0.endMiles"
+    },
+    {
+      slabs: [
+        { startMiles: "0", endMiles: "10", ratePerMile: "2" },
+        { startMiles: "10", endMiles: "10", ratePerMile: "1" }
+      ],
+      errorKey: "distanceSlabs.1.endMiles"
+    }
+  ];
+  for (const { slabs, errorKey } of invalidSchedules) {
+    assert.ok(validateDistanceSlabsForm({ distanceSlabs: slabs }).errors[errorKey], JSON.stringify(slabs));
+  }
+});
+
+test("distance slabs reject negative, malformed, and non-finite distances and rates", () => {
+  for (const value of ["-1", "Infinity", "NaN", "1e2", "1,5", ""]) {
+    const invalidStart = validateDistanceSlabsForm({
+      distanceSlabs: [{ startMiles: value, endMiles: "", ratePerMile: "1" }]
+    });
+    assert.ok(invalidStart.errors["distanceSlabs.0.startMiles"], value);
+    const invalidRate = validateDistanceSlabsForm({
+      distanceSlabs: [{ startMiles: "0", endMiles: "", ratePerMile: value }]
+    });
+    assert.ok(invalidRate.errors["distanceSlabs.0.ratePerMile"], value);
+  }
+  assert.ok(validateDistanceSlabsForm({
+    distanceSlabs: [{ startMiles: "0", endMiles: "NaN", ratePerMile: "1" }]
+  }).errors["distanceSlabs.0.endMiles"]);
+});
+
+test("distance slab calculations are progressive and use start-inclusive end-exclusive boundaries", () => {
+  assert.equal(calculateDistanceSlabFare(distanceSlabs, "12"), "35.40");
+  assert.equal(calculateDistanceSlabFare(distanceSlabs, "12.4"), "36.48");
+  assert.equal(calculateDistanceSlabFare(distanceSlabs, "10"), "30.00");
+  assert.equal(calculateDistanceSlabFare(distanceSlabs, "10.1"), "30.27");
+  assert.equal(calculateDistanceSlabFare(distanceSlabs, "20"), "57.00");
+  assert.equal(calculateDistanceSlabFare(
+    [{ startMiles: "0", endMiles: "", ratePerMile: "2.75" }],
+    "123.456"
+  ), "339.50");
+});
+
+test("distance slab calculation handles fractional miles and rounds only the final total half-up", () => {
+  assert.equal(calculateDistanceSlabFare(
+    [{ startMiles: "0", endMiles: "", ratePerMile: "0.1" }],
+    "0.15"
+  ), "0.02");
+  assert.equal(calculateDistanceSlabFare(
+    [
+      { startMiles: "0", endMiles: "0.1", ratePerMile: "0.05" },
+      { startMiles: "0.1", endMiles: "", ratePerMile: "0.05" }
+    ],
+    "0.3"
+  ), "0.02");
+  assert.throws(() => calculateDistanceSlabFare(distanceSlabs, "-0.5"), /valid distance/);
+});
+
+test("distance preview recalculates from unsaved form values on slab and test-distance input", () => {
+  const unsavedSlabs = structuredClone(distanceSlabs);
+  assert.equal(calculateBrowserDistanceSlabFare(unsavedSlabs, "12"), "35.40");
+  unsavedSlabs[1].ratePerMile = "2.80";
+  assert.equal(calculateBrowserDistanceSlabFare(unsavedSlabs, "12"), "35.60");
+  assert.equal(calculateBrowserDistanceSlabFare(unsavedSlabs, "12.4"), "36.72");
+
+  const script = readFileSync("public/js/fare-settings.js", "utf8");
+  assert.match(script, /slabList\?\.addEventListener\("input", \(event\) => \{\s*updateSlabInputErrors\(event\);\s*calculatePreview\(\);/);
+  assert.match(script, /testDistance\?\.addEventListener\("input", calculatePreview\)/);
+  assert.match(script, /window\.calculateDistanceSlabFare\(slabs, distance\)/);
+});
+
+test("distance slab migration adds an empty current setting without changing audit snapshots or booking prices", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0027_fare_settings_distance_slabs");
+  assert.ok(migration);
+  assert.match(migration.sql, /jsonb_set\(configuration, '\{distanceSlabs\}', '\[\]'::jsonb, true\)/);
+  assert.match(migration.sql, /WHERE NOT \(configuration \? 'distanceSlabs'\)/);
+  assert.doesNotMatch(migration.sql, /fare_settings_history|customer_bookings|fare_totals|booking_total/i);
 });

@@ -1415,6 +1415,14 @@ export const MIGRATIONS: Migration[] = [
         BEFORE UPDATE OR DELETE ON fare_settings_history
         FOR EACH ROW EXECUTE FUNCTION rm_reject_fare_settings_history_mutation();
     `
+  },
+  {
+    id: "0027_fare_settings_distance_slabs",
+    sql: `
+      UPDATE fare_settings_current
+         SET configuration = jsonb_set(configuration, '{distanceSlabs}', '[]'::jsonb, true)
+       WHERE NOT (configuration ? 'distanceSlabs');
+    `
   }
 ];
 

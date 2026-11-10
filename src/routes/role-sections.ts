@@ -30,6 +30,7 @@ import { readMapConfiguration } from "../services/maps";
 import {
   fareSettingsStore,
   FareSettingsVersionConflictError,
+  validateDistanceSlabsForm,
   validateFareSettingsForm,
   type FareSettingsConfiguration,
   type FareSettingsSnapshot,
@@ -138,7 +139,7 @@ export type FareSettingsCategory = {
 
 export const fareSettingsCategories: readonly FareSettingsCategory[] = [
   { slug: "fixed-fares", title: "Fixed fares", description: "Future configuration for fixed fare rules.", configurable: false },
-  { slug: "distance-slabs", title: "Distance slabs", description: "Future configuration for distance-based fare bands.", configurable: false },
+  { slug: "distance-slabs", title: "Distance slabs", description: "Configure progressive base rates by journey distance.", configurable: true },
   { slug: "extras", title: "Extras", description: "Future configuration for fare extras.", configurable: false },
   { slug: "fare-surcharge-settings", title: "Fare surcharge settings", description: "Configure a recurring daily fare surcharge.", configurable: true },
   { slug: "bank-holiday-fare-settings", title: "Bank holiday fare settings", description: "Configure explicit date and time surcharge periods.", configurable: true }
@@ -443,6 +444,11 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       const categoryTitle = page.category?.title;
       const safeConfiguration: FareSettingsConfiguration = {
         ...configuration,
+        distanceSlabs: (configuration.distanceSlabs ?? []).map((slab) => ({
+          startMiles: escapeHtml(slab.startMiles),
+          endMiles: escapeHtml(slab.endMiles),
+          ratePerMile: escapeHtml(slab.ratePerMile)
+        })),
         dailySurcharge: {
           ...configuration.dailySurcharge,
           percentage: escapeHtml(configuration.dailySurcharge.percentage),
@@ -515,7 +521,19 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }
 
         const snapshot = await fareStore.load();
-        const { configuration, errors } = validateFareSettingsForm(req.body, snapshot.configuration);
+        const distanceSlabSubmission = category.slug === "distance-slabs"
+          ? validateDistanceSlabsForm(req.body)
+          : null;
+        const validatedFareSettings = distanceSlabSubmission
+          ? {
+            configuration: {
+              ...snapshot.configuration,
+              distanceSlabs: distanceSlabSubmission.distanceSlabs
+            },
+            errors: distanceSlabSubmission.errors
+          }
+          : validateFareSettingsForm(req.body, snapshot.configuration);
+        const { configuration, errors } = validatedFareSettings;
         const rawVersion = req.body?.baseVersion;
         const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
           ? Number(rawVersion)

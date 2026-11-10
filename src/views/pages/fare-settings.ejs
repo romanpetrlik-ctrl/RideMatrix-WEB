@@ -39,10 +39,67 @@
         </div>
       ` : `
         <p class="fare-settings__intro">${category.description}</p>
-        <div class="notice fare-settings__configuration-only" role="status">
+        ${category.slug !== "distance-slabs" ? `<div class="notice fare-settings__configuration-only" role="status">
           This saves configuration only. No fare is calculated or applied and booking totals are unchanged. Time values use <strong>Europe/London</strong> local time.
-        </div>
-        ${category.slug === "fare-surcharge-settings" ? `
+        </div>` : ""}
+        ${category.slug === "distance-slabs" ? `
+          <div class="notice fare-settings__configuration-only" role="status">
+            This is one shared base distance-rate table for all vehicle categories. Vehicle-category uplifts are configured separately in future work. This saves configuration only; it is not a booking quote and does not calculate or change booking fares or totals.
+          </div>
+          <form class="fare-settings__form" method="post" action="/settings/fare-settings/${category.slug}" data-distance-slab-form>
+            ${locals.csrfField || ""}
+            <input type="hidden" name="baseVersion" value="${currentVersion}" />
+            <input type="hidden" name="distanceSlabsSubmitted" value="yes" />
+            <section class="fare-settings__period-section" aria-labelledby="distance-slabs-title">
+              <h2 id="distance-slabs-title">Progressive rates by distance</h2>
+              <p class="fare-settings__help">Each mile is charged at the rate for its distance band. Boundaries are start-inclusive and end-exclusive. Slabs must start at 0 miles and be contiguous; leave the final end distance blank for an open-ended rate.</p>
+              ${errors.distanceSlabs ? `<p class="fare-settings__field-error fare-settings__field-error--invalid" role="alert">${errors.distanceSlabs}</p>` : ""}
+              <div class="fare-settings__slab-table-wrap">
+                <table class="fare-settings__slab-table">
+                  <thead><tr><th scope="col">Slab</th><th scope="col">Start distance (miles)</th><th scope="col">End distance (miles)</th><th scope="col">Rate (GBP per mile)</th><th scope="col">Actions</th></tr></thead>
+                  <tbody data-distance-slab-list>
+                ${(configuration.distanceSlabs.length ? configuration.distanceSlabs : [{ startMiles: "", endMiles: "", ratePerMile: "" }]).map((slab, index, slabs) => {
+                  const finalSlab = index === slabs.length - 1;
+                  return `
+                    <tr data-distance-slab data-index="${index}">
+                      <th scope="row" data-slab-title>Slab ${index + 1}${finalSlab ? " — open-ended final slab" : ""}</th>
+                      <td><div class="fare-settings__field"><label class="visually-hidden" for="distance-slab-${index}-start">Start distance (miles)</label><input id="distance-slab-${index}-start" name="distanceSlabs[${index}][startMiles]" type="text" inputmode="decimal" value="${slab.startMiles}" aria-invalid="${errors[`distanceSlabs.${index}.startMiles`] ? "true" : "false"}" aria-describedby="distance-slab-${index}-start-error" /><p id="distance-slab-${index}-start-error" class="fare-settings__field-error${errors[`distanceSlabs.${index}.startMiles`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`distanceSlabs.${index}.startMiles`] ? 'role="alert"' : ""}>${errors[`distanceSlabs.${index}.startMiles`] || ""}</p></div></td>
+                      <td><div class="fare-settings__field"><label class="visually-hidden" for="distance-slab-${index}-end">End distance (miles)</label><input id="distance-slab-${index}-end" name="distanceSlabs[${index}][endMiles]" type="text" inputmode="decimal" value="${slab.endMiles}" placeholder="${finalSlab ? "Open-ended" : ""}" aria-label="End distance in miles${finalSlab ? "; leave blank for open-ended final slab" : ""}" aria-invalid="${errors[`distanceSlabs.${index}.endMiles`] ? "true" : "false"}" aria-describedby="distance-slab-${index}-end-help distance-slab-${index}-end-error" /><p id="distance-slab-${index}-end-help" class="fare-settings__help" data-open-ended-note ${finalSlab ? "" : "hidden"}>Open-ended final slab — leave this blank.</p><p id="distance-slab-${index}-end-error" class="fare-settings__field-error${errors[`distanceSlabs.${index}.endMiles`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`distanceSlabs.${index}.endMiles`] ? 'role="alert"' : ""}>${errors[`distanceSlabs.${index}.endMiles`] || ""}</p></div></td>
+                      <td><div class="fare-settings__field"><label class="visually-hidden" for="distance-slab-${index}-rate">Rate (GBP per mile)</label><div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="distance-slab-${index}-rate" name="distanceSlabs[${index}][ratePerMile]" type="text" inputmode="decimal" value="${slab.ratePerMile}" aria-label="Rate in pounds per mile" aria-invalid="${errors[`distanceSlabs.${index}.ratePerMile`] ? "true" : "false"}" aria-describedby="distance-slab-${index}-rate-error" /></div><p id="distance-slab-${index}-rate-error" class="fare-settings__field-error${errors[`distanceSlabs.${index}.ratePerMile`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`distanceSlabs.${index}.ratePerMile`] ? 'role="alert"' : ""}>${errors[`distanceSlabs.${index}.ratePerMile`] || ""}</p></div></td>
+                      <td><button class="button button--secondary button--small fare-settings__remove-slab" type="button" data-remove-distance-slab aria-label="Remove slab ${index + 1}">Remove</button></td>
+                    </tr>
+                  `;
+                }).join("")}
+                  </tbody>
+                </table>
+              </div>
+              <button class="button button--secondary fare-settings__add-slab" type="button" data-add-distance-slab>Add distance slab</button>
+            </section>
+            <section class="fare-settings__distance-preview" aria-labelledby="distance-preview-title">
+              <h2 id="distance-preview-title">Settings preview</h2>
+              <p class="fare-settings__help">This preview uses the current form values, including unsaved edits. It is not a booking quote; booking fares and totals are not calculated or changed here.</p>
+              <div class="fare-settings__preview-row">
+                <div class="fare-settings__field">
+                  <label for="distance-test-miles">Test distance (miles)</label>
+                  <input id="distance-test-miles" name="testDistanceMiles" type="text" inputmode="decimal" data-test-distance aria-describedby="distance-test-error" />
+                  <p id="distance-test-error" class="fare-settings__field-error"></p>
+                </div>
+                <p class="fare-settings__preview-total" aria-live="polite" aria-atomic="true">Calculated total: <strong data-distance-preview-total>—</strong></p>
+              </div>
+            </section>
+            ${Object.keys(errors).length ? `<div class="notice fare-settings__error" role="alert"><strong>Correct the highlighted fields before saving.</strong></div>` : ""}
+            <div class="fare-settings__actions"><button class="button button--primary" type="submit">Save distance slabs</button></div>
+          </form>
+          <template id="fare-settings-distance-slab-template">
+            <tr data-distance-slab data-index="ROW">
+              <th scope="row" data-slab-title>Slab</th>
+              <td><div class="fare-settings__field"><label class="visually-hidden" for="distance-slab-ROW-start">Start distance (miles)</label><input id="distance-slab-ROW-start" name="distanceSlabs[ROW][startMiles]" type="text" inputmode="decimal" aria-describedby="distance-slab-ROW-start-error" /><p id="distance-slab-ROW-start-error" class="fare-settings__field-error"></p></div></td>
+              <td><div class="fare-settings__field"><label class="visually-hidden" for="distance-slab-ROW-end">End distance (miles)</label><input id="distance-slab-ROW-end" name="distanceSlabs[ROW][endMiles]" type="text" inputmode="decimal" aria-label="End distance in miles" aria-describedby="distance-slab-ROW-end-help distance-slab-ROW-end-error" /><p id="distance-slab-ROW-end-help" class="fare-settings__help" data-open-ended-note hidden>Open-ended final slab — leave this blank.</p><p id="distance-slab-ROW-end-error" class="fare-settings__field-error"></p></div></td>
+              <td><div class="fare-settings__field"><label class="visually-hidden" for="distance-slab-ROW-rate">Rate (GBP per mile)</label><div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="distance-slab-ROW-rate" name="distanceSlabs[ROW][ratePerMile]" type="text" inputmode="decimal" aria-label="Rate in pounds per mile" aria-describedby="distance-slab-ROW-rate-error" /></div><p id="distance-slab-ROW-rate-error" class="fare-settings__field-error"></p></div></td>
+              <td><button class="button button--secondary button--small fare-settings__remove-slab" type="button" data-remove-distance-slab>Remove</button></td>
+            </tr>
+          </template>
+        ` : category.slug === "fare-surcharge-settings" ? `
           <form class="fare-settings__form" method="post" action="/settings/fare-settings/${category.slug}">
             ${locals.csrfField || ""}
             <input type="hidden" name="baseVersion" value="${currentVersion}" />
@@ -146,6 +203,7 @@
             </ol>
           ` : `<p>No changes have been saved yet.</p>`}
         </section>
+        <script src="/js/distance-slab-calculator.js" defer></script>
         <script src="/js/fare-settings.js" defer></script>
       `}
     </section>

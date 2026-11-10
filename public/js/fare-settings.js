@@ -5,7 +5,14 @@
   const periodList = document.querySelector("[data-period-list]");
   const periodTemplate = document.querySelector("#fare-settings-period-template");
   const addPeriodButton = document.querySelector("[data-add-period]");
-  if (!dailyDetails && !periodList) return;
+  const distanceForm = document.querySelector("[data-distance-slab-form]");
+  const slabList = document.querySelector("[data-distance-slab-list]");
+  const slabTemplate = document.querySelector("#fare-settings-distance-slab-template");
+  const addSlabButton = document.querySelector("[data-add-distance-slab]");
+  const testDistance = document.querySelector("[data-test-distance]");
+  const previewTotal = document.querySelector("[data-distance-preview-total]");
+  const previewError = document.querySelector("#distance-test-error");
+  if (!dailyDetails && !periodList && !distanceForm) return;
 
   const selectedValue = (radios) => Array.from(radios).find((radio) => radio.checked)?.value;
 
@@ -50,6 +57,91 @@
     updatePeriodFields();
   };
 
+  const reindexSlabs = () => {
+    if (!slabList) return;
+    const slabs = Array.from(slabList.querySelectorAll("[data-distance-slab]"));
+    slabs.forEach((slab, index) => {
+      const finalSlab = index === slabs.length - 1;
+      const title = slab.querySelector("[data-slab-title]");
+      title.id = `distance-slab-${index}-title`;
+      title.textContent = `Slab ${index + 1}${finalSlab ? " — open-ended final slab" : ""}`;
+      slab.dataset.index = String(index);
+      slab.setAttribute("aria-labelledby", title.id);
+      slab.querySelectorAll(".fare-settings__field").forEach((field) => {
+        const input = field.querySelector("input");
+        const label = field.querySelector("label");
+        const fieldName = input.name.match(/\[([^\]]+)\]$/)?.[1];
+        if (!fieldName) return;
+        const suffix = fieldName === "startMiles" ? "start" : fieldName === "endMiles" ? "end" : "rate";
+        const inputId = `distance-slab-${index}-${suffix}`;
+        input.name = `distanceSlabs[${index}][${fieldName}]`;
+        input.id = inputId;
+        label.htmlFor = inputId;
+        const error = field.querySelector(".fare-settings__field-error");
+        if (error) {
+          error.id = `${inputId}-error`;
+          error.textContent = "";
+        }
+        if (fieldName === "endMiles") {
+          const note = field.querySelector("[data-open-ended-note]");
+          if (note) {
+            note.id = `${inputId}-help`;
+            note.hidden = !finalSlab;
+          }
+          input.placeholder = finalSlab ? "Open-ended" : "";
+          input.setAttribute("aria-label", `End distance in miles${finalSlab ? "; leave blank for open-ended final slab" : ""}`);
+          input.setAttribute("aria-describedby", `${inputId}-help ${inputId}-error`);
+        } else {
+          input.setAttribute("aria-describedby", `${inputId}-error`);
+        }
+        input.removeAttribute("aria-invalid");
+      });
+      const removeButton = slab.querySelector("[data-remove-distance-slab]");
+      removeButton.setAttribute("aria-label", `Remove slab ${index + 1}`);
+    });
+  };
+
+  const calculatePreview = () => {
+    if (!slabList || !testDistance || !previewTotal || !previewError) return;
+    const distance = testDistance.value.trim();
+    if (!distance) {
+      previewError.textContent = "";
+      testDistance.removeAttribute("aria-invalid");
+      previewTotal.textContent = "—";
+      return;
+    }
+    if (distance.length > 80 || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(distance)) {
+      previewError.textContent = "Enter a valid non-negative distance in miles.";
+      testDistance.setAttribute("aria-invalid", "true");
+      previewTotal.textContent = "—";
+      return;
+    }
+
+    const slabs = Array.from(slabList.querySelectorAll("[data-distance-slab]")).map((slab) => ({
+      startMiles: slab.querySelector('input[name$="[startMiles]"]').value.trim(),
+      endMiles: slab.querySelector('input[name$="[endMiles]"]').value.trim(),
+      ratePerMile: slab.querySelector('input[name$="[ratePerMile]"]').value.trim()
+    }));
+    try {
+      previewTotal.textContent = `£${window.calculateDistanceSlabFare(slabs, distance)}`;
+      previewError.textContent = "";
+      testDistance.removeAttribute("aria-invalid");
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      previewError.textContent = "Complete a valid contiguous schedule, including one open-ended final slab, to preview.";
+      testDistance.removeAttribute("aria-invalid");
+      previewTotal.textContent = "—";
+    }
+  };
+
+  const updateSlabInputErrors = (event) => {
+    const input = event.target.closest("[data-distance-slab] input");
+    if (!input) return;
+    input.removeAttribute("aria-invalid");
+    const error = input.closest(".fare-settings__field").querySelector(".fare-settings__field-error");
+    if (error) error.textContent = "";
+  };
+
   dailyRadios.forEach((radio) => radio.addEventListener("change", updateDailyFields));
   bankHolidayRadios.forEach((radio) => radio.addEventListener("change", updatePeriodFields));
   addPeriodButton?.addEventListener("click", () => {
@@ -70,6 +162,33 @@
     addPeriodButton?.focus();
   });
 
+  addSlabButton?.addEventListener("click", () => {
+    if (!slabList || !slabTemplate) return;
+    const fragment = slabTemplate.content.cloneNode(true);
+    const index = slabList.querySelectorAll("[data-distance-slab]").length;
+    const slab = fragment.querySelector("[data-distance-slab]");
+    slab.innerHTML = slab.innerHTML.replaceAll("ROW", String(index));
+    slabList.append(fragment);
+    reindexSlabs();
+    calculatePreview();
+    slabList.querySelector(`[data-index="${index}"] input`)?.focus();
+  });
+  slabList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-distance-slab]");
+    if (!button) return;
+    button.closest("[data-distance-slab]").remove();
+    reindexSlabs();
+    calculatePreview();
+    addSlabButton?.focus();
+  });
+  slabList?.addEventListener("input", (event) => {
+    updateSlabInputErrors(event);
+    calculatePreview();
+  });
+  testDistance?.addEventListener("input", calculatePreview);
+
   updateDailyFields();
   updatePeriodFields();
+  reindexSlabs();
+  calculatePreview();
 })();

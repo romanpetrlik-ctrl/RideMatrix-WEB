@@ -20,11 +20,18 @@ export type BankHolidayFareSettings = {
   periods: BankHolidaySurchargePeriod[];
 };
 
+export type DistanceSlab = {
+  startMiles: string;
+  endMiles: string;
+  ratePerMile: string;
+};
+
 export type FareSettingsConfiguration = {
   timezone: "Europe/London";
   matchingBasis: "scheduled-service-time";
   interval: "start-inclusive-end-exclusive";
   precedence: "bank-holiday-over-daily";
+  distanceSlabs: DistanceSlab[];
   dailySurcharge: FareSurchargeSettings;
   bankHolidaySurcharge: BankHolidayFareSettings;
 };
@@ -65,6 +72,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   matchingBasis: "scheduled-service-time",
   interval: "start-inclusive-end-exclusive",
   precedence: "bank-holiday-over-daily",
+  distanceSlabs: [],
   dailySurcharge: {
     enabled: false,
     percentage: "",
@@ -106,6 +114,154 @@ function submittedString(body: Record<string, unknown>, key: string): string {
 function validPercentage(value: string): boolean {
   if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) return false;
   return Number.isFinite(Number(value)) && Number(value) >= 0;
+}
+
+type DecimalValue = { coefficient: bigint; scale: number };
+
+function parseNonNegativeDecimal(value: string): DecimalValue | null {
+  if (value.length > 80 || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) return null;
+  const [whole = "0", fraction = ""] = value.startsWith(".")
+    ? ["0", value.slice(1)]
+    : value.split(".");
+  return { coefficient: BigInt(`${whole}${fraction}`), scale: fraction.length };
+}
+
+function compareDecimals(left: DecimalValue, right: DecimalValue): number {
+  const scale = Math.max(left.scale, right.scale);
+  const leftValue = left.coefficient * 10n ** BigInt(scale - left.scale);
+  const rightValue = right.coefficient * 10n ** BigInt(scale - right.scale);
+  return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+}
+
+function equalDecimals(left: DecimalValue, right: DecimalValue): boolean {
+  return compareDecimals(left, right) === 0;
+}
+
+function slabRows(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.map((row) => row && typeof row === "object" && !Array.isArray(row)
+      ? row as Record<string, unknown>
+      : {});
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([, row]) => row && typeof row === "object" && !Array.isArray(row)
+        ? row as Record<string, unknown>
+        : {});
+  }
+  return [];
+}
+
+export type DistanceSlabFormValidation = {
+  distanceSlabs: DistanceSlab[];
+  errors: Record<string, string>;
+};
+
+export function validateDistanceSlabsForm(submitted: unknown): DistanceSlabFormValidation {
+  const body = submitted && typeof submitted === "object"
+    ? submitted as Record<string, unknown>
+    : {};
+  const rows = slabRows(body.distanceSlabs);
+  const distanceSlabs: DistanceSlab[] = rows.map((row) => ({
+    startMiles: typeof row.startMiles === "string" ? row.startMiles.trim() : "",
+    endMiles: typeof row.endMiles === "string" ? row.endMiles.trim() : "",
+    ratePerMile: typeof row.ratePerMile === "string" ? row.ratePerMile.trim() : ""
+  }));
+  const errors: Record<string, string> = {};
+
+  if (distanceSlabs.length === 0) {
+    errors["distanceSlabs.0.startMiles"] = "Add at least one distance slab.";
+    errors["distanceSlabs.0.endMiles"] = "The final slab must be open-ended.";
+    errors["distanceSlabs.0.ratePerMile"] = "Enter a valid non-negative rate.";
+    return { distanceSlabs, errors };
+  }
+
+  const starts = distanceSlabs.map((slab, index) => {
+    const parsed = parseNonNegativeDecimal(slab.startMiles);
+    if (!parsed) errors[`distanceSlabs.${index}.startMiles`] = "Enter a valid non-negative distance in miles.";
+    return parsed;
+  });
+  const ends = distanceSlabs.map((slab, index) => {
+    if (index === distanceSlabs.length - 1) {
+      if (slab.endMiles !== "") {
+        errors[`distanceSlabs.${index}.endMiles`] = "The final slab must be open-ended; leave its end distance blank.";
+      }
+      return null;
+    }
+    const parsed = parseNonNegativeDecimal(slab.endMiles);
+    if (!parsed) errors[`distanceSlabs.${index}.endMiles`] = "Enter a valid non-negative end distance.";
+    return parsed;
+  });
+  distanceSlabs.forEach((slab, index) => {
+    const parsed = parseNonNegativeDecimal(slab.ratePerMile);
+    if (!parsed) errors[`distanceSlabs.${index}.ratePerMile`] = "Enter a valid non-negative rate in GBP per mile.";
+  });
+
+  if (starts[0] && starts[0].coefficient !== 0n) {
+    errors["distanceSlabs.0.startMiles"] = "The first slab must start at 0 miles.";
+  }
+  distanceSlabs.forEach((_slab, index) => {
+    const start = starts[index];
+    const end = ends[index];
+    if (start && end && compareDecimals(end, start) <= 0) {
+      errors[`distanceSlabs.${index}.endMiles`] = "The end distance must be greater than the start distance.";
+    }
+    if (index > 0) {
+      const previousEnd = ends[index - 1];
+      if (previousEnd && start && !equalDecimals(previousEnd, start)) {
+        errors[`distanceSlabs.${index}.startMiles`] = compareDecimals(start, previousEnd) < 0
+          ? "This slab overlaps the previous slab; start at the previous end distance."
+          : "There is a gap after the previous slab; start at the previous end distance.";
+      }
+    }
+  });
+
+  return { distanceSlabs, errors };
+}
+
+export function calculateDistanceSlabFare(distanceSlabs: DistanceSlab[], distanceMiles: string): string {
+  const distance = parseNonNegativeDecimal(distanceMiles);
+  const validation = validateDistanceSlabsForm({ distanceSlabs });
+  if (!distance || Object.keys(validation.errors).length > 0) {
+    throw new TypeError("A valid distance and contiguous distance-slab schedule are required.");
+  }
+
+  const products: DecimalValue[] = [];
+  for (const slab of distanceSlabs) {
+    const start = parseNonNegativeDecimal(slab.startMiles);
+    const end = slab.endMiles === "" ? null : parseNonNegativeDecimal(slab.endMiles);
+    const rate = parseNonNegativeDecimal(slab.ratePerMile);
+    if (!start || !rate || (slab.endMiles !== "" && !end)) {
+      throw new TypeError("A valid distance and contiguous distance-slab schedule are required.");
+    }
+    if (compareDecimals(distance, start) <= 0) continue;
+
+    const portionEnd = end && compareDecimals(distance, end) < 0 ? distance : end ?? distance;
+    const commonScale = Math.max(start.scale, portionEnd.scale);
+    const portion = portionEnd.coefficient * 10n ** BigInt(commonScale - portionEnd.scale) -
+      start.coefficient * 10n ** BigInt(commonScale - start.scale);
+    if (portion <= 0n) continue;
+    products.push({
+      coefficient: portion * rate.coefficient,
+      scale: commonScale + rate.scale
+    });
+  }
+
+  const totalScale = Math.max(0, ...products.map((product) => product.scale));
+  const total = products.reduce(
+    (sum, product) => sum + product.coefficient * 10n ** BigInt(totalScale - product.scale),
+    0n
+  );
+  const pennyScale = totalScale - 2;
+  const pennies = pennyScale <= 0
+    ? total * 10n ** BigInt(-pennyScale)
+    : (() => {
+      const divisor = 10n ** BigInt(pennyScale);
+      const quotient = total / divisor;
+      return total % divisor * 2n >= divisor ? quotient + 1n : quotient;
+    })();
+  return `${pennies / 100n}.${String(pennies % 100n).padStart(2, "0")}`;
 }
 
 function validTime(value: string): boolean {
@@ -260,6 +416,7 @@ export function validateFareSettingsForm(
       matchingBasis: "scheduled-service-time",
       interval: "start-inclusive-end-exclusive",
       precedence: "bank-holiday-over-daily",
+      distanceSlabs: current.distanceSlabs ?? [],
       dailySurcharge,
       bankHolidaySurcharge
     },
