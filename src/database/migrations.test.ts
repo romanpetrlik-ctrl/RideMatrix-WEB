@@ -61,3 +61,16 @@ test("airport fee migration stores separate operational Places and preserves arc
   assert.match(migration.sql, /airport_fee_configuration_audit_append_only/);
   assert.doesNotMatch(migration.sql, /customer_bookings|fare_totals/i);
 });
+
+test("airport pick-up timing migration preserves legacy incompleteness and constrains supported values", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0025_airport_pickup_timing_policy");
+  assert.ok(migration);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS pickup_time_reference TEXT/);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS pickup_deferred_enabled BOOLEAN/);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS pickup_deferred_minutes INTEGER/);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS pickup_fee_covered_minutes INTEGER/);
+  assert.match(migration.sql, /pickup_time_reference IS NULL OR pickup_time_reference IN \('ALT', 'AGA'\)/);
+  assert.match(migration.sql, /pickup_deferred_minutes IS NULL OR pickup_deferred_minutes IN \(0, 15, 30, 45, 60\)/);
+  assert.match(migration.sql, /pickup_fee_covered_minutes IS NULL OR pickup_fee_covered_minutes IN \(10, 15, 20, 30, 40, 45, 60\)/);
+  assert.doesNotMatch(migration.sql, /DEFAULT\s+'(?:ALT|AGA)'/);
+});

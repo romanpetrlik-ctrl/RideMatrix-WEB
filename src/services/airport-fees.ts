@@ -15,6 +15,10 @@ export type AirportFeeRecord = {
   pickupLatitude: number;
   pickupLongitude: number;
   pickupFee: string;
+  pickupTimeReference: "ALT" | "AGA" | null;
+  pickupDeferredEnabled: boolean | null;
+  pickupDeferredMinutes: number | null;
+  pickupFeeCoveredMinutes: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,6 +36,10 @@ export type AirportFeeFormValues = {
   pickupLatitude: string;
   pickupLongitude: string;
   pickupFee: string;
+  pickupTimeReference: string;
+  pickupDeferredPolicy: string;
+  pickupDeferredMinutes: string;
+  pickupFeeCoveredMinutes: string;
 };
 
 export type AirportFeeActor = {
@@ -63,7 +71,11 @@ const EMPTY_FORM: AirportFeeFormValues = {
   pickupLocationLabel: "",
   pickupLatitude: "",
   pickupLongitude: "",
-  pickupFee: ""
+  pickupFee: "",
+  pickupTimeReference: "",
+  pickupDeferredPolicy: "",
+  pickupDeferredMinutes: "",
+  pickupFeeCoveredMinutes: ""
 };
 
 function submittedText(body: Record<string, unknown>, key: keyof AirportFeeFormValues): string {
@@ -126,9 +138,36 @@ export function validateAirportFeeForm(submitted: unknown): AirportFeeValidation
     }
   }
 
+  const validTimeReferences = ["ALT", "AGA"];
+  if (!validTimeReferences.includes(values.pickupTimeReference.trim())) {
+    errors.pickupTimeReference = "Select Actual Landing Time (ALT) or Actual Gate Arrival (AGA).";
+  }
+
+  const deferredPolicy = values.pickupDeferredPolicy.trim();
+  if (deferredPolicy !== "yes" && deferredPolicy !== "no") {
+    errors.pickupDeferredPolicy = "Select Yes or No for the deferred pick-up policy.";
+  }
+
+  const deferredMinutes = values.pickupDeferredMinutes.trim();
+  if (!["0", "15", "30", "45", "60"].includes(deferredMinutes)) {
+    errors.pickupDeferredMinutes = "Select a deferred period of 0, 15, 30, 45, or 60 minutes.";
+  } else if (deferredPolicy === "no" && deferredMinutes !== "0") {
+    errors.pickupDeferredMinutes = "Select 0 minutes when the deferred pick-up policy is No.";
+  } else if (deferredPolicy === "yes" && deferredMinutes === "0") {
+    errors.pickupDeferredMinutes = "Select a non-zero deferred period when the deferred pick-up policy is Yes.";
+  }
+
+  if (!["10", "15", "20", "30", "40", "45", "60"].includes(values.pickupFeeCoveredMinutes.trim())) {
+    errors.pickupFeeCoveredMinutes = "Select a fee-covered period of 10, 15, 20, 30, 40, 45, or 60 minutes.";
+  }
+
   if (Object.keys(errors).length === 0) {
     values.id = values.id.trim();
     values.displayName = displayName;
+    values.pickupTimeReference = values.pickupTimeReference.trim();
+    values.pickupDeferredPolicy = deferredPolicy;
+    values.pickupDeferredMinutes = deferredMinutes;
+    values.pickupFeeCoveredMinutes = values.pickupFeeCoveredMinutes.trim();
     for (const operation of ["dropoff", "pickup"] as const) {
       const placeIdField = `${operation}PlaceId` as const;
       const labelField = `${operation}LocationLabel` as const;
@@ -158,6 +197,10 @@ type AirportFeeRow = {
   pickup_latitude: string | number;
   pickup_longitude: string | number;
   pickup_fee: string;
+  pickup_time_reference: "ALT" | "AGA" | null;
+  pickup_deferred_enabled: boolean | null;
+  pickup_deferred_minutes: number | null;
+  pickup_fee_covered_minutes: number | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
@@ -176,6 +219,10 @@ function toRecord(row: AirportFeeRow): AirportFeeRecord {
     pickupLatitude: Number(row.pickup_latitude),
     pickupLongitude: Number(row.pickup_longitude),
     pickupFee: row.pickup_fee,
+    pickupTimeReference: row.pickup_time_reference,
+    pickupDeferredEnabled: row.pickup_deferred_enabled,
+    pickupDeferredMinutes: row.pickup_deferred_minutes,
+    pickupFeeCoveredMinutes: row.pickup_fee_covered_minutes,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString()
   };
@@ -184,7 +231,8 @@ function toRecord(row: AirportFeeRow): AirportFeeRecord {
 const RETURNING_COLUMNS = `id, display_name, dropoff_place_id, dropoff_location_label,
   dropoff_latitude, dropoff_longitude, dropoff_fee, pickup_place_id,
   pickup_location_label, pickup_latitude, pickup_longitude, pickup_fee,
-  created_at, updated_at`;
+  pickup_time_reference, pickup_deferred_enabled, pickup_deferred_minutes,
+  pickup_fee_covered_minutes, created_at, updated_at`;
 
 export const airportFeeStore: AirportFeeStore = {
   async list() {
@@ -221,6 +269,10 @@ export const airportFeeStore: AirportFeeStore = {
         Number(values.pickupLatitude),
         Number(values.pickupLongitude),
         values.pickupFee,
+        values.pickupTimeReference,
+        values.pickupDeferredPolicy === "yes",
+        Number(values.pickupDeferredMinutes),
+        Number(values.pickupFeeCoveredMinutes),
         actor.accountId,
         actor.email
       ];
@@ -230,8 +282,10 @@ export const airportFeeStore: AirportFeeStore = {
               SET display_name = $2, dropoff_place_id = $3, dropoff_location_label = $4,
                   dropoff_latitude = $5, dropoff_longitude = $6, dropoff_fee = $7,
                   pickup_place_id = $8, pickup_location_label = $9, pickup_latitude = $10,
-                  pickup_longitude = $11, pickup_fee = $12, updated_by_account_id = $13,
-                  updated_by_email = $14, updated_at = CURRENT_TIMESTAMP
+                  pickup_longitude = $11, pickup_fee = $12, pickup_time_reference = $13,
+                  pickup_deferred_enabled = $14, pickup_deferred_minutes = $15,
+                  pickup_fee_covered_minutes = $16, updated_by_account_id = $17,
+                  updated_by_email = $18, updated_at = CURRENT_TIMESTAMP
             WHERE id = $1 AND archived_at IS NULL
             RETURNING ${RETURNING_COLUMNS}`,
           [id, ...params]
@@ -240,9 +294,10 @@ export const airportFeeStore: AirportFeeStore = {
           `INSERT INTO airport_fee_configurations (
              id, display_name, dropoff_place_id, dropoff_location_label, dropoff_latitude,
              dropoff_longitude, dropoff_fee, pickup_place_id, pickup_location_label,
-             pickup_latitude, pickup_longitude, pickup_fee, created_by_account_id,
-             created_by_email, updated_by_account_id, updated_by_email
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $13, $14)
+             pickup_latitude, pickup_longitude, pickup_fee, pickup_time_reference,
+             pickup_deferred_enabled, pickup_deferred_minutes, pickup_fee_covered_minutes,
+             created_by_account_id, created_by_email, updated_by_account_id, updated_by_email
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $17, $18)
            RETURNING ${RETURNING_COLUMNS}`,
           [randomUUID(), ...params]
         );
@@ -294,6 +349,26 @@ export function airportFeeRecordToForm(record: AirportFeeRecord): AirportFeeForm
     pickupLocationLabel: record.pickupLocationLabel,
     pickupLatitude: String(record.pickupLatitude),
     pickupLongitude: String(record.pickupLongitude),
-    pickupFee: record.pickupFee
+    pickupFee: record.pickupFee,
+    pickupTimeReference: record.pickupTimeReference ?? "",
+    pickupDeferredPolicy: record.pickupDeferredEnabled === null ? "" : record.pickupDeferredEnabled ? "yes" : "no",
+    pickupDeferredMinutes: record.pickupDeferredMinutes === null ? "" : String(record.pickupDeferredMinutes),
+    pickupFeeCoveredMinutes: record.pickupFeeCoveredMinutes === null ? "" : String(record.pickupFeeCoveredMinutes)
   };
+}
+
+export function formatAirportPickupTimingRule(record: AirportFeeRecord): string {
+  const { pickupTimeReference, pickupDeferredEnabled, pickupDeferredMinutes, pickupFeeCoveredMinutes } = record;
+  if (!pickupTimeReference || pickupDeferredEnabled === null ||
+      pickupDeferredMinutes === null || pickupFeeCoveredMinutes === null) {
+    return "Setup incomplete: pick-up timing policy is not configured.";
+  }
+
+  const reference = pickupTimeReference === "ALT"
+    ? "Actual Landing Time (ALT)"
+    : "Actual Gate Arrival (AGA)";
+  const totalWindow = pickupDeferredMinutes + pickupFeeCoveredMinutes;
+  return pickupDeferredMinutes > 0
+    ? `Customer time window: ${totalWindow} minutes from ${reference}; first ${pickupDeferredMinutes} minutes are deferred, then the £${record.pickupFee} pick-up fee covers the following ${pickupFeeCoveredMinutes} minutes.`
+    : `Customer time window: ${totalWindow} minutes from ${reference}; the £${record.pickupFee} pick-up fee covers this period.`;
 }

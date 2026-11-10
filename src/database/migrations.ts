@@ -1344,6 +1344,36 @@ export const MIGRATIONS: Migration[] = [
         BEFORE UPDATE OR DELETE ON airport_fee_configuration_audit
         FOR EACH ROW EXECUTE FUNCTION rm_reject_airport_fee_configuration_audit_mutation();
     `
+  },
+  {
+    id: "0025_airport_pickup_timing_policy",
+    sql: `
+      ALTER TABLE airport_fee_configurations
+        ADD COLUMN IF NOT EXISTS pickup_time_reference TEXT,
+        ADD COLUMN IF NOT EXISTS pickup_deferred_enabled BOOLEAN,
+        ADD COLUMN IF NOT EXISTS pickup_deferred_minutes INTEGER,
+        ADD COLUMN IF NOT EXISTS pickup_fee_covered_minutes INTEGER;
+
+      ALTER TABLE airport_fee_configurations
+        DROP CONSTRAINT IF EXISTS airport_fee_configurations_pickup_time_reference_check,
+        ADD CONSTRAINT airport_fee_configurations_pickup_time_reference_check
+          CHECK (pickup_time_reference IS NULL OR pickup_time_reference IN ('ALT', 'AGA')),
+        DROP CONSTRAINT IF EXISTS airport_fee_configurations_pickup_deferred_minutes_check,
+        ADD CONSTRAINT airport_fee_configurations_pickup_deferred_minutes_check
+          CHECK (pickup_deferred_minutes IS NULL OR pickup_deferred_minutes IN (0, 15, 30, 45, 60)),
+        DROP CONSTRAINT IF EXISTS airport_fee_configurations_pickup_fee_covered_minutes_check,
+        ADD CONSTRAINT airport_fee_configurations_pickup_fee_covered_minutes_check
+          CHECK (pickup_fee_covered_minutes IS NULL OR pickup_fee_covered_minutes IN (10, 15, 20, 30, 40, 45, 60)),
+        DROP CONSTRAINT IF EXISTS airport_fee_configurations_pickup_deferred_policy_check,
+        ADD CONSTRAINT airport_fee_configurations_pickup_deferred_policy_check
+          CHECK (
+            pickup_deferred_enabled IS NULL OR
+            (pickup_deferred_minutes IS NOT NULL AND (
+              (pickup_deferred_enabled = FALSE AND pickup_deferred_minutes = 0) OR
+              (pickup_deferred_enabled = TRUE AND pickup_deferred_minutes IN (15, 30, 45, 60))
+            ))
+          );
+    `
   }
 ];
 

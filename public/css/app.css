@@ -3832,9 +3832,12 @@ button:visited,
   font-weight: 700;
 }
 
-.airport-fees__field input {
+.airport-fees__field input,
+.airport-fees__field select {
   box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
+  margin-bottom: 0;
 }
 
 .airport-fees__operation {

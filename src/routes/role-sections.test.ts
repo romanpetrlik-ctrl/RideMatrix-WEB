@@ -74,6 +74,12 @@ function createMemoryAirportFeeStore(): { store: AirportFeeStore; reset: () => v
     pickupLatitude: Number(values.pickupLatitude),
     pickupLongitude: Number(values.pickupLongitude),
     pickupFee: values.pickupFee,
+    pickupTimeReference: values.pickupTimeReference === "ALT" || values.pickupTimeReference === "AGA"
+      ? values.pickupTimeReference
+      : null,
+    pickupDeferredEnabled: values.pickupDeferredPolicy === "yes" ? true : values.pickupDeferredPolicy === "no" ? false : null,
+    pickupDeferredMinutes: values.pickupDeferredMinutes ? Number(values.pickupDeferredMinutes) : null,
+    pickupFeeCoveredMinutes: values.pickupFeeCoveredMinutes ? Number(values.pickupFeeCoveredMinutes) : null,
     createdAt: "2026-11-04T00:00:00.000Z",
     updatedAt: "2026-11-04T00:00:00.000Z"
   });
@@ -289,7 +295,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       if (category.slug === "airport-fees") {
         assert.match(body, /Add Airport and Fee/);
         assert.match(body, /Saved airports/);
-        assert.match(body, /Pricing integration will be added with the pricing work/);
+        assert.match(body, /configuration only; this web layer does not apply them to booking or fare calculations/);
         assert.doesNotMatch(body, /Reference data \(managed\)|Fee settings|Not configured yet/);
         continue;
       }
@@ -412,16 +418,36 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         ["airport-dropoff-location", "Drop-off location"],
         ["airport-dropoff-fee", "Drop-off fee (GBP)"],
         ["airport-pickup-location", "Pick-up location"],
-        ["airport-pickup-fee", "Pick-up fee (GBP)"]
+        ["airport-pickup-fee", "Pick-up fee (GBP)"],
+        ["airport-pickup-time-reference", "Time reference"],
+        ["airport-pickup-deferred-policy", "Deferred pick-up policy"],
+        ["airport-pickup-deferred-minutes", "Deferred period before fee-covered period begins (minutes)"],
+        ["airport-pickup-fee-covered-minutes", "Fee-covered period (minutes)"]
       ]) {
         assert.ok(airportForm.includes(`<label for="${id}">${label}</label>`), `${label} should have an associated visible label`);
         assert.ok(airportForm.includes(`id="${id}"`), `${label} should point to a form control`);
       }
       const formFieldOrder = Array.from(
-        airportForm.matchAll(/name="(displayName|dropoffLocationLabel|dropoffFee|pickupLocationLabel|pickupFee)"/g),
+        airportForm.matchAll(/name="(displayName|dropoffLocationLabel|dropoffFee|pickupLocationLabel|pickupFee|pickupTimeReference|pickupDeferredPolicy|pickupDeferredMinutes|pickupFeeCoveredMinutes)"/g),
         (match) => match[1]
       );
-      assert.deepEqual(formFieldOrder, ["displayName", "dropoffLocationLabel", "dropoffFee", "pickupLocationLabel", "pickupFee"]);
+      assert.deepEqual(formFieldOrder, [
+        "displayName",
+        "dropoffLocationLabel",
+        "dropoffFee",
+        "pickupLocationLabel",
+        "pickupFee",
+        "pickupTimeReference",
+        "pickupDeferredPolicy",
+        "pickupDeferredMinutes",
+        "pickupFeeCoveredMinutes"
+      ]);
+      assert.match(airportForm, /name="pickupTimeReference" required/);
+      assert.match(airportForm, /name="pickupDeferredPolicy" required/);
+      assert.match(airportForm, /name="pickupDeferredMinutes" required/);
+      assert.match(airportForm, /name="pickupFeeCoveredMinutes" required/);
+      assert.doesNotMatch(airportForm, /name="pickupTimeReference"[^>]*>[\s\S]*?<option value="(?:ALT|AGA)" selected/);
+      assert.match(airportForm, /This is the period covered by the configured pick-up fee, not fee effective dates/);
       assert.ok(airportForm.indexOf('name="pickupFee"') < airportForm.indexOf("Save airport and fees"));
       assert.ok(pageBody.indexOf("</form>") < pageBody.indexOf('aria-labelledby="airport-fees-records-title"'));
       assert.match(airportForm, /name="dropoffPlaceId"/);
@@ -430,8 +456,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(airportForm, /name="pickupPlaceId"/);
       assert.match(airportForm, /name="pickupLatitude"/);
       assert.match(airportForm, /name="pickupLongitude"/);
-      assert.match(pageBody, /not applied to fares/);
-      assert.match(pageBody, /Pricing integration will be added with the pricing work/);
+      assert.match(pageBody, /configuration only; this web layer does not apply them to booking or fare calculations/);
       assert.doesNotMatch(pageBody, /fare total|booking price|customer charge/i);
 
       const postCookie = `${sessionCookie}; ${csrfCookie}`;
@@ -451,7 +476,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         pickupLocationLabel: "Bournemouth Airport terminal pickup",
         pickupLatitude: "50.7801",
         pickupLongitude: "-1.8420",
-        pickupFee: "4.50"
+        pickupFee: "4.50",
+        pickupTimeReference: "AGA",
+        pickupDeferredPolicy: "yes",
+        pickupDeferredMinutes: "30",
+        pickupFeeCoveredMinutes: "30"
       };
       const submit = (values: Record<string, string>, url = airportPath) => fetch(`${baseUrl}${url}`, {
         method: "POST",
@@ -465,13 +494,17 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         dropoffPlaceId: "",
         pickupPlaceId: "",
         dropoffFee: "",
-        pickupFee: "1.234"
+        pickupFee: "1.234",
+        pickupTimeReference: "",
+        pickupDeferredMinutes: "0"
       });
       assert.equal(invalid.status, 400);
       const invalidBody = await invalid.text();
       assert.match(invalidBody, /Select a drop-off location from Google Places/);
       assert.match(invalidBody, /Select a pick-up location from Google Places/);
       assert.match(invalidBody, /Enter a GBP amount/);
+      assert.match(invalidBody, /Select Actual Landing Time/);
+      assert.match(invalidBody, /non-zero deferred period/);
       assert.match(invalidBody, /value="1\.234"/);
       assert.equal(airportFees.records.length, 0);
 
@@ -488,6 +521,12 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.equal(airportFees.records[0].pickupLongitude, -1.842);
       assert.equal(airportFees.records[0].dropoffFee, "0.00", "£0.00 is an explicit zero amount");
       assert.equal(airportFees.records[0].pickupFee, "4.50");
+      assert.equal(airportFees.records[0].pickupTimeReference, "AGA");
+      assert.equal(airportFees.records[0].pickupDeferredEnabled, true);
+      assert.equal(airportFees.records[0].pickupDeferredMinutes, 30);
+      assert.equal(airportFees.records[0].pickupFeeCoveredMinutes, 30);
+      const savedListBody = await (await fetch(`${baseUrl}${airportPath}`, { headers })).text();
+      assert.match(savedListBody, /Customer time window: 60 minutes from Actual Gate Arrival \(AGA\)/);
 
       const editPage = await fetch(`${baseUrl}${airportPath}?edit=airport-1`, { headers });
       const editBody = await editPage.text();
@@ -497,6 +536,10 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(editBody, /name="pickupPlaceId" value="ChIJ-pickup-terminal"/);
       assert.match(editBody, /name="dropoffLatitude" value="50\.7799"/);
       assert.match(editBody, /name="pickupLongitude" value="-1\.842"/);
+      assert.match(editBody, /name="pickupTimeReference" required[\s\S]*?<option value="AGA" selected/);
+      assert.match(editBody, /name="pickupDeferredPolicy" required[\s\S]*?<option value="yes" selected/);
+      assert.match(editBody, /name="pickupDeferredMinutes" required[\s\S]*?<option value="30" selected/);
+      assert.match(editBody, /name="pickupFeeCoveredMinutes" required[\s\S]*?<option value="30" selected/);
       const updated = await submit({
         ...formValues,
         id: "airport-1",
@@ -507,6 +550,25 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.equal(airportFees.records.length, 1, "editing must not create a duplicate");
       assert.equal(airportFees.records[0].displayName, "Bournemouth Airport (BOH) — updated");
       assert.equal(airportFees.records[0].dropoffFee, "3.25");
+      assert.equal(airportFees.records[0].pickupFee, "4.50", "changing the drop-off amount must not change the pick-up fee");
+
+      const configuredRecord = airportFees.records[0];
+      airportFees.records.push({
+        ...configuredRecord,
+        id: "legacy-airport",
+        pickupTimeReference: null,
+        pickupDeferredEnabled: null,
+        pickupDeferredMinutes: null,
+        pickupFeeCoveredMinutes: null
+      });
+      const legacyEdit = await fetch(`${baseUrl}${airportPath}?edit=legacy-airport`, { headers });
+      const legacyBody = await legacyEdit.text();
+      assert.equal(legacyEdit.status, 200);
+      assert.match(legacyBody, /Setup incomplete: this legacy airport has no saved pick-up timing policy/);
+      assert.match(legacyBody, /Setup incomplete: pick-up timing policy is not configured/);
+      assert.match(legacyBody, /name="pickupTimeReference" required[\s\S]*?<option value="" selected/);
+      assert.doesNotMatch(legacyBody, /name="pickupTimeReference" required[\s\S]*?<option value="(?:ALT|AGA)" selected/);
+      airportFees.records.splice(airportFees.records.indexOf(configuredRecord) + 1, 1);
 
       const confirmationPage = await fetch(`${baseUrl}${airportPath}`, { headers });
       const confirmationBody = await confirmationPage.text();

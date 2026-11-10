@@ -6,6 +6,7 @@ import { getInternalRoleLabel } from "../services/staff-users";
 import {
   airportFeeRecordToForm,
   airportFeeStore,
+  formatAirportPickupTimingRule,
   validateAirportFeeForm,
   type AirportFeeFormValues,
   type AirportFeeRecord,
@@ -146,7 +147,11 @@ const emptyAirportFeeForm: AirportFeeFormValues = {
   pickupLocationLabel: "",
   pickupLatitude: "",
   pickupLongitude: "",
-  pickupFee: ""
+  pickupFee: "",
+  pickupTimeReference: "",
+  pickupDeferredPolicy: "",
+  pickupDeferredMinutes: "",
+  pickupFeeCoveredMinutes: ""
 };
 
 function escapeHtml(value: string): string {
@@ -277,7 +282,8 @@ async function renderTollFeesPage(
         dropoffLocationLabel: escapeHtml(record.dropoffLocationLabel),
         dropoffFee: escapeHtml(record.dropoffFee),
         pickupLocationLabel: escapeHtml(record.pickupLocationLabel),
-        pickupFee: escapeHtml(record.pickupFee)
+        pickupFee: escapeHtml(record.pickupFee),
+        pickupTimingSummary: escapeHtml(formatAirportPickupTimingRule(record))
       }))
       : [];
     const airportFeeForm = Object.fromEntries(
@@ -305,6 +311,9 @@ async function renderTollFeesPage(
       feeScheduleSnapshot,
       airportFeeRecords,
       airportFeeForm,
+      airportFeeTimingSetupIncomplete: Boolean(
+        airportEditingRecord && formatAirportPickupTimingRule(airportEditingRecord).startsWith("Setup incomplete:")
+      ),
       airportFeeErrors: renderOptions.airportFeeErrors ?? {},
       airportFeeFormError: renderOptions.airportFeeFormError,
       airportFeeSaved: renderOptions.airportFeeSaved ?? req.query.saved === "1",
