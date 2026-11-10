@@ -34,13 +34,14 @@
         </nav>
       ` : category.slug === "airport-fees" ? `
         <p class="toll-fees-page__intro">${category.description}</p>
-        <div class="notice toll-fees-page__placeholder" role="status">Configured airport fees are not applied to fares. Pricing integration will be added with the pricing work.</div>
+        <div class="notice toll-fees-page__placeholder" role="status">Airport fees and pick-up timing rules are configuration only; this web layer does not apply them to booking or fare calculations.</div>
         ${airportFeeSaved ? `<p class="notice airport-fees__notice" role="status">Airport and fees saved.</p>` : ""}
         ${airportFeeArchived ? `<p class="notice airport-fees__notice" role="status">Airport record archived.</p>` : ""}
         ${airportFeeFormError ? `<div class="notice airport-fees__error" role="alert">${airportFeeFormError}</div>` : ""}
         <section class="airport-fees__form-section" aria-labelledby="airport-fees-form-title">
           <h2 id="airport-fees-form-title">${airportFeeForm.id ? "Edit Airport and Fee" : "Add Airport and Fee"}</h2>
           <p>Choose the operational pickup and drop-off points separately. For Bournemouth Airport, search for Bournemouth Airport Car Park 1 for the verified operational point; the airport display name remains your choice.</p>
+          ${airportFeeTimingSetupIncomplete ? `<div class="notice airport-fees__error" role="status">Setup incomplete: this legacy airport has no saved pick-up timing policy. Select all timing settings before saving.</div>` : ""}
           ${airportFeeErrors.form ? `<div class="notice airport-fees__error" role="alert">${airportFeeErrors.form}</div>` : ""}
           ${airportFeeMapConfigured ? `
             <form class="airport-fees__form" method="post" action="${leafPath}">
@@ -74,6 +75,45 @@
                       <div class="airport-fees__amount"><span aria-hidden="true">£</span><input id="${feeId}" name="${operation}Fee" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required value="${airportFeeForm[`${operation}Fee`]}" aria-invalid="${airportFeeErrors[`${operation}Fee`] ? "true" : "false"}" aria-describedby="${feeId}-error" /></div>
                       <p id="${feeId}-error" class="airport-fees__field-error${airportFeeErrors[`${operation}Fee`] ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors[`${operation}Fee`] ? 'role="alert"' : ""}>${airportFeeErrors[`${operation}Fee`] || "Enter an amount with up to 2 decimal places; £0.00 is allowed."}</p>
                     </div>
+                    ${operation === "pickup" ? `
+                      <div class="airport-fees__field">
+                        <label for="airport-pickup-time-reference">Time reference</label>
+                        <select id="airport-pickup-time-reference" name="pickupTimeReference" required aria-invalid="${airportFeeErrors.pickupTimeReference ? "true" : "false"}" aria-describedby="airport-pickup-time-reference-help airport-pickup-time-reference-error">
+                          <option value="" ${airportFeeForm.pickupTimeReference ? "" : "selected"}>Select a time reference</option>
+                          <option value="ALT" ${airportFeeForm.pickupTimeReference === "ALT" ? "selected" : ""}>Actual Landing Time (ALT)</option>
+                          <option value="AGA" ${airportFeeForm.pickupTimeReference === "AGA" ? "selected" : ""}>Actual Gate Arrival (AGA)</option>
+                        </select>
+                        <p id="airport-pickup-time-reference-help" class="airport-fees__help">This event anchors the customer-facing pick-up time window.</p>
+                        <p id="airport-pickup-time-reference-error" class="airport-fees__field-error${airportFeeErrors.pickupTimeReference ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors.pickupTimeReference ? 'role="alert"' : ""}>${airportFeeErrors.pickupTimeReference || "Select ALT or AGA."}</p>
+                      </div>
+                      <div class="airport-fees__field">
+                        <label for="airport-pickup-deferred-policy">Deferred pick-up policy</label>
+                        <select id="airport-pickup-deferred-policy" name="pickupDeferredPolicy" required aria-invalid="${airportFeeErrors.pickupDeferredPolicy ? "true" : "false"}" aria-describedby="airport-pickup-deferred-policy-error">
+                          <option value="" ${airportFeeForm.pickupDeferredPolicy ? "" : "selected"}>Select Yes or No</option>
+                          <option value="yes" ${airportFeeForm.pickupDeferredPolicy === "yes" ? "selected" : ""}>Yes</option>
+                          <option value="no" ${airportFeeForm.pickupDeferredPolicy === "no" ? "selected" : ""}>No</option>
+                        </select>
+                        <p id="airport-pickup-deferred-policy-error" class="airport-fees__field-error${airportFeeErrors.pickupDeferredPolicy ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors.pickupDeferredPolicy ? 'role="alert"' : ""}>${airportFeeErrors.pickupDeferredPolicy || "Choose whether to defer the fee-covered period."}</p>
+                      </div>
+                      <div class="airport-fees__field">
+                        <label for="airport-pickup-deferred-minutes">Deferred period before fee-covered period begins (minutes)</label>
+                        <select id="airport-pickup-deferred-minutes" name="pickupDeferredMinutes" required aria-invalid="${airportFeeErrors.pickupDeferredMinutes ? "true" : "false"}" aria-describedby="airport-pickup-deferred-minutes-help airport-pickup-deferred-minutes-error">
+                          <option value="" ${airportFeeForm.pickupDeferredMinutes ? "" : "selected"}>Select minutes</option>
+                          ${["0", "15", "30", "45", "60"].map((minutes) => `<option value="${minutes}" ${airportFeeForm.pickupDeferredMinutes === minutes ? "selected" : ""}>${minutes}</option>`).join("")}
+                        </select>
+                        <p id="airport-pickup-deferred-minutes-help" class="airport-fees__help">This is the waiting period before the configured pick-up fee's covered period begins.</p>
+                        <p id="airport-pickup-deferred-minutes-error" class="airport-fees__field-error${airportFeeErrors.pickupDeferredMinutes ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors.pickupDeferredMinutes ? 'role="alert"' : ""}>${airportFeeErrors.pickupDeferredMinutes || "No requires 0 minutes; Yes requires a non-zero period."}</p>
+                      </div>
+                      <div class="airport-fees__field">
+                        <label for="airport-pickup-fee-covered-minutes">Fee-covered period (minutes)</label>
+                        <select id="airport-pickup-fee-covered-minutes" name="pickupFeeCoveredMinutes" required aria-invalid="${airportFeeErrors.pickupFeeCoveredMinutes ? "true" : "false"}" aria-describedby="airport-pickup-fee-covered-minutes-help airport-pickup-fee-covered-minutes-error">
+                          <option value="" ${airportFeeForm.pickupFeeCoveredMinutes ? "" : "selected"}>Select minutes</option>
+                          ${["10", "15", "20", "30", "40", "45", "60"].map((minutes) => `<option value="${minutes}" ${airportFeeForm.pickupFeeCoveredMinutes === minutes ? "selected" : ""}>${minutes}</option>`).join("")}
+                        </select>
+                        <p id="airport-pickup-fee-covered-minutes-help" class="airport-fees__help">This is the period covered by the configured pick-up fee, not fee effective dates.</p>
+                        <p id="airport-pickup-fee-covered-minutes-error" class="airport-fees__field-error${airportFeeErrors.pickupFeeCoveredMinutes ? " airport-fees__field-error--invalid" : ""}" ${airportFeeErrors.pickupFeeCoveredMinutes ? 'role="alert"' : ""}>${airportFeeErrors.pickupFeeCoveredMinutes || "Select the period covered by the pick-up fee."}</p>
+                      </div>
+                    ` : ""}
                   </fieldset>
                 `;
               }).join("")}
@@ -104,6 +144,7 @@
                   <dl>
                     <div><dt>Drop-off</dt><dd>${record.dropoffLocationLabel} — £${record.dropoffFee}</dd></div>
                     <div><dt>Pick-up</dt><dd>${record.pickupLocationLabel} — £${record.pickupFee}</dd></div>
+                    <div><dt>Pick-up timing rule</dt><dd>${record.pickupTimingSummary}</dd></div>
                   </dl>
                   <dialog id="airport-delete-${record.id}" aria-labelledby="airport-delete-title-${record.id}">
                     <form method="post" action="${leafPath}/${encodeURIComponent(record.id)}/delete">

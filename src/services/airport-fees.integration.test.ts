@@ -27,7 +27,11 @@ function validAirport(): AirportFeeFormValues {
     pickupLocationLabel: "Bournemouth Airport terminal pickup",
     pickupLatitude: "50.7801",
     pickupLongitude: "-1.8420",
-    pickupFee: "4.50"
+    pickupFee: "4.50",
+    pickupTimeReference: "AGA",
+    pickupDeferredPolicy: "yes",
+    pickupDeferredMinutes: "30",
+    pickupFeeCoveredMinutes: "30"
   };
 }
 
@@ -39,6 +43,11 @@ test("airport configurations persist independently, edit in place, archive with 
   assert.equal(created.dropoffPlaceId, "ChIJ-operational-dropoff");
   assert.equal(created.pickupPlaceId, "ChIJ-operational-pickup");
   assert.equal(created.dropoffFee, "0.00");
+  assert.equal(created.pickupFee, "4.50");
+  assert.equal(created.pickupTimeReference, "AGA");
+  assert.equal(created.pickupDeferredEnabled, true);
+  assert.equal(created.pickupDeferredMinutes, 30);
+  assert.equal(created.pickupFeeCoveredMinutes, 30);
   assert.equal((await airportFeeStore.list()).length, 1);
 
   const sameOperationalPoint = validAirport();
@@ -47,10 +56,20 @@ test("airport configurations persist independently, edit in place, archive with 
   sameOperationalPoint.pickupLatitude = sameOperationalPoint.dropoffLatitude;
   sameOperationalPoint.pickupLongitude = sameOperationalPoint.dropoffLongitude;
   sameOperationalPoint.pickupFee = "2.00";
+  sameOperationalPoint.pickupTimeReference = "ALT";
+  sameOperationalPoint.pickupDeferredPolicy = "no";
+  sameOperationalPoint.pickupDeferredMinutes = "0";
+  sameOperationalPoint.pickupFeeCoveredMinutes = "45";
   const updated = await airportFeeStore.save(created.id, sameOperationalPoint, actor);
   assert.ok(updated);
   assert.equal(updated.id, created.id);
   assert.equal(updated.pickupPlaceId, updated.dropoffPlaceId);
+  assert.equal(updated.dropoffFee, "0.00");
+  assert.equal(updated.pickupFee, "2.00", "the pick-up amount remains the entered fixed amount");
+  assert.equal(updated.pickupTimeReference, "ALT");
+  assert.equal(updated.pickupDeferredEnabled, false);
+  assert.equal(updated.pickupDeferredMinutes, 0);
+  assert.equal(updated.pickupFeeCoveredMinutes, 45);
   assert.equal((await airportFeeStore.list()).length, 1, "an edit updates its row instead of inserting a duplicate");
 
   assert.equal(await airportFeeStore.archive(created.id, actor), true);

@@ -29,6 +29,12 @@ const formMarkup = `
                 <div class="airport-fees__amount"><span aria-hidden="true">£</span><input id="airport-${operation}-fee" name="${operation}Fee" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required></div>
                 <p class="airport-fees__field-error">Enter an amount.</p>
               </div>
+              ${operation === "pickup" ? `
+                <div class="airport-fees__field"><label for="airport-pickup-time-reference">Time reference</label><select id="airport-pickup-time-reference" name="pickupTimeReference" required><option value="" selected>Select a time reference</option><option value="ALT">Actual Landing Time (ALT)</option><option value="AGA">Actual Gate Arrival (AGA)</option></select></div>
+                <div class="airport-fees__field"><label for="airport-pickup-deferred-policy">Deferred pick-up policy</label><select id="airport-pickup-deferred-policy" name="pickupDeferredPolicy" required><option value="" selected>Select Yes or No</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+                <div class="airport-fees__field"><label for="airport-pickup-deferred-minutes">Deferred period before fee-covered period begins (minutes)</label><select id="airport-pickup-deferred-minutes" name="pickupDeferredMinutes" required><option value="" selected>Select minutes</option>${["0", "15", "30", "45", "60"].map((minutes) => `<option value="${minutes}">${minutes}</option>`).join("")}</select></div>
+                <div class="airport-fees__field"><label for="airport-pickup-fee-covered-minutes">Fee-covered period (minutes)</label><select id="airport-pickup-fee-covered-minutes" name="pickupFeeCoveredMinutes" required><option value="" selected>Select minutes</option>${["10", "15", "20", "30", "40", "45", "60"].map((minutes) => `<option value="${minutes}">${minutes}</option>`).join("")}</select></div>
+              ` : ""}
             </fieldset>`;
         }).join("")}
         <div class="airport-fees__actions"><button type="submit">Save airport and fees</button></div>
@@ -49,6 +55,10 @@ type AirportFormLayout = {
   dropoffFee: { left: number; right: number; top: number; width: number; height: number };
   pickupLocation: { left: number; right: number; top: number; width: number; height: number };
   pickupFee: { left: number; right: number; top: number; width: number; height: number };
+  pickupTimeReference: { left: number; right: number; top: number; width: number; height: number };
+  pickupDeferredPolicy: { left: number; right: number; top: number; width: number; height: number };
+  pickupDeferredMinutes: { left: number; right: number; top: number; width: number; height: number };
+  pickupFeeCoveredMinutes: { left: number; right: number; top: number; width: number; height: number };
   dropoffFeeStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
   pickupFeeStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
   dropoffLocationStyle: { padding: string; font: string; borderColor: string; backgroundColor: string };
@@ -71,9 +81,15 @@ test("Airport Fees form labels, field order, and saved list placement are access
     ["airport-dropoff-location", "Drop-off location"],
     ["airport-dropoff-fee", "Drop-off fee (GBP)"],
     ["airport-pickup-location", "Pick-up location"],
-    ["airport-pickup-fee", "Pick-up fee (GBP)"]
+    ["airport-pickup-fee", "Pick-up fee (GBP)"],
+    ["airport-pickup-time-reference", "Time reference"],
+    ["airport-pickup-deferred-policy", "Deferred pick-up policy"],
+    ["airport-pickup-deferred-minutes", "Deferred period before fee-covered period begins (minutes)"],
+    ["airport-pickup-fee-covered-minutes", "Fee-covered period (minutes)"]
   ]) {
     if (id.includes("display-name")) {
+      assert.ok(form.includes(`<label for="${id}">${label}</label>`), `${label} should have an associated label`);
+    } else if (id.startsWith("airport-pickup-") && !id.endsWith("location") && !id.endsWith("fee")) {
       assert.ok(form.includes(`<label for="${id}">${label}</label>`), `${label} should have an associated label`);
     } else {
       const field = id.endsWith("location") ? "${locationId}" : "${feeId}";
@@ -85,6 +101,11 @@ test("Airport Fees form labels, field order, and saved list placement are access
   assert.match(form, /aria-describedby="\$\{feeId\}-error"/);
   assert.match(form, /<span aria-hidden="true">£<\/span><input id="\$\{feeId\}" name="\$\{operation\}Fee" type="number" min="0" max="999999\.99" step="0\.01" inputmode="decimal" required/);
   assert.match(form, /Enter an amount with up to 2 decimal places; £0\.00 is allowed\./);
+  assert.match(form, /This event anchors the customer-facing pick-up time window/);
+  assert.match(form, /This is the waiting period before the configured pick-up fee's covered period begins/);
+  assert.match(form, /This is the period covered by the configured pick-up fee, not fee effective dates/);
+  assert.match(form, /option value="ALT"[^>]*>Actual Landing Time \(ALT\)/);
+  assert.match(form, /option value="AGA"[^>]*>Actual Gate Arrival \(AGA\)/);
 });
 
 test("Airport Fees form fits desktop in one row and wraps without overflow on smaller screens", async (t) => {
@@ -135,6 +156,10 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
           dropoffFee: rect("#airport-dropoff-fee"),
           pickupLocation: rect("#airport-pickup-location"),
           pickupFee: rect("#airport-pickup-fee"),
+          pickupTimeReference: rect("#airport-pickup-time-reference"),
+          pickupDeferredPolicy: rect("#airport-pickup-deferred-policy"),
+          pickupDeferredMinutes: rect("#airport-pickup-deferred-minutes"),
+          pickupFeeCoveredMinutes: rect("#airport-pickup-fee-covered-minutes"),
           dropoffFeeStyle: controlStyle("#airport-dropoff-fee"),
           pickupFeeStyle: controlStyle("#airport-pickup-fee"),
           dropoffLocationStyle: controlStyle("#airport-dropoff-location"),
@@ -150,6 +175,9 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
       assert.ok(layout.recordsTop >= layout.formBottom, "records should remain below the form");
       assert.ok(layout.dropoffFee.width >= 100, `drop-off fee input should be usable at ${width}px`);
       assert.ok(layout.pickupFee.width >= 100, `pick-up fee input should be usable at ${width}px`);
+      for (const control of [layout.pickupTimeReference, layout.pickupDeferredPolicy, layout.pickupDeferredMinutes, layout.pickupFeeCoveredMinutes]) {
+        assert.ok(control.width >= 100, `pick-up timing select should be usable at ${width}px`);
+      }
       assert.equal(layout.dropoffFee.height, layout.dropoffLocation.height, "drop-off fee should match the location control height");
       assert.equal(layout.pickupFee.height, layout.pickupLocation.height, "pick-up fee should match the location control height");
       assert.deepEqual(layout.dropoffFeeStyle, layout.dropoffLocationStyle, "drop-off fee should match the location control styling");
@@ -170,6 +198,10 @@ test("Airport Fees form fits desktop in one row and wraps without overflow on sm
     assert.equal(await page.getByLabel("Drop-off fee (GBP)").count(), 1);
     assert.equal(await page.getByLabel("Pick-up location").count(), 1);
     assert.equal(await page.getByLabel("Pick-up fee (GBP)").count(), 1);
+    assert.equal(await page.getByLabel("Time reference").count(), 1);
+    assert.equal(await page.getByLabel("Deferred pick-up policy").count(), 1);
+    assert.equal(await page.getByLabel("Deferred period before fee-covered period begins (minutes)").count(), 1);
+    assert.equal(await page.getByLabel("Fee-covered period (minutes)").count(), 1);
     for (const id of ["airport-dropoff-fee", "airport-pickup-fee"]) {
       await page.locator(`#${id}`).focus();
       const focusShadow = await page.evaluate(() => getComputedStyle(document.activeElement as Element).boxShadow);
