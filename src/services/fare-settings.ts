@@ -205,7 +205,8 @@ export function validateFareSettingsForm(
   const periods: BankHolidaySurchargePeriod[] = [];
   (hasPeriods ? periodRows(body.periods) : current.bankHolidaySurcharge.periods)
     .filter((row) => !("remove" in row) || row.remove !== "yes")
-    .forEach((row, index) => {
+    .forEach((row) => {
+      const index = periods.length;
       const period = {
         label: typeof row.label === "string" ? row.label.trim() : "",
         startDateTime: typeof row.startDateTime === "string" ? row.startDateTime.trim() : "",
