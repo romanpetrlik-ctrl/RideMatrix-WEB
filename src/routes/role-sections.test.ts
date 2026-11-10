@@ -21,7 +21,21 @@ import type {
   LondonFeeScheduleSnapshot,
   LondonFeeScheduleStore
 } from "../services/london-fee-schedules";
-import { createRoleSectionsRouter, grantingRoles, tollFeeCategories, workspaceModules } from "./role-sections";
+import {
+  EMPTY_FARE_SETTINGS,
+  FareSettingsVersionConflictError,
+  type FareSettingsActor,
+  type FareSettingsConfiguration,
+  type FareSettingsSnapshot,
+  type FareSettingsStore
+} from "../services/fare-settings";
+import {
+  createRoleSectionsRouter,
+  fareSettingsCategories,
+  grantingRoles,
+  tollFeeCategories,
+  workspaceModules
+} from "./role-sections";
 
 // Role keys the Staff directory shows for bookings@romanairporttransfers.co.uk
 // (admin, customer, driver, partner, staff, superuser, tech_support).
@@ -171,6 +185,38 @@ function createMemoryFeeScheduleStore(): { store: LondonFeeScheduleStore; reset:
   };
 }
 
+function createMemoryFareSettingsStore(): { store: FareSettingsStore; reset: () => void; snapshot: () => FareSettingsSnapshot } {
+  let state: FareSettingsSnapshot;
+  const reset = () => {
+    state = { configuration: structuredClone(EMPTY_FARE_SETTINGS), currentVersion: 0, history: [] };
+  };
+  reset();
+  return {
+    reset,
+    snapshot: () => structuredClone(state),
+    store: {
+      async load() {
+        return structuredClone(state);
+      },
+      async save(expectedVersion: number, configuration: FareSettingsConfiguration, actor: FareSettingsActor) {
+        if (expectedVersion !== state.currentVersion) throw new FareSettingsVersionConflictError();
+        state = {
+          configuration: structuredClone(configuration),
+          currentVersion: state.currentVersion + 1,
+          history: [
+            {
+              version: state.currentVersion + 1,
+              actorEmail: actor.email,
+              createdAt: "2026-11-10T12:00:00.000Z"
+            },
+            ...state.history
+          ]
+        };
+      }
+    }
+  };
+}
+
 describe("role workspaces authorize against the /auth/session role contract", () => {
   let authServer: http.Server;
   let appServer: http.Server;
@@ -186,6 +232,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   const seenCookies: Array<string | undefined> = [];
   const feeSchedules = createMemoryFeeScheduleStore();
   const airportFees = createMemoryAirportFeeStore();
+  const fareSettings = createMemoryFareSettingsStore();
 
   before(async () => {
     process.env.GOOGLE_MAPS_ENABLED = "false";
@@ -218,7 +265,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     app.use(createRoleSectionsRouter({
       appTitle: "RideMatrix Test",
       feeScheduleStore: feeSchedules.store,
-      airportFeeStore: airportFees.store
+      airportFeeStore: airportFees.store,
+      fareSettingsStore: fareSettings.store
     }));
     appServer = app.listen(0);
     await new Promise<void>((resolve) => appServer.once("listening", resolve));
@@ -1123,5 +1171,196 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.ok(settings);
     assert.deepEqual(grantingRoles(BOOKINGS_ROLES, settings), ["superuser"]);
     assert.deepEqual(grantingRoles(["System Control", "Superuser"], settings), []);
+  });
+
+  test("Fare Settings navigation lists all five categories and future categories are clear placeholders", async () => {
+    fareSettings.reset();
+    const headers = withSession("sid=fare-nav", ["superuser"]);
+    const settingsBody = await (await fetch(`${baseUrl}/settings`, { headers })).text();
+    assert.match(settingsBody, /href="\/settings\/fare-settings">Open Fare Settings/);
+
+    const landingBody = await (await fetch(`${baseUrl}/settings/fare-settings`, { headers })).text();
+    for (const category of fareSettingsCategories) {
+      assert.match(landingBody, new RegExp(`href="/settings/fare-settings/${category.slug}"`));
+      assert.match(landingBody, new RegExp(category.title));
+    }
+
+    for (const category of fareSettingsCategories.filter((item) => !item.configurable)) {
+      const body = await (await fetch(`${baseUrl}/settings/fare-settings/${category.slug}`, { headers })).text();
+      assert.match(body, /Configuration placeholder/);
+      assert.match(body, /No fare rules or pricing behavior are configured here/);
+    }
+  });
+
+  test("Fare surcharge setting validates, saves, disables, and retains its saved values", async () => {
+    fareSettings.reset();
+    const path = "/settings/fare-settings/fare-surcharge-settings";
+    const sessionCookie = "sid=fare-daily";
+    const initialBody = await (await fetch(`${baseUrl}${path}`, {
+      headers: withSession(sessionCookie, ["superuser"])
+    })).text();
+    assert.match(initialBody, /name="dailyEnabled" value="yes"/);
+    assert.match(initialBody, /name="dailyStartTime" type="time"/);
+    assert.match(initialBody, /name="dailyEndTime" type="time"/);
+    const postForm = async (version: string, values: Record<string, string>) => {
+      const headers = withSession(sessionCookie, ["superuser"]);
+      const page = await fetch(`${baseUrl}${path}`, { headers });
+      const pageBody = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      const postCookie = `${sessionCookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          cookie: postCookie,
+          "content-type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ ...values, baseVersion: version, _csrf: token }),
+        redirect: "manual"
+      });
+    };
+
+    const invalid = await postForm("0", { dailyEnabled: "yes" });
+    assert.equal(invalid.status, 400);
+    assert.match(await invalid.text(), /Enter a valid non-negative percentage/);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    const enabled = await postForm("0", {
+      dailyEnabled: "yes",
+      dailyPercentage: "12.5",
+      dailyStartTime: "23:00",
+      dailyEndTime: "06:00"
+    });
+    assert.equal(enabled.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.dailySurcharge, {
+      enabled: true,
+      percentage: "12.5",
+      startTime: "23:00",
+      endTime: "06:00"
+    });
+
+    const stale = await postForm("0", { dailyEnabled: "no" });
+    assert.equal(stale.status, 409);
+    assert.match(await stale.text(), /changed after the form was opened/);
+    assert.equal(fareSettings.snapshot().history.length, 1);
+
+    const disabled = await postForm("1", { dailyEnabled: "no" });
+    assert.equal(disabled.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.dailySurcharge, {
+      enabled: false,
+      percentage: "12.5",
+      startTime: "23:00",
+      endTime: "06:00"
+    });
+    assert.equal(fareSettings.snapshot().history.length, 2);
+  });
+
+  test("Bank holiday fare settings save, edit, and remove explicit periods with precedence recorded", async () => {
+    fareSettings.reset();
+    const path = "/settings/fare-settings/bank-holiday-fare-settings";
+    const sessionCookie = "sid=fare-bank";
+    const initialBody = await (await fetch(`${baseUrl}${path}`, {
+      headers: withSession(sessionCookie, ["superuser"])
+    })).text();
+    assert.match(initialBody, /Add surcharge period/);
+    assert.match(initialBody, /type="datetime-local"/);
+    assert.match(initialBody, /name="periodsSubmitted" value="yes"/);
+    const postForm = async (version: string, values: Record<string, string>) => {
+      const headers = withSession(sessionCookie, ["superuser"]);
+      const page = await fetch(`${baseUrl}${path}`, { headers });
+      const pageBody = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      const postCookie = `${sessionCookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          cookie: postCookie,
+          "content-type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ ...values, baseVersion: version, _csrf: token }),
+        redirect: "manual"
+      });
+    };
+
+    const saved = await postForm("0", {
+      bankHolidayEnabled: "yes",
+      "periods[0][label]": "Christmas/Boxing Day period",
+      "periods[0][startDateTime]": "2026-12-24T18:00",
+      "periods[0][endDateTime]": "2026-12-27T06:00",
+      "periods[0][percentage]": "35",
+      "periods[1][label]": "New Year period",
+      "periods[1][startDateTime]": "2026-12-31T18:00",
+      "periods[1][endDateTime]": "2027-01-02T06:00",
+      "periods[1][percentage]": "40"
+    });
+    assert.equal(saved.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.bankHolidaySurcharge, {
+      enabled: true,
+      periods: [
+        {
+          label: "Christmas/Boxing Day period",
+          startDateTime: "2026-12-24T18:00",
+          endDateTime: "2026-12-27T06:00",
+          percentage: "35"
+        },
+        {
+          label: "New Year period",
+          startDateTime: "2026-12-31T18:00",
+          endDateTime: "2027-01-02T06:00",
+          percentage: "40"
+        }
+      ]
+    });
+    assert.equal(fareSettings.snapshot().configuration.precedence, "bank-holiday-over-daily");
+
+    const editedAndRemoved = await postForm("1", {
+      bankHolidayEnabled: "no",
+      "periods[0][label]": "Updated Christmas period",
+      "periods[0][startDateTime]": "2026-12-24T19:00",
+      "periods[0][endDateTime]": "2026-12-27T06:00",
+      "periods[0][percentage]": "36"
+    });
+    assert.equal(editedAndRemoved.status, 303);
+    assert.equal(fareSettings.snapshot().configuration.bankHolidaySurcharge.enabled, false);
+    assert.deepEqual(fareSettings.snapshot().configuration.bankHolidaySurcharge.periods, [{
+      label: "Updated Christmas period",
+      startDateTime: "2026-12-24T19:00",
+      endDateTime: "2026-12-27T06:00",
+      percentage: "36"
+    }]);
+    const removed = await postForm("2", {
+      bankHolidayEnabled: "no",
+      periodsSubmitted: "yes"
+    });
+    assert.equal(removed.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.bankHolidaySurcharge.periods, []);
+    assert.equal(fareSettings.snapshot().history.length, 3);
+
+    const savedPage = await fetch(`${baseUrl}${path}`, { headers: withSession(sessionCookie, ["superuser"]) });
+    const savedBody = await savedPage.text();
+    assert.match(savedBody, /that period's surcharge takes precedence; it is not combined with the daily surcharge/);
+    assert.match(savedBody, /Configuration history/);
+  });
+
+  test("Fare Settings remains restricted to superuser sessions", async () => {
+    const denied = await fetch(`${baseUrl}/settings/fare-settings/fare-surcharge-settings`, {
+      headers: withSession("sid=fare-denied", ["admin", "staff", "tech_support"]),
+      redirect: "manual"
+    });
+    assert.equal(denied.status, 403);
+    assert.match(await denied.text(), /does not include the System Control role required for System settings/);
+    const anonymous = await fetch(`${baseUrl}/settings/fare-settings`, {
+      headers: { cookie: "sid=fare-anonymous" },
+      redirect: "manual"
+    });
+    assert.equal(anonymous.status, 302);
+    assert.equal(anonymous.headers.get("location"), "/access");
   });
 });
