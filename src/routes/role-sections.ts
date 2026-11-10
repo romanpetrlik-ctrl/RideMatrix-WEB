@@ -529,6 +529,13 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
             statusCode: 400
           });
         }
+        if (expectedVersion !== snapshot.currentVersion) {
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot,
+            formError: new FareSettingsVersionConflictError().message,
+            statusCode: 409
+          });
+        }
         if (Object.keys(errors).length > 0) {
           return renderFareSettingsPage(req, res, next, { category }, {
             snapshot,
