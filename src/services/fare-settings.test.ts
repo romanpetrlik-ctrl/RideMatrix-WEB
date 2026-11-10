@@ -336,7 +336,7 @@ test("distance preview recalculates from unsaved form values on slab and test-di
   assert.equal(calculateBrowserDistanceSlabFare(unsavedSlabs, "12.4"), "36.72");
 
   const script = readFileSync("public/js/fare-settings.js", "utf8");
-  assert.match(script, /slabList\?\.addEventListener\("input", \(event\) => \{\s*updateSlabInputErrors\(event\);\s*calculatePreview\(\);/);
+  assert.match(script, /slabList\?\.addEventListener\("input", \(event\) => \{\s*updateSlabInputErrors\(event\);[\s\S]{0,250}calculatePreview\(\);\s*\}\)/);
   assert.match(script, /testDistance\?\.addEventListener\("input", calculatePreview\)/);
   assert.match(script, /window\.calculateDistanceSlabFare\(slabs, distance\)/);
 });
