@@ -27,11 +27,20 @@ import {
   londonCongestionChargeBoundaryMetadata
 } from "../services/london-congestion-charge-boundary";
 import { readMapConfiguration } from "../services/maps";
+import {
+  fareSettingsStore,
+  FareSettingsVersionConflictError,
+  validateFareSettingsForm,
+  type FareSettingsConfiguration,
+  type FareSettingsSnapshot,
+  type FareSettingsStore
+} from "../services/fare-settings";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
   feeScheduleStore?: LondonFeeScheduleStore;
   airportFeeStore?: AirportFeeStore;
+  fareSettingsStore?: FareSettingsStore;
 };
 
 type TollFeesRenderOptions = {
@@ -118,6 +127,21 @@ export const tollFeeCategories: readonly TollFeeCategory[] = [
   },
   { slug: "dartford-crossing", title: "Dartford Crossing", description: "Crossing rules and fee schedules." },
   { slug: "blackwall-silvertown-tunnels", title: "Blackwall & Silvertown tunnels", description: "Tunnel rules and fee schedules." }
+];
+
+export type FareSettingsCategory = {
+  slug: string;
+  title: string;
+  description: string;
+  configurable: boolean;
+};
+
+export const fareSettingsCategories: readonly FareSettingsCategory[] = [
+  { slug: "fixed-fares", title: "Fixed fares", description: "Future configuration for fixed fare rules.", configurable: false },
+  { slug: "distance-slabs", title: "Distance slabs", description: "Future configuration for distance-based fare bands.", configurable: false },
+  { slug: "extras", title: "Extras", description: "Future configuration for fare extras.", configurable: false },
+  { slug: "fare-surcharge-settings", title: "Fare surcharge settings", description: "Configure a recurring daily fare surcharge.", configurable: true },
+  { slug: "bank-holiday-fare-settings", title: "Bank holiday fare settings", description: "Configure explicit date and time surcharge periods.", configurable: true }
 ];
 
 const referenceDataDescription =
@@ -227,6 +251,18 @@ function renderUnavailable(res: Response, appTitle: string, module: WorkspaceMod
     message: `Your current session does not include the ${describeRequiredRoles(module)} role required for ${module.title}.`
   });
 }
+
+type FareSettingsRenderOptions = {
+  snapshot?: FareSettingsSnapshot;
+  configuration?: FareSettingsConfiguration;
+  errors?: Record<string, string>;
+  formError?: string;
+  statusCode?: number;
+};
+
+type FareSettingsPage = {
+  category?: FareSettingsCategory;
+};
 
 async function renderTollFeesPage(
   req: Request,
@@ -378,8 +414,151 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
   const router = Router();
   const feeScheduleStore = options.feeScheduleStore ?? londonFeeScheduleStore;
   const airportFeesStore = options.airportFeeStore ?? airportFeeStore;
+  const fareStore = options.fareSettingsStore ?? fareSettingsStore;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   router.use(noStoreProtectedResponse);
+
+  const renderFareSettingsPage = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+    page: FareSettingsPage,
+    renderOptions: FareSettingsRenderOptions = {}
+  ): Promise<void> => {
+    try {
+      const session = await getSessionAccount(req.headers.cookie);
+      if (!session.authenticated || !session.user) {
+        res.redirect("/access");
+        return;
+      }
+
+      const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+      if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+        renderUnavailable(res, options.appTitle, systemSettingsModule);
+        return;
+      }
+
+      const snapshot = renderOptions.snapshot ?? await fareStore.load();
+      const configuration = renderOptions.configuration ?? snapshot.configuration;
+      const categoryTitle = page.category?.title;
+      const safeConfiguration: FareSettingsConfiguration = {
+        ...configuration,
+        dailySurcharge: {
+          ...configuration.dailySurcharge,
+          percentage: escapeHtml(configuration.dailySurcharge.percentage),
+          startTime: escapeHtml(configuration.dailySurcharge.startTime),
+          endTime: escapeHtml(configuration.dailySurcharge.endTime)
+        },
+        bankHolidaySurcharge: {
+          ...configuration.bankHolidaySurcharge,
+          periods: configuration.bankHolidaySurcharge.periods.map((period) => ({
+            label: escapeHtml(period.label),
+            startDateTime: escapeHtml(period.startDateTime),
+            endDateTime: escapeHtml(period.endDateTime),
+            percentage: escapeHtml(period.percentage)
+          }))
+        }
+      };
+      const safeHistory = snapshot.history.map((entry) => ({
+        ...entry,
+        actorEmail: entry.actorEmail ? escapeHtml(entry.actorEmail) : "System"
+      }));
+      const safeErrors = Object.fromEntries(
+        Object.entries(renderOptions.errors ?? {}).map(([key, value]) => [key, escapeHtml(value)])
+      );
+      const breadcrumbs = [
+        { label: "System Settings", href: "/settings" },
+        { label: "Fare Settings", href: "/settings/fare-settings" },
+        ...(page.category ? [{ label: page.category.title }] : [])
+      ];
+
+      res.status(renderOptions.statusCode ?? 200).render("pages/fare-settings", {
+        title: categoryTitle ? `Fare Settings: ${categoryTitle}` : "Fare Settings",
+        appTitle: options.appTitle,
+        email: escapeHtml(session.user.email),
+        grantedByLabel: grantingRoles(roles, systemSettingsModule).map(formatRoleLabel).join(", "),
+        categories: fareSettingsCategories,
+        category: page.category,
+        breadcrumbs,
+        configuration: safeConfiguration,
+        currentVersion: snapshot.currentVersion,
+        history: safeHistory,
+        errors: safeErrors,
+        formError: renderOptions.formError ? escapeHtml(renderOptions.formError) : "",
+        saved: req.query.saved === "1"
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  const fareSettingsPath = "/settings/fare-settings";
+  router.get(fareSettingsPath, (req, res, next) => {
+    void renderFareSettingsPage(req, res, next, {});
+  });
+
+  for (const category of fareSettingsCategories) {
+    const categoryPath = `${fareSettingsPath}/${category.slug}`;
+    router.get(categoryPath, (req, res, next) => {
+      void renderFareSettingsPage(req, res, next, { category });
+    });
+
+    if (!category.configurable) continue;
+
+    router.post(categoryPath, csrfGuard, async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const snapshot = await fareStore.load();
+        const { configuration, errors } = validateFareSettingsForm(req.body, snapshot.configuration);
+        const rawVersion = req.body?.baseVersion;
+        const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
+          ? Number(rawVersion)
+          : NaN;
+        if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot,
+            configuration,
+            errors,
+            formError: "The settings version is missing or invalid. Reload this page before saving.",
+            statusCode: 400
+          });
+        }
+        if (Object.keys(errors).length > 0) {
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot,
+            configuration,
+            errors,
+            statusCode: 400
+          });
+        }
+
+        try {
+          await fareStore.save(expectedVersion, configuration, {
+            accountId: session.user.id,
+            email: session.user.email
+          });
+        } catch (error) {
+          if (!(error instanceof FareSettingsVersionConflictError)) throw error;
+          const latest = await fareStore.load();
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot: latest,
+            formError: error.message,
+            statusCode: 409
+          });
+        }
+
+        return res.redirect(303, `${categoryPath}?saved=1`);
+      } catch (error) {
+        return next(error);
+      }
+    });
+  }
 
   router.get(
     "/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/reference-data/boundary.json",

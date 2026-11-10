@@ -1374,6 +1374,47 @@ export const MIGRATIONS: Migration[] = [
             ))
           );
     `
+  },
+  {
+    id: "0026_fare_settings",
+    sql: `
+      CREATE TABLE IF NOT EXISTS fare_settings_current (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        configuration JSONB NOT NULL CHECK (jsonb_typeof(configuration) = 'object'),
+        version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      INSERT INTO fare_settings_current (id, configuration)
+      VALUES (
+        1,
+        '{"timezone":"Europe/London","matchingBasis":"scheduled-service-time","interval":"start-inclusive-end-exclusive","precedence":"bank-holiday-over-daily","dailySurcharge":{"enabled":false,"percentage":"","startTime":"","endTime":""},"bankHolidaySurcharge":{"enabled":false,"periods":[]}}'::jsonb
+      )
+      ON CONFLICT (id) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS fare_settings_history (
+        id TEXT PRIMARY KEY,
+        version INTEGER NOT NULL UNIQUE CHECK (version > 0),
+        configuration JSONB NOT NULL CHECK (jsonb_typeof(configuration) = 'object'),
+        actor_account_id TEXT,
+        actor_email TEXT,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE OR REPLACE FUNCTION rm_reject_fare_settings_history_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Fare settings history is append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS fare_settings_history_append_only ON fare_settings_history;
+      CREATE TRIGGER fare_settings_history_append_only
+        BEFORE UPDATE OR DELETE ON fare_settings_history
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_fare_settings_history_mutation();
+    `
   }
 ];
 

@@ -1,0 +1,153 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: title,
+  pageMeta: "System Settings · Fare Settings",
+  activeRoleLabel: "System settings",
+  hintsLabel: "Hints: Off",
+  body: `
+    <section class="panel fare-settings">
+      <nav class="fare-settings__trail" aria-label="Navigation path">
+        <ol>
+          ${breadcrumbs.map((crumb) => `
+            <li${crumb.href ? "" : ' aria-current="page"'}>${crumb.href ? `<a href="${crumb.href}">${crumb.label}</a>` : crumb.label}</li>
+          `).join("")}
+        </ol>
+      </nav>
+      <h1>${title}</h1>
+      <p class="notice fare-settings__access" role="status"><strong>Access granted.</strong> Granted by your current session role(s): ${grantedByLabel}.</p>
+      ${saved ? `<p class="notice fare-settings__saved" role="status">Fare settings saved.</p>` : ""}
+      ${formError ? `<div class="notice fare-settings__error" role="alert">${formError}</div>` : ""}
+
+      ${!category ? `
+        <p class="fare-settings__intro">Configure fare-related settings. All settings are configuration only and are not used to calculate fares or change booking totals.</p>
+        <nav class="fare-settings__categories" aria-label="Fare Settings categories">
+          ${categories.map((item) => `
+            <a class="fare-settings__category" href="/settings/fare-settings/${item.slug}">
+              <span class="fare-settings__category-title">${item.title}</span>
+              <span class="fare-settings__category-description">${item.description}</span>
+              <span class="fare-settings__category-action">Open settings</span>
+            </a>
+          `).join("")}
+        </nav>
+      ` : !category.configurable ? `
+        <p class="fare-settings__intro">${category.description}</p>
+        <div class="notice fare-settings__placeholder" role="status">
+          <strong>Configuration placeholder.</strong> This category is reserved for future configuration. No fare rules or pricing behavior are configured here.
+        </div>
+      ` : `
+        <p class="fare-settings__intro">${category.description}</p>
+        <div class="notice fare-settings__configuration-only" role="status">
+          This saves configuration only. No fare is calculated or applied and booking totals are unchanged. Time values use <strong>Europe/London</strong> local time.
+        </div>
+        ${category.slug === "fare-surcharge-settings" ? `
+          <form class="fare-settings__form" method="post" action="/settings/fare-settings/${category.slug}">
+            ${locals.csrfField || ""}
+            <input type="hidden" name="baseVersion" value="${currentVersion}" />
+            <fieldset class="fare-settings__choice" aria-describedby="daily-enabled-help daily-enabled-error">
+              <legend>Apply fare surcharge?</legend>
+              <label><input type="radio" name="dailyEnabled" value="yes" ${configuration.dailySurcharge.enabled ? "checked" : ""} required /> Yes</label>
+              <label><input type="radio" name="dailyEnabled" value="no" ${configuration.dailySurcharge.enabled ? "" : "checked"} required /> No</label>
+              <p id="daily-enabled-help" class="fare-settings__help">When disabled, the recurring surcharge is not applied and saved values are retained.</p>
+              <p id="daily-enabled-error" class="fare-settings__field-error${errors.dailyEnabled ? " fare-settings__field-error--invalid" : ""}" ${errors.dailyEnabled ? 'role="alert"' : ""}>${errors.dailyEnabled || ""}</p>
+            </fieldset>
+            <fieldset class="fare-settings__fields" data-fare-settings-details data-enabled="${configuration.dailySurcharge.enabled ? "true" : "false"}">
+              <legend>Daily recurring surcharge</legend>
+              <div class="fare-settings__field">
+                <label for="daily-percentage">Surcharge percentage</label>
+                <input id="daily-percentage" name="dailyPercentage" type="number" min="0" step="any" inputmode="decimal" value="${configuration.dailySurcharge.percentage}" aria-invalid="${errors.dailyPercentage ? "true" : "false"}" aria-describedby="daily-percentage-help daily-percentage-error" ${configuration.dailySurcharge.enabled ? "required" : "disabled"} />
+                <p id="daily-percentage-help" class="fare-settings__help">Enter a non-negative percentage. No preset or business maximum is applied.</p>
+                <p id="daily-percentage-error" class="fare-settings__field-error${errors.dailyPercentage ? " fare-settings__field-error--invalid" : ""}" ${errors.dailyPercentage ? 'role="alert"' : ""}>${errors.dailyPercentage || ""}</p>
+              </div>
+              <div class="fare-settings__field">
+                <label for="daily-start-time">Start time (UK local time)</label>
+                <input id="daily-start-time" name="dailyStartTime" type="time" step="60" value="${configuration.dailySurcharge.startTime}" aria-invalid="${errors.dailyStartTime ? "true" : "false"}" aria-describedby="daily-start-time-error" ${configuration.dailySurcharge.enabled ? "required" : "disabled"} />
+                <p id="daily-start-time-error" class="fare-settings__field-error${errors.dailyStartTime ? " fare-settings__field-error--invalid" : ""}" ${errors.dailyStartTime ? 'role="alert"' : ""}>${errors.dailyStartTime || ""}</p>
+              </div>
+              <div class="fare-settings__field">
+                <label for="daily-end-time">End time (UK local time)</label>
+                <input id="daily-end-time" name="dailyEndTime" type="time" step="60" value="${configuration.dailySurcharge.endTime}" aria-invalid="${errors.dailyEndTime ? "true" : "false"}" aria-describedby="daily-end-time-error" ${configuration.dailySurcharge.enabled ? "required" : "disabled"} />
+                <p id="daily-end-time-error" class="fare-settings__field-error${errors.dailyEndTime ? " fare-settings__field-error--invalid" : ""}" ${errors.dailyEndTime ? 'role="alert"' : ""}>${errors.dailyEndTime || ""}</p>
+              </div>
+              <p class="fare-settings__help fare-settings__wide">This window repeats every day, 24/7/365, including windows that cross midnight. It is start-inclusive and end-exclusive and is intended to match the scheduled service/pick-up time, not booking creation time. Start and end must differ.</p>
+            </fieldset>
+            ${Object.keys(errors).length ? `<div class="notice fare-settings__error" role="alert"><strong>Correct the highlighted fields before saving.</strong></div>` : ""}
+            <div class="fare-settings__actions"><button class="button button--primary" type="submit">Save fare surcharge settings</button></div>
+          </form>
+        ` : `
+          <div class="notice fare-settings__precedence" role="status">
+            <strong>Saved precedence:</strong> if the scheduled service/pick-up time falls within an enabled bank holiday period, that period's surcharge takes precedence; it is not combined with the daily surcharge. Otherwise the daily window may be applicable. This is informational configuration only; no matching or fare calculation occurs here.
+          </div>
+          <form class="fare-settings__form" method="post" action="/settings/fare-settings/${category.slug}" data-bank-holiday-form>
+            ${locals.csrfField || ""}
+            <input type="hidden" name="baseVersion" value="${currentVersion}" />
+            <input type="hidden" name="periodsSubmitted" value="yes" />
+            <fieldset class="fare-settings__choice" aria-describedby="bank-holiday-enabled-help bank-holiday-enabled-error">
+              <legend>Apply bank holiday fare surcharge?</legend>
+              <label><input type="radio" name="bankHolidayEnabled" value="yes" ${configuration.bankHolidaySurcharge.enabled ? "checked" : ""} required /> Yes</label>
+              <label><input type="radio" name="bankHolidayEnabled" value="no" ${configuration.bankHolidaySurcharge.enabled ? "" : "checked"} required /> No</label>
+              <p id="bank-holiday-enabled-help" class="fare-settings__help">When disabled, no bank holiday surcharge is applied. Saved periods can be retained or edited.</p>
+              <p id="bank-holiday-enabled-error" class="fare-settings__field-error${errors.bankHolidayEnabled ? " fare-settings__field-error--invalid" : ""}" ${errors.bankHolidayEnabled ? 'role="alert"' : ""}>${errors.bankHolidayEnabled || ""}</p>
+            </fieldset>
+            <section class="fare-settings__period-section" aria-labelledby="bank-holiday-periods-title">
+              <h2 id="bank-holiday-periods-title">Surcharge periods</h2>
+              <p class="fare-settings__help">Enter explicit local dates and times; periods are never inferred from calendars, weekdays, or holiday names. Start is inclusive and end is exclusive. Periods may cross midnight or span multiple days, but must not overlap.</p>
+              ${errors.bankHolidayPeriods ? `<p class="fare-settings__field-error fare-settings__field-error--invalid" role="alert">${errors.bankHolidayPeriods}</p>` : ""}
+              <div class="fare-settings__periods" data-period-list>
+                ${(configuration.bankHolidaySurcharge.periods.length ? configuration.bankHolidaySurcharge.periods : [{ label: "", startDateTime: "", endDateTime: "", percentage: "" }]).map((period, index) => `
+                  <fieldset class="fare-settings__period" data-period data-index="${index}" aria-labelledby="bank-period-${index}-title">
+                    <legend id="bank-period-${index}-title">Period ${index + 1}</legend>
+                    <div class="fare-settings__field">
+                      <label for="bank-period-${index}-label">Descriptive label</label>
+                      <input id="bank-period-${index}-label" name="periods[${index}][label]" type="text" maxlength="160" value="${period.label}" aria-invalid="${errors[`periods.${index}.label`] ? "true" : "false"}" aria-describedby="bank-period-${index}-label-error" />
+                      <p id="bank-period-${index}-label-error" class="fare-settings__field-error${errors[`periods.${index}.label`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`periods.${index}.label`] ? 'role="alert"' : ""}>${errors[`periods.${index}.label`] || ""}</p>
+                    </div>
+                    <div class="fare-settings__field">
+                      <label for="bank-period-${index}-start">Start date and time (UK local time)</label>
+                      <input id="bank-period-${index}-start" name="periods[${index}][startDateTime]" type="datetime-local" step="60" value="${period.startDateTime}" aria-invalid="${errors[`periods.${index}.startDateTime`] ? "true" : "false"}" aria-describedby="bank-period-${index}-start-error" />
+                      <p id="bank-period-${index}-start-error" class="fare-settings__field-error${errors[`periods.${index}.startDateTime`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`periods.${index}.startDateTime`] ? 'role="alert"' : ""}>${errors[`periods.${index}.startDateTime`] || ""}</p>
+                    </div>
+                    <div class="fare-settings__field">
+                      <label for="bank-period-${index}-end">End date and time (UK local time)</label>
+                      <input id="bank-period-${index}-end" name="periods[${index}][endDateTime]" type="datetime-local" step="60" value="${period.endDateTime}" aria-invalid="${errors[`periods.${index}.endDateTime`] ? "true" : "false"}" aria-describedby="bank-period-${index}-end-error" />
+                      <p id="bank-period-${index}-end-error" class="fare-settings__field-error${errors[`periods.${index}.endDateTime`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`periods.${index}.endDateTime`] ? 'role="alert"' : ""}>${errors[`periods.${index}.endDateTime`] || ""}</p>
+                    </div>
+                    <div class="fare-settings__field">
+                      <label for="bank-period-${index}-percentage">Surcharge percentage</label>
+                      <input id="bank-period-${index}-percentage" name="periods[${index}][percentage]" type="number" min="0" step="any" inputmode="decimal" value="${period.percentage}" aria-invalid="${errors[`periods.${index}.percentage`] ? "true" : "false"}" aria-describedby="bank-period-${index}-percentage-error" />
+                      <p id="bank-period-${index}-percentage-error" class="fare-settings__field-error${errors[`periods.${index}.percentage`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`periods.${index}.percentage`] ? 'role="alert"' : ""}>${errors[`periods.${index}.percentage`] || ""}</p>
+                    </div>
+                    <button class="button button--secondary button--small fare-settings__remove-period" type="button" data-remove-period>Remove period ${index + 1}</button>
+                  </fieldset>
+                `).join("")}
+              </div>
+              <button class="button button--secondary fare-settings__add-period" type="button" data-add-period>Add surcharge period</button>
+            </section>
+            <div class="fare-settings__actions"><button class="button button--primary" type="submit">Save bank holiday fare settings</button></div>
+          </form>
+          <template id="fare-settings-period-template">
+            <fieldset class="fare-settings__period" data-period data-index="ROW" aria-labelledby="bank-period-ROW-title">
+              <legend id="bank-period-ROW-title">Period</legend>
+              <div class="fare-settings__field"><label for="bank-period-ROW-label">Descriptive label</label><input id="bank-period-ROW-label" name="periods[ROW][label]" type="text" maxlength="160" /><p class="fare-settings__field-error"></p></div>
+              <div class="fare-settings__field"><label for="bank-period-ROW-start">Start date and time (UK local time)</label><input id="bank-period-ROW-start" name="periods[ROW][startDateTime]" type="datetime-local" step="60" /><p class="fare-settings__field-error"></p></div>
+              <div class="fare-settings__field"><label for="bank-period-ROW-end">End date and time (UK local time)</label><input id="bank-period-ROW-end" name="periods[ROW][endDateTime]" type="datetime-local" step="60" /><p class="fare-settings__field-error"></p></div>
+              <div class="fare-settings__field"><label for="bank-period-ROW-percentage">Surcharge percentage</label><input id="bank-period-ROW-percentage" name="periods[ROW][percentage]" type="number" min="0" step="any" inputmode="decimal" /><p class="fare-settings__field-error"></p></div>
+              <button class="button button--secondary button--small fare-settings__remove-period" type="button" data-remove-period>Remove period</button>
+            </fieldset>
+          </template>
+        `}
+        <section class="fare-settings__history" aria-labelledby="fare-settings-history-title">
+          <h2 id="fare-settings-history-title">Configuration history</h2>
+          ${history.length ? `
+            <ol>
+              ${history.map((entry) => `<li><strong>Version ${entry.version}</strong> — ${entry.actorEmail}, ${entry.createdAt}</li>`).join("")}
+            </ol>
+          ` : `<p>No changes have been saved yet.</p>`}
+        </section>
+        <script src="/js/fare-settings.js" defer></script>
+      `}
+    </section>
+  `
+}) %>
