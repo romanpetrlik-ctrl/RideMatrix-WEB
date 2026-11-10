@@ -78,46 +78,64 @@ test("distance slab editor adds contiguous editable rows and preserves values", 
     });
     assert.ok(renderedOrder, "settings preview should appear before the distance slab table");
 
-    await page.getByRole("button", { name: "Add distance slab" }).click();
-    assert.equal(await page.locator("[data-distance-slab]").count(), 1);
-    assert.match(await page.locator("[data-add-distance-slab-error]").textContent() ?? "", /end distance.*before adding/i);
-
-    await page.locator('[name="distanceSlabs[0][endMiles]"]').fill("10");
-    await page.locator("[data-test-distance]").fill("5");
-    assert.doesNotMatch(await page.locator("[data-slab-title]").textContent() ?? "", /open-ended final slab/);
-    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "—");
-    assert.match(await page.locator("#distance-test-error").textContent() ?? "", /schedule is incomplete or invalid/i);
-    await page.locator("[data-test-distance]").fill("");
+    await page.locator("[data-test-distance]").fill("12");
     await page.getByRole("button", { name: "Add distance slab" }).click();
     assert.equal(await page.locator("[data-distance-slab]").count(), 2);
     assert.equal(await page.locator('[name="distanceSlabs[0][startMiles]"]').inputValue(), "0");
-    assert.equal(await page.locator('[name="distanceSlabs[0][endMiles]"]').inputValue(), "10");
+    assert.equal(await page.locator('[name="distanceSlabs[0][endMiles]"]').inputValue(), "");
     assert.equal(await page.locator('[name="distanceSlabs[0][ratePerMile]"]').inputValue(), "3.25");
-    assert.equal(await page.locator('[name="distanceSlabs[1][startMiles]"]').inputValue(), "10");
+    assert.equal(await page.locator('[name="distanceSlabs[1][startMiles]"]').inputValue(), "");
     assert.equal(await page.locator('[name="distanceSlabs[1][endMiles]"]').inputValue(), "");
     assert.equal(await page.locator('[name="distanceSlabs[1][ratePerMile]"]').isEditable(), true);
-    assert.doesNotMatch(await page.locator("[data-slab-title]").nth(0).textContent() ?? "", /open-ended final slab/);
+    assert.equal(await page.locator("[data-slab-title]").nth(0).textContent(), "Slab 1");
     assert.match(await page.locator("[data-slab-title]").nth(1).textContent() ?? "", /open-ended final slab/);
+    assert.equal(await page.locator("[data-slab-start-instruction]").nth(1).isVisible(), true);
+    assert.equal(await page.locator('[name="distanceSlabs[1][startMiles]"]').evaluate((input) => input === document.activeElement), true);
     assert.equal(await page.locator("[data-add-distance-slab-error]").isVisible(), false);
-
-    await page.locator('[name="distanceSlabs[1][ratePerMile]"]').fill("2.70");
-    await page.locator("[data-test-distance]").fill("12");
-    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "£37.90");
-
-    await page.getByRole("button", { name: "Add distance slab" }).click();
-    assert.equal(await page.locator("[data-distance-slab]").count(), 2);
-    assert.match(await page.locator("[data-add-distance-slab-error]").textContent() ?? "", /end distance.*before adding/i);
-    await page.locator('[name="distanceSlabs[1][endMiles]"]').fill("invalid");
-    await page.getByRole("button", { name: "Add distance slab" }).click();
-    assert.equal(await page.locator("[data-distance-slab]").count(), 2);
-    assert.match(await page.locator("[data-add-distance-slab-error]").textContent() ?? "", /valid non-negative end distance/i);
+    assert.equal(await page.locator("[data-test-distance]").inputValue(), "12");
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "—");
+    assert.match(await page.locator("#distance-test-error").textContent() ?? "", /schedule is incomplete or invalid/i);
 
     await page.locator("[data-remove-distance-slab]").nth(1).click();
     assert.equal(await page.locator("[data-distance-slab]").count(), 1);
-    assert.equal(await page.locator('[name="distanceSlabs[0][ratePerMile]"]').inputValue(), "3.25");
-    await page.locator('[name="distanceSlabs[0][endMiles]"]').fill("");
-    await page.evaluate(() => {
-      document.querySelector("[data-distance-slab-form]")?.addEventListener("submit", (event) => event.preventDefault());
+    assert.equal(await page.locator('[name="distanceSlabs[0][endMiles]"]').inputValue(), "");
+    assert.match(await page.locator("[data-slab-title]").textContent() ?? "", /open-ended final slab/);
+    await page.getByRole("button", { name: "Add distance slab" }).click();
+
+    await page.locator('[name="distanceSlabs[1][startMiles]"]').fill("10");
+    assert.equal(await page.locator('[name="distanceSlabs[0][endMiles]"]').inputValue(), "10");
+    assert.equal(await page.locator('[name="distanceSlabs[1][startMiles]"]').inputValue(), "10");
+    assert.equal(await page.locator("[data-slab-start-instruction]").nth(1).isVisible(), false);
+    await page.locator("[data-distance-slab-form]").evaluate((form) => {
+      (window as typeof window & { submitWasPrevented?: boolean }).submitWasPrevented = false;
+      form.addEventListener("submit", (event) => {
+        (window as typeof window & { submitWasPrevented?: boolean }).submitWasPrevented = event.defaultPrevented;
+        event.preventDefault();
+      });
+    });
+    await page.getByRole("button", { name: "Save distance slabs" }).click();
+    assert.equal(await page.evaluate(() => (window as typeof window & { submitWasPrevented?: boolean }).submitWasPrevented), true);
+    assert.equal(await page.locator("[data-distance-slab-submit-error]").isVisible(), true);
+    assert.match(await page.locator("[data-distance-slab-submit-error]").textContent() ?? "", /rate for every slab.*before saving/i);
+
+    await page.locator('[name="distanceSlabs[1][ratePerMile]"]').fill("2.70");
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "£37.90");
+    assert.equal(await page.locator("[data-distance-slab-submit-error]").isVisible(), false);
+
+    await page.locator('[name="distanceSlabs[1][endMiles]"]').fill("15");
+    await page.getByRole("button", { name: "Add distance slab" }).click();
+    assert.equal(await page.locator("[data-distance-slab]").count(), 3);
+    assert.equal(await page.locator('[name="distanceSlabs[2][startMiles]"]').inputValue(), "15");
+    assert.equal(await page.locator('[name="distanceSlabs[1][endMiles]"]').inputValue(), "15");
+    assert.equal(await page.locator('[name="distanceSlabs[2][endMiles]"]').inputValue(), "");
+    assert.match(await page.locator("[data-slab-title]").nth(2).textContent() ?? "", /open-ended final slab/);
+
+    await page.locator("[data-remove-distance-slab]").nth(2).click();
+    assert.equal(await page.locator("[data-distance-slab]").count(), 2);
+    assert.equal(await page.locator('[name="distanceSlabs[1][endMiles]"]').inputValue(), "");
+    assert.match(await page.locator("[data-slab-title]").nth(1).textContent() ?? "", /open-ended final slab/);
+    await page.locator("[data-distance-slab-form]").evaluate((form) => {
+      form.addEventListener("submit", (event) => event.preventDefault());
     });
     await page.getByRole("button", { name: "Save distance slabs" }).click();
     const submittedValues = await page.locator("[data-distance-slab-form]").evaluate((form) =>
@@ -125,8 +143,11 @@ test("distance slab editor adds contiguous editable rows and preserves values", 
     );
     assert.deepEqual(submittedValues.filter(([name]) => name.startsWith("distanceSlabs[")), [
       ["distanceSlabs[0][startMiles]", "0"],
-      ["distanceSlabs[0][endMiles]", ""],
-      ["distanceSlabs[0][ratePerMile]", "3.25"]
+      ["distanceSlabs[0][endMiles]", "10"],
+      ["distanceSlabs[0][ratePerMile]", "3.25"],
+      ["distanceSlabs[1][startMiles]", "10"],
+      ["distanceSlabs[1][endMiles]", ""],
+      ["distanceSlabs[1][ratePerMile]", "2.70"]
     ]);
 
     await page.setViewportSize({ width: 390, height: 844 });
