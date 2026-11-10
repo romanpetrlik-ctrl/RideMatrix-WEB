@@ -1190,6 +1190,98 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(body, /Configuration placeholder/);
       assert.match(body, /No fare rules or pricing behavior are configured here/);
     }
+    assert.equal(fareSettingsCategories.find((item) => item.slug === "distance-slabs")?.configurable, true);
+  });
+
+  test("Distance slabs validate, save, edit, remove, preview unsaved form state, and retain version history", async () => {
+    fareSettings.reset();
+    const path = "/settings/fare-settings/distance-slabs";
+    const sessionCookie = "sid=fare-distance";
+    const getPage = () => fetch(`${baseUrl}${path}`, { headers: withSession(sessionCookie, ["superuser"]) });
+    const initialResponse = await getPage();
+    const initialBody = await initialResponse.text();
+    assert.match(initialBody, /name="distanceSlabs\[0\]\[startMiles\]"/);
+    assert.match(initialBody, /name="distanceSlabs\[0\]\[endMiles\]"/);
+    assert.match(initialBody, /name="distanceSlabs\[0\]\[ratePerMile\]"/);
+    assert.match(initialBody, /Open-ended final slab/);
+    assert.match(initialBody, /Settings preview/);
+    assert.match(initialBody, /data-test-distance/);
+    assert.match(initialBody, /current form values, including unsaved edits/);
+    assert.match(initialBody, /not a booking quote/);
+
+    const postForm = async (version: string, values: Record<string, string>) => {
+      const page = await getPage();
+      const pageBody = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      const postCookie = `${sessionCookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          cookie: postCookie,
+          "content-type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ ...values, baseVersion: version, _csrf: token }),
+        redirect: "manual"
+      });
+    };
+
+    const invalid = await postForm("0", {
+      "distanceSlabs[0][startMiles]": "1",
+      "distanceSlabs[0][endMiles]": "",
+      "distanceSlabs[0][ratePerMile]": "3"
+    });
+    assert.equal(invalid.status, 400);
+    const invalidBody = await invalid.text();
+    assert.match(invalidBody, /The first slab must start at 0 miles/);
+    assert.match(invalidBody, /name="distanceSlabs\[0\]\[startMiles\]"[^>]*value="1"/);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    const created = await postForm("0", {
+      "distanceSlabs[0][startMiles]": "0",
+      "distanceSlabs[0][endMiles]": "10",
+      "distanceSlabs[0][ratePerMile]": "3.00",
+      "distanceSlabs[1][startMiles]": "10",
+      "distanceSlabs[1][endMiles]": "",
+      "distanceSlabs[1][ratePerMile]": "2.70"
+    });
+    assert.equal(created.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.distanceSlabs, [
+      { startMiles: "0", endMiles: "10", ratePerMile: "3.00" },
+      { startMiles: "10", endMiles: "", ratePerMile: "2.70" }
+    ]);
+    assert.deepEqual(fareSettings.snapshot().configuration.dailySurcharge, EMPTY_FARE_SETTINGS.dailySurcharge);
+    assert.equal(fareSettings.snapshot().history.length, 1);
+
+    const edited = await postForm("1", {
+      "distanceSlabs[0][startMiles]": "0",
+      "distanceSlabs[0][endMiles]": "8",
+      "distanceSlabs[0][ratePerMile]": "3.10",
+      "distanceSlabs[1][startMiles]": "8",
+      "distanceSlabs[1][endMiles]": "",
+      "distanceSlabs[1][ratePerMile]": "2.75"
+    });
+    assert.equal(edited.status, 303);
+    assert.equal(fareSettings.snapshot().configuration.distanceSlabs[0].endMiles, "8");
+    assert.equal(fareSettings.snapshot().history.length, 2);
+
+    const removed = await postForm("2", {
+      "distanceSlabs[0][startMiles]": "0",
+      "distanceSlabs[0][endMiles]": "",
+      "distanceSlabs[0][ratePerMile]": "2.60"
+    });
+    assert.equal(removed.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.distanceSlabs, [
+      { startMiles: "0", endMiles: "", ratePerMile: "2.60" }
+    ]);
+    assert.equal(fareSettings.snapshot().history.length, 3);
+    const savedBody = await (await getPage()).text();
+    assert.match(savedBody, /value="2\.60"/);
+    assert.match(savedBody, /Configuration history/);
+    assert.match(savedBody, /booking fares and totals are not calculated or changed here/);
   });
 
   test("Fare surcharge setting validates, saves, disables, and retains its saved values", async () => {
@@ -1350,7 +1442,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   });
 
   test("Fare Settings remains restricted to superuser sessions", async () => {
-    const denied = await fetch(`${baseUrl}/settings/fare-settings/fare-surcharge-settings`, {
+    const denied = await fetch(`${baseUrl}/settings/fare-settings/distance-slabs`, {
       headers: withSession("sid=fare-denied", ["admin", "staff", "tech_support"]),
       redirect: "manual"
     });
