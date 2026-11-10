@@ -4334,39 +4334,42 @@ button:visited,
 
 .fare-settings__distance-preview {
   display: grid;
-  gap: 0.8rem;
-  padding: 1.1rem;
+  gap: 0.55rem;
+  padding: 0.8rem 1rem;
   border: 1px solid var(--rm-border);
-  border-left: 0.3rem solid var(--rm-dark-teal);
   border-radius: var(--rm-control-border-radius);
-  background: rgba(148, 210, 189, 0.12);
+  background: var(--rm-page-bg);
 }
 
 .fare-settings__distance-preview h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1rem;
+}
+
+.fare-settings__distance-preview > .fare-settings__help {
+  margin: 0;
 }
 
 .fare-settings__preview-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 16rem) auto;
   align-items: end;
-  gap: 1rem 2rem;
+  gap: 0.75rem 1.25rem;
 }
 
 .fare-settings__preview-row .fare-settings__field {
-  width: min(100%, 16rem);
+  min-width: 0;
 }
 
 .fare-settings__preview-total {
-  margin: 0 0 0.4rem;
+  margin: 0 0 0.55rem;
   color: var(--rm-text);
-  font-size: 1.2rem;
+  font-size: 0.95rem;
 }
 
 .fare-settings__preview-total strong {
   color: var(--rm-dark-teal);
-  font-size: 1.5rem;
+  font-size: 1.1rem;
 }
 
 .fare-settings__remove-period {
@@ -4393,6 +4396,14 @@ button:visited,
 @media (max-width: 40rem) {
   .fare-settings {
     padding: 1rem;
+  }
+
+  .fare-settings__preview-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fare-settings__preview-total {
+    margin-bottom: 0;
   }
 
   .fare-settings__categories {
