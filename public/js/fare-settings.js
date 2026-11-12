@@ -84,6 +84,14 @@
         if (error) {
           error.id = `${inputId}-error`;
         }
+        if (fieldName === "startMiles") {
+          const instruction = field.querySelector("[data-slab-start-instruction]");
+          if (instruction) {
+            instruction.id = `${inputId}-help`;
+            instruction.hidden = slab.dataset.awaitingBoundary !== "true";
+            input.setAttribute("aria-describedby", `${inputId}-error ${inputId}-help`);
+          }
+        }
         if (fieldName === "endMiles") {
           const note = field.querySelector("[data-open-ended-note]");
           if (note) {
@@ -93,7 +101,7 @@
           input.placeholder = openEndedFinalSlab ? "Open-ended" : "";
           input.setAttribute("aria-label", `End distance in miles${openEndedFinalSlab ? "; leave blank for open-ended final slab" : ""}`);
           input.setAttribute("aria-describedby", `${inputId}-help ${inputId}-error`);
-        } else {
+        } else if (fieldName !== "startMiles") {
           input.setAttribute("aria-describedby", `${inputId}-error`);
         }
       });
@@ -194,6 +202,7 @@
     if (!slabList || !slabTemplate) return;
     const existingSlabs = Array.from(slabList.querySelectorAll("[data-distance-slab]"));
     let nextStart = "0";
+    let awaitingBoundary = false;
     if (existingSlabs.length) {
       const finalSlab = existingSlabs[existingSlabs.length - 1];
       const startInput = finalSlab.querySelector('input[name$="[startMiles]"]');
@@ -201,30 +210,25 @@
       const startDistance = parseSlabDistance(startInput.value);
       const endDistance = parseSlabDistance(endInput.value);
       if (!endInput.value.trim()) {
-        addSlabError.textContent = "Enter an end distance for the current final slab before adding another slab.";
-        addSlabError.hidden = false;
-        endInput.focus();
-        return;
-      }
-      if (!endDistance) {
+        awaitingBoundary = true;
+      } else if (!endDistance) {
         addSlabError.textContent = "Enter a valid non-negative end distance before adding another slab.";
         addSlabError.hidden = false;
         endInput.focus();
         return;
-      }
-      if (!startDistance) {
+      } else if (!startDistance) {
         addSlabError.textContent = "Enter a valid start distance for the current slab before adding another slab.";
         addSlabError.hidden = false;
         startInput.focus();
         return;
-      }
-      if (compareSlabDistances(endDistance, startDistance) <= 0) {
+      } else if (compareSlabDistances(endDistance, startDistance) <= 0) {
         addSlabError.textContent = "The end distance must be greater than the current slab's start distance before adding another slab.";
         addSlabError.hidden = false;
         endInput.focus();
         return;
+      } else {
+        nextStart = endDistance.text;
       }
-      nextStart = endDistance.text;
     }
 
     addSlabError.textContent = "";
@@ -233,28 +237,73 @@
     const index = existingSlabs.length;
     const slab = fragment.querySelector("[data-distance-slab]");
     slab.innerHTML = slab.innerHTML.replaceAll("ROW", String(index));
-    slab.querySelector('input[name$="[startMiles]"]').value = nextStart;
+    slab.dataset.linkedBoundary = String(awaitingBoundary);
+    slab.dataset.awaitingBoundary = String(awaitingBoundary);
+    slab.querySelector('input[name$="[startMiles]"]').value = awaitingBoundary ? "" : nextStart;
     slabList.append(fragment);
     reindexSlabs();
     calculatePreview();
-    slabList.querySelector(`[data-index="${index}"] input[name$="[ratePerMile]"]`)?.focus();
+    slabList.querySelector(`[data-index="${index}"] input[name$="[${awaitingBoundary ? "startMiles" : "ratePerMile"}]"]`)?.focus();
   });
   slabList?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove-distance-slab]");
     if (!button) return;
-    button.closest("[data-distance-slab]").remove();
+    const slab = button.closest("[data-distance-slab]");
+    const slabs = Array.from(slabList.querySelectorAll("[data-distance-slab]"));
+    const index = slabs.indexOf(slab);
+    if (index === slabs.length - 1 && index > 0) {
+      slabs[index - 1].querySelector('input[name$="[endMiles]"]').value = "";
+    }
+    slab.remove();
     reindexSlabs();
     calculatePreview();
     addSlabButton?.focus();
   });
   slabList?.addEventListener("input", (event) => {
     updateSlabInputErrors(event);
-    if (event.target.matches('input[name$="[endMiles]"]') && addSlabError) {
+    if (addSlabError) {
       addSlabError.textContent = "";
       addSlabError.hidden = true;
     }
+    const submitError = distanceForm?.querySelector("[data-distance-slab-submit-error]");
+    if (submitError) {
+      submitError.textContent = "";
+      submitError.hidden = true;
+    }
+    const input = event.target;
+    const slab = input.closest("[data-distance-slab]");
+    if (slab?.dataset.linkedBoundary === "true" && input.matches('input[name$="[startMiles]"]')) {
+      const slabs = Array.from(slabList.querySelectorAll("[data-distance-slab]"));
+      const index = slabs.indexOf(slab);
+      const previousEnd = index > 0
+        ? slabs[index - 1].querySelector('input[name$="[endMiles]"]')
+        : null;
+      const boundary = parseSlabDistance(input.value);
+      if (previousEnd) previousEnd.value = boundary?.text ?? "";
+      if (boundary) slab.dataset.awaitingBoundary = "false";
+    }
     reindexSlabs();
     calculatePreview();
+  });
+  distanceForm?.addEventListener("submit", (event) => {
+    const submitError = distanceForm.querySelector("[data-distance-slab-submit-error]");
+    if (!slabList || !submitError) return;
+    const slabs = Array.from(slabList.querySelectorAll("[data-distance-slab]")).map((slab) => ({
+      startMiles: slab.querySelector('input[name$="[startMiles]"]').value.trim(),
+      endMiles: slab.querySelector('input[name$="[endMiles]"]').value.trim(),
+      ratePerMile: slab.querySelector('input[name$="[ratePerMile]"]').value.trim()
+    }));
+    try {
+      window.calculateDistanceSlabFare(slabs, "0");
+      submitError.textContent = "";
+      submitError.hidden = true;
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      event.preventDefault();
+      submitError.textContent = "Complete a valid contiguous distance schedule, including a rate for every slab, before saving.";
+      submitError.hidden = false;
+      slabList.querySelector('[data-awaiting-boundary="true"] input[name$="[startMiles]"]')?.focus();
+    }
   });
   testDistance?.addEventListener("input", calculatePreview);
 
