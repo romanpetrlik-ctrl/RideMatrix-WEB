@@ -24,6 +24,7 @@ import type {
 import {
   EMPTY_FARE_SETTINGS,
   FareSettingsVersionConflictError,
+  matchesMinimumFareRule,
   type FareSettingsActor,
   type FareSettingsConfiguration,
   type FareSettingsSnapshot,
@@ -1173,7 +1174,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.deepEqual(grantingRoles(["System Control", "Superuser"], settings), []);
   });
 
-  test("Fare Settings navigation lists all five categories and future categories are clear placeholders", async () => {
+  test("Fare Settings navigation exposes separate minimum and fixed fare destinations", async () => {
     fareSettings.reset();
     const headers = withSession("sid=fare-nav", ["superuser"]);
     const settingsBody = await (await fetch(`${baseUrl}/settings`, { headers })).text();
@@ -1184,6 +1185,23 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(landingBody, new RegExp(`href="/settings/fare-settings/${category.slug}"`));
       assert.match(landingBody, new RegExp(category.title));
     }
+    assert.match(landingBody, /Minimum fare rules/);
+    assert.match(landingBody, /Fixed fares/);
+    assert.notEqual(
+      landingBody.indexOf('href="/settings/fare-settings/minimum-fare-rules"'),
+      landingBody.indexOf('href="/settings/fare-settings/fixed-fares"')
+    );
+    const minimumRuleCategory = fareSettingsCategories.find((item) => item.slug === "minimum-fare-rules");
+    const fixedFareCategory = fareSettingsCategories.find((item) => item.slug === "fixed-fares");
+    assert.equal(minimumRuleCategory?.configurable, true);
+    assert.equal(fixedFareCategory?.configurable, true);
+    const minimumPage = await (await fetch(`${baseUrl}/settings/fare-settings/minimum-fare-rules`, { headers })).text();
+    assert.match(minimumPage, /base fare = max\(distance-slabs fare, configured minimum base fare\)/);
+    assert.match(minimumPage, /booking totals are unchanged/);
+    assert.match(minimumPage, /Airport fees are separate/);
+    const fixedPage = await (await fetch(`${baseUrl}/settings/fare-settings/fixed-fares`, { headers })).text();
+    assert.match(fixedPage, /origin → destination/);
+    assert.match(fixedPage, /full postcode or outward code/);
 
     for (const category of fareSettingsCategories.filter((item) => !item.configurable)) {
       const body = await (await fetch(`${baseUrl}/settings/fare-settings/${category.slug}`, { headers })).text();
@@ -1191,6 +1209,226 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(body, /No fare rules or pricing behavior are configured here/);
     }
     assert.equal(fareSettingsCategories.find((item) => item.slug === "distance-slabs")?.configurable, true);
+  });
+
+  test("minimum fare rules validate, preserve POI IDs, match both airport directions, and record edit/delete history", async () => {
+    fareSettings.reset();
+    airportFees.reset();
+    const airport: AirportFeeRecord = {
+      id: "rm-boh-internal-id",
+      displayName: "Bournemouth Airport (BOH)",
+      dropoffPlaceId: "google-place-dropoff",
+      dropoffLocationLabel: "configured drop-off point",
+      dropoffLatitude: 0,
+      dropoffLongitude: 0,
+      dropoffFee: "0.00",
+      pickupPlaceId: "google-place-pickup",
+      pickupLocationLabel: "configured pick-up point",
+      pickupLatitude: 20,
+      pickupLongitude: 20,
+      pickupFee: "0.00",
+      pickupTimeReference: "ALT",
+      pickupDeferredEnabled: false,
+      pickupDeferredMinutes: 0,
+      pickupFeeCoveredMinutes: 10,
+      createdAt: "2026-11-01T00:00:00.000Z",
+      updatedAt: "2026-11-01T00:00:00.000Z"
+    };
+    airportFees.records.push(airport);
+    const path = "/settings/fare-settings/minimum-fare-rules";
+    const cookie = "sid=minimum-rules";
+    const postForm = async (version: string, values: Record<string, string>) => {
+      const page = await fetch(`${baseUrl}${path}`, { headers: withSession(cookie, ["superuser"]) });
+      const pageBody = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      const postCookie = `${cookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ ...values, baseVersion: version, _csrf: token }),
+        redirect: "manual"
+      });
+    };
+
+    airportFees.records[0].pickupLatitude = Number.NaN;
+    const invalidCoordinates = await postForm("0", {
+      ruleAction: "save",
+      ruleId: "",
+      name: "BOH short journey",
+      poiId: airport.id,
+      radiusMiles: "5",
+      minimumBaseFare: "25"
+    });
+    assert.equal(invalidCoordinates.status, 400);
+    const invalidCoordinatesBody = await invalidCoordinates.text();
+    assert.match(invalidCoordinatesBody, /no valid configured pick-up and drop-off operational coordinates/);
+    assert.match(invalidCoordinatesBody, /value="25"/);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    airportFees.records[0].pickupLatitude = 20;
+    const invalidFare = await postForm("0", {
+      ruleAction: "save",
+      ruleId: "",
+      name: "BOH short journey",
+      poiId: airport.id,
+      radiusMiles: "5",
+      minimumBaseFare: "-25"
+    });
+    assert.equal(invalidFare.status, 400);
+    assert.match(await invalidFare.text(), /Enter a GBP amount/);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    const created = await postForm("0", {
+      ruleAction: "save",
+      ruleId: "",
+      name: "BOH short journey",
+      poiId: airport.id,
+      radiusMiles: "5",
+      minimumBaseFare: "25"
+    });
+    assert.equal(created.status, 303);
+    const createdRule = fareSettings.snapshot().configuration.minimumFareRules[0];
+    assert.deepEqual(createdRule, {
+      id: createdRule.id,
+      name: "BOH short journey",
+      poiId: "rm-boh-internal-id",
+      radiusMiles: "5",
+      minimumBaseFare: "25.00"
+    });
+    assert.equal(fareSettings.snapshot().history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
+
+    const exactDelta = 5 * 1609.344 / 6_371_008.8 * 180 / Math.PI;
+    assert.equal(matchesMinimumFareRule(createdRule, {
+      latitude: 0, longitude: exactDelta
+    }, { poiId: airport.id }, airport), true);
+    assert.equal(matchesMinimumFareRule(createdRule, { poiId: airport.id }, {
+      latitude: 20 + exactDelta, longitude: 20
+    }, airport), true);
+    assert.equal(matchesMinimumFareRule(createdRule, {
+      latitude: 0, longitude: exactDelta + 0.00001
+    }, { poiId: airport.id }, airport), false);
+
+    const edited = await postForm("1", {
+      ruleAction: "save",
+      ruleId: createdRule.id,
+      name: "BOH five mile minimum",
+      poiId: airport.id,
+      radiusMiles: "5",
+      minimumBaseFare: "30.50"
+    });
+    assert.equal(edited.status, 303);
+    assert.equal(fareSettings.snapshot().configuration.minimumFareRules[0].minimumBaseFare, "30.50");
+    assert.equal(fareSettings.snapshot().history.length, 2);
+
+    const removed = await postForm("2", {
+      ruleAction: "delete",
+      ruleId: createdRule.id
+    });
+    assert.equal(removed.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.minimumFareRules, []);
+    assert.equal(fareSettings.snapshot().history.length, 3);
+  });
+
+  test("fixed fares preserve endpoint identities and postcode scope through create, edit, and delete", async () => {
+    fareSettings.reset();
+    airportFees.reset();
+    airportFees.records.push({
+      id: "rm-boh-internal-id",
+      displayName: "Bournemouth Airport (BOH)",
+      dropoffPlaceId: "google-dropoff",
+      dropoffLocationLabel: "drop-off",
+      dropoffLatitude: 50.78,
+      dropoffLongitude: -1.84,
+      dropoffFee: "0.00",
+      pickupPlaceId: "google-pickup",
+      pickupLocationLabel: "pick-up",
+      pickupLatitude: 50.79,
+      pickupLongitude: -1.83,
+      pickupFee: "0.00",
+      pickupTimeReference: "ALT",
+      pickupDeferredEnabled: false,
+      pickupDeferredMinutes: 0,
+      pickupFeeCoveredMinutes: 10,
+      createdAt: "2026-11-01T00:00:00.000Z",
+      updatedAt: "2026-11-01T00:00:00.000Z"
+    });
+    const path = "/settings/fare-settings/fixed-fares";
+    const cookie = "sid=fixed-fares";
+    const initialBody = await (await fetch(`${baseUrl}${path}`, {
+      headers: withSession(cookie, ["superuser"])
+    })).text();
+    assert.match(initialBody, /data-fixed-endpoint/);
+    assert.match(initialBody, /Managed POI by RideMatrix ID/);
+    assert.match(initialBody, /Bournemouth Airport \(BOH\) — internal ID rm-boh-internal-id/);
+    assert.match(initialBody, /Full postcode/);
+    assert.match(initialBody, /Outward code/);
+    const postForm = async (version: string, values: Record<string, string>) => {
+      const page = await fetch(`${baseUrl}${path}`, { headers: withSession(cookie, ["superuser"]) });
+      const pageBody = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      const postCookie = `${cookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ ...values, baseVersion: version, _csrf: token }),
+        redirect: "manual"
+      });
+    };
+
+    const created = await postForm("0", {
+      ruleAction: "save",
+      ruleId: "",
+      name: "Airport to Bournemouth",
+      originType: "poi",
+      originPoiId: "rm-boh-internal-id",
+      destinationType: "postcode",
+      destinationPostcode: "bh1 1aa",
+      destinationPostcodeScope: "full",
+      baseFare: "42.5"
+    });
+    assert.equal(created.status, 303);
+    const createdRule = fareSettings.snapshot().configuration.fixedFares[0];
+    assert.deepEqual(createdRule, {
+      id: createdRule.id,
+      name: "Airport to Bournemouth",
+      origin: { type: "poi", poiId: "rm-boh-internal-id" },
+      destination: { type: "postcode", postcode: "BH1 1AA", scope: "full" },
+      baseFare: "42.50"
+    });
+
+    const edited = await postForm("1", {
+      ruleAction: "save",
+      ruleId: createdRule.id,
+      name: "Airport to Bournemouth outward code",
+      originType: "poi",
+      originPoiId: "rm-boh-internal-id",
+      destinationType: "postcode",
+      destinationPostcode: "bh1",
+      destinationPostcodeScope: "outward",
+      baseFare: "45.00"
+    });
+    assert.equal(edited.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.fixedFares[0].destination, {
+      type: "postcode", postcode: "BH1", scope: "outward"
+    });
+    assert.deepEqual(fareSettings.snapshot().configuration.fixedFares[0].origin, {
+      type: "poi", poiId: "rm-boh-internal-id"
+    });
+    assert.equal(fareSettings.snapshot().configuration.fixedFares[0].baseFare, "45.00");
+    assert.equal(fareSettings.snapshot().history.length, 2);
+
+    const removed = await postForm("2", { ruleAction: "delete", ruleId: createdRule.id });
+    assert.equal(removed.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.fixedFares, []);
+    assert.equal(fareSettings.snapshot().history.length, 3);
   });
 
   test("Distance slabs validate, save, edit, remove, preview unsaved form state, and retain version history", async () => {
@@ -1442,12 +1680,14 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   });
 
   test("Fare Settings remains restricted to superuser sessions", async () => {
-    const denied = await fetch(`${baseUrl}/settings/fare-settings/distance-slabs`, {
-      headers: withSession("sid=fare-denied", ["admin", "staff", "tech_support"]),
-      redirect: "manual"
-    });
-    assert.equal(denied.status, 403);
-    assert.match(await denied.text(), /does not include the System Control role required for System settings/);
+    for (const destination of ["distance-slabs", "minimum-fare-rules", "fixed-fares"]) {
+      const denied = await fetch(`${baseUrl}/settings/fare-settings/${destination}`, {
+        headers: withSession(`sid=fare-denied-${destination}`, ["admin", "staff", "tech_support"]),
+        redirect: "manual"
+      });
+      assert.equal(denied.status, 403);
+      assert.match(await denied.text(), /does not include the System Control role required for System settings/);
+    }
     const anonymous = await fetch(`${baseUrl}/settings/fare-settings`, {
       headers: { cookie: "sid=fare-anonymous" },
       redirect: "manual"

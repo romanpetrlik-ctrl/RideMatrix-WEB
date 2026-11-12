@@ -4172,12 +4172,17 @@ button:visited,
   gap: 0.35rem;
 }
 
+.fare-settings__field[hidden] {
+  display: none;
+}
+
 .fare-settings__field label {
   color: var(--rm-text);
   font-weight: 700;
 }
 
-.fare-settings__field input {
+.fare-settings__field input,
+.fare-settings__field select {
   width: 100%;
   min-width: 0;
   min-height: 2.7rem;
@@ -4216,6 +4221,40 @@ button:visited,
 
 .fare-settings__field input[aria-invalid="true"] {
   border-color: var(--rm-error, #a32222);
+}
+
+.fare-settings__field select[aria-invalid="true"] {
+  border-color: var(--rm-error, #a32222);
+}
+
+.fare-settings__rule-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.fare-settings__rule-list > h2,
+.fare-settings__rule-list > p {
+  margin: 0;
+}
+
+.fare-settings__rule-card {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+  background: var(--rm-page-bg);
+  overflow-wrap: anywhere;
+}
+
+.fare-settings__rule-card h2,
+.fare-settings__rule-card h3 {
+  margin: 0;
+  color: var(--rm-menu-category-text);
+}
+
+.fare-settings__endpoint {
+  grid-column: 1 / -1;
 }
 
 .fare-settings__period-section,

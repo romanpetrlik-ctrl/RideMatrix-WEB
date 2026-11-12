@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
+import type { AirportFeeRecord } from "./airport-fees";
 
 export type FareSurchargeSettings = {
   enabled: boolean;
@@ -26,12 +27,49 @@ export type DistanceSlab = {
   ratePerMile: string;
 };
 
+export type MinimumFareRule = {
+  id: string;
+  name: string;
+  poiId: string;
+  radiusMiles: string;
+  minimumBaseFare: string;
+};
+
+export type MinimumFareRuleFormValues = Omit<MinimumFareRule, "id">;
+
+export type FixedFareEndpoint =
+  | { type: "poi"; poiId: string }
+  | { type: "postcode"; postcode: string; scope: "full" | "outward" };
+
+export type FixedFareRule = {
+  id: string;
+  name: string;
+  origin: FixedFareEndpoint;
+  destination: FixedFareEndpoint;
+  baseFare: string;
+};
+
+export type FixedFareRuleFormValues = {
+  name: string;
+  originType: string;
+  originPoiId: string;
+  originPostcode: string;
+  originPostcodeScope: string;
+  destinationType: string;
+  destinationPoiId: string;
+  destinationPostcode: string;
+  destinationPostcodeScope: string;
+  baseFare: string;
+};
+
 export type FareSettingsConfiguration = {
   timezone: "Europe/London";
   matchingBasis: "scheduled-service-time";
   interval: "start-inclusive-end-exclusive";
   precedence: "bank-holiday-over-daily";
   distanceSlabs: DistanceSlab[];
+  minimumFareRules: MinimumFareRule[];
+  fixedFares: FixedFareRule[];
   dailySurcharge: FareSurchargeSettings;
   bankHolidaySurcharge: BankHolidayFareSettings;
 };
@@ -73,6 +111,8 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive",
   precedence: "bank-holiday-over-daily",
   distanceSlabs: [],
+  minimumFareRules: [],
+  fixedFares: [],
   dailySurcharge: {
     enabled: false,
     percentage: "",
@@ -124,6 +164,242 @@ function parseNonNegativeDecimal(value: string): DecimalValue | null {
     ? ["0", value.slice(1)]
     : value.split(".");
   return { coefficient: BigInt(`${whole}${fraction}`), scale: fraction.length };
+}
+
+function validCoordinate(latitude: number, longitude: number): boolean {
+  return Number.isFinite(latitude) && Number.isFinite(longitude) &&
+    latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+}
+
+function validOperationalPoints(record: AirportFeeRecord): boolean {
+  return validCoordinate(record.dropoffLatitude, record.dropoffLongitude) &&
+    validCoordinate(record.pickupLatitude, record.pickupLongitude);
+}
+
+function normalizeMoney(value: string): string | null {
+  if (!/^(?:0|[1-9]\d{0,5})(?:\.\d{1,2})?$/.test(value)) return null;
+  return value.includes(".") ? value.padEnd(value.indexOf(".") + 3, "0") : `${value}.00`;
+}
+
+function normalizeUkPostcode(value: string, scope: "full" | "outward"): string | null {
+  const compact = value.trim().toUpperCase().replace(/\s+/g, "");
+  if (scope === "outward") {
+    return /^[A-Z]{1,2}\d[A-Z\d]?$/.test(compact) ? compact : null;
+  }
+  const match = /^(GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/.exec(compact);
+  if (!match) return null;
+  return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
+}
+
+function submittedValue(body: Record<string, unknown>, key: string): string {
+  return typeof body[key] === "string" ? body[key] as string : "";
+}
+
+export function validateMinimumFareRuleForm(
+  submitted: unknown,
+  pois: AirportFeeRecord[]
+): { values: MinimumFareRuleFormValues; errors: Record<string, string> } {
+  const body = submitted && typeof submitted === "object"
+    ? submitted as Record<string, unknown>
+    : {};
+  const values: MinimumFareRuleFormValues = {
+    name: submittedValue(body, "name"),
+    poiId: submittedValue(body, "poiId"),
+    radiusMiles: submittedValue(body, "radiusMiles"),
+    minimumBaseFare: submittedValue(body, "minimumBaseFare")
+  };
+  const errors: Record<string, string> = {};
+  const name = values.name.trim();
+  const poiId = values.poiId.trim();
+  const radiusValue = values.radiusMiles.trim();
+
+  if (!name || name.length > 160) {
+    errors.name = "Enter a rule name no longer than 160 characters.";
+  }
+  if (!poiId) {
+    errors.poiId = "Select a managed airport or point of interest.";
+  } else {
+    const poi = pois.find((item) => item.id === poiId);
+    if (!poi) {
+      errors.poiId = "Select an active managed airport or point of interest.";
+    } else if (!validOperationalPoints(poi)) {
+      errors.poiId = "This location has no valid configured pick-up and drop-off operational coordinates. Update it under Airport Fees first.";
+    }
+  }
+  const radius = radiusValue.length <= 80 && /^(?:\d+(?:\.\d+)?|\.\d+)$/.test(radiusValue)
+    ? Number(radiusValue)
+    : NaN;
+  if (!Number.isFinite(radius) || radius <= 0) {
+    errors.radiusMiles = "Enter a valid radius greater than 0 miles.";
+  }
+  const minimumBaseFare = normalizeMoney(values.minimumBaseFare.trim());
+  if (minimumBaseFare === null) {
+    errors.minimumBaseFare = "Enter a GBP amount from £0.00 to £999,999.99 with up to 2 decimal places.";
+  }
+  if (Object.keys(errors).length === 0 && minimumBaseFare !== null) {
+    values.name = name;
+    values.poiId = poiId;
+    values.radiusMiles = radiusValue;
+    values.minimumBaseFare = minimumBaseFare;
+  }
+
+  return { values, errors };
+}
+
+function parseFixedFareEndpoint(
+  body: Record<string, unknown>,
+  prefix: "origin" | "destination",
+  pois: AirportFeeRecord[],
+  errors: Record<string, string>
+): FixedFareEndpoint | null {
+  const type = submittedValue(body, `${prefix}Type`).trim();
+  if (type === "poi") {
+    const poiId = submittedValue(body, `${prefix}PoiId`).trim();
+    const poi = pois.find((item) => item.id === poiId);
+    if (!poiId || !poi) {
+      errors[`${prefix}PoiId`] = "Select an active managed airport or point of interest.";
+      return null;
+    }
+    return { type: "poi", poiId };
+  }
+  if (type === "postcode") {
+    const scope = submittedValue(body, `${prefix}PostcodeScope`).trim();
+    if (scope !== "full" && scope !== "outward") {
+      errors[`${prefix}PostcodeScope`] = "Choose whether this is a full postcode or outward code.";
+      return null;
+    }
+    const postcode = normalizeUkPostcode(submittedValue(body, `${prefix}Postcode`), scope);
+    if (!postcode) {
+      errors[`${prefix}Postcode`] = scope === "full"
+        ? "Enter a valid UK full postcode."
+        : "Enter a valid UK outward postcode code.";
+      return null;
+    }
+    return { type: "postcode", postcode, scope };
+  }
+  errors[`${prefix}Type`] = "Choose a managed point of interest or a postcode criterion.";
+  return null;
+}
+
+export function fixedFareRuleToForm(rule: FixedFareRule): FixedFareRuleFormValues {
+  return {
+    name: rule.name,
+    originType: rule.origin.type,
+    originPoiId: rule.origin.type === "poi" ? rule.origin.poiId : "",
+    originPostcode: rule.origin.type === "postcode" ? rule.origin.postcode : "",
+    originPostcodeScope: rule.origin.type === "postcode" ? rule.origin.scope : "",
+    destinationType: rule.destination.type,
+    destinationPoiId: rule.destination.type === "poi" ? rule.destination.poiId : "",
+    destinationPostcode: rule.destination.type === "postcode" ? rule.destination.postcode : "",
+    destinationPostcodeScope: rule.destination.type === "postcode" ? rule.destination.scope : "",
+    baseFare: rule.baseFare
+  };
+}
+
+export function validateFixedFareRuleForm(
+  submitted: unknown,
+  pois: AirportFeeRecord[]
+): { values: FixedFareRuleFormValues; rule: Omit<FixedFareRule, "id"> | null; errors: Record<string, string> } {
+  const body = submitted && typeof submitted === "object"
+    ? submitted as Record<string, unknown>
+    : {};
+  const values: FixedFareRuleFormValues = {
+    name: submittedValue(body, "name"),
+    originType: submittedValue(body, "originType"),
+    originPoiId: submittedValue(body, "originPoiId"),
+    originPostcode: submittedValue(body, "originPostcode"),
+    originPostcodeScope: submittedValue(body, "originPostcodeScope"),
+    destinationType: submittedValue(body, "destinationType"),
+    destinationPoiId: submittedValue(body, "destinationPoiId"),
+    destinationPostcode: submittedValue(body, "destinationPostcode"),
+    destinationPostcodeScope: submittedValue(body, "destinationPostcodeScope"),
+    baseFare: submittedValue(body, "baseFare")
+  };
+  const errors: Record<string, string> = {};
+  const name = values.name.trim();
+  if (!name || name.length > 160) {
+    errors.name = "Enter a rule name no longer than 160 characters.";
+  }
+
+  const origin = parseFixedFareEndpoint(body, "origin", pois, errors);
+  const destination = parseFixedFareEndpoint(body, "destination", pois, errors);
+  if (origin && destination &&
+      origin.type === destination.type &&
+      (origin.type === "poi" && destination.type === "poi"
+        ? origin.poiId === destination.poiId
+        : origin.type === "postcode" && destination.type === "postcode" &&
+          origin.postcode === destination.postcode && origin.scope === destination.scope)) {
+    errors.destinationType = "Origin and destination must identify different locations.";
+  }
+
+  const baseFare = normalizeMoney(values.baseFare.trim());
+  if (baseFare === null) {
+    errors.baseFare = "Enter a GBP amount from £0.00 to £999,999.99 with up to 2 decimal places.";
+  }
+
+  if (Object.keys(errors).length || !origin || !destination || baseFare === null) {
+    return { values, rule: null, errors };
+  }
+  values.name = name;
+  values.baseFare = baseFare;
+  return {
+    values: { ...values, name, baseFare },
+    rule: { name, origin, destination, baseFare },
+    errors
+  };
+}
+
+export type FareRuleJourneyEndpoint = {
+  poiId?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+function withinRadius(
+  first: { latitude: number; longitude: number },
+  second: { latitude: number; longitude: number },
+  radiusMiles: string
+): boolean {
+  const radius = Number(radiusMiles);
+  if (!Number.isFinite(radius) || radius <= 0 ||
+      !validCoordinate(first.latitude, first.longitude) ||
+      !validCoordinate(second.latitude, second.longitude)) return false;
+
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const latitudeDelta = radians(second.latitude - first.latitude);
+  const longitudeDelta = radians(second.longitude - first.longitude);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(first.latitude)) * Math.cos(radians(second.latitude)) *
+    Math.sin(longitudeDelta / 2) ** 2;
+  const distanceMetres = 6_371_008.8 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  const radiusMetres = radius * 1609.344;
+  return distanceMetres <= radiusMetres + 1e-6;
+}
+
+export function matchesMinimumFareRule(
+  rule: MinimumFareRule,
+  origin: FareRuleJourneyEndpoint,
+  destination: FareRuleJourneyEndpoint,
+  poi: AirportFeeRecord
+): boolean {
+  if (poi.id !== rule.poiId) return false;
+  if (origin.poiId === rule.poiId && destination.poiId !== rule.poiId &&
+      destination.latitude !== undefined && destination.longitude !== undefined) {
+    return withinRadius(
+      { latitude: poi.pickupLatitude, longitude: poi.pickupLongitude },
+      { latitude: destination.latitude, longitude: destination.longitude },
+      rule.radiusMiles
+    );
+  }
+  if (destination.poiId === rule.poiId && origin.poiId !== rule.poiId &&
+      origin.latitude !== undefined && origin.longitude !== undefined) {
+    return withinRadius(
+      { latitude: poi.dropoffLatitude, longitude: poi.dropoffLongitude },
+      { latitude: origin.latitude, longitude: origin.longitude },
+      rule.radiusMiles
+    );
+  }
+  return false;
 }
 
 function compareDecimals(left: DecimalValue, right: DecimalValue): number {
@@ -417,6 +693,8 @@ export function validateFareSettingsForm(
       interval: "start-inclusive-end-exclusive",
       precedence: "bank-holiday-over-daily",
       distanceSlabs: current.distanceSlabs ?? [],
+      minimumFareRules: current.minimumFareRules ?? [],
+      fixedFares: current.fixedFares ?? [],
       dailySurcharge,
       bankHolidaySurcharge
     },
