@@ -39,6 +39,57 @@ async function renderDistanceSlabSettings(
   });
 }
 
+async function renderFixedFareSettings(): Promise<string> {
+  return ejs.renderFile(path.join(process.cwd(), "src/views/pages/fare-settings.ejs"), {
+    title: "Fare Settings: Fixed fares",
+    appTitle: "RideMatrix Test",
+    email: "operator@example.test",
+    grantedByLabel: "Superuser",
+    categories: [],
+    category: {
+      slug: "fixed-fares",
+      title: "Fixed fares",
+      description: "Configure directional fixed base fares.",
+      configurable: true
+    },
+    breadcrumbs: [
+      { label: "System Settings", href: "/settings" },
+      { label: "Fare Settings", href: "/settings/fare-settings" },
+      { label: "Fixed fares" }
+    ],
+    configuration: {
+      distanceSlabs: [],
+      minimumFareRules: [],
+      fixedFares: [],
+      dailySurcharge: { enabled: false, percentage: "", startTime: "", endTime: "" },
+      bankHolidaySurcharge: { enabled: false, periods: [] }
+    },
+    fixedFareForms: [{
+      id: "",
+      name: "",
+      originType: "",
+      originPoiId: "",
+      originPostcode: "",
+      originPostcodeScope: "",
+      destinationType: "",
+      destinationPoiId: "",
+      destinationPostcode: "",
+      destinationPostcodeScope: "",
+      baseFare: ""
+    }],
+    managedPois: [{ id: "rm-boh-internal-id", displayName: "Bournemouth Airport (BOH)" }],
+    ruleForm: {},
+    ruleFormId: "",
+    ruleFormSubmitted: false,
+    currentVersion: 0,
+    history: [],
+    errors: {},
+    formError: "",
+    saved: false,
+    csrfField: ""
+  });
+}
+
 test("distance slab editor adds contiguous editable rows and preserves values", async (t) => {
   const numericFinalHtml = await renderDistanceSlabSettings([
     { startMiles: "0", endMiles: "10", ratePerMile: "3.25" }
@@ -158,6 +209,65 @@ test("distance slab editor adds contiguous editable rows and preserves values", 
     }));
     assert.ok(previewLayout.scrollWidth <= previewLayout.clientWidth, "preview should not overflow at narrow widths");
     assert.equal(previewLayout.columns.trim().split(/\s+/).length, 1);
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("fixed-fare endpoint selector switches required identity fields and preserves explicit postcode scope", async (t) => {
+  const executablePath = process.env.CHROMIUM_PATH
+    ?? ["/usr/bin/chromium", "/usr/bin/google-chrome"].find((candidate) => fs.existsSync(candidate));
+  if (!executablePath) {
+    t.skip("Chromium executable not found");
+    return;
+  }
+
+  const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    const html = (await renderFixedFareSettings())
+      .replace(/<link\b[^>]*>/g, "")
+      .replace(/<script\b[^>]*><\/script>/g, "");
+    await page.setContent(html);
+    const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8")
+      .replace(/^@import[^;]+;\s*/m, "");
+    await page.addStyleTag({ content: css });
+    await page.addScriptTag({ path: path.join(process.cwd(), "public/js/fare-settings.js") });
+
+    const origin = page.locator("[data-fixed-endpoint]").first();
+    const identification = origin.locator('select[name="originType"]');
+    const managedPoi = origin.locator('select[name="originPoiId"]');
+    const postcode = origin.locator('input[name="originPostcode"]');
+    const scope = origin.locator('select[name="originPostcodeScope"]');
+
+    await identification.selectOption("poi");
+    assert.equal(await managedPoi.isVisible(), true);
+    assert.equal(await managedPoi.evaluate((input) => (input as HTMLSelectElement).required), true);
+    assert.equal(await postcode.isVisible(), false);
+    assert.equal(await postcode.isDisabled(), true);
+
+    await identification.selectOption("postcode");
+    assert.equal(await managedPoi.isVisible(), false);
+    assert.equal(await managedPoi.evaluate((input) => (input as HTMLSelectElement).required), false);
+    assert.equal(await postcode.isVisible(), true);
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).required), true);
+    assert.equal(await scope.evaluate((input) => (input as HTMLSelectElement).required), true);
+
+    await scope.selectOption("full");
+    await postcode.fill("BH1 1AA");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), true);
+    await postcode.fill("not a postcode");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), false);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const layout = await origin.evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth
+    }));
+    assert.ok(layout.scrollWidth <= layout.clientWidth, "endpoint form should not overflow at narrow widths");
     assert.deepEqual(pageErrors, []);
   } finally {
     await browser.close();

@@ -42,7 +42,141 @@
         ${category.slug !== "distance-slabs" ? `<div class="notice fare-settings__configuration-only" role="status">
           This saves configuration only. No fare is calculated or applied and booking totals are unchanged. Time values use <strong>Europe/London</strong> local time.
         </div>` : ""}
-        ${category.slug === "distance-slabs" ? `
+        ${category.slug === "minimum-fare-rules" ? `
+          <div class="notice fare-settings__configuration-only" role="status">
+            This saves configuration only; no fare is calculated or applied and booking totals are unchanged. The intended future rule is <code>base fare = max(distance-slabs fare, configured minimum base fare)</code>. Airport fees are separate and are not included in the minimum.
+          </div>
+          <p class="fare-settings__help">Select a RideMatrix-managed location by its internal ID. The radius uses its configured operational point: drop-off coordinates for journeys to the airport and pick-up coordinates for journeys from it. The other endpoint must have usable coordinates within the inclusive straight-line/geodesic radius; road distance and postcode centroids are not used. Five miles is 8,046.72 metres.</p>
+          <form class="fare-settings__form fare-settings__rule-card" method="post" action="/settings/fare-settings/${category.slug}" data-fare-rule-form>
+            ${locals.csrfField || ""}
+            <input type="hidden" name="baseVersion" value="${currentVersion}" />
+            <input type="hidden" name="ruleId" value="" />
+            <h2>Add minimum fare rule</h2>
+            <div class="fare-settings__fields">
+              <div class="fare-settings__field">
+                <label for="minimum-rule-name">Rule name or description</label>
+                <input id="minimum-rule-name" name="name" type="text" maxlength="160" required value="${ruleFormSubmitted && !ruleFormId ? ruleForm.name || "" : ""}" aria-invalid="${errors.name && !ruleFormId ? "true" : "false"}" aria-describedby="minimum-rule-name-error" />
+                <p id="minimum-rule-name-error" class="fare-settings__field-error${errors.name && !ruleFormId ? " fare-settings__field-error--invalid" : ""}" ${errors.name && !ruleFormId ? 'role="alert"' : ""}>${!ruleFormId ? errors.name || "" : ""}</p>
+              </div>
+              <div class="fare-settings__field">
+                <label for="minimum-rule-poi">Managed airport or point of interest</label>
+                <select id="minimum-rule-poi" name="poiId" required aria-invalid="${errors.poiId && !ruleFormId ? "true" : "false"}" aria-describedby="minimum-rule-poi-help minimum-rule-poi-error">
+                  <option value="">Select a managed location</option>
+                  ${managedPois.map((poi) => `<option value="${poi.id}" ${ruleFormSubmitted && !ruleFormId && ruleForm.poiId === poi.id ? "selected" : ""}>${poi.displayName} — internal ID ${poi.id}</option>`).join("")}
+                </select>
+                <p id="minimum-rule-poi-help" class="fare-settings__help">The internal ID is the saved Airport Fees record, not a Google Places label.</p>
+                <p id="minimum-rule-poi-error" class="fare-settings__field-error${errors.poiId && !ruleFormId ? " fare-settings__field-error--invalid" : ""}" ${errors.poiId && !ruleFormId ? 'role="alert"' : ""}>${!ruleFormId ? errors.poiId || "" : ""}</p>
+              </div>
+              <div class="fare-settings__field">
+                <label for="minimum-rule-radius">Radius (miles)</label>
+                <input id="minimum-rule-radius" name="radiusMiles" type="number" min="0.000001" step="any" inputmode="decimal" required value="${ruleFormSubmitted && !ruleFormId ? ruleForm.radiusMiles || "" : ""}" aria-invalid="${errors.radiusMiles && !ruleFormId ? "true" : "false"}" aria-describedby="minimum-rule-radius-error" />
+                <p id="minimum-rule-radius-error" class="fare-settings__field-error${errors.radiusMiles && !ruleFormId ? " fare-settings__field-error--invalid" : ""}" ${errors.radiusMiles && !ruleFormId ? 'role="alert"' : ""}>${!ruleFormId ? errors.radiusMiles || "" : ""}</p>
+              </div>
+              <div class="fare-settings__field">
+                <label for="minimum-rule-fare">Minimum base fare (GBP)</label>
+                <div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="minimum-rule-fare" name="minimumBaseFare" type="text" inputmode="decimal" pattern="(?:0|[1-9][0-9]{0,5})([.][0-9]{1,2})?" required value="${ruleFormSubmitted && !ruleFormId ? ruleForm.minimumBaseFare || "" : ""}" aria-invalid="${errors.minimumBaseFare && !ruleFormId ? "true" : "false"}" aria-describedby="minimum-rule-fare-error" /></div>
+                <p id="minimum-rule-fare-error" class="fare-settings__field-error${errors.minimumBaseFare && !ruleFormId ? " fare-settings__field-error--invalid" : ""}" ${errors.minimumBaseFare && !ruleFormId ? 'role="alert"' : ""}>${!ruleFormId ? errors.minimumBaseFare || "" : ""}</p>
+              </div>
+            </div>
+            <div class="fare-settings__actions"><button class="button button--primary" type="submit" name="ruleAction" value="save">Add minimum fare rule</button></div>
+          </form>
+          <section class="fare-settings__rule-list" aria-labelledby="minimum-rule-list-title">
+            <h2 id="minimum-rule-list-title">Saved minimum fare rules</h2>
+            ${configuration.minimumFareRules.length ? configuration.minimumFareRules.map((rule) => {
+              const editing = ruleFormId === rule.id;
+              const name = editing ? ruleForm.name : rule.name;
+              const poiId = editing ? ruleForm.poiId : rule.poiId;
+              const radius = editing ? ruleForm.radiusMiles : rule.radiusMiles;
+              const minimum = editing ? ruleForm.minimumBaseFare : rule.minimumBaseFare;
+              return `
+                <form class="fare-settings__form fare-settings__rule-card" method="post" action="/settings/fare-settings/${category.slug}" data-fare-rule-form>
+                  ${locals.csrfField || ""}
+                  <input type="hidden" name="baseVersion" value="${currentVersion}" />
+                  <input type="hidden" name="ruleId" value="${rule.id}" />
+                  <h3>${rule.name}</h3>
+                  <div class="fare-settings__fields">
+                    <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-name">Rule name or description</label><input id="minimum-rule-${rule.id}-name" name="name" type="text" maxlength="160" required value="${name}" aria-invalid="${editing && errors.name ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-name-error" /><p id="minimum-rule-${rule.id}-name-error" class="fare-settings__field-error${editing && errors.name ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.name ? 'role="alert"' : ""}>${editing ? errors.name || "" : ""}</p></div>
+                    <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-poi">Managed airport or point of interest</label><select id="minimum-rule-${rule.id}-poi" name="poiId" required aria-invalid="${editing && errors.poiId ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-poi-error"><option value="">Select a managed location</option>${managedPois.map((poi) => `<option value="${poi.id}" ${poiId === poi.id ? "selected" : ""}>${poi.displayName} — internal ID ${poi.id}</option>`).join("")}</select><p id="minimum-rule-${rule.id}-poi-error" class="fare-settings__field-error${editing && errors.poiId ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.poiId ? 'role="alert"' : ""}>${editing ? errors.poiId || "" : ""}</p></div>
+                    <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-radius">Radius (miles)</label><input id="minimum-rule-${rule.id}-radius" name="radiusMiles" type="number" min="0.000001" step="any" inputmode="decimal" required value="${radius}" aria-invalid="${editing && errors.radiusMiles ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-radius-error" /><p id="minimum-rule-${rule.id}-radius-error" class="fare-settings__field-error${editing && errors.radiusMiles ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.radiusMiles ? 'role="alert"' : ""}>${editing ? errors.radiusMiles || "" : ""}</p></div>
+                    <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-fare">Minimum base fare (GBP)</label><div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="minimum-rule-${rule.id}-fare" name="minimumBaseFare" type="text" inputmode="decimal" pattern="(?:0|[1-9][0-9]{0,5})([.][0-9]{1,2})?" required value="${minimum}" aria-invalid="${editing && errors.minimumBaseFare ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-fare-error" /></div><p id="minimum-rule-${rule.id}-fare-error" class="fare-settings__field-error${editing && errors.minimumBaseFare ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.minimumBaseFare ? 'role="alert"' : ""}>${editing ? errors.minimumBaseFare || "" : ""}</p></div>
+                  </div>
+                  <div class="fare-settings__actions">
+                    <button class="button button--primary" type="submit" name="ruleAction" value="save">Save rule</button>
+                    <button class="button button--secondary" type="submit" name="ruleAction" value="delete" formnovalidate>Remove rule</button>
+                  </div>
+                </form>
+              `;
+            }).join("") : `<p>No minimum fare rules have been configured.</p>`}
+          </section>
+        ` : category.slug === "fixed-fares" ? `
+          <div class="notice fare-settings__configuration-only" role="status">
+            This saves configuration only. It does not decide whether a fixed fare overrides or combines with Distance Slabs and does not change booking totals. A fixed fare is directional: origin → destination. Configure the reverse journey separately if required.
+          </div>
+          <p class="fare-settings__help">Managed airports and other points of interest are identified by their RideMatrix internal record ID. Ordinary-address criteria use an explicitly selected UK full postcode or outward code; the chosen scope is preserved. No ambiguous formatted-address-only matching is used.</p>
+          <section class="fare-settings__rule-list" aria-labelledby="fixed-fare-list-title">
+            <h2 id="fixed-fare-list-title">Fixed fare records</h2>
+            ${(fixedFareForms.length ? fixedFareForms : []).map((savedRule) => {
+              const isNew = !savedRule.id;
+              const editing = ruleFormId === savedRule.id && !isNew;
+              const useSubmitted = ruleFormSubmitted && (isNew ? !ruleFormId : editing);
+              const value = (key) => useSubmitted ? ruleForm[key] || "" : savedRule[key] || "";
+              const heading = isNew ? "Add fixed fare" : savedRule.name;
+              return `
+                <form class="fare-settings__form fare-settings__rule-card" method="post" action="/settings/fare-settings/${category.slug}" data-fare-rule-form>
+                  ${locals.csrfField || ""}
+                  <input type="hidden" name="baseVersion" value="${currentVersion}" />
+                  <input type="hidden" name="ruleId" value="${savedRule.id}" />
+                  <h3>${heading || "Add fixed fare"}</h3>
+                  <div class="fare-settings__fields">
+                    <div class="fare-settings__field"><label for="fixed-${isNew ? "new" : savedRule.id}-name">Rule name or description</label><input id="fixed-${isNew ? "new" : savedRule.id}-name" name="name" type="text" maxlength="160" required value="${value("name")}" aria-invalid="${useSubmitted && errors.name ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-name-error" /><p id="fixed-${isNew ? "new" : savedRule.id}-name-error" class="fare-settings__field-error${useSubmitted && errors.name ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors.name ? 'role="alert"' : ""}>${useSubmitted ? errors.name || "" : ""}</p></div>
+                    ${["origin", "destination"].map((endpoint) => `
+                      <fieldset class="fare-settings__period fare-settings__endpoint" data-fixed-endpoint>
+                        <legend>${endpoint === "origin" ? "Origin" : "Destination"}</legend>
+                        <div class="fare-settings__field">
+                          <label for="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-type">Endpoint identification</label>
+                          <select id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-type" name="${endpoint}Type" required aria-invalid="${useSubmitted && errors[`${endpoint}Type`] ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-type-error">
+                            <option value="">Choose identification</option>
+                            <option value="poi" ${value(`${endpoint}Type`) === "poi" ? "selected" : ""}>Managed POI by RideMatrix ID</option>
+                            <option value="postcode" ${value(`${endpoint}Type`) === "postcode" ? "selected" : ""}>UK postcode criterion</option>
+                          </select>
+                          <p id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-type-error" class="fare-settings__field-error${useSubmitted && errors[`${endpoint}Type`] ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors[`${endpoint}Type`] ? 'role="alert"' : ""}>${useSubmitted ? errors[`${endpoint}Type`] || "" : ""}</p>
+                        </div>
+                        <div class="fare-settings__field" data-endpoint-choice="poi">
+                          <label for="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi">Managed location</label>
+                          <select id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi" name="${endpoint}PoiId" aria-invalid="${useSubmitted && errors[`${endpoint}PoiId`] ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi-error">
+                            <option value="">Select a managed location</option>
+                            ${managedPois.map((poi) => `<option value="${poi.id}" ${value(`${endpoint}PoiId`) === poi.id ? "selected" : ""}>${poi.displayName} — internal ID ${poi.id}</option>`).join("")}
+                          </select>
+                          <p id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi-error" class="fare-settings__field-error${useSubmitted && errors[`${endpoint}PoiId`] ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors[`${endpoint}PoiId`] ? 'role="alert"' : ""}>${useSubmitted ? errors[`${endpoint}PoiId`] || "" : ""}</p>
+                        </div>
+                        <div class="fare-settings__field" data-endpoint-choice="postcode">
+                          <label for="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-postcode">UK postcode criterion</label>
+                          <input id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-postcode" name="${endpoint}Postcode" type="text" autocomplete="postal-code" value="${value(`${endpoint}Postcode`)}" aria-invalid="${useSubmitted && errors[`${endpoint}Postcode`] ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-postcode-error" />
+                          <p id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-postcode-error" class="fare-settings__field-error${useSubmitted && errors[`${endpoint}Postcode`] ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors[`${endpoint}Postcode`] ? 'role="alert"' : ""}>${useSubmitted ? errors[`${endpoint}Postcode`] || "" : ""}</p>
+                        </div>
+                        <div class="fare-settings__field" data-endpoint-choice="postcode">
+                          <label for="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-scope">Postcode scope</label>
+                          <select id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-scope" name="${endpoint}PostcodeScope" aria-invalid="${useSubmitted && errors[`${endpoint}PostcodeScope`] ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-scope-error">
+                            <option value="">Choose postcode scope</option>
+                            <option value="full" ${value(`${endpoint}PostcodeScope`) === "full" ? "selected" : ""}>Full postcode</option>
+                            <option value="outward" ${value(`${endpoint}PostcodeScope`) === "outward" ? "selected" : ""}>Outward code</option>
+                          </select>
+                          <p id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-scope-error" class="fare-settings__field-error${useSubmitted && errors[`${endpoint}PostcodeScope`] ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors[`${endpoint}PostcodeScope`] ? 'role="alert"' : ""}>${useSubmitted ? errors[`${endpoint}PostcodeScope`] || "" : ""}</p>
+                        </div>
+                      </fieldset>
+                    `).join("")}
+                    <div class="fare-settings__field"><label for="fixed-${isNew ? "new" : savedRule.id}-fare">Fixed base fare (GBP)</label><div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="fixed-${isNew ? "new" : savedRule.id}-fare" name="baseFare" type="text" inputmode="decimal" pattern="(?:0|[1-9][0-9]{0,5})([.][0-9]{1,2})?" required value="${value("baseFare")}" aria-invalid="${useSubmitted && errors.baseFare ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-fare-error" /></div><p id="fixed-${isNew ? "new" : savedRule.id}-fare-error" class="fare-settings__field-error${useSubmitted && errors.baseFare ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors.baseFare ? 'role="alert"' : ""}>${useSubmitted ? errors.baseFare || "" : ""}</p></div>
+                  </div>
+                  <div class="fare-settings__actions">
+                    <button class="button button--primary" type="submit" name="ruleAction" value="save">${isNew ? "Add fixed fare" : "Save fixed fare"}</button>
+                    ${!isNew ? `<button class="button button--secondary" type="submit" name="ruleAction" value="delete" formnovalidate>Remove fixed fare</button>` : ""}
+                  </div>
+                </form>
+              `;
+            }).join("")}
+            ${configuration.fixedFares.length ? "" : `<p>No fixed fares have been configured.</p>`}
+          </section>
+        ` : category.slug === "distance-slabs" ? `
           <div class="notice fare-settings__configuration-only" role="status">
             This is one shared base distance-rate table for all vehicle categories. Vehicle-category uplifts are configured separately in future work. This saves configuration only; it is not a booking quote and does not calculate or change booking fares or totals.
           </div>

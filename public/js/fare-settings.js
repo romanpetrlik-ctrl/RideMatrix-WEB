@@ -13,7 +13,8 @@
   const previewTotal = document.querySelector("[data-distance-preview-total]");
   const previewError = document.querySelector("#distance-test-error");
   const addSlabError = document.querySelector("[data-add-distance-slab-error]");
-  if (!dailyDetails && !periodList && !distanceForm) return;
+  const fixedFareEndpoints = document.querySelectorAll("[data-fixed-endpoint]");
+  if (!dailyDetails && !periodList && !distanceForm && fixedFareEndpoints.length === 0) return;
 
   const selectedValue = (radios) => Array.from(radios).find((radio) => radio.checked)?.value;
 
@@ -31,6 +32,25 @@
     const enabled = selectedValue(bankHolidayRadios) === "yes";
     periodList?.querySelectorAll("[data-period] input").forEach((input) => {
       input.required = enabled;
+    });
+  };
+
+  const updateFixedFareEndpoint = (endpoint) => {
+    const type = endpoint.querySelector('select[name$="Type"]')?.value;
+    const postcodeScope = endpoint.querySelector('select[name$="PostcodeScope"]')?.value;
+    endpoint.querySelectorAll("[data-endpoint-choice]").forEach((choice) => {
+      const active = choice.dataset.endpointChoice === type;
+      choice.hidden = !active;
+      choice.querySelectorAll("input, select").forEach((input) => {
+        input.disabled = !active;
+        input.required = active;
+        if (input.matches('input[name$="Postcode"]')) {
+          input.pattern = postcodeScope === "outward"
+            ? "[A-Za-z]{1,2}[0-9][A-Za-z0-9]?"
+            : "(?:GIR[ ]?0AA|[A-Za-z]{1,2}[0-9][A-Za-z0-9]?[ ]?[0-9][A-Za-z]{2})";
+          input.maxLength = 8;
+        }
+      });
     });
   };
 
@@ -180,6 +200,14 @@
 
   dailyRadios.forEach((radio) => radio.addEventListener("change", updateDailyFields));
   bankHolidayRadios.forEach((radio) => radio.addEventListener("change", updatePeriodFields));
+  fixedFareEndpoints.forEach((endpoint) => {
+    const selector = endpoint.querySelector('select[name$="Type"]');
+    selector?.addEventListener("change", () => updateFixedFareEndpoint(endpoint));
+    endpoint.querySelector('select[name$="PostcodeScope"]')?.addEventListener("change", () => {
+      updateFixedFareEndpoint(endpoint);
+    });
+    updateFixedFareEndpoint(endpoint);
+  });
   addPeriodButton?.addEventListener("click", () => {
     if (!periodList || !periodTemplate) return;
     const index = periodList.querySelectorAll("[data-period]").length;
