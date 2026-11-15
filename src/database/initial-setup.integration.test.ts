@@ -195,8 +195,8 @@ test("full setup completion provisions selected production test accounts and dea
     countryName: "United Kingdom",
     latitude: 51.513,
     longitude: -0.106,
-    providerName: "manual",
-    providerPlaceId: null
+    providerName: "google",
+    providerPlaceId: "ChIJsetup-test"
   });
 
   await saveOperatorLicence(installerActor, {
@@ -206,11 +206,12 @@ test("full setup completion provisions selected production test accounts and dea
     validTo: "2027-01-01"
   });
 
+  const licencePdf = Buffer.from("%PDF-1.7 test");
   await saveOperatorLicenceDocument(installerActor, {
     originalname: "pho-licence.pdf",
     mimetype: "application/pdf",
-    size: 4,
-    buffer: Buffer.from("test")
+    size: licencePdf.length,
+    buffer: licencePdf
   });
 
   await completeInitialSetup(installerActor);

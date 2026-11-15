@@ -115,8 +115,16 @@
           <p><%= addressType === "registered_pho"
             ? "Enter the registered address associated with your business or PHO licence. This may be different from the address where your day-to-day operations take place."
             : "Enter the address used for your day-to-day taxi or private-hire operations. This may be your office, dispatch centre or operating base." %></p>
-          <form method="post" action="<%= addressType === "registered_pho" ? "/setup/registered-pho-address" : "/setup/operational-address" %>">
+          <form method="post" action="<%= addressType === "registered_pho" ? "/setup/registered-pho-address" : "/setup/operational-address" %>" <% if (addressType === "operational") { %>data-setup-address-form data-address-autocomplete-browser-key="<%= mapBrowserApiKey %>"<% } %>>
             <%- locals.csrfField || "" %>
+            <% if (addressType === "operational") { %>
+              <div class="setup-form__field">
+                <label for="operationalPlaceSearch">Select your operating address from Google Places *</label>
+                <input id="operationalPlaceSearch" type="search" autocomplete="off" value="<%= formData.formattedAddress %>" aria-describedby="operationalPlaceStatus" />
+                <div data-place-autocomplete-host hidden></div>
+                <span id="operationalPlaceStatus" role="status" aria-live="polite">Select a Google Places result to set your operational address and coordinates.</span>
+              </div>
+            <% } %>
             <% [
               ["formattedAddress", "Formatted address *", formData.formattedAddress || "", true],
               ["houseNameNumber", "House name / number", formData.houseNameNumber || ""],
@@ -130,20 +138,36 @@
               ["countryCode", "Country code *", formData.countryCode || "", true],
               ["countryName", "Country name *", formData.countryName || "", true],
               ["latitude", "Latitude", formData.latitude || ""],
-              ["longitude", "Longitude", formData.longitude || ""],
-              ["providerName", "Provider name", formData.providerName || ""],
-              ["providerPlaceId", "Provider place id", formData.providerPlaceId || ""]
+              ["longitude", "Longitude", formData.longitude || ""]
             ].forEach(([fieldName, fieldLabel, fieldValue, required]) => { %>
-              <div class="setup-form__field">
-                <label for="<%= fieldName %>"><%= fieldLabel %></label>
-                <input id="<%= fieldName %>" name="<%= fieldName %>" <%= fieldName === "countryCode" ? 'maxlength="2"' : "" %> <%= required ? "required" : "" %> value="<%= fieldValue %>" />
-              </div>
+              <% if (addressType === "operational" && ["latitude", "longitude"].includes(fieldName)) { %>
+                <input type="hidden" id="<%= fieldName %>" name="<%= fieldName %>" value="<%= fieldValue %>" />
+              <% } else if (addressType === "registered_pho" || !["latitude", "longitude"].includes(fieldName)) { %>
+                <div class="setup-form__field">
+                  <label for="<%= fieldName %>"><%= fieldLabel %></label>
+                  <input id="<%= fieldName %>" name="<%= fieldName %>" <%= fieldName === "countryCode" ? 'maxlength="2"' : "" %> <%= required ? "required" : "" %> value="<%= fieldValue %>" <%= addressType === "operational" ? "readonly" : "" %> />
+                </div>
+              <% } else { %>
+                <input type="hidden" id="<%= fieldName %>" name="<%= fieldName %>" value="<%= fieldValue %>" />
+              <% } %>
             <% }) %>
+            <% if (addressType === "operational") { %>
+              <input type="hidden" id="providerName" name="providerName" value="<%= formData.providerName %>" />
+              <input type="hidden" id="providerPlaceId" name="providerPlaceId" value="<%= formData.providerPlaceId %>" />
+            <% } %>
+            <% if (addressType === "registered_pho") { %>
+              <input type="hidden" name="providerName" value="<%= formData.providerName %>" />
+              <input type="hidden" name="providerPlaceId" value="<%= formData.providerPlaceId %>" />
+            <% } %>
             <div class="setup-form__actions">
               <button type="submit"><%= addressType === "registered_pho" ? "Save registered address and continue" : "Save operating address and continue" %></button>
             </div>
           </form>
         </section>
+        <% if (addressType === "operational") { %>
+          <script src="/js/google-map-preview.js" defer></script>
+          <script src="/js/setup-address-autocomplete.js" defer></script>
+        <% } %>
       <% } %>
 
       <% if (requestedPath === stepPaths.pho_licence) { %>
@@ -160,6 +184,9 @@
               <label for="licensingAuthorityId">Licensing authority *</label>
               <select id="licensingAuthorityId" name="licensingAuthorityId" required>
                 <option value="">Select authority</option>
+                <% if (formData.licensingAuthorityId && !authorities.some((authority) => authority.id === formData.licensingAuthorityId)) { %>
+                  <option value="<%= formData.licensingAuthorityId %>" selected disabled>Previously selected authority is unavailable</option>
+                <% } %>
                 <% authorities.forEach((authority) => { %>
                   <option value="<%= authority.id %>" <%= formData.licensingAuthorityId === authority.id ? "selected" : "" %>>
                     <%= authority.name %>

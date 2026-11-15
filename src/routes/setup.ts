@@ -5,6 +5,7 @@ import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { SessionAccount, getSessionAccount } from "../services/api";
 import { listLicensingAuthorities } from "../services/licensing";
+import { readMapConfiguration } from "../services/maps";
 import {
   CLEANUP_TARGETS,
   CleanupTarget,
@@ -239,6 +240,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       stepPaths: SETUP_STEP_PATHS,
       setup: overview,
       authorities,
+      mapBrowserApiKey: readMapConfiguration().browserApiKey || "",
       errors,
       notice,
       formData,
@@ -529,11 +531,45 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     }
   }
 
+  function parseLicenceDocumentUpload(req: any, res: any, next: any) {
+    setupUpload.single("licenceDocument")(req, res, async (error: unknown) => {
+      if (!error) {
+        return next();
+      }
+      if (!(error instanceof multer.MulterError)) {
+        return next(error);
+      }
+
+      try {
+        const submittedToken = req.body && req.body._csrf;
+        if (!req.csrf?.verify(submittedToken).valid) {
+          return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+        }
+        const session = await resolveSession(req.headers.cookie);
+        if (!session.authenticated || !session.user) {
+          return res.redirect("/access");
+        }
+        if (!(await canAccessSetupAdministration(session))) {
+          return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+        }
+
+        const message = error.code === "LIMIT_FILE_SIZE"
+          ? "Licence document must be 10 MB or smaller."
+          : error.code === "LIMIT_UNEXPECTED_FILE"
+            ? "Choose one licence document."
+            : "Licence document could not be uploaded.";
+        return renderWizard(res, session, SETUP_STEP_PATHS.licence_document, [message]);
+      } catch (unexpectedError) {
+        return next(unexpectedError);
+      }
+    });
+  }
+
   router.post(
     "/setup/licence-document",
     setupRateLimit,
     requireSameOriginMultipart,
-    setupUpload.single("licenceDocument"),
+    parseLicenceDocumentUpload,
     uploadCsrfGuard,
     async (req, res, next) => {
       try {
