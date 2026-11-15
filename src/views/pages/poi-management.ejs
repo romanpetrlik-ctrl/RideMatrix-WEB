@@ -1,0 +1,195 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: title,
+  pageMeta: "System Settings · " + title,
+  activeRoleLabel: "System settings",
+  hintsLabel: "Hints: Off",
+  body: `
+    <section class="panel poi-management">
+      <nav class="poi-management__trail" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/settings">System Settings</a></li>
+          <li aria-current="page">${title}</li>
+        </ol>
+      </nav>
+      <h1>${title}</h1>
+      <p class="notice poi-management__notice" role="status"><strong>Configuration only.</strong> POI Fees are not applied to booking prices, totals, customer charges, or payments. Airports and Airport Fees remain separately managed.</p>
+      <nav class="poi-management__nav" aria-label="System Settings destinations">
+        <a href="/settings/pois"${page === "pois" ? ' aria-current="page"' : ""}>POIs</a>
+        <a href="/settings/poi-fees"${page === "fees" ? ' aria-current="page"' : ""}>POI Fees</a>
+      </nav>
+      ${saved ? `<p class="notice poi-management__success" role="status">${page === "pois" ? "POI" : "POI Fee"} saved.</p>` : ""}
+      ${deleted ? `<p class="notice poi-management__success" role="status">${page === "pois" ? "POI" : "POI Fee"} deleted.</p>` : ""}
+      ${hasFees ? `<p class="notice poi-management__error" role="alert">This POI has active fees. Delete or reassign its fee records before deleting the POI.</p>` : ""}
+      ${page === "pois" ? `
+        <p class="poi-management__intro">Manage general operational places such as hotels, railway stations, and hospitals. The configured display name is the POI’s identity; the selected Google Place is saved separately as its navigation location.</p>
+        ${poiFormError ? `<p class="notice poi-management__error" role="alert">${poiFormError}</p>` : ""}
+        <section class="poi-management__section" aria-labelledby="poi-form-title">
+          <h2 id="poi-form-title">${poiForm.id ? "Edit POI" : "Add POI"}</h2>
+          ${showPoiForm ? `
+            ${!mapConfigured ? `<div class="notice poi-management__error" role="alert"><strong>Google Places is unavailable.</strong> Enable Google Maps and configure a browser API key to choose an operational location.</div>` : ""}
+            <form class="poi-management__form" method="post" action="/settings/pois">
+              ${locals.csrfField || ""}
+              <input type="hidden" name="id" value="${poiForm.id}" />
+              <div class="poi-management__field">
+                <label for="poi-display-name">POI display name</label>
+                <input id="poi-display-name" name="displayName" type="text" maxlength="160" required value="${poiForm.displayName}" aria-invalid="${poiErrors.displayName ? "true" : "false"}" aria-describedby="poi-display-name-error" />
+                <p id="poi-display-name-error" class="poi-management__field-error${poiErrors.displayName ? " is-invalid" : ""}" ${poiErrors.displayName ? 'role="alert"' : ""}>${poiErrors.displayName || "This configured name is shown to customers; it is not replaced by Google’s address label."}</p>
+              </div>
+              <div class="poi-management__field">
+                <label for="poi-category">POI type or category</label>
+                <input id="poi-category" name="category" type="text" maxlength="100" required value="${poiForm.category}" aria-invalid="${poiErrors.category ? "true" : "false"}" aria-describedby="poi-category-error" />
+                <p id="poi-category-error" class="poi-management__field-error${poiErrors.category ? " is-invalid" : ""}" ${poiErrors.category ? 'role="alert"' : ""}>${poiErrors.category || "For example, hotel, railway station, or hospital."}</p>
+              </div>
+              <div class="poi-management__field poi-management__location" data-poi-place-root data-poi-place-browser-key="${mapBrowserApiKey}">
+                <label for="poi-location-label">Operational location</label>
+                <input id="poi-location-label" name="locationLabel" type="text" readonly required value="${poiForm.locationLabel}" placeholder="Choose a Google Places result" aria-invalid="${poiErrors.location ? "true" : "false"}" aria-describedby="poi-location-help poi-location-error" />
+                <input type="hidden" name="placeId" value="${poiForm.placeId}" />
+                <input type="hidden" name="latitude" value="${poiForm.latitude}" />
+                <input type="hidden" name="longitude" value="${poiForm.longitude}" />
+                <div class="poi-management__autocomplete-host" data-poi-place-autocomplete-host></div>
+                <p id="poi-location-help" class="poi-management__help" data-poi-place-status>Search and select a Google Places result. Its Place ID and coordinates are saved for navigation.</p>
+                <p id="poi-location-error" class="poi-management__field-error${poiErrors.location ? " is-invalid" : ""}" ${poiErrors.location ? 'role="alert"' : ""}>${poiErrors.location || "A Google Places selection is required."}</p>
+              </div>
+              <div class="poi-management__field poi-management__notes">
+                <label for="poi-notes">Operator notes or instructions <span class="poi-management__optional">(optional)</span></label>
+                <textarea id="poi-notes" name="notes" maxlength="2000" rows="4" aria-invalid="${poiErrors.notes ? "true" : "false"}" aria-describedby="poi-notes-error">${poiForm.notes}</textarea>
+                <p id="poi-notes-error" class="poi-management__field-error${poiErrors.notes ? " is-invalid" : ""}" ${poiErrors.notes ? 'role="alert"' : ""}>${poiErrors.notes || "Add access details, drop-off instructions, or other operator guidance."}</p>
+              </div>
+              <div class="poi-management__actions">
+                <button class="button button--primary" type="submit">${poiForm.id ? "Save POI changes" : "Save POI"}</button>
+                ${poiForm.id ? `<a class="button button--secondary" href="/settings/pois">Cancel edit</a>` : ""}
+              </div>
+            </form>
+            <script src="/js/google-map-preview.js" defer></script>
+            <script src="/js/poi-places.js" defer></script>
+          ` : `<div class="notice poi-management__error" role="alert"><strong>Google Places is unavailable.</strong> Enable Google Maps and configure a browser API key to select an operational location.</div>`}
+        </section>
+        <section class="poi-management__section" aria-labelledby="poi-records-title">
+          <h2 id="poi-records-title">Saved POIs</h2>
+          ${pois.length ? `
+            <div class="poi-management__records">
+              ${pois.map((poi) => `
+                <article class="poi-management__record">
+                  <div class="poi-management__record-heading">
+                    <h3>${poi.displayName}</h3>
+                    <div class="poi-management__actions">
+                      <a class="button button--secondary button--small" href="/settings/pois?edit=${encodeURIComponent(poi.id)}">Edit</a>
+                      <button class="button button--secondary button--small" type="button" data-poi-delete-open="poi-delete-${poi.id}">Delete</button>
+                    </div>
+                  </div>
+                  <dl>
+                    <div><dt>RideMatrix ID</dt><dd><code>${poi.id}</code></dd></div>
+                    <div><dt>Type</dt><dd>${poi.category}</dd></div>
+                    <div><dt>Operational location</dt><dd>${poi.locationLabel} (${poi.latitude}, ${poi.longitude})</dd></div>
+                    ${poi.notes ? `<div><dt>Operator notes</dt><dd>${poi.notes}</dd></div>` : ""}
+                  </dl>
+                  <dialog id="poi-delete-${poi.id}" aria-labelledby="poi-delete-title-${poi.id}">
+                    <form method="post" action="/settings/pois/${encodeURIComponent(poi.id)}/delete">
+                      ${locals.csrfField || ""}
+                      <h3 id="poi-delete-title-${poi.id}">Delete ${poi.displayName}?</h3>
+                      <p>POIs with active fee records must have those fees removed before deletion. This preserves the POI’s audit history.</p>
+                      <div class="poi-management__actions">
+                        <button class="button button--primary" type="submit">Confirm delete</button>
+                        <button class="button button--secondary" type="button" data-poi-delete-cancel>Cancel</button>
+                      </div>
+                    </form>
+                  </dialog>
+                </article>
+              `).join("")}
+            </div>
+          ` : `<p>No POIs have been saved.</p>`}
+        </section>
+      ` : `
+        <p class="poi-management__intro">Manage optional fees separately from their POIs. Each fee names its linked POI by stable RideMatrix ID, an action or service, amount, and an explicitly configured basis.</p>
+        ${feeFormError ? `<p class="notice poi-management__error" role="alert">${feeFormError}</p>` : ""}
+        <section class="poi-management__section" aria-labelledby="poi-fee-form-title">
+          <h2 id="poi-fee-form-title">${feeForm.id ? "Edit POI Fee" : "Add POI Fee"}</h2>
+          ${pois.length ? `
+            <form class="poi-management__form poi-management__form--fee" method="post" action="/settings/poi-fees">
+              ${locals.csrfField || ""}
+              <input type="hidden" name="id" value="${feeForm.id}" />
+              <div class="poi-management__field">
+                <label for="poi-fee-poi">POI</label>
+                <select id="poi-fee-poi" name="poiId" required aria-invalid="${feeErrors.poiId ? "true" : "false"}" aria-describedby="poi-fee-poi-error">
+                  <option value="" ${feeForm.poiId ? "" : "selected"}>Select a POI</option>
+                  ${pois.map((poi) => `<option value="${poi.id}" ${feeForm.poiId === poi.id ? "selected" : ""}>${poi.displayName} — ${poi.id}</option>`).join("")}
+                </select>
+                <p id="poi-fee-poi-error" class="poi-management__field-error${feeErrors.poiId ? " is-invalid" : ""}" ${feeErrors.poiId ? 'role="alert"' : ""}>${feeErrors.poiId || "The fee links to this existing POI by its stable internal ID."}</p>
+              </div>
+              <div class="poi-management__field">
+                <label for="poi-fee-action">Applicable action or service</label>
+                <input id="poi-fee-action" name="action" type="text" maxlength="100" required value="${feeForm.action}" aria-invalid="${feeErrors.action ? "true" : "false"}" aria-describedby="poi-fee-action-error" />
+                <p id="poi-fee-action-error" class="poi-management__field-error${feeErrors.action ? " is-invalid" : ""}" ${feeErrors.action ? 'role="alert"' : ""}>${feeErrors.action || "For example, pickup, drop-off, parking, or EV charging."}</p>
+              </div>
+              <div class="poi-management__field">
+                <label for="poi-fee-amount">Amount (GBP)</label>
+                <div class="poi-management__amount"><span aria-hidden="true">£</span><input id="poi-fee-amount" name="amount" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required value="${feeForm.amount}" aria-invalid="${feeErrors.amount ? "true" : "false"}" aria-describedby="poi-fee-amount-error" /></div>
+                <p id="poi-fee-amount-error" class="poi-management__field-error${feeErrors.amount ? " is-invalid" : ""}" ${feeErrors.amount ? 'role="alert"' : ""}>${feeErrors.amount || "Enter the configured GBP amount; no fee is created by default."}</p>
+              </div>
+              <div class="poi-management__field">
+                <label for="poi-fee-basis">Fee basis or unit</label>
+                <input id="poi-fee-basis" name="feeBasis" type="text" maxlength="100" required value="${feeForm.feeBasis}" aria-invalid="${feeErrors.feeBasis ? "true" : "false"}" aria-describedby="poi-fee-basis-error" />
+                <p id="poi-fee-basis-error" class="poi-management__field-error${feeErrors.feeBasis ? " is-invalid" : ""}" ${feeErrors.feeBasis ? 'role="alert"' : ""}>${feeErrors.feeBasis || "Explicitly specify a basis such as per visit, per hour, per night, or per kWh."}</p>
+              </div>
+              <fieldset class="poi-management__trigger">
+                <legend>When is this fee considered applicable?</legend>
+                <label><input type="radio" name="trigger" value="selection" required ${feeForm.trigger === "selection" ? "checked" : ""} /> When this POI/action is selected</label>
+                <label><input type="radio" name="trigger" value="confirmation" required ${feeForm.trigger === "confirmation" ? "checked" : ""} /> Only after explicit confirmation that the optional service is used</label>
+                <p id="poi-fee-trigger-error" class="poi-management__field-error${feeErrors.trigger ? " is-invalid" : ""}" ${feeErrors.trigger ? 'role="alert"' : ""}>${feeErrors.trigger || "Choose the trigger; optional services such as parking and EV charging require explicit confirmation when applicable."}</p>
+              </fieldset>
+              <div class="poi-management__field poi-management__notes">
+                <label for="poi-fee-notes">Notes or source <span class="poi-management__optional">(optional)</span></label>
+                <textarea id="poi-fee-notes" name="notes" maxlength="2000" rows="3" aria-invalid="${feeErrors.notes ? "true" : "false"}" aria-describedby="poi-fee-notes-error">${feeForm.notes}</textarea>
+                <p id="poi-fee-notes-error" class="poi-management__field-error${feeErrors.notes ? " is-invalid" : ""}" ${feeErrors.notes ? 'role="alert"' : ""}>${feeErrors.notes || "Record an operator note or source if known."}</p>
+              </div>
+              <div class="poi-management__actions">
+                <button class="button button--primary" type="submit">${feeForm.id ? "Save POI Fee changes" : "Save POI Fee"}</button>
+                ${feeForm.id ? `<a class="button button--secondary" href="/settings/poi-fees">Cancel edit</a>` : ""}
+              </div>
+            </form>
+          ` : `<p>No POIs are available. Create a POI before adding a linked fee.</p>`}
+        </section>
+        <section class="poi-management__section" aria-labelledby="poi-fee-records-title">
+          <h2 id="poi-fee-records-title">Saved POI Fees</h2>
+          ${fees.length ? `
+            <div class="poi-management__records">
+              ${fees.map((fee) => `
+                <article class="poi-management__record">
+                  <div class="poi-management__record-heading">
+                    <h3>${fee.poiDisplayName} — ${fee.action}</h3>
+                    <div class="poi-management__actions">
+                      <a class="button button--secondary button--small" href="/settings/poi-fees?edit=${encodeURIComponent(fee.id)}">Edit</a>
+                      <button class="button button--secondary button--small" type="button" data-poi-delete-open="poi-fee-delete-${fee.id}">Delete</button>
+                    </div>
+                  </div>
+                  <dl>
+                    <div><dt>Linked POI ID</dt><dd><code>${fee.poiId}</code></dd></div>
+                    <div><dt>Amount and basis</dt><dd>£${fee.amount} GBP ${fee.feeBasis}</dd></div>
+                    <div><dt>Trigger</dt><dd>${fee.trigger === "selection" ? "POI/action selection" : "Explicit optional-service confirmation"}</dd></div>
+                    ${fee.notes ? `<div><dt>Notes or source</dt><dd>${fee.notes}</dd></div>` : ""}
+                  </dl>
+                  <dialog id="poi-fee-delete-${fee.id}" aria-labelledby="poi-fee-delete-title-${fee.id}">
+                    <form method="post" action="/settings/poi-fees/${encodeURIComponent(fee.id)}/delete">
+                      ${locals.csrfField || ""}
+                      <h3 id="poi-fee-delete-title-${fee.id}">Delete this POI Fee?</h3>
+                      <p>${fee.poiDisplayName} — ${fee.action}. This fee is configuration only and is not applied to booking prices.</p>
+                      <div class="poi-management__actions">
+                        <button class="button button--primary" type="submit">Confirm delete</button>
+                        <button class="button button--secondary" type="button" data-poi-delete-cancel>Cancel</button>
+                      </div>
+                    </form>
+                  </dialog>
+                </article>
+              `).join("")}
+            </div>
+          ` : `<p>No POI Fees have been saved.</p>`}
+        </section>
+      `}
+    </section>
+    <script src="/js/poi-management.js" defer></script>
+  `
+}) %>

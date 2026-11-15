@@ -3450,6 +3450,237 @@ button:visited,
   height: 100% !important;
 }
 
+.poi-management {
+  min-width: 0;
+}
+
+.poi-management__trail ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.poi-management__trail li + li::before {
+  content: "/";
+  margin-right: 0.75rem;
+  color: var(--rm-text-soft);
+}
+
+.poi-management__nav,
+.system-settings-destinations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.poi-management__nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--rm-control-height);
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+  color: var(--rm-text);
+  font-weight: 700;
+}
+
+.poi-management__nav a[aria-current="page"] {
+  border-color: var(--rm-dark-teal);
+  background: var(--rm-page-bg);
+}
+
+.poi-management__notice,
+.poi-management__intro {
+  max-width: 76ch;
+  line-height: 1.55;
+}
+
+.poi-management__section {
+  min-width: 0;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rm-border);
+}
+
+.poi-management__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+
+.poi-management__field {
+  min-width: 0;
+}
+
+.poi-management__field > label,
+.poi-management__trigger legend {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+}
+
+.poi-management__field input:not([type="hidden"]),
+.poi-management__field select,
+.poi-management__field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 0;
+}
+
+.poi-management__location,
+.poi-management__notes,
+.poi-management__trigger,
+.poi-management__actions {
+  grid-column: 1 / -1;
+}
+
+.poi-management__autocomplete-host {
+  margin-top: 0.5rem;
+}
+
+.poi-management__autocomplete-host > gmp-place-autocomplete {
+  width: 100%;
+}
+
+.poi-management__help,
+.poi-management__field-error {
+  margin: 0.3rem 0 0;
+  color: var(--rm-text-soft);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.poi-management__field-error.is-invalid,
+.poi-management__error {
+  color: var(--rm-error, #a32323);
+}
+
+.poi-management__optional {
+  color: var(--rm-text-soft);
+  font-weight: 400;
+}
+
+.poi-management__amount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.poi-management__amount > span {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.poi-management__trigger {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+}
+
+.poi-management__trigger label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.poi-management__trigger input {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
+}
+
+.poi-management__actions,
+.poi-management__record-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.poi-management__records {
+  display: grid;
+  gap: 1rem;
+}
+
+.poi-management__record {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+}
+
+.poi-management__record-heading {
+  justify-content: space-between;
+}
+
+.poi-management__record-heading h3 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.poi-management__record dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 1rem 0 0;
+}
+
+.poi-management__record dt {
+  font-weight: 700;
+}
+
+.poi-management__record dd {
+  min-width: 0;
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.poi-management__record code {
+  overflow-wrap: anywhere;
+}
+
+.poi-management__record dialog {
+  max-width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+  color: var(--rm-text);
+}
+
+.poi-management__record dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.poi-management__success {
+  color: var(--rm-dark-teal);
+}
+
+@media (max-width: 40rem) {
+  .poi-management {
+    padding: 1rem;
+  }
+
+  .poi-management__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .poi-management__actions > *,
+  .system-settings-destinations > * {
+    width: 100%;
+  }
+}
+
 .toll-fees-page > h1 {
   color: var(--rm-text);
   font-size: clamp(1.8rem, 3vw, 2.4rem);

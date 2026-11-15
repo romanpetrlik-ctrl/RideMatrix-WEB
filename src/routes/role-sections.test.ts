@@ -11,6 +11,14 @@ import type {
   AirportFeeRecord,
   AirportFeeStore
 } from "../services/airport-fees";
+import type {
+  PoiFeeFormValues,
+  PoiFeeRecord,
+  PoiFormValues,
+  PoiManagementActor,
+  PoiManagementStore,
+  PoiRecord
+} from "../services/poi-management";
 import {
   crossingFeeScheduleDrafts,
   londonFeeScheduleDrafts
@@ -37,6 +45,7 @@ import {
   tollFeeCategories,
   workspaceModules
 } from "./role-sections";
+import { createPoiManagementRouter } from "./poi-management";
 
 // Role keys the Staff directory shows for bookings@romanairporttransfers.co.uk
 // (admin, customer, driver, partner, staff, superuser, tech_support).
@@ -116,6 +125,7 @@ function createMemoryAirportFeeStore(): { store: AirportFeeStore; reset: () => v
           records[index] = toRecord(id, values);
           return structuredClone(records[index]);
         }
+
         const record = toRecord(`airport-${nextId++}`, values);
         records.push(record);
         return structuredClone(record);
@@ -124,6 +134,106 @@ function createMemoryAirportFeeStore(): { store: AirportFeeStore; reset: () => v
         const index = records.findIndex((item) => item.id === id);
         if (index < 0) return false;
         records.splice(index, 1);
+        return true;
+      }
+    }
+  };
+}
+
+function createMemoryPoiManagementStore(): {
+  store: PoiManagementStore;
+  reset: () => void;
+  pois: PoiRecord[];
+  fees: PoiFeeRecord[];
+} {
+  const pois: PoiRecord[] = [];
+  const fees: PoiFeeRecord[] = [];
+  let nextPoiId = 1;
+  let nextFeeId = 1;
+  const reset = () => {
+    pois.splice(0, pois.length);
+    fees.splice(0, fees.length);
+    nextPoiId = 1;
+    nextFeeId = 1;
+  };
+  const toPoi = (id: string, values: PoiFormValues): PoiRecord => ({
+    id,
+    displayName: values.displayName,
+    category: values.category,
+    placeId: values.placeId,
+    locationLabel: values.locationLabel,
+    latitude: Number(values.latitude),
+    longitude: Number(values.longitude),
+    notes: values.notes,
+    createdAt: "2026-11-15T00:00:00.000Z",
+    updatedAt: "2026-11-15T00:00:00.000Z"
+  });
+  return {
+    pois,
+    fees,
+    reset,
+    store: {
+      async listPois() {
+        return structuredClone(pois);
+      },
+      async getPoi(id) {
+        const poi = pois.find((item) => item.id === id);
+        return poi ? structuredClone(poi) : null;
+      },
+      async savePoi(id: string | null, values: PoiFormValues, _actor: PoiManagementActor) {
+        if (id) {
+          const index = pois.findIndex((item) => item.id === id);
+          if (index < 0) return null;
+          pois[index] = toPoi(id, values);
+          return structuredClone(pois[index]);
+        }
+        const poi = toPoi(`poi-${nextPoiId++}`, values);
+        pois.push(poi);
+        return structuredClone(poi);
+      },
+      async deletePoi(id, _actor) {
+        const index = pois.findIndex((item) => item.id === id);
+        if (index < 0) return "not-found";
+        if (fees.some((fee) => fee.poiId === id)) return "has-fees";
+        pois.splice(index, 1);
+        return "deleted";
+      },
+      async listFees() {
+        return structuredClone(fees);
+      },
+      async getFee(id) {
+        const fee = fees.find((item) => item.id === id);
+        return fee ? structuredClone(fee) : null;
+      },
+      async saveFee(id: string | null, values: PoiFeeFormValues, _actor: PoiManagementActor) {
+        const poi = pois.find((item) => item.id === values.poiId);
+        if (!poi) return null;
+        const record: PoiFeeRecord = {
+          id: id ?? `fee-${nextFeeId++}`,
+          poiId: poi.id,
+          poiDisplayName: poi.displayName,
+          action: values.action,
+          amount: values.amount,
+          currency: "GBP",
+          feeBasis: values.feeBasis,
+          trigger: values.trigger as "selection" | "confirmation",
+          notes: values.notes,
+          createdAt: "2026-11-15T00:00:00.000Z",
+          updatedAt: "2026-11-15T00:00:00.000Z"
+        };
+        if (id) {
+          const index = fees.findIndex((item) => item.id === id);
+          if (index < 0) return null;
+          fees[index] = record;
+          return structuredClone(record);
+        }
+        fees.push(record);
+        return structuredClone(record);
+      },
+      async deleteFee(id, _actor) {
+        const index = fees.findIndex((item) => item.id === id);
+        if (index < 0) return false;
+        fees.splice(index, 1);
         return true;
       }
     }
@@ -233,6 +343,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   const seenCookies: Array<string | undefined> = [];
   const feeSchedules = createMemoryFeeScheduleStore();
   const airportFees = createMemoryAirportFeeStore();
+  const poiManagement = createMemoryPoiManagementStore();
   const fareSettings = createMemoryFareSettingsStore();
 
   before(async () => {
@@ -248,7 +359,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     authServer = http.createServer((req, res) => {
       if (req.url === "/auth/session" && req.method === "GET") {
         seenCookies.push(req.headers.cookie);
-        const session = sessionsByCookie.get(req.headers.cookie ?? "") ?? { authenticated: false };
+        const requestCookie = req.headers.cookie ?? "";
+        const sessionCookie = requestCookie.split(";")[0].trim();
+        const session = sessionsByCookie.get(requestCookie) ?? sessionsByCookie.get(sessionCookie) ?? { authenticated: false };
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(session));
         return;
@@ -269,6 +382,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       airportFeeStore: airportFees.store,
       fareSettingsStore: fareSettings.store
     }));
+    app.use(createPoiManagementRouter({ appTitle: "RideMatrix Test", store: poiManagement.store }));
     appServer = app.listen(0);
     await new Promise<void>((resolve) => appServer.once("listening", resolve));
     baseUrl = `http://127.0.0.1:${(appServer.address() as AddressInfo).port}`;
@@ -311,6 +425,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(body, /System Control \(superuser\)/);
     assert.match(body, /Not yet configured/);
     assert.match(body, /href="\/settings\/toll-fees"/);
+    assert.match(body, /href="\/settings\/pois">Manage POIs/);
+    assert.match(body, /href="\/settings\/poi-fees">Manage POI Fees/);
     assert.doesNotMatch(body, /Unable to continue/);
   });
 
@@ -436,6 +552,213 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         assert.ok(selectedSubnav[0].includes(`${scheme.path}/${destination.path}`), "the selected subpage should match the current destination");
         assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
       }
+    }
+  });
+
+  test("POI and POI Fees pages preserve the System Settings authorization boundary", async () => {
+    const authorized = withSession("sid=poi-authorized", ["superuser"]);
+    for (const [path, title] of [["/settings/pois", "POIs"], ["/settings/poi-fees", "POI Fees"]]) {
+      const response = await fetch(`${baseUrl}${path}`, { headers: authorized });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+      const body = await response.text();
+      assert.match(body, new RegExp(`<h1>${title}</h1>`));
+      assert.match(body, /Configuration only/);
+      assert.match(body, /not applied to booking prices, totals, customer charges, or payments/);
+    }
+
+    const denied = withSession("sid=poi-denied", ["admin", "staff", "tech_support"]);
+    for (const path of ["/settings/pois", "/settings/poi-fees"]) {
+      assert.equal((await fetch(`${baseUrl}${path}`, { headers: denied, redirect: "manual" })).status, 403);
+    }
+    for (const path of ["/settings/pois", "/settings/poi-fees"]) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { cookie: `sid=poi-unauthenticated-${path}` },
+        redirect: "manual"
+      });
+      assert.equal(response.status, 302);
+      assert.equal(response.headers.get("location"), "/access");
+    }
+  });
+
+  test("POIs save selected Places, edit and delete independently from multiple optional POI Fees", async () => {
+    poiManagement.reset();
+    const oldMapEnvironment = {
+      enabled: process.env.GOOGLE_MAPS_ENABLED,
+      browserKey: process.env.GOOGLE_MAPS_BROWSER_API_KEY
+    };
+    process.env.GOOGLE_MAPS_ENABLED = "true";
+    process.env.GOOGLE_MAPS_BROWSER_API_KEY = "test-browser-key";
+    const headers = withSession("sid=poi-crud", ["superuser"]);
+    const sessionCookie = headers.cookie;
+    const csrfFor = async (path: string) => {
+      const response = await fetch(`${baseUrl}${path}`, { headers });
+      assert.equal(response.status, 200);
+      const body = await response.text();
+      const csrfCookie = response.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      return { cookie: `${sessionCookie}; ${csrfCookie}`, token };
+    };
+    const postForm = async (path: string, values: Record<string, string>) => {
+      const csrfPath = path.includes("/delete")
+        ? (path.startsWith("/settings/pois/") ? "/settings/pois" : "/settings/poi-fees")
+        : path;
+      const csrf = await csrfFor(csrfPath);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { cookie: csrf.cookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ ...values, _csrf: csrf.token }),
+        redirect: "manual"
+      });
+    };
+
+    try {
+      const poiValues = {
+        displayName: "Configured Hotel Name",
+        category: "hotel",
+        placeId: "ChIJ-operational-hotel",
+        locationLabel: "Selected Google Place location",
+        latitude: "51.4701",
+        longitude: "-0.4543",
+        notes: "Drop-off is free for the first 10 minutes."
+      };
+      const invalidPoi = await postForm("/settings/pois", { ...poiValues, placeId: "" });
+      assert.equal(invalidPoi.status, 400);
+      const invalidPoiBody = await invalidPoi.text();
+      assert.match(invalidPoiBody, /Select a valid operational location from Google Places/);
+      assert.match(invalidPoiBody, /value="Configured Hotel Name"/, "submitted values should be preserved");
+      assert.equal(poiManagement.pois.length, 0);
+
+      const createdPoi = await postForm("/settings/pois", poiValues);
+      assert.equal(createdPoi.status, 303);
+      assert.match(createdPoi.headers.get("location") ?? "", /saved=1/);
+      assert.equal(poiManagement.pois.length, 1);
+      const poi = poiManagement.pois[0];
+      assert.match(poi.id, /^poi-/);
+      assert.equal(poi.placeId, "ChIJ-operational-hotel");
+      assert.equal(poi.locationLabel, "Selected Google Place location");
+      assert.equal(poi.latitude, 51.4701);
+      assert.equal(poi.longitude, -0.4543);
+      assert.equal(poi.displayName, "Configured Hotel Name");
+      assert.equal(poiManagement.fees.length, 0, "creating a POI must not create a fee");
+      const poiEditBody = await (await fetch(`${baseUrl}/settings/pois?edit=${poi.id}`, { headers })).text();
+      assert.match(poiEditBody, new RegExp(`name="id" value="${poi.id}"`));
+      assert.match(poiEditBody, /value="Configured Hotel Name"/);
+
+      const noFeePoiResponse = await postForm("/settings/pois", {
+        ...poiValues,
+        displayName: "Station without a fee",
+        category: "railway station",
+        placeId: "ChIJ-station",
+        locationLabel: "Selected station location"
+      });
+      assert.equal(noFeePoiResponse.status, 303);
+      const noFeePoi = poiManagement.pois[1];
+      assert.equal(poiManagement.fees.length, 0);
+
+      const editedPoiResponse = await postForm("/settings/pois", {
+        ...poiValues,
+        id: poi.id,
+        displayName: "Configured Hotel Name Updated",
+        notes: "Use the signed side entrance."
+      });
+      assert.equal(editedPoiResponse.status, 303);
+      assert.equal(poiManagement.pois.length, 2, "editing updates the existing internal ID");
+      assert.equal(poiManagement.pois[0].id, poi.id);
+      assert.equal(poiManagement.pois[0].displayName, "Configured Hotel Name Updated");
+      assert.equal(poiManagement.pois[0].placeId, "ChIJ-operational-hotel");
+      assert.equal(poiManagement.pois[0].notes, "Use the signed side entrance.");
+
+      const invalidFee = await postForm("/settings/poi-fees", {
+        poiId: "missing-poi",
+        action: "Drop-off",
+        amount: "1000000.00",
+        feeBasis: "",
+        trigger: "selection",
+        notes: ""
+      });
+      assert.equal(invalidFee.status, 400);
+      const invalidFeeBody = await invalidFee.text();
+      assert.match(invalidFeeBody, /Select an existing POI/);
+      assert.match(invalidFeeBody, /Enter a GBP amount/);
+      assert.match(invalidFeeBody, /Specify the fee basis or unit/);
+      assert.match(invalidFeeBody, /value="1000000.00"/, "invalid submitted amounts should be preserved");
+      assert.equal(poiManagement.fees.length, 0);
+
+      for (const fee of [
+        { action: "Drop-off", amount: "6", feeBasis: "per visit", trigger: "selection" },
+        { action: "Parking", amount: "18.5", feeBasis: "per hour", trigger: "confirmation" }
+      ]) {
+        const response = await postForm("/settings/poi-fees", {
+          poiId: poi.id,
+          ...fee,
+          notes: ""
+        });
+        assert.equal(response.status, 303);
+      }
+      assert.equal(poiManagement.fees.length, 2);
+      assert.ok(poiManagement.fees.every((fee) => fee.poiId === poi.id));
+      assert.equal(poiManagement.fees[0].amount, "6.00");
+      assert.equal(poiManagement.fees[1].amount, "18.50");
+      assert.equal(poiManagement.fees[0].trigger, "selection");
+      assert.equal(poiManagement.fees[1].trigger, "confirmation");
+
+      const firstFee = poiManagement.fees[0];
+      const feeEditBody = await (await fetch(`${baseUrl}/settings/poi-fees?edit=${firstFee.id}`, { headers })).text();
+      assert.match(feeEditBody, new RegExp(`name="id" value="${firstFee.id}"`));
+      assert.match(feeEditBody, new RegExp(`value="${poi.id}" selected`));
+
+      const editedFeeResponse = await postForm("/settings/poi-fees", {
+        id: firstFee.id,
+        poiId: poi.id,
+        action: "Drop-off",
+        amount: "7.5",
+        feeBasis: "per visit",
+        trigger: "selection",
+        notes: "Updated operator source."
+      });
+      assert.equal(editedFeeResponse.status, 303);
+      assert.equal(poiManagement.fees.length, 2, "editing a fee updates its existing record");
+      assert.equal(poiManagement.fees[0].id, firstFee.id);
+      assert.equal(poiManagement.fees[0].amount, "7.50");
+      assert.equal(poiManagement.fees[0].notes, "Updated operator source.");
+
+      const feesPage = await (await fetch(`${baseUrl}/settings/poi-fees`, { headers })).text();
+      assert.match(feesPage, /Configured Hotel Name Updated — Drop-off/);
+      assert.match(feesPage, /Configured Hotel Name Updated — Parking/);
+      assert.match(feesPage, /not applied to booking prices/);
+      assert.equal((await fetch(`${baseUrl}/settings/toll-fees/airport-fees`, { headers })).status, 200);
+      const airportBody = await (await fetch(`${baseUrl}/settings/toll-fees/airport-fees`, { headers })).text();
+      assert.match(airportBody, /Saved airports/);
+      assert.doesNotMatch(airportBody, /Configured Hotel Name Updated|POI Fees/);
+
+      const blockedDelete = await postForm(`/settings/pois/${poi.id}/delete`, {});
+      assert.equal(blockedDelete.status, 303);
+      assert.match(blockedDelete.headers.get("location") ?? "", /hasFees=1/);
+      assert.ok(poiManagement.pois.some((item) => item.id === poi.id));
+
+      const deleteUnusedPoi = await postForm(`/settings/pois/${noFeePoi.id}/delete`, {});
+      assert.equal(deleteUnusedPoi.status, 303);
+      assert.doesNotMatch(deleteUnusedPoi.headers.get("location") ?? "", /hasFees/);
+      assert.ok(!poiManagement.pois.some((item) => item.id === noFeePoi.id));
+
+      const deleteFirstFee = await postForm(`/settings/poi-fees/${firstFee.id}/delete`, {});
+      assert.equal(deleteFirstFee.status, 303);
+      assert.equal(poiManagement.fees.length, 1);
+      const deleteLastFee = await postForm(`/settings/poi-fees/${poiManagement.fees[0].id}/delete`, {});
+      assert.equal(deleteLastFee.status, 303);
+      assert.equal(poiManagement.fees.length, 0);
+      const deletePoi = await postForm(`/settings/pois/${poi.id}/delete`, {});
+      assert.equal(deletePoi.status, 303);
+      assert.ok(!poiManagement.pois.some((item) => item.id === poi.id));
+    } finally {
+      if (oldMapEnvironment.enabled === undefined) delete process.env.GOOGLE_MAPS_ENABLED;
+      else process.env.GOOGLE_MAPS_ENABLED = oldMapEnvironment.enabled;
+      if (oldMapEnvironment.browserKey === undefined) delete process.env.GOOGLE_MAPS_BROWSER_API_KEY;
+      else process.env.GOOGLE_MAPS_BROWSER_API_KEY = oldMapEnvironment.browserKey;
+      poiManagement.reset();
     }
   });
 

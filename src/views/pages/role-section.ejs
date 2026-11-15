@@ -14,10 +14,14 @@
       <p class="notice" role="status"><strong>Access granted.</strong> Granted by your current session role(s): ${grantedByLabel}.</p>
       ${module.key === "system-settings" ? `
         <div class="notice notice--warning">
-          <strong>Not yet configured:</strong> Toll &amp; Fees reference data and fee settings are placeholders. They do not calculate or charge fees.
+          <strong>Not yet configured:</strong> Toll &amp; Fees reference data and fee settings are placeholders. POI Fees are configuration only and are not applied to booking prices or charges.
         </div>
-        <p><a class="button button--primary" href="/settings/fare-settings">Open Fare Settings</a></p>
-        <p><a class="button button--primary" href="/settings/toll-fees">Open Toll &amp; Fees</a></p>
+        <nav class="system-settings-destinations" aria-label="System Settings destinations">
+          <a class="button button--primary" href="/settings/pois">Manage POIs</a>
+          <a class="button button--primary" href="/settings/poi-fees">Manage POI Fees</a>
+          <a class="button button--secondary" href="/settings/fare-settings">Open Fare Settings</a>
+          <a class="button button--secondary" href="/settings/toll-fees">Open Toll &amp; Fees</a>
+        </nav>
       ` : ""}
       ${module.key === "manage-vps" ? `
         <div class="notice notice--warning">

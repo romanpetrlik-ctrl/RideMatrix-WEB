@@ -7,6 +7,7 @@ import { createAccountRouter } from "./routes/account";
 import { createExitRouter } from "./routes/exit";
 import { createAuthCallbackRouter } from "./routes/auth-callback";
 import { createRoleSectionsRouter } from "./routes/role-sections";
+import { createPoiManagementRouter } from "./routes/poi-management";
 import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
@@ -71,6 +72,7 @@ async function startServer() {
   app.use(createDriversRouter({ appTitle }));
   app.use(createVehiclesRouter({ appTitle }));
   app.use(createRoleSectionsRouter({ appTitle }));
+  app.use(createPoiManagementRouter({ appTitle }));
 
   app.use((_req, res) => {
     res.status(404).render("pages/unavailable", {
