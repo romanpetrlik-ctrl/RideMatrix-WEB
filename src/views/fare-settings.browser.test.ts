@@ -259,8 +259,20 @@ test("fixed-fare endpoint selector switches required identity fields and preserv
     await scope.selectOption("full");
     await postcode.fill("BH1 1AA");
     assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), true);
+    await postcode.fill("bh1 1aa");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), true);
+    await postcode.fill("Q1 1AA");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), false);
+    await postcode.fill("BH1 1CI");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), false);
     await postcode.fill("not a postcode");
     assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), false);
+
+    await scope.selectOption("outward");
+    await postcode.fill("Q1");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), false);
+    await postcode.fill("bh1");
+    assert.equal(await postcode.evaluate((input) => (input as HTMLInputElement).checkValidity()), true);
 
     await page.setViewportSize({ width: 390, height: 844 });
     const layout = await origin.evaluate((element) => ({

@@ -183,10 +183,11 @@ function normalizeMoney(value: string): string | null {
 
 function normalizeUkPostcode(value: string, scope: "full" | "outward"): string | null {
   const compact = value.trim().toUpperCase().replace(/\s+/g, "");
+  const outwardPattern = /^(?:[A-PR-UWYZ](?:[0-9]{1,2}|[A-HK-Y][0-9]{1,2}|[0-9][A-HJKPSTUW]|[A-HK-Y][0-9][ABEHMNPRVWXY]))$/;
   if (scope === "outward") {
-    return /^[A-Z]{1,2}\d[A-Z\d]?$/.test(compact) ? compact : null;
+    return outwardPattern.test(compact) ? compact : null;
   }
-  const match = /^(GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/.exec(compact);
+  const match = /^(?:GIR0AA|(?:[A-PR-UWYZ](?:[0-9]{1,2}|[A-HK-Y][0-9]{1,2}|[0-9][A-HJKPSTUW]|[A-HK-Y][0-9][ABEHMNPRVWXY]))[0-9][ABDEFGHJLNPQRSTUWXYZ]{2})$/.exec(compact);
   if (!match) return null;
   return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
 }

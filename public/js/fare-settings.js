@@ -46,8 +46,8 @@
         input.required = active;
         if (input.matches('input[name$="Postcode"]')) {
           input.pattern = postcodeScope === "outward"
-            ? "[A-Za-z]{1,2}[0-9][A-Za-z0-9]?"
-            : "(?:GIR[ ]?0AA|[A-Za-z]{1,2}[0-9][A-Za-z0-9]?[ ]?[0-9][A-Za-z]{2})";
+            ? "[A-PR-UWYZa-pr-uwyz](?:[0-9]{1,2}|[A-HK-Ya-hk-y][0-9]{1,2}|[0-9][A-HJKPSTUWa-hjkpstuw]|[A-HK-Ya-hk-y][0-9][ABEHMNPRVWXYabehmnprvwxy])"
+            : "(?:[Gg][Ii][Rr][ ]?0[Aa][Aa]|[A-PR-UWYZa-pr-uwyz](?:[0-9]{1,2}|[A-HK-Ya-hk-y][0-9]{1,2}|[0-9][A-HJKPSTUWa-hjkpstuw]|[A-HK-Ya-hk-y][0-9][ABEHMNPRVWXYabehmnprvwxy])[ ]?[0-9][ABDEFGHJLNPQRSTUWXYZabdefghjlnpqrstuwxyz]{2})";
           input.maxLength = 8;
         }
       });

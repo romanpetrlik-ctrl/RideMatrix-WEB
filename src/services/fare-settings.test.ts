@@ -533,3 +533,30 @@ test("fixed fares preserve explicit endpoint identity, postcode scope, and origi
   }, [poi]);
   assert.match(identical.errors.destinationType, /different locations/);
 });
+
+test("fixed fares reject UK postcode letters that are invalid at their positions", () => {
+  const poi = managedAirport();
+  for (const postcode of ["Q1 1AA", "BH1 1CI"]) {
+    const result = validateFixedFareRuleForm({
+      name: "Invalid full postcode",
+      originType: "postcode",
+      originPostcode: postcode,
+      originPostcodeScope: "full",
+      destinationType: "poi",
+      destinationPoiId: poi.id,
+      baseFare: "25"
+    }, [poi]);
+    assert.ok(result.errors.originPostcode, postcode);
+  }
+
+  const outward = validateFixedFareRuleForm({
+    name: "Invalid outward postcode",
+    originType: "postcode",
+    originPostcode: "Q1",
+    originPostcodeScope: "outward",
+    destinationType: "poi",
+    destinationPoiId: poi.id,
+    baseFare: "25"
+  }, [poi]);
+  assert.ok(outward.errors.originPostcode, "Q1");
+});
