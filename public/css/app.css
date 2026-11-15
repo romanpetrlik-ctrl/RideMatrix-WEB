@@ -4168,6 +4168,7 @@ button:visited,
 
 .fare-settings__field {
   display: grid;
+  align-content: start;
   min-width: 0;
   gap: 0.35rem;
 }
@@ -4191,6 +4192,7 @@ button:visited,
   border-radius: var(--rm-control-border-radius);
   background: var(--rm-page-bg);
   color: var(--rm-text);
+  font: inherit;
 }
 
 .fare-settings__field input:disabled {
