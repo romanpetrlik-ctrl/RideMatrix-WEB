@@ -74,3 +74,21 @@ test("airport pick-up timing migration preserves legacy incompleteness and const
   assert.match(migration.sql, /pickup_fee_covered_minutes IS NULL OR pickup_fee_covered_minutes IN \(10, 15, 20, 30, 40, 45, 60\)/);
   assert.doesNotMatch(migration.sql, /DEFAULT\s+'(?:ALT|AGA)'/);
 });
+
+test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS points_of_interest/);
+  assert.match(migration.sql, /place_id TEXT NOT NULL/);
+  assert.match(migration.sql, /latitude NUMERIC/);
+  assert.match(migration.sql, /longitude NUMERIC/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS poi_fees/);
+  assert.match(migration.sql, /poi_id TEXT NOT NULL REFERENCES points_of_interest\(id\) ON DELETE RESTRICT/);
+  assert.match(migration.sql, /currency TEXT NOT NULL CHECK \(currency = 'GBP'\)/);
+  assert.match(migration.sql, /fee_basis TEXT NOT NULL/);
+  assert.match(migration.sql, /trigger_type TEXT NOT NULL CHECK/);
+  assert.match(migration.sql, /points_of_interest_audit_append_only/);
+  assert.match(migration.sql, /poi_fees_audit_append_only/);
+  assert.doesNotMatch(migration.sql, /INSERT INTO (?:points_of_interest|poi_fees)/i);
+  assert.doesNotMatch(migration.sql, /Crowne Plaza|Renaissance|customer_bookings|fare_totals|booking_total/i);
+});

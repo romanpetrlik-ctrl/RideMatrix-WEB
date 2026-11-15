@@ -1435,6 +1435,101 @@ export const MIGRATIONS: Migration[] = [
          SET configuration = jsonb_set(configuration, '{fixedFares}', '[]'::jsonb, true)
        WHERE NOT (configuration ? 'fixedFares');
     `
+  },
+  {
+    id: "0029_poi_management",
+    sql: `
+      CREATE TABLE IF NOT EXISTS points_of_interest (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL CHECK (length(trim(display_name)) BETWEEN 1 AND 160),
+        category TEXT NOT NULL CHECK (length(trim(category)) BETWEEN 1 AND 100),
+        place_id TEXT NOT NULL CHECK (length(trim(place_id)) BETWEEN 1 AND 500),
+        location_label TEXT NOT NULL CHECK (length(trim(location_label)) BETWEEN 1 AND 500),
+        latitude NUMERIC(10, 7) NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+        longitude NUMERIC(10, 7) NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+        notes TEXT NOT NULL DEFAULT '' CHECK (length(notes) <= 2000),
+        created_by_account_id TEXT,
+        created_by_email TEXT,
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        deleted_at TIMESTAMPTZ,
+        deleted_by_account_id TEXT,
+        deleted_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_points_of_interest_active
+        ON points_of_interest (display_name, id)
+        WHERE deleted_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS poi_fees (
+        id TEXT PRIMARY KEY,
+        poi_id TEXT NOT NULL REFERENCES points_of_interest(id) ON DELETE RESTRICT,
+        action TEXT NOT NULL CHECK (length(trim(action)) BETWEEN 1 AND 100),
+        amount NUMERIC(8, 2) NOT NULL CHECK (amount BETWEEN 0 AND 999999.99),
+        currency TEXT NOT NULL CHECK (currency = 'GBP'),
+        fee_basis TEXT NOT NULL CHECK (length(trim(fee_basis)) BETWEEN 1 AND 100),
+        trigger_type TEXT NOT NULL CHECK (trigger_type IN ('selection', 'confirmation')),
+        notes TEXT NOT NULL DEFAULT '' CHECK (length(notes) <= 2000),
+        created_by_account_id TEXT,
+        created_by_email TEXT,
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        deleted_at TIMESTAMPTZ,
+        deleted_by_account_id TEXT,
+        deleted_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_poi_fees_active
+        ON poi_fees (poi_id, action, id)
+        WHERE deleted_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS points_of_interest_audit (
+        id BIGSERIAL PRIMARY KEY,
+        poi_id TEXT NOT NULL REFERENCES points_of_interest(id),
+        event_type TEXT NOT NULL CHECK (event_type IN ('created', 'updated', 'deleted')),
+        snapshot JSONB NOT NULL CHECK (jsonb_typeof(snapshot) = 'object'),
+        actor_account_id TEXT,
+        actor_email TEXT,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_points_of_interest_audit_poi
+        ON points_of_interest_audit (poi_id, occurred_at DESC);
+
+      CREATE TABLE IF NOT EXISTS poi_fees_audit (
+        id BIGSERIAL PRIMARY KEY,
+        poi_fee_id TEXT NOT NULL REFERENCES poi_fees(id),
+        event_type TEXT NOT NULL CHECK (event_type IN ('created', 'updated', 'deleted')),
+        snapshot JSONB NOT NULL CHECK (jsonb_typeof(snapshot) = 'object'),
+        actor_account_id TEXT,
+        actor_email TEXT,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_poi_fees_audit_fee
+        ON poi_fees_audit (poi_fee_id, occurred_at DESC);
+
+      CREATE OR REPLACE FUNCTION rm_reject_poi_audit_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'POI configuration audit events are append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS points_of_interest_audit_append_only ON points_of_interest_audit;
+      CREATE TRIGGER points_of_interest_audit_append_only
+        BEFORE UPDATE OR DELETE ON points_of_interest_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_poi_audit_mutation();
+
+      DROP TRIGGER IF EXISTS poi_fees_audit_append_only ON poi_fees_audit;
+      CREATE TRIGGER poi_fees_audit_append_only
+        BEFORE UPDATE OR DELETE ON poi_fees_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_poi_audit_mutation();
+    `
   }
 ];
 
