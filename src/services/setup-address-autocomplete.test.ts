@@ -34,7 +34,12 @@ function flushPromises(): Promise<void> {
 test("operational address selection stores the Google Place ID and its exact coordinates", async () => {
   const window = loadScript();
   const handlers: Record<string, (event: any) => void> = {};
+  let autocompleteInstance: PlaceAutocomplete | undefined;
   class PlaceAutocomplete {
+    includedRegionCodes: string[] = [];
+    constructor() {
+      autocompleteInstance = this;
+    }
     setAttribute() {}
     addEventListener(type: string, handler: (event: any) => void) {
       handlers[type] = handler;
@@ -48,7 +53,7 @@ test("operational address selection stores the Google Place ID and its exact coo
   };
 
   const names = [
-    "operationalPlaceSearch", "formattedAddress", "houseNameNumber", "addressLine1", "addressLine2",
+    "operationalPlaceSearch", "houseNameNumber", "addressLine1", "addressLine2",
     "addressLine3", "cityTown", "county", "state", "postcode", "countryCode", "countryName",
     "latitude", "longitude", "providerName", "providerPlaceId"
   ];
@@ -70,6 +75,7 @@ test("operational address selection stores the Google Place ID and its exact coo
 
   window.RideMatrixSetupAddressAutocomplete.bind(form);
   await flushPromises();
+  assert.equal(Array.from(autocompleteInstance?.includedRegionCodes || []).join(","), "gb");
   handlers["gmp-select"]({
     placePrediction: {
       id: "ChIJtest-place",
@@ -96,8 +102,8 @@ test("operational address selection stores the Google Place ID and its exact coo
   assert.equal(fields.latitude.value, "51.5034");
   assert.equal(fields.longitude.value, "-0.1276");
   assert.equal(fields.countryCode.value, "GB");
-  assert.equal(fields.formattedAddress.value, "10 Downing Street, London SW1A 2AA, UK");
-  assert.match(status.textContent || "", /will be saved together/);
+  assert.equal(fields.operationalPlaceSearch.value, "10 Downing Street, London SW1A 2AA, UK");
+  assert.match(status.textContent || "", /server will verify the UK address and coordinates/);
 
   fields.operationalPlaceSearch.trigger("input");
   assert.equal(fields.providerPlaceId.value, "");
@@ -105,7 +111,7 @@ test("operational address selection stores the Google Place ID and its exact coo
   assert.equal(fields.longitude.value, "");
 });
 
-test("operational address cannot continue without a selected Google Place", () => {
+test("manual operational address can be entered when Google Places is unavailable", () => {
   const window = loadScript();
   const status = createField();
   const search = createField();
@@ -117,5 +123,6 @@ test("operational address cannot continue without a selected Google Place", () =
       return null;
     }
   });
-  assert.match(status.textContent || "", /select a Google Places result to continue/);
+  assert.match(status.textContent || "", /enter the address manually/);
+  assert.match(status.textContent || "", /dead-mileage will remain unavailable/);
 });

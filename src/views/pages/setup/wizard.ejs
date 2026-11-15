@@ -119,14 +119,13 @@
             <%- locals.csrfField || "" %>
             <% if (addressType === "operational") { %>
               <div class="setup-form__field">
-                <label for="operationalPlaceSearch">Select your operating address from Google Places *</label>
+                <label for="operationalPlaceSearch">Search for your operating address in the UK</label>
                 <input id="operationalPlaceSearch" type="search" autocomplete="off" value="<%= formData.formattedAddress %>" aria-describedby="operationalPlaceStatus" />
                 <div data-place-autocomplete-host hidden></div>
-                <span id="operationalPlaceStatus" role="status" aria-live="polite">Select a Google Places result to set your operational address and coordinates.</span>
+                <span id="operationalPlaceStatus" role="status" aria-live="polite">Select a Google Places result to verify coordinates for dead-mileage. You can enter the address manually if Places is unavailable, but dead-mileage will remain unavailable until coordinates are verified.</span>
               </div>
             <% } %>
             <% [
-              ["formattedAddress", "Formatted address *", formData.formattedAddress || "", true],
               ["houseNameNumber", "House name / number", formData.houseNameNumber || ""],
               ["addressLine1", "Address line 1 *", formData.addressLine1 || "", true],
               ["addressLine2", "Address line 2", formData.addressLine2 || ""],
@@ -145,7 +144,7 @@
               <% } else if (addressType === "registered_pho" || !["latitude", "longitude"].includes(fieldName)) { %>
                 <div class="setup-form__field">
                   <label for="<%= fieldName %>"><%= fieldLabel %></label>
-                  <input id="<%= fieldName %>" name="<%= fieldName %>" <%= fieldName === "countryCode" ? 'maxlength="2"' : "" %> <%= required ? "required" : "" %> value="<%= fieldValue %>" <%= addressType === "operational" ? "readonly" : "" %> />
+                  <input id="<%= fieldName %>" name="<%= fieldName %>" <%= fieldName === "countryCode" ? 'maxlength="2"' : "" %> <%= required ? "required" : "" %> value="<%= fieldValue %>" />
                 </div>
               <% } else { %>
                 <input type="hidden" id="<%= fieldName %>" name="<%= fieldName %>" value="<%= fieldValue %>" />

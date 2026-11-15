@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
 import { describeUserStatusColumn, normalizeUserEmail, resolveInvitedUserStatus, updateStaffDisplayName } from "./staff-users";
 import { normalizeStaffDisplayName } from "./staff";
+import { verifyGoogleOperationalPlace, type OperationalPlaceVerification } from "./google-places";
 
 type Queryable = Pool | PoolClient;
 
@@ -215,7 +216,6 @@ function validateOperatorProfile(input: OperatorProfileInput): OperatorProfileIn
 }
 
 function validateAddress(input: OperatorAddressInput): OperatorAddressInput {
-  const formattedAddress = normalizeText(input.formattedAddress);
   const addressLine1 = normalizeText(input.addressLine1);
   const cityTown = normalizeText(input.cityTown);
   const postcode = normalizeText(input.postcode);
@@ -234,9 +234,6 @@ function validateAddress(input: OperatorAddressInput): OperatorAddressInput {
   if (!["registered_pho", "operational"].includes(input.addressType)) {
     throw new SetupValidationError("Unsupported address type.");
   }
-  if (!formattedAddress) {
-    throw new SetupValidationError("Formatted address is required.");
-  }
   if (!addressLine1) {
     throw new SetupValidationError("Address line 1 is required.");
   }
@@ -253,15 +250,6 @@ function validateAddress(input: OperatorAddressInput): OperatorAddressInput {
     throw new SetupValidationError("Country name is required.");
   }
 
-  if (input.addressType === "operational") {
-    if (providerName !== "google" || !providerPlaceId) {
-      throw new SetupValidationError("Select the operational address from Google Places.");
-    }
-    if (latitude === null || longitude === null) {
-      throw new SetupValidationError("The selected Google Place must include verified coordinates.");
-    }
-  }
-
   if (latitude !== null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) {
     throw new SetupValidationError("Latitude must be between -90 and 90.");
   }
@@ -272,7 +260,7 @@ function validateAddress(input: OperatorAddressInput): OperatorAddressInput {
 
   return {
     addressType: input.addressType,
-    formattedAddress,
+    formattedAddress: normalizeText(input.formattedAddress) || composeAddress(input),
     houseNameNumber,
     addressLine1,
     addressLine2,
@@ -288,6 +276,33 @@ function validateAddress(input: OperatorAddressInput): OperatorAddressInput {
     providerName,
     providerPlaceId
   };
+}
+
+function composeAddress(address: Pick<OperatorAddressInput,
+  "houseNameNumber" | "addressLine1" | "addressLine2" | "addressLine3" |
+  "cityTown" | "county" | "state" | "postcode" | "countryName"
+>): string {
+  const street = [address.houseNameNumber, address.addressLine1]
+    .map(normalizeText)
+    .filter(Boolean)
+    .join(" ");
+  const parts = [
+    street,
+    address.addressLine2,
+    address.addressLine3,
+    address.cityTown,
+    address.county,
+    address.state,
+    address.postcode,
+    address.countryName
+  ].map(normalizeText);
+  const seen = new Set<string>();
+  return parts.filter((part) => {
+    const key = part.toLocaleLowerCase("en-GB");
+    if (!part || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join(", ");
 }
 
 function validateLicence(input: OperatorLicenceInput): OperatorLicenceInput {
@@ -601,7 +616,17 @@ export async function getSetupOverview(runner?: Queryable): Promise<SetupOvervie
     }
     return {
       addressType,
-      formattedAddress: source.formatted_address || "",
+      formattedAddress: source.formatted_address || composeAddress({
+        houseNameNumber: source.house_name_number,
+        addressLine1: source.address_line1 || "",
+        addressLine2: source.address_line2,
+        addressLine3: source.address_line3,
+        cityTown: source.city_town || "",
+        county: source.county,
+        state: source.state,
+        postcode: source.postcode || "",
+        countryName: source.country_name || ""
+      }),
       houseNameNumber: source.house_name_number,
       addressLine1: source.address_line1 || "",
       addressLine2: source.address_line2,
@@ -1002,10 +1027,35 @@ function checksumSha256(data: Buffer): string {
 
 export async function saveOperatorAddress(
   actorInput: SetupActor,
-  inputAddress: OperatorAddressInput
-): Promise<void> {
+  inputAddress: OperatorAddressInput,
+  verifyPlace: (placeId: string) => Promise<OperationalPlaceVerification> = verifyGoogleOperationalPlace
+): Promise<boolean> {
   const actor = normalizeActor(actorInput);
-  const address = validateAddress(inputAddress);
+  let addressInput = inputAddress;
+  let coordinatesVerified = false;
+  if (inputAddress.addressType === "operational") {
+    const submittedPlaceId = normalizeOptionalText(inputAddress.providerPlaceId);
+    const verification = submittedPlaceId
+      ? await verifyPlace(submittedPlaceId)
+      : { status: "unverified" as const };
+    if (verification.status === "outside_uk") {
+      throw new SetupValidationError("Select an operational address in the United Kingdom.");
+    }
+    if (verification.status === "verified") {
+      addressInput = { addressType: "operational", ...verification.address };
+      coordinatesVerified = true;
+    } else {
+      addressInput = {
+        ...inputAddress,
+        formattedAddress: "",
+        latitude: null,
+        longitude: null,
+        providerName: null,
+        providerPlaceId: null
+      };
+    }
+  }
+  const address = validateAddress(addressInput);
 
   await withTransaction(async (client) => {
     const state = await getSetupStateRow(client);
@@ -1020,8 +1070,9 @@ export async function saveOperatorAddress(
     await query(
       `INSERT INTO operator_addresses
         (id, operator_id, address_type, formatted_address, house_name_number, address_line1, address_line2, address_line3,
-         city_town, county, state, postcode, country_code, country_name, latitude, longitude, provider_name, provider_place_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
+         city_town, county, state, postcode, country_code, country_name, latitude, longitude, provider_name, provider_place_id,
+         coordinates_verified, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
        ON CONFLICT (operator_id, address_type)
        DO UPDATE SET
          formatted_address = EXCLUDED.formatted_address,
@@ -1039,6 +1090,7 @@ export async function saveOperatorAddress(
          longitude = EXCLUDED.longitude,
          provider_name = EXCLUDED.provider_name,
          provider_place_id = EXCLUDED.provider_place_id,
+         coordinates_verified = EXCLUDED.coordinates_verified,
          updated_at = EXCLUDED.updated_at`,
       [
         randomUUID(),
@@ -1059,6 +1111,7 @@ export async function saveOperatorAddress(
         address.longitude,
         address.providerName,
         address.providerPlaceId,
+        coordinatesVerified,
         now
       ],
       client
@@ -1091,6 +1144,7 @@ export async function saveOperatorAddress(
       client
     });
   });
+  return coordinatesVerified;
 }
 
 export async function saveOperatorLicence(

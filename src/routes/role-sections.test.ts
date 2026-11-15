@@ -351,6 +351,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     latitude: 50.71,
     longitude: -2.44,
     providerPlaceId: "verified-operational-point",
+    coordinatesVerified: true,
     updatedAt: "2026-11-10T12:00:00.000Z"
   };
 
@@ -1550,11 +1551,18 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       latitude: 50.71,
       longitude: -2.44,
       providerPlaceId: "verified-operational-point",
+      coordinatesVerified: true,
       updatedAt: "2026-11-10T12:00:00.000Z"
     };
     const path = "/settings/fare-settings/dead-mileage-settings";
     const sessionCookie = "sid=dead-mileage-settings";
     const getPage = () => fetch(`${baseUrl}${path}`, { headers: withSession(sessionCookie, ["superuser"]) });
+    operationalBase = { ...operationalBase!, coordinatesVerified: false };
+    const unverifiedPage = await getPage();
+    const unverifiedBody = await unverifiedPage.text();
+    assert.match(unverifiedBody, /Dead mileage is unavailable/);
+    assert.doesNotMatch(unverifiedBody, /name="freeRadiusMiles"/);
+    operationalBase = { ...operationalBase!, coordinatesVerified: true };
     const postForm = async (version: string, radius: string) => {
       const page = await getPage();
       const body = await page.text();

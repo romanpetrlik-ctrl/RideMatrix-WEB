@@ -146,6 +146,7 @@ test("operator setup foundation migration creates approved tables, columns, and 
       "longitude",
       "provider_name",
       "provider_place_id",
+      "coordinates_verified",
       "created_at",
       "updated_at"
     ],

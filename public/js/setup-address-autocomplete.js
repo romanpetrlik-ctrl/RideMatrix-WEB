@@ -35,7 +35,6 @@
     var host = form.querySelector("[data-place-autocomplete-host]");
     var status = form.querySelector("#operationalPlaceStatus");
     var placeFields = {
-      formattedAddress: form.querySelector("#formattedAddress"),
       houseNameNumber: form.querySelector("#houseNameNumber"),
       addressLine1: form.querySelector("#addressLine1"),
       addressLine2: form.querySelector("#addressLine2"),
@@ -66,8 +65,14 @@
     if (search) {
       search.addEventListener("input", clearSelection);
     }
+    [
+      "houseNameNumber", "addressLine1", "addressLine2", "addressLine3", "cityTown",
+      "county", "state", "postcode", "countryCode", "countryName"
+    ].forEach(function (name) {
+      if (placeFields[name]) placeFields[name].addEventListener("input", clearSelection);
+    });
     if (!browserKey || !window.RideMatrixMaps || typeof window.RideMatrixMaps.load !== "function") {
-      setStatus("Google Places is unavailable. Configure a browser API key and select a Google Places result to continue.");
+      setStatus("Google Places is unavailable. You can enter the address manually; coordinates will not be verified and dead-mileage will remain unavailable.");
       return;
     }
 
@@ -88,6 +93,7 @@
         var autocomplete = new PlaceAutocompleteElement();
         autocomplete.className = "setup-wizard__place-autocomplete";
         autocomplete.setAttribute("aria-label", "Search operating address");
+        autocomplete.includedRegionCodes = ["gb"];
         host.replaceChildren(autocomplete);
         host.hidden = false;
         if (search) search.hidden = true;
@@ -115,10 +121,8 @@
             var countryName = componentValue(components, "country", "longText");
             var route = componentValue(components, "route", "longText");
             var premise = componentValue(components, "premise", "longText");
-            var formattedAddress = text(place.formattedAddress);
             var streetNumber = componentValue(components, "street_number", "longText");
             var values = {
-              formattedAddress: formattedAddress,
               houseNameNumber: [componentValue(components, "subpremise", "longText"), premise, streetNumber]
                 .filter(function (value, index, list) { return value && list.indexOf(value) === index; })
                 .join(", "),
@@ -136,7 +140,7 @@
               countryCode: countryCode,
               countryName: countryName
             };
-            if (!placeId || !location || !values.formattedAddress || !values.addressLine1
+            if (!placeId || !location || !values.addressLine1
               || !values.cityTown || !values.postcode || !values.countryCode || !values.countryName) {
               clearSelection();
               setStatus("The selected Google Place is missing required address details. Select another result.");
@@ -150,8 +154,8 @@
             placeFields.longitude.value = location.longitude;
             placeFields.providerName.value = "google";
             placeFields.providerPlaceId.value = placeId;
-            if (search) search.value = values.formattedAddress;
-            setStatus("Google Place selected. The address and coordinates will be saved together.");
+            if (search) search.value = text(place.formattedAddress);
+            setStatus("Google Place selected. The server will verify the UK address and coordinates when you save.");
           }).catch(function () {
             clearSelection();
             setStatus("Google Places could not verify this selection. Select another result.");
@@ -159,7 +163,7 @@
         });
       })
       .catch(function () {
-        setStatus("Google Places is unavailable. Configure a browser API key and select a Google Places result to continue.");
+        setStatus("Google Places is unavailable. You can enter the address manually; coordinates will not be verified and dead-mileage will remain unavailable.");
       });
   }
 

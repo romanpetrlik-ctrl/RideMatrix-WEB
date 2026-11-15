@@ -16,11 +16,12 @@ export type OperationalBase = {
   latitude: number | null;
   longitude: number | null;
   providerPlaceId: string | null;
+  coordinatesVerified: boolean;
   updatedAt: string | null;
 };
 
 export function isOperationalBaseVerified(base: OperationalBase | null): boolean {
-  return Boolean(base && validPoint({
+  return Boolean(base?.coordinatesVerified && validPoint({
     latitude: base.latitude ?? NaN,
     longitude: base.longitude ?? NaN
   }) && base.providerPlaceId && base.updatedAt);
@@ -32,10 +33,11 @@ export async function getOperationalBase(): Promise<OperationalBase | null> {
     latitude: string | number | null;
     longitude: string | number | null;
     provider_place_id: string | null;
+    coordinates_verified: boolean;
     updated_at: string | Date;
   }>(
     `SELECT address.operator_id, address.latitude, address.longitude,
-            address.provider_place_id, address.updated_at
+            address.provider_place_id, address.coordinates_verified, address.updated_at
        FROM operator_addresses address
        JOIN system_setup_state setup ON setup.operator_id = address.operator_id
       WHERE setup.setup_key = 'initial_system_setup'
@@ -49,6 +51,7 @@ export async function getOperationalBase(): Promise<OperationalBase | null> {
     latitude: row.latitude === null ? null : Number(row.latitude),
     longitude: row.longitude === null ? null : Number(row.longitude),
     providerPlaceId: row.provider_place_id,
+    coordinatesVerified: row.coordinates_verified,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null
   };
 }
@@ -255,7 +258,7 @@ export function calculateDeadMileage(input: DeadMileageInput): DeadMileageCalcul
   if (requestedLegs.length === 0) {
     const snapshot: DeadMileageSnapshot = {
       freeRadiusMiles: input.freeRadiusMiles,
-      operationalBase: input.base && validPoint({
+      operationalBase: input.base?.coordinatesVerified && validPoint({
         latitude: input.base.latitude ?? NaN,
         longitude: input.base.longitude ?? NaN
       }) && input.base.providerPlaceId && input.base.updatedAt
@@ -288,7 +291,7 @@ export function calculateDeadMileage(input: DeadMileageInput): DeadMileageCalcul
   }
 
   const reasons: string[] = [];
-  if (!input.base || !validPoint({
+  if (!input.base?.coordinatesVerified || !validPoint({
     latitude: input.base.latitude ?? NaN,
     longitude: input.base.longitude ?? NaN
   }) || !input.base.providerPlaceId || !input.base.updatedAt) {
