@@ -30,12 +30,20 @@ import { readMapConfiguration } from "../services/maps";
 import {
   fareSettingsStore,
   FareSettingsVersionConflictError,
+  fixedFareRuleToForm,
+  validateFixedFareRuleForm,
+  validateMinimumFareRuleForm,
   validateDistanceSlabsForm,
   validateFareSettingsForm,
   type FareSettingsConfiguration,
+  type FixedFareRule,
+  type FixedFareRuleFormValues,
+  type MinimumFareRule,
+  type MinimumFareRuleFormValues,
   type FareSettingsSnapshot,
   type FareSettingsStore
 } from "../services/fare-settings";
+import { randomUUID } from "node:crypto";
 
 type RoleSectionsRouterOptions = {
   appTitle: string;
@@ -138,7 +146,8 @@ export type FareSettingsCategory = {
 };
 
 export const fareSettingsCategories: readonly FareSettingsCategory[] = [
-  { slug: "fixed-fares", title: "Fixed fares", description: "Future configuration for fixed fare rules.", configurable: false },
+  { slug: "minimum-fare-rules", title: "Minimum fare rules", description: "Configure minimum base fares for journeys near managed locations.", configurable: true },
+  { slug: "fixed-fares", title: "Fixed fares", description: "Configure directional fixed base fares between identified locations.", configurable: true },
   { slug: "distance-slabs", title: "Distance slabs", description: "Configure progressive base rates by journey distance.", configurable: true },
   { slug: "extras", title: "Extras", description: "Future configuration for fare extras.", configurable: false },
   { slug: "fare-surcharge-settings", title: "Fare surcharge settings", description: "Configure a recurring daily fare surcharge.", configurable: true },
@@ -256,6 +265,8 @@ function renderUnavailable(res: Response, appTitle: string, module: WorkspaceMod
 type FareSettingsRenderOptions = {
   snapshot?: FareSettingsSnapshot;
   configuration?: FareSettingsConfiguration;
+  ruleForm?: Record<string, string>;
+  ruleFormId?: string;
   errors?: Record<string, string>;
   formError?: string;
   statusCode?: number;
@@ -444,6 +455,26 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       const categoryTitle = page.category?.title;
       const safeConfiguration: FareSettingsConfiguration = {
         ...configuration,
+        minimumFareRules: (configuration.minimumFareRules ?? []).map((rule) => ({
+          ...rule,
+          id: escapeHtml(rule.id),
+          name: escapeHtml(rule.name),
+          poiId: escapeHtml(rule.poiId),
+          radiusMiles: escapeHtml(rule.radiusMiles),
+          minimumBaseFare: escapeHtml(rule.minimumBaseFare)
+        })),
+        fixedFares: (configuration.fixedFares ?? []).map((rule) => ({
+          ...rule,
+          id: escapeHtml(rule.id),
+          name: escapeHtml(rule.name),
+          origin: rule.origin.type === "poi"
+            ? { ...rule.origin, poiId: escapeHtml(rule.origin.poiId) }
+            : { ...rule.origin, postcode: escapeHtml(rule.origin.postcode) },
+          destination: rule.destination.type === "poi"
+            ? { ...rule.destination, poiId: escapeHtml(rule.destination.poiId) }
+            : { ...rule.destination, postcode: escapeHtml(rule.destination.postcode) },
+          baseFare: escapeHtml(rule.baseFare)
+        })),
         distanceSlabs: (configuration.distanceSlabs ?? []).map((slab) => ({
           startMiles: escapeHtml(slab.startMiles),
           endMiles: escapeHtml(slab.endMiles),
@@ -472,6 +503,43 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       const safeErrors = Object.fromEntries(
         Object.entries(renderOptions.errors ?? {}).map(([key, value]) => [key, escapeHtml(value)])
       );
+      const managedPois = page.category?.slug === "minimum-fare-rules" || page.category?.slug === "fixed-fares"
+        ? (await airportFeesStore.list()).map((poi) => ({
+          id: escapeHtml(poi.id),
+          displayName: escapeHtml(poi.displayName)
+        }))
+        : [];
+      const ruleForm = Object.fromEntries(
+        Object.entries(renderOptions.ruleForm ?? {}).map(([key, value]) => [key, escapeHtml(value)])
+      );
+      const fixedFareForms = (configuration.fixedFares ?? []).map((rule) => {
+        const values = fixedFareRuleToForm(rule);
+        return {
+          id: rule.id,
+          name: escapeHtml(values.name),
+          originType: escapeHtml(values.originType),
+          originPoiId: escapeHtml(values.originPoiId),
+          originPostcode: escapeHtml(values.originPostcode),
+          originPostcodeScope: escapeHtml(values.originPostcodeScope),
+          destinationType: escapeHtml(values.destinationType),
+          destinationPoiId: escapeHtml(values.destinationPoiId),
+          destinationPostcode: escapeHtml(values.destinationPostcode),
+          destinationPostcodeScope: escapeHtml(values.destinationPostcodeScope),
+          baseFare: escapeHtml(values.baseFare)
+        };
+      }).concat([{
+        id: "",
+        name: "",
+        originType: "",
+        originPoiId: "",
+        originPostcode: "",
+        originPostcodeScope: "",
+        destinationType: "",
+        destinationPoiId: "",
+        destinationPostcode: "",
+        destinationPostcodeScope: "",
+        baseFare: ""
+      }]);
       const breadcrumbs = [
         { label: "System Settings", href: "/settings" },
         { label: "Fare Settings", href: "/settings/fare-settings" },
@@ -487,6 +555,11 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         category: page.category,
         breadcrumbs,
         configuration: safeConfiguration,
+        managedPois,
+        ruleForm,
+        ruleFormId: renderOptions.ruleFormId ?? "",
+        ruleFormSubmitted: renderOptions.ruleForm !== undefined,
+        fixedFareForms,
         currentVersion: snapshot.currentVersion,
         history: safeHistory,
         errors: safeErrors,
@@ -521,6 +594,133 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }
 
         const snapshot = await fareStore.load();
+        if (category.slug === "minimum-fare-rules" || category.slug === "fixed-fares") {
+          const isMinimumFareRule = category.slug === "minimum-fare-rules";
+          const rules: Array<MinimumFareRule | FixedFareRule> = isMinimumFareRule
+            ? snapshot.configuration.minimumFareRules ?? []
+            : snapshot.configuration.fixedFares ?? [];
+          const ruleId = typeof req.body?.ruleId === "string" ? req.body.ruleId.trim() : "";
+          const isDelete = req.body?.ruleAction === "delete";
+          const rawVersion = req.body?.baseVersion;
+          const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
+            ? Number(rawVersion)
+            : NaN;
+          if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot,
+              ruleFormId: ruleId,
+              formError: "The settings version is missing or invalid. Reload this page before saving.",
+              statusCode: 400
+            });
+          }
+          if (expectedVersion !== snapshot.currentVersion) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot,
+              formError: new FareSettingsVersionConflictError().message,
+              statusCode: 409
+            });
+          }
+
+          let nextRules: Array<MinimumFareRule | FixedFareRule>;
+          let ruleForm: Record<string, string> | undefined;
+          let errors: Record<string, string> = {};
+          if (isDelete) {
+            if (!ruleId || !rules.some((rule) => rule.id === ruleId)) {
+              return renderFareSettingsPage(req, res, next, { category }, {
+                snapshot,
+                formError: "The rule could not be found. Reload the page and try again.",
+                statusCode: 404
+              });
+            }
+            nextRules = rules.filter((rule) => rule.id !== ruleId);
+          } else if (isMinimumFareRule) {
+            const validation = validateMinimumFareRuleForm(req.body, await airportFeesStore.list());
+            errors = validation.errors;
+            ruleForm = validation.values;
+            const existing = ruleId ? rules.find((rule) => rule.id === ruleId) : undefined;
+            if (ruleId && !existing) {
+              return renderFareSettingsPage(req, res, next, { category }, {
+                snapshot,
+                ruleForm,
+                ruleFormId: ruleId,
+                formError: "The rule could not be found. Reload the page and try again.",
+                statusCode: 404
+              });
+            }
+            if (Object.keys(errors).length) {
+              return renderFareSettingsPage(req, res, next, { category }, {
+                snapshot,
+                ruleForm,
+                ruleFormId: ruleId,
+                errors,
+                statusCode: 400
+              });
+            }
+            const updatedRule: MinimumFareRule = {
+              id: ruleId || randomUUID(),
+              ...validation.values
+            };
+            nextRules = ruleId
+              ? rules.map((rule) => rule.id === ruleId ? updatedRule : rule)
+              : [...rules, updatedRule];
+          } else {
+            const validation = validateFixedFareRuleForm(req.body, await airportFeesStore.list());
+            errors = validation.errors;
+            ruleForm = validation.values;
+            const existing = ruleId ? rules.find((rule) => rule.id === ruleId) : undefined;
+            if (ruleId && !existing) {
+              return renderFareSettingsPage(req, res, next, { category }, {
+                snapshot,
+                ruleForm,
+                ruleFormId: ruleId,
+                formError: "The rule could not be found. Reload the page and try again.",
+                statusCode: 404
+              });
+            }
+            if (Object.keys(errors).length || !validation.rule) {
+              return renderFareSettingsPage(req, res, next, { category }, {
+                snapshot,
+                ruleForm,
+                ruleFormId: ruleId,
+                errors,
+                statusCode: 400
+              });
+            }
+            const updatedRule: FixedFareRule = {
+              id: ruleId || randomUUID(),
+              ...validation.rule
+            };
+            nextRules = ruleId
+              ? rules.map((rule) => rule.id === ruleId ? updatedRule : rule)
+              : [...rules, updatedRule];
+          }
+
+          const nextConfiguration: FareSettingsConfiguration = isMinimumFareRule
+            ? {
+              ...snapshot.configuration,
+              minimumFareRules: nextRules.filter((rule): rule is MinimumFareRule => "poiId" in rule)
+            }
+            : {
+              ...snapshot.configuration,
+              fixedFares: nextRules.filter((rule): rule is FixedFareRule => "origin" in rule)
+            };
+          try {
+            await fareStore.save(expectedVersion, nextConfiguration, {
+              accountId: session.user.id,
+              email: session.user.email
+            });
+          } catch (error) {
+            if (!(error instanceof FareSettingsVersionConflictError)) throw error;
+            const latest = await fareStore.load();
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot: latest,
+              formError: error.message,
+              statusCode: 409
+            });
+          }
+          return res.redirect(303, `${categoryPath}?saved=1`);
+        }
+
         const distanceSlabSubmission = category.slug === "distance-slabs"
           ? validateDistanceSlabsForm(req.body)
           : null;

@@ -1423,6 +1423,18 @@ export const MIGRATIONS: Migration[] = [
          SET configuration = jsonb_set(configuration, '{distanceSlabs}', '[]'::jsonb, true)
        WHERE NOT (configuration ? 'distanceSlabs');
     `
+  },
+  {
+    id: "0028_fare_minimum_and_fixed_fares",
+    sql: `
+      UPDATE fare_settings_current
+         SET configuration = jsonb_set(configuration, '{minimumFareRules}', '[]'::jsonb, true)
+       WHERE NOT (configuration ? 'minimumFareRules');
+
+      UPDATE fare_settings_current
+         SET configuration = jsonb_set(configuration, '{fixedFares}', '[]'::jsonb, true)
+       WHERE NOT (configuration ? 'fixedFares');
+    `
   }
 ];
 
