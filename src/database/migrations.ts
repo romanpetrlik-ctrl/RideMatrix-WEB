@@ -1530,6 +1530,46 @@ export const MIGRATIONS: Migration[] = [
         BEFORE UPDATE OR DELETE ON poi_fees_audit
         FOR EACH ROW EXECUTE FUNCTION rm_reject_poi_audit_mutation();
     `
+  },
+  {
+    id: "0030_dead_mileage",
+    sql: `
+      UPDATE fare_settings_current
+         SET configuration = jsonb_set(
+           configuration, '{deadMileage}', '{"freeRadiusMiles":""}'::jsonb, true
+         )
+       WHERE NOT (configuration ? 'deadMileage');
+
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS vehicle_dispatched_from_base BOOLEAN,
+        ADD COLUMN IF NOT EXISTS return_to_base_after_dropoff BOOLEAN;
+
+      CREATE TABLE IF NOT EXISTS booking_dead_mileage_flag_audit (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL,
+        vehicle_dispatched_from_base BOOLEAN NOT NULL,
+        return_to_base_after_dropoff BOOLEAN NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_email TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_booking_dead_mileage_flag_audit_booking
+        ON booking_dead_mileage_flag_audit (booking_id, occurred_at DESC);
+
+      CREATE OR REPLACE FUNCTION rm_reject_booking_dead_mileage_flag_audit_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Booking dead-mileage flag audit events are append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS booking_dead_mileage_flag_audit_append_only
+        ON booking_dead_mileage_flag_audit;
+      CREATE TRIGGER booking_dead_mileage_flag_audit_append_only
+        BEFORE UPDATE OR DELETE ON booking_dead_mileage_flag_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_dead_mileage_flag_audit_mutation();
+    `
   }
 ];
 

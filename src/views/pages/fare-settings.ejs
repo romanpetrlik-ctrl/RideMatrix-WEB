@@ -39,7 +39,7 @@
         </div>
       ` : `
         <p class="fare-settings__intro">${category.description}</p>
-        ${category.slug !== "distance-slabs" ? `<div class="notice fare-settings__configuration-only" role="status">
+        ${category.slug !== "distance-slabs" && category.slug !== "dead-mileage-settings" ? `<div class="notice fare-settings__configuration-only" role="status">
           This saves configuration only. No fare is calculated or applied and booking totals are unchanged. Time values use <strong>Europe/London</strong> local time.
         </div>` : ""}
         ${category.slug === "minimum-fare-rules" ? `
@@ -184,6 +184,28 @@
             }).join("")}
             ${configuration.fixedFares.length ? "" : `<p>No fixed fares have been configured.</p>`}
           </section>
+        ` : category.slug === "dead-mileage-settings" ? `
+          <div class="notice fare-settings__configuration-only" role="status">
+            This saves the free radius and its editor/time in Fare Settings history. It does not currently calculate or change booking prices: this application has no road-route geometry or confirmed-price snapshot flow, so applicable charges remain incomplete until those inputs are available.
+          </div>
+          ${operationalBaseVerified ? `
+            <p class="fare-settings__help">The circle is centred on the verified coordinates from the existing operational-base record (${operationalBase.latitude}, ${operationalBase.longitude}). The address is not copied into Fare Settings.</p>
+            <form class="fare-settings__form" method="post" action="/settings/fare-settings/${category.slug}">
+              ${locals.csrfField || ""}
+              <input type="hidden" name="baseVersion" value="${currentVersion}" />
+              <div class="fare-settings__field">
+                <label for="dead-mileage-radius">Free radius (miles)</label>
+                <input id="dead-mileage-radius" name="freeRadiusMiles" type="number" min="0.000001" max="12436.606" step="any" inputmode="decimal" required value="${ruleFormSubmitted ? ruleForm.freeRadiusMiles || "" : configuration.deadMileage?.freeRadiusMiles || ""}" aria-invalid="${errors.freeRadiusMiles ? "true" : "false"}" aria-describedby="dead-mileage-radius-help dead-mileage-radius-error" />
+                <p id="dead-mileage-radius-help" class="fare-settings__help">Only routed empty-leg distance outside this geodesic circle is eligible. The passenger journey is excluded.</p>
+                <p id="dead-mileage-radius-error" class="fare-settings__field-error${errors.freeRadiusMiles ? " fare-settings__field-error--invalid" : ""}" ${errors.freeRadiusMiles ? 'role="alert"' : ""}>${errors.freeRadiusMiles || ""}</p>
+              </div>
+              <div class="fare-settings__actions"><button class="button button--primary" type="submit">Save dead mileage settings</button></div>
+            </form>
+          ` : `
+            <div class="notice fare-settings__error" role="alert">
+              <strong>Dead mileage is unavailable.</strong> The operational base has no verified saved coordinates. Complete or correct the existing operational-base location before configuring a radius; no postcode-centroid fallback is used.
+            </div>
+          `}
         ` : category.slug === "distance-slabs" ? `
           <div class="notice fare-settings__configuration-only" role="status">
             This is one shared base distance-rate table for all vehicle categories. Vehicle-category uplifts are configured separately in future work. This saves configuration only; it is not a booking quote and does not calculate or change booking fares or totals.
