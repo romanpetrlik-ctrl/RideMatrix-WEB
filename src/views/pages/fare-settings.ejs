@@ -86,6 +86,7 @@
               const editing = ruleFormId === rule.id;
               const name = editing ? ruleForm.name : rule.name;
               const poiId = editing ? ruleForm.poiId : rule.poiId;
+              const unavailablePoi = !managedPois.some((poi) => poi.id === rule.poiId);
               const radius = editing ? ruleForm.radiusMiles : rule.radiusMiles;
               const minimum = editing ? ruleForm.minimumBaseFare : rule.minimumBaseFare;
               return `
@@ -96,7 +97,7 @@
                   <h3>${rule.name}</h3>
                   <div class="fare-settings__fields">
                     <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-name">Rule name or description</label><input id="minimum-rule-${rule.id}-name" name="name" type="text" maxlength="160" required value="${name}" aria-invalid="${editing && errors.name ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-name-error" /><p id="minimum-rule-${rule.id}-name-error" class="fare-settings__field-error${editing && errors.name ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.name ? 'role="alert"' : ""}>${editing ? errors.name || "" : ""}</p></div>
-                    <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-poi">Managed airport or point of interest</label><select id="minimum-rule-${rule.id}-poi" name="poiId" required aria-invalid="${editing && errors.poiId ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-poi-error"><option value="">Select a managed location</option>${managedPois.map((poi) => `<option value="${poi.id}" ${poiId === poi.id ? "selected" : ""}>${poi.displayName} — internal ID ${poi.id}</option>`).join("")}</select><p id="minimum-rule-${rule.id}-poi-error" class="fare-settings__field-error${editing && errors.poiId ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.poiId ? 'role="alert"' : ""}>${editing ? errors.poiId || "" : ""}</p></div>
+                    <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-poi">Managed airport or point of interest</label><select id="minimum-rule-${rule.id}-poi" name="poiId" required aria-invalid="${editing && errors.poiId ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-poi-error"><option value="">Select a managed location</option>${unavailablePoi ? `<option value="${rule.poiId}" ${poiId === rule.poiId ? "selected" : ""} disabled>Unavailable managed location — internal ID ${rule.poiId}</option>` : ""}${managedPois.map((poi) => `<option value="${poi.id}" ${poiId === poi.id ? "selected" : ""}>${poi.displayName} — internal ID ${poi.id}</option>`).join("")}</select><p id="minimum-rule-${rule.id}-poi-error" class="fare-settings__field-error${editing && errors.poiId ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.poiId ? 'role="alert"' : ""}>${editing ? errors.poiId || "" : ""}</p></div>
                     <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-radius">Radius (miles)</label><input id="minimum-rule-${rule.id}-radius" name="radiusMiles" type="number" min="0.000001" step="any" inputmode="decimal" required value="${radius}" aria-invalid="${editing && errors.radiusMiles ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-radius-error" /><p id="minimum-rule-${rule.id}-radius-error" class="fare-settings__field-error${editing && errors.radiusMiles ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.radiusMiles ? 'role="alert"' : ""}>${editing ? errors.radiusMiles || "" : ""}</p></div>
                     <div class="fare-settings__field"><label for="minimum-rule-${rule.id}-fare">Minimum base fare (GBP)</label><div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="minimum-rule-${rule.id}-fare" name="minimumBaseFare" type="text" inputmode="decimal" pattern="(?:0|[1-9][0-9]{0,5})([.][0-9]{1,2})?" required value="${minimum}" aria-invalid="${editing && errors.minimumBaseFare ? "true" : "false"}" aria-describedby="minimum-rule-${rule.id}-fare-error" /></div><p id="minimum-rule-${rule.id}-fare-error" class="fare-settings__field-error${editing && errors.minimumBaseFare ? " fare-settings__field-error--invalid" : ""}" ${editing && errors.minimumBaseFare ? 'role="alert"' : ""}>${editing ? errors.minimumBaseFare || "" : ""}</p></div>
                   </div>
@@ -129,7 +130,12 @@
                   <h3>${heading || "Add fixed fare"}</h3>
                   <div class="fare-settings__fields">
                     <div class="fare-settings__field"><label for="fixed-${isNew ? "new" : savedRule.id}-name">Rule name or description</label><input id="fixed-${isNew ? "new" : savedRule.id}-name" name="name" type="text" maxlength="160" required value="${value("name")}" aria-invalid="${useSubmitted && errors.name ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-name-error" /><p id="fixed-${isNew ? "new" : savedRule.id}-name-error" class="fare-settings__field-error${useSubmitted && errors.name ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors.name ? 'role="alert"' : ""}>${useSubmitted ? errors.name || "" : ""}</p></div>
-                    ${["origin", "destination"].map((endpoint) => `
+                    ${["origin", "destination"].map((endpoint) => {
+                      const savedPoiId = savedRule[`${endpoint}Type`] === "poi" ? savedRule[`${endpoint}PoiId`] : "";
+                      const unavailablePoiId = !isNew && savedPoiId && !managedPois.some((poi) => poi.id === savedPoiId)
+                        ? savedPoiId
+                        : "";
+                      return `
                       <fieldset class="fare-settings__period fare-settings__endpoint" data-fixed-endpoint>
                         <legend>${endpoint === "origin" ? "Origin" : "Destination"}</legend>
                         <div class="fare-settings__field">
@@ -145,6 +151,7 @@
                           <label for="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi">Managed location</label>
                           <select id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi" name="${endpoint}PoiId" aria-invalid="${useSubmitted && errors[`${endpoint}PoiId`] ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi-error">
                             <option value="">Select a managed location</option>
+                            ${unavailablePoiId ? `<option value="${unavailablePoiId}" ${value(`${endpoint}PoiId`) === unavailablePoiId ? "selected" : ""} disabled>Unavailable managed location — internal ID ${unavailablePoiId}</option>` : ""}
                             ${managedPois.map((poi) => `<option value="${poi.id}" ${value(`${endpoint}PoiId`) === poi.id ? "selected" : ""}>${poi.displayName} — internal ID ${poi.id}</option>`).join("")}
                           </select>
                           <p id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-poi-error" class="fare-settings__field-error${useSubmitted && errors[`${endpoint}PoiId`] ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors[`${endpoint}PoiId`] ? 'role="alert"' : ""}>${useSubmitted ? errors[`${endpoint}PoiId`] || "" : ""}</p>
@@ -164,7 +171,8 @@
                           <p id="fixed-${isNew ? "new" : savedRule.id}-${endpoint}-scope-error" class="fare-settings__field-error${useSubmitted && errors[`${endpoint}PostcodeScope`] ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors[`${endpoint}PostcodeScope`] ? 'role="alert"' : ""}>${useSubmitted ? errors[`${endpoint}PostcodeScope`] || "" : ""}</p>
                         </div>
                       </fieldset>
-                    `).join("")}
+                    `;
+                    }).join("")}
                     <div class="fare-settings__field"><label for="fixed-${isNew ? "new" : savedRule.id}-fare">Fixed base fare (GBP)</label><div class="fare-settings__currency-input"><span aria-hidden="true">£</span><input id="fixed-${isNew ? "new" : savedRule.id}-fare" name="baseFare" type="text" inputmode="decimal" pattern="(?:0|[1-9][0-9]{0,5})([.][0-9]{1,2})?" required value="${value("baseFare")}" aria-invalid="${useSubmitted && errors.baseFare ? "true" : "false"}" aria-describedby="fixed-${isNew ? "new" : savedRule.id}-fare-error" /></div><p id="fixed-${isNew ? "new" : savedRule.id}-fare-error" class="fare-settings__field-error${useSubmitted && errors.baseFare ? " fare-settings__field-error--invalid" : ""}" ${useSubmitted && errors.baseFare ? 'role="alert"' : ""}>${useSubmitted ? errors.baseFare || "" : ""}</p></div>
                   </div>
                   <div class="fare-settings__actions">

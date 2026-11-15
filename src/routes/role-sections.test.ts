@@ -1301,6 +1301,18 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     });
     assert.equal(fareSettings.snapshot().history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
 
+    const archivedAirport = structuredClone(airport);
+    assert.equal(await airportFees.store.archive(airport.id, {
+      accountId: "account-1",
+      email: "bookings@romanairporttransfers.co.uk"
+    }), true);
+    const unavailableMinimumPage = await (await fetch(`${baseUrl}${path}`, {
+      headers: withSession(cookie, ["superuser"])
+    })).text();
+    assert.match(unavailableMinimumPage, /Unavailable managed location — internal ID rm-boh-internal-id/);
+    assert.doesNotMatch(unavailableMinimumPage.slice(0, unavailableMinimumPage.indexOf("Saved minimum fare rules")), /Unavailable managed location/);
+    airportFees.records.push(archivedAirport);
+
     const exactDelta = 5 * 1609.344 / 6_371_008.8 * 180 / Math.PI;
     assert.equal(matchesMinimumFareRule(createdRule, {
       latitude: 0, longitude: exactDelta
@@ -1403,6 +1415,19 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       destination: { type: "postcode", postcode: "BH1 1AA", scope: "full" },
       baseFare: "42.50"
     });
+
+    const archivedAirport = structuredClone(airportFees.records[0]);
+    assert.equal(await airportFees.store.archive(archivedAirport.id, {
+      accountId: "account-1",
+      email: "bookings@romanairporttransfers.co.uk"
+    }), true);
+    const unavailableFixedPage = await (await fetch(`${baseUrl}${path}`, {
+      headers: withSession(cookie, ["superuser"])
+    })).text();
+    assert.match(unavailableFixedPage, /Unavailable managed location — internal ID rm-boh-internal-id/);
+    const newFixedForm = unavailableFixedPage.slice(unavailableFixedPage.lastIndexOf('name="ruleId" value=""'));
+    assert.doesNotMatch(newFixedForm, /Unavailable managed location/);
+    airportFees.records.push(archivedAirport);
 
     const edited = await postForm("1", {
       ruleAction: "save",
