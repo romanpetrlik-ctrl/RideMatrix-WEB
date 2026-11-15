@@ -55,6 +55,7 @@ function managedAirport(overrides: Partial<AirportFeeRecord> = {}): AirportFeeRe
 }
 
 test("fare settings start disabled without assumed percentages or times", () => {
+  assert.deepEqual(EMPTY_FARE_SETTINGS.deadMileage, { freeRadiusMiles: "" });
   assert.deepEqual(EMPTY_FARE_SETTINGS.minimumFareRules, []);
   assert.deepEqual(EMPTY_FARE_SETTINGS.fixedFares, []);
   assert.deepEqual(EMPTY_FARE_SETTINGS.dailySurcharge, {
@@ -64,6 +65,18 @@ test("fare settings start disabled without assumed percentages or times", () => 
     endTime: ""
   });
   assert.deepEqual(EMPTY_FARE_SETTINGS.bankHolidaySurcharge, { enabled: false, periods: [] });
+});
+
+test("editing another fare category preserves the saved dead-mileage radius", () => {
+  const current = {
+    ...EMPTY_FARE_SETTINGS,
+    deadMileage: { freeRadiusMiles: "5.25" }
+  };
+  const result = validateFareSettingsForm({
+    dailyEnabled: "no",
+    bankHolidayEnabled: "no"
+  }, current);
+  assert.deepEqual(result.configuration.deadMileage, { freeRadiusMiles: "5.25" });
 });
 
 test("daily surcharge requires valid operator values when enabled and accepts midnight-crossing windows", () => {

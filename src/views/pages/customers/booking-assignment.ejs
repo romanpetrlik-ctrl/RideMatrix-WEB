@@ -16,6 +16,8 @@
         <section class="notice notice--warning" role="status">Booking assignment saved.</section>
       <% } else if (notice === "unassigned") { %>
         <section class="notice notice--warning" role="status">Vehicle unassigned. Earlier assignment audit records are retained.</section>
+      <% } else if (notice === "dead-mileage-inputs-saved") { %>
+        <section class="notice notice--warning" role="status">Dead-mileage booking flags saved. No charge has been calculated: actual road-route geometry and a confirmed-price snapshot are not available in this booking workflow.</section>
       <% } %>
       <% if (errorMessage) { %>
         <section class="notice notice--critical" role="alert"><%= errorMessage %></section>
@@ -40,6 +42,39 @@
           <dt>Vehicle licence badge</dt>
           <dd><%= page.booking.vehicleLicenseBadge || (page.booking.vehicleLicenseType ? "Missing vehicle licence badge" : "—") %></dd>
         </dl>
+
+        <h2>Dead mileage booking inputs</h2>
+        <p>These are independent operator decisions. Neither value is inferred from the journey or vehicle location. Saving them records dispatcher intent only; this screen does not calculate or apply a charge.</p>
+        <form method="post" action="/customers/<%= encodeURIComponent(page.booking.customerId) %>/bookings/<%= encodeURIComponent(page.booking.id) %>/assignment">
+          <%- locals.csrfField || "" %>
+          <input type="hidden" name="action" value="save-dead-mileage-flags">
+          <div class="form-field">
+            <label for="vehicleDispatchedFromBase">Vehicle dispatched from operational base?</label>
+            <select id="vehicleDispatchedFromBase" name="vehicleDispatchedFromBase" required>
+              <option value="">Select Yes or No</option>
+              <option value="yes" <%= page.booking.vehicleDispatchedFromBase === true ? "selected" : "" %>>Yes</option>
+              <option value="no" <%= page.booking.vehicleDispatchedFromBase === false ? "selected" : "" %>>No</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="returnToBaseAfterDropoff">Return to operational base after drop-off?</label>
+            <select id="returnToBaseAfterDropoff" name="returnToBaseAfterDropoff" required>
+              <option value="">Select Yes or No</option>
+              <option value="yes" <%= page.booking.returnToBaseAfterDropoff === true ? "selected" : "" %>>Yes</option>
+              <option value="no" <%= page.booking.returnToBaseAfterDropoff === false ? "selected" : "" %>>No</option>
+            </select>
+          </div>
+          <button class="button button--primary" type="submit">Save dead-mileage booking inputs</button>
+        </form>
+        <% if (page.deadMileageFlagHistory.length) { %>
+          <h3>Dead-mileage input history</h3>
+          <ol>
+            <% page.deadMileageFlagHistory.forEach((entry) => { %>
+              <li>Dispatched from base: <%= entry.vehicleDispatchedFromBase ? "Yes" : "No" %>; return to base: <%= entry.returnToBaseAfterDropoff ? "Yes" : "No" %> — <%= entry.actorEmail %> — <%= entry.occurredAt %></li>
+            <% }) %>
+          </ol>
+        <% } %>
+        <p><strong>Price state:</strong> Incomplete until actual road-route geometry for each selected leg and a confirmed-price snapshot workflow are available.</p>
 
         <h2>Choose a valid assignment</h2>
         <p>The operator is resolved from completed system setup. Driver, operator and selected vehicle licence must share the exact authority on this booking’s stored service date.</p>

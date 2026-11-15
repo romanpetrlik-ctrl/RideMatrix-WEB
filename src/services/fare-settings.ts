@@ -27,6 +27,12 @@ export type DistanceSlab = {
   ratePerMile: string;
 };
 
+export type DeadMileageSettings = {
+  freeRadiusMiles: string;
+};
+
+export const MAX_DEAD_MILEAGE_RADIUS_MILES = Math.PI * (6_371_008.8 / 1609.344);
+
 export type MinimumFareRule = {
   id: string;
   name: string;
@@ -68,6 +74,7 @@ export type FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive";
   precedence: "bank-holiday-over-daily";
   distanceSlabs: DistanceSlab[];
+  deadMileage: DeadMileageSettings;
   minimumFareRules: MinimumFareRule[];
   fixedFares: FixedFareRule[];
   dailySurcharge: FareSurchargeSettings;
@@ -111,6 +118,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive",
   precedence: "bank-holiday-over-daily",
   distanceSlabs: [],
+  deadMileage: { freeRadiusMiles: "" },
   minimumFareRules: [],
   fixedFares: [],
   dailySurcharge: {
@@ -435,6 +443,24 @@ export type DistanceSlabFormValidation = {
   errors: Record<string, string>;
 };
 
+export function validateDeadMileageRadius(submitted: unknown): {
+  freeRadiusMiles: string;
+  errors: Record<string, string>;
+} {
+  const body = submitted && typeof submitted === "object"
+    ? submitted as Record<string, unknown>
+    : {};
+  const freeRadiusMiles = typeof body.freeRadiusMiles === "string" ? body.freeRadiusMiles.trim() : "";
+  const radius = parseNonNegativeDecimal(freeRadiusMiles);
+  const maximumRadiusMiles = MAX_DEAD_MILEAGE_RADIUS_MILES;
+  const errors: Record<string, string> = {};
+  if (!radius || radius.coefficient === 0n ||
+      compareDecimals(radius, parseNonNegativeDecimal(maximumRadiusMiles.toFixed(6))!) > 0) {
+    errors.freeRadiusMiles = `Enter a radius greater than 0 and no greater than ${maximumRadiusMiles.toFixed(3)} miles.`;
+  }
+  return { freeRadiusMiles, errors };
+}
+
 export function validateDistanceSlabsForm(submitted: unknown): DistanceSlabFormValidation {
   const body = submitted && typeof submitted === "object"
     ? submitted as Record<string, unknown>
@@ -694,6 +720,7 @@ export function validateFareSettingsForm(
       interval: "start-inclusive-end-exclusive",
       precedence: "bank-holiday-over-daily",
       distanceSlabs: current.distanceSlabs ?? [],
+      deadMileage: current.deadMileage ?? { freeRadiusMiles: "" },
       minimumFareRules: current.minimumFareRules ?? [],
       fixedFares: current.fixedFares ?? [],
       dailySurcharge,

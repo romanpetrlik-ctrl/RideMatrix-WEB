@@ -38,6 +38,7 @@ import {
   type FareSettingsSnapshot,
   type FareSettingsStore
 } from "../services/fare-settings";
+import type { OperationalBase } from "../services/dead-mileage";
 import {
   createRoleSectionsRouter,
   fareSettingsCategories,
@@ -345,6 +346,13 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   const airportFees = createMemoryAirportFeeStore();
   const poiManagement = createMemoryPoiManagementStore();
   const fareSettings = createMemoryFareSettingsStore();
+  let operationalBase: OperationalBase | null = {
+    operatorId: "test-operator",
+    latitude: 50.71,
+    longitude: -2.44,
+    providerPlaceId: "verified-operational-point",
+    updatedAt: "2026-11-10T12:00:00.000Z"
+  };
 
   before(async () => {
     process.env.GOOGLE_MAPS_ENABLED = "false";
@@ -380,7 +388,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       appTitle: "RideMatrix Test",
       feeScheduleStore: feeSchedules.store,
       airportFeeStore: airportFees.store,
-      fareSettingsStore: fareSettings.store
+      fareSettingsStore: fareSettings.store,
+      loadOperationalBase: async () => operationalBase
     }));
     app.use(createPoiManagementRouter({ appTitle: "RideMatrix Test", store: poiManagement.store }));
     appServer = app.listen(0);
@@ -1532,6 +1541,65 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.match(body, /No fare rules or pricing behavior are configured here/);
     }
     assert.equal(fareSettingsCategories.find((item) => item.slug === "distance-slabs")?.configurable, true);
+  });
+
+  test("dead-mileage settings require a verified operational point and save radius to attributed Fare Settings history", async () => {
+    fareSettings.reset();
+    operationalBase = {
+      operatorId: "test-operator",
+      latitude: 50.71,
+      longitude: -2.44,
+      providerPlaceId: "verified-operational-point",
+      updatedAt: "2026-11-10T12:00:00.000Z"
+    };
+    const path = "/settings/fare-settings/dead-mileage-settings";
+    const sessionCookie = "sid=dead-mileage-settings";
+    const getPage = () => fetch(`${baseUrl}${path}`, { headers: withSession(sessionCookie, ["superuser"]) });
+    const postForm = async (version: string, radius: string) => {
+      const page = await getPage();
+      const body = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie);
+      assert.ok(token);
+      const postCookie = `${sessionCookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ freeRadiusMiles: radius, baseVersion: version, _csrf: token }),
+        redirect: "manual"
+      });
+    };
+
+    const initial = await getPage();
+    const initialBody = await initial.text();
+    assert.match(initialBody, /verified coordinates from the existing operational-base record/);
+    assert.match(initialBody, /name="freeRadiusMiles"/);
+    assert.match(initialBody, /no road-route geometry or confirmed-price snapshot flow/);
+    const invalid = await postForm("0", "0");
+    assert.equal(invalid.status, 400);
+    assert.match(await invalid.text(), /Enter a radius greater than 0/);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    const saved = await postForm("0", "5.25");
+    assert.equal(saved.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.deadMileage, { freeRadiusMiles: "5.25" });
+    assert.equal(fareSettings.snapshot().history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
+    assert.equal(fareSettings.snapshot().history[0].createdAt, "2026-11-10T12:00:00.000Z");
+    assert.equal(fareSettings.snapshot().history.length, 1);
+    const savedPage = await getPage();
+    assert.match(await savedPage.text(), /bookings@romanairporttransfers\.co\.uk, 2026-11-10T12:00:00\.000Z/);
+
+    operationalBase = null;
+    const unavailable = await getPage();
+    const unavailableBody = await unavailable.text();
+    assert.match(unavailableBody, /Dead mileage is unavailable/);
+    assert.doesNotMatch(unavailableBody, /name="freeRadiusMiles"/);
+    const rejectedWithoutBase = await postForm("1", "6");
+    assert.equal(rejectedWithoutBase.status, 400);
+    assert.match(await rejectedWithoutBase.text(), /does not have verified saved coordinates/);
+    assert.equal(fareSettings.snapshot().currentVersion, 1);
   });
 
   test("minimum fare rules validate, preserve POI IDs, match both airport directions, and record edit/delete history", async () => {

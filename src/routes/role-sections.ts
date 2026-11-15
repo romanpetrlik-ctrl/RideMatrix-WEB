@@ -28,12 +28,18 @@ import {
 } from "../services/london-congestion-charge-boundary";
 import { readMapConfiguration } from "../services/maps";
 import {
+  getOperationalBase,
+  isOperationalBaseVerified,
+  type OperationalBase
+} from "../services/dead-mileage";
+import {
   fareSettingsStore,
   FareSettingsVersionConflictError,
   fixedFareRuleToForm,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
   validateDistanceSlabsForm,
+  validateDeadMileageRadius,
   validateFareSettingsForm,
   type FareSettingsConfiguration,
   type FixedFareRule,
@@ -50,6 +56,7 @@ type RoleSectionsRouterOptions = {
   feeScheduleStore?: LondonFeeScheduleStore;
   airportFeeStore?: AirportFeeStore;
   fareSettingsStore?: FareSettingsStore;
+  loadOperationalBase?: () => Promise<OperationalBase | null>;
 };
 
 type TollFeesRenderOptions = {
@@ -149,6 +156,7 @@ export const fareSettingsCategories: readonly FareSettingsCategory[] = [
   { slug: "minimum-fare-rules", title: "Minimum fare rules", description: "Configure minimum base fares for journeys near managed locations.", configurable: true },
   { slug: "fixed-fares", title: "Fixed fares", description: "Configure directional fixed base fares between identified locations.", configurable: true },
   { slug: "distance-slabs", title: "Distance slabs", description: "Configure progressive base rates by journey distance.", configurable: true },
+  { slug: "dead-mileage-settings", title: "Dead mileage settings", description: "Configure the free-radius circle around the verified operational base.", configurable: true },
   { slug: "extras", title: "Extras", description: "Future configuration for fare extras.", configurable: false },
   { slug: "fare-surcharge-settings", title: "Fare surcharge settings", description: "Configure a recurring daily fare surcharge.", configurable: true },
   { slug: "bank-holiday-fare-settings", title: "Bank holiday fare settings", description: "Configure explicit date and time surcharge periods.", configurable: true }
@@ -427,6 +435,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
   const feeScheduleStore = options.feeScheduleStore ?? londonFeeScheduleStore;
   const airportFeesStore = options.airportFeeStore ?? airportFeeStore;
   const fareStore = options.fareSettingsStore ?? fareSettingsStore;
+  const loadOperationalBase = options.loadOperationalBase ?? getOperationalBase;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   router.use(noStoreProtectedResponse);
 
@@ -453,8 +462,15 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       const snapshot = renderOptions.snapshot ?? await fareStore.load();
       const configuration = renderOptions.configuration ?? snapshot.configuration;
       const categoryTitle = page.category?.title;
+      const operationalBase = page.category?.slug === "dead-mileage-settings"
+        ? await loadOperationalBase()
+        : null;
+      const operationalBaseVerified = isOperationalBaseVerified(operationalBase);
       const safeConfiguration: FareSettingsConfiguration = {
         ...configuration,
+        deadMileage: {
+          freeRadiusMiles: escapeHtml(configuration.deadMileage?.freeRadiusMiles ?? "")
+        },
         minimumFareRules: (configuration.minimumFareRules ?? []).map((rule) => ({
           ...rule,
           id: escapeHtml(rule.id),
@@ -555,6 +571,13 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         category: page.category,
         breadcrumbs,
         configuration: safeConfiguration,
+        operationalBase: operationalBase && {
+          latitude: operationalBase.latitude,
+          longitude: operationalBase.longitude,
+          providerPlaceId: escapeHtml(operationalBase.providerPlaceId ?? ""),
+          updatedAt: operationalBase.updatedAt
+        },
+        operationalBaseVerified,
         managedPois,
         ruleForm,
         ruleFormId: renderOptions.ruleFormId ?? "",
@@ -594,6 +617,58 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }
 
         const snapshot = await fareStore.load();
+        if (category.slug === "dead-mileage-settings") {
+          const validation = validateDeadMileageRadius(req.body);
+          const ruleForm = { freeRadiusMiles: validation.freeRadiusMiles };
+          const rawVersion = req.body?.baseVersion;
+          const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
+            ? Number(rawVersion)
+            : NaN;
+          if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot, ruleForm,
+              formError: "The settings version is missing or invalid. Reload this page before saving.",
+              statusCode: 400
+            });
+          }
+          if (expectedVersion !== snapshot.currentVersion) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot, ruleForm,
+              formError: new FareSettingsVersionConflictError().message,
+              statusCode: 409
+            });
+          }
+          if (!isOperationalBaseVerified(await loadOperationalBase())) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot, ruleForm,
+              formError: "Dead-mileage settings cannot be enabled: the operational base does not have verified saved coordinates.",
+              statusCode: 400
+            });
+          }
+          if (Object.keys(validation.errors).length) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot, ruleForm, errors: validation.errors, statusCode: 400
+            });
+          }
+          try {
+            await fareStore.save(expectedVersion, {
+              ...snapshot.configuration,
+              deadMileage: { freeRadiusMiles: validation.freeRadiusMiles }
+            }, {
+              accountId: session.user.id,
+              email: session.user.email
+            });
+          } catch (error) {
+            if (!(error instanceof FareSettingsVersionConflictError)) throw error;
+            const latest = await fareStore.load();
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot: latest,
+              formError: error.message,
+              statusCode: 409
+            });
+          }
+          return res.redirect(303, `${categoryPath}?saved=1`);
+        }
         if (category.slug === "minimum-fare-rules" || category.slug === "fixed-fares") {
           const isMinimumFareRule = category.slug === "minimum-fare-rules";
           const rules: Array<MinimumFareRule | FixedFareRule> = isMinimumFareRule
