@@ -57,7 +57,7 @@ test("POI management content remains usable without horizontal overflow at mobil
           <div class="poi-management__field"><label for="name">A long configured POI name</label><input id="name" type="text" value="Station name" /></div>
           <div class="poi-management__field">
             <label for="amount">Amount (GBP)</label>
-            <div class="poi-management__amount"><span aria-hidden="true">£</span><input id="amount" name="amount" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required /></div>
+            <div class="poi-management__amount"><span aria-hidden="true">£</span><input id="amount" name="amount" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required value="12.34" /></div>
           </div>
           <fieldset class="poi-management__trigger"><legend>When is this fee applicable?</legend><label><input type="radio" />Optional service</label></fieldset>
           <div class="poi-management__actions"><button type="submit">Save POI Fee</button></div>
@@ -90,9 +90,12 @@ test("POI management content remains usable without horizontal overflow at mobil
       const style = getComputedStyle(input);
       return {
         height: input.getBoundingClientRect().height,
+        width: input.getBoundingClientRect().width,
         fontSize: style.fontSize,
+        lineHeight: style.lineHeight,
         padding: style.padding,
         border: style.border,
+        boxSizing: style.boxSizing,
         backgroundColor: style.backgroundColor,
         color: style.color
       };
@@ -102,17 +105,26 @@ test("POI management content remains usable without horizontal overflow at mobil
       const style = getComputedStyle(input);
       return {
         height: input.getBoundingClientRect().height,
+        wrapperWidth: input.parentElement!.getBoundingClientRect().width,
+        inputWidth: input.getBoundingClientRect().width,
         fontSize: style.fontSize,
+        lineHeight: style.lineHeight,
         padding: style.padding,
         border: style.border,
+        boxSizing: style.boxSizing,
         backgroundColor: style.backgroundColor,
         color: style.color,
         label: input.labels?.[0]?.textContent?.trim(),
         currency: input.parentElement?.querySelector("span")?.textContent?.trim(),
-        currencyIsHidden: input.parentElement?.querySelector("span")?.getAttribute("aria-hidden")
+        currencyIsHidden: input.parentElement?.querySelector("span")?.getAttribute("aria-hidden"),
+        name: input.name,
+        type: input.type,
+        value: input.value
       };
     });
     assert.equal(amountStyle.height, neighborStyle.height, "amount control should match neighboring control height");
+    assert.equal(amountStyle.wrapperWidth, neighborStyle.width, "currency and amount should fit the neighboring control width");
+    assert.ok(amountStyle.inputWidth > 0, "amount input should remain visible beside its currency indicator");
     assert.equal(amountStyle.fontSize, neighborStyle.fontSize);
     assert.equal(amountStyle.padding, neighborStyle.padding);
     assert.equal(amountStyle.border, neighborStyle.border);
@@ -121,12 +133,33 @@ test("POI management content remains usable without horizontal overflow at mobil
     assert.equal(amountStyle.label, "Amount (GBP)");
     assert.equal(amountStyle.currency, "£");
     assert.equal(amountStyle.currencyIsHidden, "true");
+    assert.equal(amountStyle.name, "amount");
+    assert.equal(amountStyle.type, "number");
+    assert.equal(amountStyle.value, "12.34");
 
     await page.getByLabel("A long configured POI name").focus();
+    const neighborFocusStyle = await page.evaluate(() => {
+      const style = getComputedStyle(document.activeElement as Element);
+      return {
+        borderColor: style.borderColor,
+        outline: style.outline,
+        outlineOffset: style.outlineOffset,
+        boxShadow: style.boxShadow
+      };
+    });
     await page.keyboard.press("Tab");
     await page.getByLabel("Amount (GBP)").waitFor();
-    const focusStyle = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineStyle);
-    assert.notEqual(focusStyle, "none", "keyboard focus should be visible");
+    const amountFocusStyle = await page.evaluate(() => {
+      const style = getComputedStyle(document.activeElement as Element);
+      return {
+        borderColor: style.borderColor,
+        outline: style.outline,
+        outlineOffset: style.outlineOffset,
+        boxShadow: style.boxShadow
+      };
+    });
+    assert.deepEqual(amountFocusStyle, neighborFocusStyle, "amount focus styling should match neighboring form controls");
+    assert.notEqual(amountFocusStyle.outline, "none", "keyboard focus should be visible");
     assert.deepEqual(consoleErrors, [], "browser console should not report errors");
   } finally {
     await browser?.close();
