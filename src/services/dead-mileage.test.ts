@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateDeadMileage, measureRouteOutsideRadiusMiles, type DeadMileageInput } from "./dead-mileage";
+import {
+  calculateDeadMileage,
+  isOperationalBaseVerified,
+  measureRouteOutsideRadiusMiles,
+  type DeadMileageInput
+} from "./dead-mileage";
 import { calculateDistanceSlabFare, validateDeadMileageRadius } from "./fare-settings";
 import { MIGRATIONS } from "../database/migrations";
 
@@ -9,6 +14,7 @@ const base: NonNullable<DeadMileageInput["base"]> = {
   latitude: 0,
   longitude: 0,
   providerPlaceId: "verified-operational-point",
+  coordinatesVerified: true,
   updatedAt: "2026-11-15T12:00:00.000Z"
 };
 const slabs = [
@@ -140,6 +146,14 @@ test("missing operational coordinates, applicable route geometry, booking flags,
   assert.equal(missingBase.status, "incomplete");
   if (missingBase.status === "incomplete") assert.match(missingBase.reasons.join(" "), /verified coordinates/);
 
+  const unverifiedBase = { ...base, coordinatesVerified: false };
+  assert.equal(isOperationalBaseVerified(unverifiedBase), false);
+  const unverifiedResult = calculate({ base: unverifiedBase });
+  assert.equal(unverifiedResult.status, "incomplete");
+  if (unverifiedResult.status === "incomplete") {
+    assert.match(unverifiedResult.reasons.join(" "), /verified coordinates/);
+  }
+
   const missingRoute = calculate({ baseToPickup: null });
   assert.equal(missingRoute.status, "incomplete");
   if (missingRoute.status === "incomplete") assert.match(missingRoute.reasons.join(" "), /road-route geometry/);
@@ -168,4 +182,11 @@ test("dead-mileage migration adds nullable explicit flags and append-only flag a
   assert.match(migration.sql, /booking_dead_mileage_flag_audit_append_only/);
   assert.match(migration.sql, /deadMileage/);
   assert.doesNotMatch(migration.sql, /airport_fee|poi_fees|minimumFareRules|customer_bookings.*total_fare_amount/i);
+});
+
+test("operational coordinates require an explicit verification flag before enabling dead mileage", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0031_verified_operational_coordinates");
+  assert.ok(migration);
+  assert.match(migration.sql, /coordinates_verified BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.equal(isOperationalBaseVerified(base), true);
 });

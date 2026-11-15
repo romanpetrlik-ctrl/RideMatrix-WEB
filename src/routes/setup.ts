@@ -6,6 +6,7 @@ import { noStoreProtectedResponse } from "../middleware/no-store";
 import { SessionAccount, getSessionAccount } from "../services/api";
 import { listLicensingAuthorities } from "../services/licensing";
 import { readMapConfiguration } from "../services/maps";
+import type { OperationalPlaceVerification } from "../services/google-places";
 import {
   CLEANUP_TARGETS,
   CleanupTarget,
@@ -28,6 +29,7 @@ import {
 type SetupRouterOptions = {
   appTitle: string;
   loadSession?: (cookieHeader?: string) => Promise<SessionAccount>;
+  verifyOperationalPlace?: (placeId: string) => Promise<OperationalPlaceVerification>;
 };
 
 const setupUpload = multer({
@@ -374,7 +376,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
 
       await saveOperatorAddress(toActor(session), {
         addressType: "registered_pho",
-        formattedAddress: normalizeText(req.body.formattedAddress),
+        formattedAddress: "",
         houseNameNumber: normalizeOptionalText(req.body.houseNameNumber),
         addressLine1: normalizeText(req.body.addressLine1),
         addressLine2: normalizeOptionalText(req.body.addressLine2),
@@ -430,7 +432,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       }
 
-      await saveOperatorAddress(toActor(session), {
+      const coordinatesVerified = await saveOperatorAddress(toActor(session), {
         addressType: "operational",
         formattedAddress: normalizeText(req.body.formattedAddress),
         houseNameNumber: normalizeOptionalText(req.body.houseNameNumber),
@@ -447,8 +449,17 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         longitude: normalizeOptionalText(req.body.longitude) ? Number(req.body.longitude) : null,
         providerName: normalizeOptionalText(req.body.providerName),
         providerPlaceId: normalizeOptionalText(req.body.providerPlaceId)
-      });
+      }, options.verifyOperationalPlace);
 
+      if (!coordinatesVerified) {
+        return renderWizard(
+          res,
+          session,
+          SETUP_STEP_PATHS.pho_licence,
+          [],
+          "Operational address saved, but Places could not verify UK coordinates. Dead-mileage radius will remain unavailable until a UK Place is verified."
+        );
+      }
       return res.redirect(SETUP_STEP_PATHS.pho_licence);
     } catch (error) {
       if (error instanceof SetupValidationError || error instanceof MissingAuthRoleError) {

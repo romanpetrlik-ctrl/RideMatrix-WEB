@@ -9,6 +9,7 @@ import { createTestDatabaseContext, safeCleanupTestDatabase, TestDatabaseContext
 import { createCsrfProtection } from "../middleware/csrf";
 import { errorHandler } from "../middleware/error-handler";
 import { SessionAccount } from "../services/api";
+import { getOperationalBase, isOperationalBaseVerified } from "../services/dead-mileage";
 import { getSetupOverview } from "../services/system-setup";
 import { createSetupRouter } from "./setup";
 
@@ -30,7 +31,6 @@ const testRoles = [
   "tech_support"
 ];
 const validAddress = {
-  formattedAddress: "10 Downing Street, London SW1A 2AA, UK",
   houseNameNumber: "10",
   addressLine1: "Downing Street",
   addressLine2: "",
@@ -72,7 +72,25 @@ before(async () => {
   app.use(express.urlencoded({ extended: true }));
   app.use(rateLimit({ windowMs: 60_000, limit: 1000 }));
   app.use(createCsrfProtection({ cookieSecure: false }));
-  app.use(createSetupRouter({ appTitle: "RideMatrix Test", loadSession: async () => session }));
+  app.use(createSetupRouter({
+    appTitle: "RideMatrix Test",
+    loadSession: async () => session,
+    verifyOperationalPlace: async (placeId) => {
+      if (placeId === "ChIJoutside") return { status: "outside_uk" };
+      if (placeId !== "ChIJsetup-place") return { status: "unverified" };
+      return {
+        status: "verified",
+        address: {
+          ...validAddress,
+          formattedAddress: "10 Downing Street, London SW1A 2AA, UK",
+          latitude: 51.5034,
+          longitude: -0.1276,
+          providerName: "google",
+          providerPlaceId: placeId
+        }
+      };
+    }
+  }));
   app.use(errorHandler);
   server = app.listen(0);
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -183,11 +201,11 @@ test("operator can complete every setup step, with validation, persistence, auth
   assert.equal(response.headers.get("location"), "/setup/registered-pho-address");
 
   const registeredForm = await (await fetch(`${baseUrl}/setup/registered-pho-address`)).text();
-  assert.match(registeredForm, /name="formattedAddress"/);
+  assert.doesNotMatch(registeredForm, /name="formattedAddress"/);
   assert.match(registeredForm, /Save registered address and continue/);
   response = await postForm("/setup/registered-pho-address", {
     ...validAddress,
-    formattedAddress: "",
+    addressLine1: "",
     latitude: "",
     longitude: "",
     providerName: "",
@@ -195,40 +213,68 @@ test("operator can complete every setup step, with validation, persistence, auth
   });
   assert.equal(response.status, 200);
   html = await response.text();
-  assert.match(html, /Formatted address is required/);
+  assert.match(html, /Address line 1 is required/);
   assert.match(html, /Save registered address and continue/);
-  assert.match(html, /value="Downing Street"/);
+  assert.match(html, /id="addressLine1" name="addressLine1"[^>]*value=""/);
 
   response = await postForm("/setup/registered-pho-address", validAddress);
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("location"), "/setup/operational-address");
   html = await (await fetch(`${baseUrl}/setup/registered-pho-address`)).text();
-  assert.match(html, /value="10 Downing Street, London SW1A 2AA, UK"/);
+  assert.match(html, /id="addressLine1" name="addressLine1"[^>]*value="Downing Street"/);
+  const registeredAddress = await query<{ formatted_address: string }>(
+    `SELECT formatted_address FROM operator_addresses WHERE address_type = 'registered_pho'`
+  );
+  assert.equal(
+    registeredAddress.rows[0]?.formatted_address,
+    "10 Downing Street, Greater London, London, England, SW1A 2AA, United Kingdom"
+  );
 
   const operationalForm = await (await fetch(`${baseUrl}/setup/operational-address`)).text();
-  assert.match(operationalForm, /Select your operating address from Google Places/);
+  assert.match(operationalForm, /Search for your operating address in the UK/);
   assert.match(operationalForm, /setup-address-autocomplete\.js/);
   assert.match(operationalForm, /data-address-autocomplete-browser-key="test-browser-key"/);
   assert.match(operationalForm, /type="hidden" id="latitude" name="latitude"/);
   response = await postForm("/setup/operational-address", {
-    ...selectedOperationalAddress,
-    providerPlaceId: "",
+    ...validAddress,
     latitude: "51.5034",
-    longitude: "-0.1276"
+    longitude: "-0.1276",
+    providerName: "",
+    providerPlaceId: ""
+  });
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Places could not verify UK coordinates/);
+  let overview = await getSetupOverview();
+  assert.equal(overview.addressDetails.operational?.latitude, null);
+  assert.equal(overview.addressDetails.operational?.providerPlaceId, null);
+  assert.equal(isOperationalBaseVerified(await getOperationalBase()), false);
+  const unverified = await query<{ coordinates_verified: boolean }>(
+    `SELECT coordinates_verified FROM operator_addresses WHERE address_type = 'operational'`
+  );
+  assert.equal(unverified.rows[0]?.coordinates_verified, false);
+
+  response = await postForm("/setup/operational-address", {
+    ...selectedOperationalAddress,
+    providerPlaceId: "ChIJoutside"
   });
   assert.equal(response.status, 200);
   html = await response.text();
-  assert.match(html, /Select the operational address from Google Places/);
-  assert.match(html, /value="10 Downing Street, London SW1A 2AA, UK"/);
-  assert.equal((await query(`SELECT COUNT(*)::int AS count FROM operator_addresses WHERE address_type = 'operational'`)).rows[0].count, 0);
+  assert.match(html, /Select an operational address in the United Kingdom/);
+  assert.equal((await query(`SELECT COUNT(*)::int AS count FROM operator_addresses WHERE address_type = 'operational'`)).rows[0].count, 1);
 
   response = await postForm("/setup/operational-address", selectedOperationalAddress);
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("location"), "/setup/pho-licence");
-  let overview = await getSetupOverview();
+  overview = await getSetupOverview();
   assert.equal(overview.addressDetails.operational?.providerPlaceId, "ChIJsetup-place");
   assert.equal(Number(overview.addressDetails.operational?.latitude), 51.5034);
   assert.equal(Number(overview.addressDetails.operational?.longitude), -0.1276);
+  assert.equal(overview.addressDetails.operational?.addressLine1, "Downing Street");
+  assert.equal(isOperationalBaseVerified(await getOperationalBase()), true);
+  const verified = await query<{ coordinates_verified: boolean }>(
+    `SELECT coordinates_verified FROM operator_addresses WHERE address_type = 'operational'`
+  );
+  assert.equal(verified.rows[0]?.coordinates_verified, true);
   html = await (await fetch(`${baseUrl}/setup/operational-address`)).text();
   assert.match(html, /id="providerPlaceId" name="providerPlaceId" value="ChIJsetup-place"/);
   assert.match(html, /id="latitude" name="latitude" value="51\.5034"/);

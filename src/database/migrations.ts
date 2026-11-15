@@ -1570,6 +1570,13 @@ export const MIGRATIONS: Migration[] = [
         BEFORE UPDATE OR DELETE ON booking_dead_mileage_flag_audit
         FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_dead_mileage_flag_audit_mutation();
     `
+  },
+  {
+    id: "0031_verified_operational_coordinates",
+    sql: `
+      ALTER TABLE operator_addresses
+        ADD COLUMN IF NOT EXISTS coordinates_verified BOOLEAN NOT NULL DEFAULT FALSE;
+    `
   }
 ];
 

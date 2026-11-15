@@ -4,6 +4,7 @@ import test from "node:test";
 
 const wizard = fs.readFileSync("src/views/pages/setup/wizard.ejs", "utf8");
 const css = fs.readFileSync("public/css/app.css", "utf8");
+const autocomplete = fs.readFileSync("public/js/setup-address-autocomplete.js", "utf8");
 
 test("setup wizard fields use scoped single-column layout and separate actions", () => {
   assert.match(wizard, /<main class="container rm-page-shell setup-wizard">/);
@@ -11,7 +12,9 @@ test("setup wizard fields use scoped single-column layout and separate actions",
   assert.equal((wizard.match(/class="setup-form__actions"/g) || []).length, 6);
   assert.match(wizard, /class="setup-form__field setup-form__field--checkbox"/);
   assert.match(wizard, /enctype="multipart\/form-data"/);
-  assert.match(wizard, /Select your operating address from Google Places/);
+  assert.match(wizard, /Search for your operating address in the UK/);
+  assert.doesNotMatch(wizard, /Formatted address \*/);
+  assert.match(autocomplete, /includedRegionCodes = \["gb"\]/);
   assert.match(wizard, /data-address-autocomplete-browser-key="<%= mapBrowserApiKey %>"/);
   assert.match(wizard, /providerPlaceId/);
   assert.match(wizard, /setup-address-autocomplete\.js/);
