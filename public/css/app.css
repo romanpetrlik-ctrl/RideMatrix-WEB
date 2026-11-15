@@ -2035,6 +2035,11 @@ button:visited,
   font-weight: 700;
 }
 
+.setup-wizard__place-autocomplete {
+  display: block;
+  width: 100%;
+}
+
 .setup-wizard .setup-form__field input:not([type="checkbox"]):not([type="file"]),
 .setup-wizard .setup-form__field select,
 .setup-wizard .setup-form__field textarea {

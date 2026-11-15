@@ -188,6 +188,10 @@ function toDateIsoDay(value: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
     throw new SetupValidationError("Enter a valid date in YYYY-MM-DD format.");
   }
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) {
+    throw new SetupValidationError("Enter a valid date in YYYY-MM-DD format.");
+  }
   return normalized;
 }
 
@@ -247,6 +251,15 @@ function validateAddress(input: OperatorAddressInput): OperatorAddressInput {
   }
   if (!countryName) {
     throw new SetupValidationError("Country name is required.");
+  }
+
+  if (input.addressType === "operational") {
+    if (providerName !== "google" || !providerPlaceId) {
+      throw new SetupValidationError("Select the operational address from Google Places.");
+    }
+    if (latitude === null || longitude === null) {
+      throw new SetupValidationError("The selected Google Place must include verified coordinates.");
+    }
   }
 
   if (latitude !== null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) {
@@ -482,9 +495,12 @@ async function getLatestLicenceDocument(
     id: string;
     original_filename: string;
     mime_type: string;
+    byte_size: number | string;
+    checksum: string;
+    content: Buffer | null;
     uploaded_at: string;
   }>(
-    `SELECT id, original_filename, mime_type, uploaded_at
+    `SELECT id, original_filename, mime_type, byte_size, checksum, content, uploaded_at
        FROM operator_licence_documents
       WHERE licence_id = $1 AND is_latest = TRUE
       LIMIT 1`,
@@ -493,6 +509,25 @@ async function getLatestLicenceDocument(
   );
   const row = result.rows[0];
   if (!row) {
+    return null;
+  }
+  if (!Buffer.isBuffer(row.content)) {
+    return null;
+  }
+  try {
+    validateLicenceDocumentFile({
+      originalname: row.original_filename,
+      mimetype: row.mime_type,
+      size: Number(row.byte_size),
+      buffer: row.content
+    });
+  } catch (error) {
+    if (error instanceof SetupValidationError) {
+      return null;
+    }
+    throw error;
+  }
+  if (row.checksum !== checksumSha256(row.content)) {
     return null;
   }
   return {
@@ -554,7 +589,6 @@ export async function getSetupOverview(runner?: Queryable): Promise<SetupOvervie
           provider_place_id: string | null;
         }>
       };
-  const addressTypes = new Set(addressResult.rows.map((row) => row.address_type));
   const addressByType = new Map(
     addressResult.rows.map((row) => [row.address_type, row] as const)
   );
@@ -584,24 +618,65 @@ export async function getSetupOverview(runner?: Queryable): Promise<SetupOvervie
       providerPlaceId: source.provider_place_id
     };
   };
+  const registeredAddress = toAddressInput("registered_pho");
+  const operationalAddress = toAddressInput("operational");
+  const isValidAddress = (address: OperatorAddressInput | null): boolean => {
+    if (!address) {
+      return false;
+    }
+    try {
+      validateAddress(address);
+      return true;
+    } catch (error) {
+      if (error instanceof SetupValidationError) {
+        return false;
+      }
+      throw error;
+    }
+  };
+  const registeredAddressComplete = isValidAddress(registeredAddress);
+  const operationalAddressComplete = isValidAddress(operationalAddress);
   const licence = operatorId ? await getLatestLicence(operatorId, runner) : null;
   const latestDocument = licence ? await getLatestLicenceDocument(licence.id, runner) : null;
+  let licenceComplete = false;
+  if (licence) {
+    try {
+      validateLicence({
+        licenceNumber: licence.licenceNumber,
+        licensingAuthorityId: licence.licensingAuthorityId || "",
+        validFrom: licence.validFrom,
+        validTo: licence.validTo
+      });
+      const authority = await query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM licensing_authorities WHERE id = $1 AND active = TRUE
+         ) AS exists`,
+        [licence.licensingAuthorityId],
+        runner
+      );
+      licenceComplete = Boolean(authority.rows[0]?.exists);
+    } catch (error) {
+      if (!(error instanceof SetupValidationError)) {
+        throw error;
+      }
+    }
+  }
 
   let currentStep: SetupStep = "bootstrap_superuser";
-  if (!bootstrap || bootstrap.status !== "completed") {
+  if (setupState?.status === "completed") {
+    currentStep = "completed";
+  } else if (!bootstrap || bootstrap.status !== "completed") {
     currentStep = "bootstrap_superuser";
   } else if (!operator) {
     currentStep = "operator_profile";
-  } else if (!addressTypes.has("registered_pho")) {
+  } else if (!registeredAddressComplete) {
     currentStep = "registered_pho_address";
-  } else if (!addressTypes.has("operational")) {
+  } else if (!operationalAddressComplete) {
     currentStep = "operational_address";
-  } else if (!licence) {
+  } else if (!licenceComplete) {
     currentStep = "pho_licence";
   } else if (!latestDocument) {
     currentStep = "licence_document";
-  } else if (setupState?.status === "completed") {
-    currentStep = "completed";
   } else {
     currentStep = "review_confirmation";
   }
@@ -613,12 +688,12 @@ export async function getSetupOverview(runner?: Queryable): Promise<SetupOvervie
     operatorId,
     operator,
     addresses: {
-      registeredPho: addressTypes.has("registered_pho"),
-      operational: addressTypes.has("operational")
+      registeredPho: registeredAddressComplete,
+      operational: operationalAddressComplete
     },
     addressDetails: {
-      registeredPho: toAddressInput("registered_pho"),
-      operational: toAddressInput("operational")
+      registeredPho: registeredAddress,
+      operational: operationalAddress
     },
     licence,
     latestDocument
@@ -811,8 +886,8 @@ async function resolveOrCreateSetupOperator(
               trading_name = $3,
               license_holder_name = $4,
               status = 'trial',
-              trial_started_at = COALESCE(trial_started_at, $5),
-              trial_ends_at = COALESCE(trial_ends_at, ($5::timestamptz + INTERVAL '1 month')::text),
+              trial_started_at = COALESCE(trial_started_at, $5::text),
+              trial_ends_at = COALESCE(trial_ends_at, ($5::text::timestamptz + INTERVAL '1 month')::text),
               updated_by_user_id = $6,
               updated_by_user_email = $7,
               updated_at = $8
@@ -836,7 +911,7 @@ async function resolveOrCreateSetupOperator(
   await query(
     `INSERT INTO operators
       (id, legal_name, trading_name, license_holder_name, status, trial_started_at, trial_ends_at, created_by_user_id, created_by_user_email, updated_by_user_id, updated_by_user_email, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, 'trial', $5, ($5::timestamptz + INTERVAL '1 month')::text, $6, $7, $6, $7, $8, $8)`,
+     VALUES ($1, $2, $3, $4, 'trial', $5::text, ($5::text::timestamptz + INTERVAL '1 month')::text, $6, $7, $6, $7, $8, $8)`,
     [
       operatorId,
       profile.legalName,
@@ -1142,6 +1217,14 @@ export function validateLicenceDocumentFile(file: {
   }
   if (!allowedMime.has(file.mimetype)) {
     throw new SetupValidationError("Only PDF, PNG, or JPEG licence documents are allowed.");
+  }
+  const content = file.buffer;
+  const hasValidSignature =
+    (file.mimetype === "application/pdf" && content.subarray(0, 5).toString("ascii") === "%PDF-") ||
+    (file.mimetype === "image/png" && content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+    (file.mimetype === "image/jpeg" && content.length >= 3 && content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff);
+  if (!hasValidSignature) {
+    throw new SetupValidationError("The uploaded file does not match a supported licence document format.");
   }
 }
 
@@ -1451,14 +1534,41 @@ export async function completeInitialSetup(actorInput: SetupActor): Promise<void
     if (!overview.operator) {
       throw new SetupValidationError("Complete operator profile before setup completion.");
     }
-    if (!overview.addresses.registeredPho || !overview.addresses.operational) {
-      throw new SetupValidationError("Both registered PHO and operational addresses are required.");
+    validateOperatorProfile({
+      legalName: overview.operator.legalName,
+      tradingName: overview.operator.tradingName,
+      licenceHolderName: overview.operator.licenceHolderName,
+      status: "trial"
+    });
+    if (!overview.addresses.registeredPho || !overview.addressDetails.registeredPho) {
+      throw new SetupValidationError("A valid registered PHO address is required.");
     }
+    validateAddress(overview.addressDetails.registeredPho);
+    if (!overview.addresses.operational || !overview.addressDetails.operational) {
+      throw new SetupValidationError("Select a valid operational address from Google Places.");
+    }
+    validateAddress(overview.addressDetails.operational);
     if (!overview.licence) {
       throw new SetupValidationError("PHO licence details are required.");
     }
+    const licence = validateLicence({
+      licenceNumber: overview.licence.licenceNumber,
+      licensingAuthorityId: overview.licence.licensingAuthorityId || "",
+      validFrom: overview.licence.validFrom,
+      validTo: overview.licence.validTo
+    });
+    const authority = await query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM licensing_authorities WHERE id = $1 AND active = TRUE
+       ) AS exists`,
+      [licence.licensingAuthorityId],
+      client
+    );
+    if (!authority.rows[0]?.exists) {
+      throw new SetupValidationError("Select an active licensing authority before completing setup.");
+    }
     if (!overview.latestDocument) {
-      throw new SetupValidationError("PHO licence document is required.");
+      throw new SetupValidationError("A valid PHO licence document is required.");
     }
 
     await ensureRequiredTestRolesExist(client);
