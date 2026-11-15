@@ -3578,6 +3578,27 @@ button:visited,
   font-weight: 700;
 }
 
+.poi-management__amount input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--rm-light-bronze);
+  background: #fff9f2;
+  color: var(--rm-text);
+  font: inherit;
+  margin: 0;
+}
+
+.poi-management__amount input:focus-visible {
+  border-color: var(--rm-control-focus-color);
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+  box-shadow: var(--rm-control-focus-shadow);
+}
+
 .poi-management__trigger {
   display: grid;
   gap: 0.5rem;
