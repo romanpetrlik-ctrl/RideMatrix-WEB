@@ -4172,6 +4172,15 @@ button:visited,
   gap: 0.35rem;
 }
 
+.fare-settings__field--radius {
+  align-content: start;
+}
+
+.fare-settings__field--radius input {
+  height: 2.8rem;
+  font: inherit;
+}
+
 .fare-settings__field[hidden] {
   display: none;
 }
