@@ -258,6 +258,78 @@
               <td><button class="button button--secondary button--small fare-settings__remove-slab" type="button" data-remove-distance-slab>Remove</button></td>
             </tr>
           </template>
+          <section class="fare-settings__airport-slab-sets" aria-labelledby="airport-slab-sets-title" id="airport-slab-sets">
+            <h2 id="airport-slab-sets-title">Airport-specific distance slabs</h2>
+            <div class="notice fare-settings__configuration-only" role="status">
+              <strong>Not yet used to price bookings.</strong> These sets are saved configuration only; no booking matching, fare calculation, New Booking behaviour or booking total uses them yet. The standard distance slabs above are unchanged.
+            </div>
+            <ul class="fare-settings__help-list">
+              <li>An airport-specific set is intended to apply when one endpoint of a journey is one of its assigned airports, in either direction.</li>
+              <li>Airports are identified by their internal RideMatrix airport ID (the saved Airport Fees record), not by Google labels, postcodes or text matching.</li>
+              <li>The set calculates the whole journey's distance progressively. It is not a radius rule or a fixed fare.</li>
+              <li>If both journey endpoints are airports assigned to different special sets, future pricing must treat the selection as ambiguous and must not silently choose one.</li>
+              <li>Each airport can belong to only one set; one set can be shared by several airports you select explicitly.</li>
+            </ul>
+            <h3 id="airport-slab-list-title">Saved airport-specific slab sets</h3>
+            ${(locals.airportSets || []).length ? `<ul class="fare-settings__rule-list" aria-labelledby="airport-slab-list-title">${(locals.airportSets || []).map((set) => `
+              <li class="fare-settings__rule-card">
+                <h4>${set.name}</h4>
+                <p>Airports: ${set.airportIds.map((id) => { const airport = (locals.managedAirports || []).find((item) => item.id === id); return airport ? `${airport.displayName} <span class="fare-settings__help">(internal ID ${id})</span>` : `Unavailable airport <span class="fare-settings__help">(internal ID ${id})</span>`; }).join("; ")}</p>
+                <table class="fare-settings__slab-table">
+                  <caption class="visually-hidden">Distance slabs for ${set.name}</caption>
+                  <thead><tr><th scope="col">Start (miles)</th><th scope="col">End (miles)</th><th scope="col">Rate (GBP per mile)</th></tr></thead>
+                  <tbody>${set.distanceSlabs.map((slab) => `<tr><td>${slab.startMiles}</td><td>${slab.endMiles === "" ? "Open-ended" : slab.endMiles}</td><td>£${slab.ratePerMile}</td></tr>`).join("")}</tbody>
+                </table>
+                <form class="fare-settings__actions" method="post" action="/settings/fare-settings/distance-slabs/airport-sets">
+                  ${locals.csrfField || ""}
+                  <input type="hidden" name="baseVersion" value="${currentVersion}" />
+                  <input type="hidden" name="setId" value="${set.id}" />
+                  <a class="button button--secondary" href="/settings/fare-settings/distance-slabs?airportSet=${encodeURIComponent(set.id)}#airport-slab-editor" aria-label="Edit ${set.name}">Edit</a>
+                  <button class="button button--secondary" type="submit" name="setAction" value="delete" aria-label="Remove ${set.name}">Remove</button>
+                </form>
+              </li>`).join("")}</ul>` : `<p>No airport-specific slab sets have been configured.</p>`}
+            ${locals.airportSetEditor ? (() => { const airportSetEditor = locals.airportSetEditor; return `
+              <form class="fare-settings__form fare-settings__rule-card" id="airport-slab-editor" method="post" action="/settings/fare-settings/distance-slabs/airport-sets" data-airport-slab-form>
+                ${locals.csrfField || ""}
+                <input type="hidden" name="baseVersion" value="${currentVersion}" />
+                <input type="hidden" name="setId" value="${airportSetEditor.id}" />
+                <h3>${airportSetEditor.id ? "Edit airport-specific slab set" : "Add airport-specific slab set"}</h3>
+                ${!airportSetEditor.id ? `<p><a class="button button--secondary" href="/settings/fare-settings/distance-slabs?airportSet=new&amp;copy=standard#airport-slab-editor">Copy current standard distance slabs</a></p><p class="fare-settings__help">Copying creates an independent set. Editing it never changes the standard slabs, and later standard edits never overwrite it. Copying reloads this form and discards unsaved entries.</p>` : ""}
+                <div class="fare-settings__fields">
+                  <div class="fare-settings__field">
+                    <label for="airport-slab-name">Rule name or description</label>
+                    <input id="airport-slab-name" name="name" type="text" maxlength="160" required value="${airportSetEditor.name}" aria-invalid="${errors.name ? "true" : "false"}" aria-describedby="airport-slab-name-error" />
+                    <p id="airport-slab-name-error" class="fare-settings__field-error${errors.name ? " fare-settings__field-error--invalid" : ""}" ${errors.name ? 'role="alert"' : ""}>${errors.name || ""}</p>
+                  </div>
+                  <fieldset class="fare-settings__field" aria-describedby="airport-slab-airports-help airport-slab-airports-error">
+                    <legend>Managed airports</legend>
+                    <p id="airport-slab-airports-help" class="fare-settings__help">Select every airport this set applies to. Names are shown for convenience; the internal ID is what is saved.</p>
+                    ${(locals.managedAirports || []).length ? (locals.managedAirports || []).map((airport) => `<label class="fare-settings__checkbox"><input type="checkbox" name="airportIds" value="${airport.id}" ${airportSetEditor.airportIds.includes(airport.id) ? "checked" : ""} /> ${airport.displayName} <span class="fare-settings__help">(internal ID ${airport.id})</span></label>`).join("") : `<p>No managed airports are available. Add one under Airport Fees first.</p>`}
+                    <p id="airport-slab-airports-error" class="fare-settings__field-error${errors.airportIds ? " fare-settings__field-error--invalid" : ""}" ${errors.airportIds ? 'role="alert"' : ""}>${errors.airportIds || ""}</p>
+                  </fieldset>
+                </div>
+                <div class="fare-settings__slab-table-wrap">
+                  <table class="fare-settings__slab-table">
+                    <thead><tr><th scope="col">Slab</th><th scope="col">Start distance (miles)</th><th scope="col">End distance (miles)</th><th scope="col">Rate (GBP per mile)</th><th scope="col">Actions</th></tr></thead>
+                    <tbody data-airport-slab-list>
+                      ${(airportSetEditor.distanceSlabs.length ? airportSetEditor.distanceSlabs : [{ startMiles: "", endMiles: "", ratePerMile: "" }]).map((slab, index) => `
+                        <tr data-airport-slab>
+                          <th scope="row" data-airport-slab-title>Slab ${index + 1}</th>
+                          ${[["startMiles", "Start distance (miles)", slab.startMiles], ["endMiles", "End distance (miles); leave blank for the open-ended final slab", slab.endMiles], ["ratePerMile", "Rate (GBP per mile)", slab.ratePerMile]].map(([field, label, value]) => `<td><div class="fare-settings__field"><label class="visually-hidden" for="airport-slab-${index}-${field}">${label}</label><input id="airport-slab-${index}-${field}" name="distanceSlabs[${index}][${field}]" type="text" inputmode="decimal" value="${value}" aria-invalid="${errors[`distanceSlabs.${index}.${field}`] ? "true" : "false"}" aria-describedby="airport-slab-${index}-${field}-error" /><p id="airport-slab-${index}-${field}-error" class="fare-settings__field-error${errors[`distanceSlabs.${index}.${field}`] ? " fare-settings__field-error--invalid" : ""}" ${errors[`distanceSlabs.${index}.${field}`] ? 'role="alert"' : ""}>${errors[`distanceSlabs.${index}.${field}`] || ""}</p></div></td>`).join("")}
+                          <td><button class="button button--secondary button--small" type="button" data-remove-airport-slab>Remove</button></td>
+                        </tr>`).join("")}
+                    </tbody>
+                  </table>
+                </div>
+                <p class="fare-settings__help">Slabs must start at 0 miles, be contiguous, and end with one open-ended slab (blank end distance). Boundaries are start-inclusive and end-exclusive.</p>
+                <button class="button button--secondary" type="button" data-add-airport-slab hidden>Add distance slab</button>
+                <div class="fare-settings__actions">
+                  <button class="button button--primary" type="submit" name="setAction" value="save">Save airport-specific slab set</button>
+                  <a class="button button--secondary" href="/settings/fare-settings/distance-slabs#airport-slab-sets">Cancel</a>
+                </div>
+              </form>
+            `; })() : `<p><a class="button button--primary" href="/settings/fare-settings/distance-slabs?airportSet=new#airport-slab-editor">Add airport-specific slab set</a></p>`}
+          </section>
         ` : category.slug === "fare-surcharge-settings" ? `
           <form class="fare-settings__form" method="post" action="/settings/fare-settings/${category.slug}">
             ${locals.csrfField || ""}
@@ -364,6 +436,7 @@
         </section>
         <script src="/js/distance-slab-calculator.js" defer></script>
         <script src="/js/fare-settings.js" defer></script>
+        ${category.slug === "distance-slabs" ? `<script src="/js/airport-slab-sets.js" defer></script>` : ""}
       `}
     </section>
   `

@@ -33,11 +33,14 @@ import {
   type OperationalBase
 } from "../services/dead-mileage";
 import {
+  type AirportDistanceSlabSet,
+  type AirportDistanceSlabSetFormValues,
   fareSettingsStore,
   FareSettingsVersionConflictError,
   fixedFareRuleToForm,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
+  validateAirportDistanceSlabSetForm,
   validateDistanceSlabsForm,
   validateDeadMileageRadius,
   validateFareSettingsForm,
@@ -278,6 +281,8 @@ type FareSettingsRenderOptions = {
   errors?: Record<string, string>;
   formError?: string;
   statusCode?: number;
+  airportSetForm?: AirportDistanceSlabSetFormValues;
+  airportSetFormId?: string;
 };
 
 type FareSettingsPage = {
@@ -524,6 +529,35 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           displayName: escapeHtml(poi.displayName)
         }))
         : [];
+      const isDistanceSlabsPage = page.category?.slug === "distance-slabs";
+      const managedAirports = isDistanceSlabsPage
+        ? (await airportFeesStore.list()).map((airport) => ({
+          id: escapeHtml(airport.id),
+          displayName: escapeHtml(airport.displayName)
+        }))
+        : [];
+      const airportSets = (configuration.airportDistanceSlabSets ?? []).map((set) => ({
+        id: escapeHtml(set.id),
+        name: escapeHtml(set.name),
+        airportIds: set.airportIds.map(escapeHtml),
+        distanceSlabs: set.distanceSlabs.map((slab) => ({
+          startMiles: escapeHtml(slab.startMiles),
+          endMiles: escapeHtml(slab.endMiles),
+          ratePerMile: escapeHtml(slab.ratePerMile)
+        }))
+      }));
+      const airportSetEditor = isDistanceSlabsPage && renderOptions.airportSetForm
+        ? {
+          id: escapeHtml(renderOptions.airportSetFormId ?? ""),
+          name: escapeHtml(renderOptions.airportSetForm.name),
+          airportIds: renderOptions.airportSetForm.airportIds.map(escapeHtml),
+          distanceSlabs: renderOptions.airportSetForm.distanceSlabs.map((slab) => ({
+            startMiles: escapeHtml(slab.startMiles),
+            endMiles: escapeHtml(slab.endMiles),
+            ratePerMile: escapeHtml(slab.ratePerMile)
+          }))
+        }
+        : null;
       const ruleForm = Object.fromEntries(
         Object.entries(renderOptions.ruleForm ?? {}).map(([key, value]) => [key, escapeHtml(value)])
       );
@@ -578,6 +612,9 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         },
         operationalBaseVerified,
         managedPois,
+        managedAirports,
+        airportSets,
+        airportSetEditor,
         ruleForm,
         ruleFormId: renderOptions.ruleFormId ?? "",
         ruleFormSubmitted: renderOptions.ruleForm !== undefined,
@@ -598,10 +635,132 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     void renderFareSettingsPage(req, res, next, {});
   });
 
+  const airportSetsPath = `${fareSettingsPath}/distance-slabs/airport-sets`;
+  const distanceSlabsCategory = fareSettingsCategories.find((category) => category.slug === "distance-slabs");
+
+  if (distanceSlabsCategory) {
+    const category = distanceSlabsCategory;
+    const categoryPath = `${fareSettingsPath}/${category.slug}`;
+    router.post(airportSetsPath, csrfGuard, async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const snapshot = await fareStore.load();
+        const sets = snapshot.configuration.airportDistanceSlabSets ?? [];
+        const setId = typeof req.body?.setId === "string" ? req.body.setId.trim() : "";
+        const isDelete = req.body?.setAction === "delete";
+        const rawVersion = req.body?.baseVersion;
+        const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
+          ? Number(rawVersion)
+          : NaN;
+        if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot,
+            formError: "The settings version is missing or invalid. Reload this page before saving.",
+            statusCode: 400
+          });
+        }
+        if (expectedVersion !== snapshot.currentVersion) {
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot,
+            formError: new FareSettingsVersionConflictError().message,
+            statusCode: 409
+          });
+        }
+
+        const existing = setId ? sets.find((set) => set.id === setId) : undefined;
+        if (setId && !existing) {
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot,
+            formError: "The airport-specific slab set could not be found. Reload the page and try again.",
+            statusCode: 404
+          });
+        }
+
+        let nextSets: AirportDistanceSlabSet[];
+        if (isDelete) {
+          nextSets = sets.filter((set) => set.id !== setId);
+        } else {
+          const validation = validateAirportDistanceSlabSetForm(req.body, await airportFeesStore.list(), sets, setId);
+          if (Object.keys(validation.errors).length) {
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot,
+              airportSetForm: validation.values,
+              airportSetFormId: setId,
+              errors: validation.errors,
+              statusCode: 400
+            });
+          }
+          const updated: AirportDistanceSlabSet = { id: setId || randomUUID(), ...validation.values };
+          nextSets = setId ? sets.map((set) => set.id === setId ? updated : set) : [...sets, updated];
+        }
+
+        try {
+          await fareStore.save(expectedVersion, {
+            ...snapshot.configuration,
+            airportDistanceSlabSets: nextSets
+          }, {
+            accountId: session.user.id,
+            email: session.user.email
+          });
+        } catch (error) {
+          if (!(error instanceof FareSettingsVersionConflictError)) throw error;
+          const latest = await fareStore.load();
+          return renderFareSettingsPage(req, res, next, { category }, {
+            snapshot: latest,
+            formError: error.message,
+            statusCode: 409
+          });
+        }
+        return res.redirect(303, `${categoryPath}?saved=1`);
+      } catch (error) {
+        return next(error);
+      }
+    });
+  }
+
   for (const category of fareSettingsCategories) {
     const categoryPath = `${fareSettingsPath}/${category.slug}`;
-    router.get(categoryPath, (req, res, next) => {
-      void renderFareSettingsPage(req, res, next, { category });
+    router.get(categoryPath, async (req, res, next) => {
+      if (category.slug !== "distance-slabs") {
+        void renderFareSettingsPage(req, res, next, { category });
+        return;
+      }
+      const target = typeof req.query.airportSet === "string" ? req.query.airportSet : "";
+      if (!target) {
+        void renderFareSettingsPage(req, res, next, { category });
+        return;
+      }
+      try {
+        const snapshot = await fareStore.load();
+        const sets = snapshot.configuration.airportDistanceSlabSets ?? [];
+        const copyStandard = target === "new" && req.query.copy === "standard";
+        const existing = target === "new" ? undefined : sets.find((set) => set.id === target);
+        const blank = { startMiles: "", endMiles: "", ratePerMile: "" };
+        const airportSetForm: AirportDistanceSlabSetFormValues = existing
+          ? { name: existing.name, airportIds: existing.airportIds, distanceSlabs: existing.distanceSlabs.map((slab) => ({ ...slab })) }
+          : {
+            name: "",
+            airportIds: [],
+            distanceSlabs: copyStandard && snapshot.configuration.distanceSlabs?.length
+              ? snapshot.configuration.distanceSlabs.map((slab) => ({ ...slab }))
+              : [blank]
+          };
+        void renderFareSettingsPage(req, res, next, { category }, {
+          snapshot,
+          airportSetForm,
+          airportSetFormId: existing?.id ?? "",
+          statusCode: target !== "new" && !existing ? 404 : 200,
+          formError: target !== "new" && !existing ? "The airport-specific slab set could not be found." : undefined
+        });
+      } catch (error) {
+        next(error);
+      }
     });
 
     if (!category.configurable) continue;

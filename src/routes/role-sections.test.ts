@@ -1937,6 +1937,123 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(savedBody, /booking fares and totals are not calculated or changed here/);
   });
 
+  test("Airport-specific slab sets copy standard slabs, assign unique internal airport IDs, and leave standard slabs untouched", async () => {
+    fareSettings.reset();
+    airportFees.reset();
+    const airport = (id: string, displayName: string): AirportFeeRecord => ({
+      id, displayName,
+      dropoffPlaceId: "google-dropoff", dropoffLocationLabel: "label", dropoffLatitude: 0, dropoffLongitude: 0, dropoffFee: "0.00",
+      pickupPlaceId: "google-pickup", pickupLocationLabel: "label", pickupLatitude: 1, pickupLongitude: 1, pickupFee: "0.00",
+      pickupTimeReference: "ALT", pickupDeferredEnabled: false, pickupDeferredMinutes: 0, pickupFeeCoveredMinutes: 10,
+      createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z"
+    });
+    airportFees.records.push(airport("rm-boh", "Bournemouth Airport"), airport("rm-sou", "Southampton Airport"), airport("rm-lgw", "Gatwick Airport"));
+    const path = "/settings/fare-settings/distance-slabs";
+    const setsPath = `${path}/airport-sets`;
+    const cookie = "sid=airport-slab-sets";
+    const getPage = (query = "") => fetch(`${baseUrl}${path}${query}`, { headers: withSession(cookie, ["superuser"]) });
+    const post = async (target: string, version: string, values: Record<string, string | string[]>) => {
+      const page = await getPage("?airportSet=new");
+      const body = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie && token);
+      const postCookie = `${cookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      const params = new URLSearchParams({ baseVersion: version, _csrf: token });
+      for (const [key, value] of Object.entries(values)) {
+        for (const item of Array.isArray(value) ? value : [value]) params.append(key, item);
+      }
+      return fetch(`${baseUrl}${target}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: params,
+        redirect: "manual"
+      });
+    };
+    const standard = (rate: string) => ({
+      "distanceSlabs[0][startMiles]": "0", "distanceSlabs[0][endMiles]": "10", "distanceSlabs[0][ratePerMile]": rate,
+      "distanceSlabs[1][startMiles]": "10", "distanceSlabs[1][endMiles]": "", "distanceSlabs[1][ratePerMile]": "2.70"
+    });
+
+    assert.equal((await post(path, "0", standard("3.00"))).status, 303);
+    const page = await (await getPage()).text();
+    assert.match(page, /Progressive rates by distance/);
+    assert.match(page, /Airport-specific distance slabs/);
+    assert.match(page, /Add airport-specific slab set/);
+    assert.match(page, /Not yet used to price bookings/);
+    assert.match(page, /one endpoint of a journey is one of its assigned airports, in either direction/);
+    assert.match(page, /not a radius rule or a fixed fare/);
+    assert.match(page, /must not silently choose one/);
+
+    const copyBody = await (await getPage("?airportSet=new&copy=standard")).text();
+    assert.match(copyBody, /name="distanceSlabs\[0\]\[ratePerMile\]" type="text" inputmode="decimal" value="3\.00"/);
+    assert.match(copyBody, /name="airportIds" value="rm-boh"/);
+    assert.match(copyBody, /Bournemouth Airport/);
+
+    const copied = { name: "South coast airports", airportIds: ["rm-boh", "rm-sou"], ...standard("3.00"), "distanceSlabs[0][ratePerMile]": "3.50" };
+    const created = await post(setsPath, "1", copied);
+    assert.equal(created.status, 303);
+    let config = fareSettings.snapshot().configuration;
+    assert.equal(config.airportDistanceSlabSets?.length, 1);
+    const set = config.airportDistanceSlabSets![0];
+    assert.deepEqual(set.airportIds, ["rm-boh", "rm-sou"]);
+    assert.equal(set.distanceSlabs[0].ratePerMile, "3.50");
+    assert.equal(config.distanceSlabs[0].ratePerMile, "3.00");
+    assert.equal(fareSettings.snapshot().history.length, 2);
+    assert.equal(fareSettings.snapshot().history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
+
+    const listed = await (await getPage()).text();
+    assert.match(listed, /South coast airports/);
+    assert.match(listed, /Bournemouth Airport[^;]*internal ID rm-boh/);
+
+    const duplicate = await post(setsPath, "2", { ...copied, name: "Another", airportIds: ["rm-sou", "rm-lgw"] });
+    assert.equal(duplicate.status, 400);
+    assert.match(await duplicate.text(), /Already assigned to another airport-specific slab set: Southampton Airport/);
+    const unknown = await post(setsPath, "2", { ...copied, name: "Another", airportIds: ["Gatwick Airport"] });
+    assert.equal(unknown.status, 400);
+    const invalidSlabs = await post(setsPath, "2", { ...copied, name: "Another", airportIds: ["rm-lgw"], "distanceSlabs[0][startMiles]": "1" });
+    assert.equal(invalidSlabs.status, 400);
+    assert.match(await invalidSlabs.text(), /The first slab must start at 0 miles/);
+    assert.equal(fareSettings.snapshot().currentVersion, 2);
+
+    const edited = await post(setsPath, "2", { ...copied, setId: set.id, airportIds: ["rm-boh", "rm-sou", "rm-lgw"], "distanceSlabs[0][ratePerMile]": "3.75" });
+    assert.equal(edited.status, 303);
+    config = fareSettings.snapshot().configuration;
+    assert.deepEqual(config.airportDistanceSlabSets![0].airportIds, ["rm-boh", "rm-sou", "rm-lgw"]);
+    assert.equal(config.airportDistanceSlabSets![0].distanceSlabs[0].ratePerMile, "3.75");
+    assert.equal(config.distanceSlabs[0].ratePerMile, "3.00");
+    assert.equal(fareSettings.snapshot().currentVersion, 3);
+
+    // Later standard edits must not overwrite the airport set.
+    assert.equal((await post(path, "3", standard("4.00"))).status, 303);
+    config = fareSettings.snapshot().configuration;
+    assert.equal(config.distanceSlabs[0].ratePerMile, "4.00");
+    assert.equal(config.airportDistanceSlabSets![0].distanceSlabs[0].ratePerMile, "3.75");
+
+    const stale = await post(setsPath, "1", { setId: set.id, setAction: "delete" });
+    assert.equal(stale.status, 409);
+    const removed = await post(setsPath, "4", { setId: set.id, setAction: "delete" });
+    assert.equal(removed.status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.airportDistanceSlabSets, []);
+    assert.equal(fareSettings.snapshot().history.length, 5);
+    assert.deepEqual(fareSettings.snapshot().configuration.minimumFareRules, []);
+    assert.deepEqual(fareSettings.snapshot().configuration.fixedFares, []);
+  });
+
+  test("Airport-specific slab set changes keep System Settings authorization", async () => {
+    fareSettings.reset();
+    const denied = await fetch(`${baseUrl}/settings/fare-settings/distance-slabs?airportSet=new`, {
+      headers: withSession("sid=airport-slab-denied", ["admin"])
+    });
+    assert.equal(denied.status, 403);
+    const anonymous = await fetch(`${baseUrl}/settings/fare-settings/distance-slabs/airport-sets`, {
+      method: "POST", redirect: "manual"
+    });
+    assert.notEqual(anonymous.status, 303);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+  });
+
   test("Fare surcharge setting validates, saves, disables, and retains its saved values", async () => {
     fareSettings.reset();
     const path = "/settings/fare-settings/fare-surcharge-settings";

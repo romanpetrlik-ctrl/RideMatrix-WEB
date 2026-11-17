@@ -10,6 +10,7 @@ import {
   matchesMinimumFareRule,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
+  validateAirportDistanceSlabSetForm,
   validateDistanceSlabsForm,
   validateFareSettingsForm,
   type BankHolidaySurchargePeriod,
@@ -576,4 +577,36 @@ test("fixed fares reject UK postcode letters that are invalid at their positions
     baseFare: "25"
   }, [poi]);
   assert.ok(outward.errors.originPostcode, "Q1");
+});
+
+test("airport-specific slab sets apply standard slab rules, require known unique airport IDs, and allow shared sets", () => {
+  const airports = [managedAirport(), managedAirport({ id: "rm-sou", displayName: "Southampton Airport" })];
+  const body = (overrides: Record<string, unknown> = {}) => ({
+    name: "South coast",
+    airportIds: ["rm-boh-internal-id", "rm-sou"],
+    distanceSlabs: [
+      { startMiles: "0", endMiles: "5", ratePerMile: "3" },
+      { startMiles: "5", endMiles: "", ratePerMile: "2" }
+    ],
+    ...overrides
+  });
+  const ok = validateAirportDistanceSlabSetForm(body(), airports, []);
+  assert.deepEqual(ok.errors, {});
+  assert.deepEqual(ok.values.airportIds, ["rm-boh-internal-id", "rm-sou"]);
+
+  const badSlabs = validateAirportDistanceSlabSetForm(body({
+    distanceSlabs: [{ startMiles: "1", endMiles: "5", ratePerMile: "3" }, { startMiles: "6", endMiles: "7", ratePerMile: "-1" }]
+  }), airports, []);
+  assert.ok(badSlabs.errors["distanceSlabs.0.startMiles"]);
+  assert.ok(badSlabs.errors["distanceSlabs.1.startMiles"]);
+  assert.ok(badSlabs.errors["distanceSlabs.1.endMiles"]);
+  assert.ok(badSlabs.errors["distanceSlabs.1.ratePerMile"]);
+
+  assert.ok(validateAirportDistanceSlabSetForm(body({ airportIds: [] }), airports, []).errors.airportIds);
+  assert.ok(validateAirportDistanceSlabSetForm(body({ airportIds: ["Southampton Airport"] }), airports, []).errors.airportIds);
+  assert.ok(validateAirportDistanceSlabSetForm(body({ name: " " }), airports, []).errors.name);
+
+  const existing = [{ id: "set-1", name: "Other", airportIds: ["rm-sou"], distanceSlabs: ok.values.distanceSlabs }];
+  assert.match(validateAirportDistanceSlabSetForm(body(), airports, existing).errors.airportIds, /Southampton Airport/);
+  assert.deepEqual(validateAirportDistanceSlabSetForm(body(), airports, existing, "set-1").errors, {});
 });
