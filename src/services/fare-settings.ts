@@ -37,7 +37,6 @@ export type MinimumFareRule = {
   id: string;
   name: string;
   poiId: string;
-  radiusMiles: string;
   minimumBaseFare: string;
 };
 
@@ -174,16 +173,6 @@ function parseNonNegativeDecimal(value: string): DecimalValue | null {
   return { coefficient: BigInt(`${whole}${fraction}`), scale: fraction.length };
 }
 
-function validCoordinate(latitude: number, longitude: number): boolean {
-  return Number.isFinite(latitude) && Number.isFinite(longitude) &&
-    latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
-}
-
-function validOperationalPoints(record: AirportFeeRecord): boolean {
-  return validCoordinate(record.dropoffLatitude, record.dropoffLongitude) &&
-    validCoordinate(record.pickupLatitude, record.pickupLongitude);
-}
-
 function normalizeMoney(value: string): string | null {
   if (!/^(?:0|[1-9]\d{0,5})(?:\.\d{1,2})?$/.test(value)) return null;
   return value.includes(".") ? value.padEnd(value.indexOf(".") + 3, "0") : `${value}.00`;
@@ -214,13 +203,11 @@ export function validateMinimumFareRuleForm(
   const values: MinimumFareRuleFormValues = {
     name: submittedValue(body, "name"),
     poiId: submittedValue(body, "poiId"),
-    radiusMiles: submittedValue(body, "radiusMiles"),
     minimumBaseFare: submittedValue(body, "minimumBaseFare")
   };
   const errors: Record<string, string> = {};
   const name = values.name.trim();
   const poiId = values.poiId.trim();
-  const radiusValue = values.radiusMiles.trim();
 
   if (!name || name.length > 160) {
     errors.name = "Enter a rule name no longer than 160 characters.";
@@ -231,15 +218,7 @@ export function validateMinimumFareRuleForm(
     const poi = pois.find((item) => item.id === poiId);
     if (!poi) {
       errors.poiId = "Select an active managed airport or point of interest.";
-    } else if (!validOperationalPoints(poi)) {
-      errors.poiId = "This location has no valid configured pick-up and drop-off operational coordinates. Update it under Airport Fees first.";
     }
-  }
-  const radius = radiusValue.length <= 80 && /^(?:\d+(?:\.\d+)?|\.\d+)$/.test(radiusValue)
-    ? Number(radiusValue)
-    : NaN;
-  if (!Number.isFinite(radius) || radius <= 0) {
-    errors.radiusMiles = "Enter a valid radius greater than 0 miles.";
   }
   const minimumBaseFare = normalizeMoney(values.minimumBaseFare.trim());
   if (minimumBaseFare === null) {
@@ -248,7 +227,6 @@ export function validateMinimumFareRuleForm(
   if (Object.keys(errors).length === 0 && minimumBaseFare !== null) {
     values.name = name;
     values.poiId = poiId;
-    values.radiusMiles = radiusValue;
     values.minimumBaseFare = minimumBaseFare;
   }
 
@@ -360,30 +338,7 @@ export function validateFixedFareRuleForm(
 
 export type FareRuleJourneyEndpoint = {
   poiId?: string;
-  latitude?: number;
-  longitude?: number;
 };
-
-function withinRadius(
-  first: { latitude: number; longitude: number },
-  second: { latitude: number; longitude: number },
-  radiusMiles: string
-): boolean {
-  const radius = Number(radiusMiles);
-  if (!Number.isFinite(radius) || radius <= 0 ||
-      !validCoordinate(first.latitude, first.longitude) ||
-      !validCoordinate(second.latitude, second.longitude)) return false;
-
-  const radians = (degrees: number) => degrees * Math.PI / 180;
-  const latitudeDelta = radians(second.latitude - first.latitude);
-  const longitudeDelta = radians(second.longitude - first.longitude);
-  const haversine = Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(radians(first.latitude)) * Math.cos(radians(second.latitude)) *
-    Math.sin(longitudeDelta / 2) ** 2;
-  const distanceMetres = 6_371_008.8 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-  const radiusMetres = radius * 1609.344;
-  return distanceMetres <= radiusMetres + 1e-6;
-}
 
 export function matchesMinimumFareRule(
   rule: MinimumFareRule,
@@ -391,24 +346,8 @@ export function matchesMinimumFareRule(
   destination: FareRuleJourneyEndpoint,
   poi: AirportFeeRecord
 ): boolean {
-  if (poi.id !== rule.poiId) return false;
-  if (origin.poiId === rule.poiId && destination.poiId !== rule.poiId &&
-      destination.latitude !== undefined && destination.longitude !== undefined) {
-    return withinRadius(
-      { latitude: poi.pickupLatitude, longitude: poi.pickupLongitude },
-      { latitude: destination.latitude, longitude: destination.longitude },
-      rule.radiusMiles
-    );
-  }
-  if (destination.poiId === rule.poiId && origin.poiId !== rule.poiId &&
-      origin.latitude !== undefined && origin.longitude !== undefined) {
-    return withinRadius(
-      { latitude: poi.dropoffLatitude, longitude: poi.dropoffLongitude },
-      { latitude: origin.latitude, longitude: origin.longitude },
-      rule.radiusMiles
-    );
-  }
-  return false;
+  return poi.id === rule.poiId &&
+    (origin.poiId === rule.poiId || destination.poiId === rule.poiId);
 }
 
 function compareDecimals(left: DecimalValue, right: DecimalValue): number {

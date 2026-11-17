@@ -90,7 +90,9 @@ async function renderFixedFareSettings(): Promise<string> {
   });
 }
 
-async function renderMinimumFareRuleSettings(): Promise<string> {
+async function renderMinimumFareRuleSettings(
+  minimumFareRules: Array<{ id: string; name: string; poiId: string; minimumBaseFare: string }> = []
+): Promise<string> {
   return ejs.renderFile(path.join(process.cwd(), "src/views/pages/fare-settings.ejs"), {
     title: "Fare Settings: Minimum Fare Rules",
     appTitle: "RideMatrix Test",
@@ -110,11 +112,11 @@ async function renderMinimumFareRuleSettings(): Promise<string> {
     ],
     configuration: {
       distanceSlabs: [],
-      minimumFareRules: [],
+      minimumFareRules,
       dailySurcharge: { enabled: false, percentage: "", startTime: "", endTime: "" },
       bankHolidaySurcharge: { enabled: false, periods: [] }
     },
-    managedPois: [],
+    managedPois: [{ id: "rm-boh-internal-id", displayName: "Bournemouth Airport (BOH)" }],
     ruleForm: {},
     ruleFormId: "",
     ruleFormSubmitted: false,
@@ -127,105 +129,19 @@ async function renderMinimumFareRuleSettings(): Promise<string> {
   });
 }
 
-test("minimum fare radius control matches adjacent form controls on desktop and mobile", async (t) => {
-  const executablePath = process.env.CHROMIUM_PATH
-    ?? ["/usr/bin/chromium", "/usr/bin/google-chrome"].find((candidate) => fs.existsSync(candidate));
-  if (!executablePath) {
-    t.skip("Chromium executable not found");
-    return;
-  }
-
-  const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const html = (await renderMinimumFareRuleSettings())
-      .replace(/<link\b[^>]*>/g, "")
-      .replace(/<script\b[^>]*><\/script>/g, "");
-    await page.setContent(html);
-    const css = fs.readFileSync(path.join(process.cwd(), "public/css/app.css"), "utf8")
-      .replace(/^@import[^;]+;\s*/m, "");
-    await page.addStyleTag({ content: css });
-
-    const checkControlStyles = async () => page.evaluate(() => {
-      const radius = document.querySelector<HTMLInputElement>("#minimum-rule-radius")!;
-      const adjacent = document.querySelector<HTMLInputElement>("#minimum-rule-name")!;
-      const radiusStyle = getComputedStyle(radius);
-      const adjacentStyle = getComputedStyle(adjacent);
-      const radiusRect = radius.getBoundingClientRect();
-      const adjacentRect = adjacent.getBoundingClientRect();
-      const radiusLabel = radius.closest(".fare-settings__field")!.querySelector("label")!;
-      const adjacentLabel = adjacent.closest(".fare-settings__field")!.querySelector("label")!;
-      const radiusStyleValues = [
-        radiusStyle.font,
-        radiusStyle.fontSize,
-        radiusStyle.lineHeight,
-        radiusStyle.padding,
-        radiusStyle.border,
-        radiusStyle.borderRadius
-      ];
-      const adjacentStyleValues = [
-        adjacentStyle.font,
-        adjacentStyle.fontSize,
-        adjacentStyle.lineHeight,
-        adjacentStyle.padding,
-        adjacentStyle.border,
-        adjacentStyle.borderRadius
-      ];
-
-      return {
-        type: radius.type,
-        name: radius.name,
-        required: radius.required,
-        min: radius.min,
-        step: radius.step,
-        inputMode: radius.inputMode,
-        describedBy: radius.getAttribute("aria-describedby"),
-        stylesMatch: JSON.stringify(radiusStyleValues) === JSON.stringify(adjacentStyleValues),
-        heightMatches: radiusRect.height === adjacentRect.height,
-        topOffsetFromLabelMatches:
-          (radiusRect.top - radiusLabel.getBoundingClientRect().bottom)
-          === (adjacentRect.top - adjacentLabel.getBoundingClientRect().bottom),
-        desktopTopMatches: window.innerWidth > 700 ? radiusRect.top === adjacentRect.top : true
-      };
-    });
-
-    const desktop = await checkControlStyles();
-    assert.equal(desktop.type, "number");
-    assert.equal(desktop.name, "radiusMiles");
-    assert.equal(desktop.required, true);
-    assert.equal(desktop.min, "0.000001");
-    assert.equal(desktop.step, "any");
-    assert.equal(desktop.inputMode, "decimal");
-    assert.equal(desktop.describedBy, "minimum-rule-radius-error");
-    assert.equal(desktop.stylesMatch, true);
-    assert.equal(desktop.heightMatches, true);
-    assert.equal(desktop.topOffsetFromLabelMatches, true);
-    assert.equal(desktop.desktopTopMatches, true);
-
-    await page.setViewportSize({ width: 390, height: 844 });
-    const mobile = await checkControlStyles();
-    assert.equal(mobile.stylesMatch, true);
-    assert.equal(mobile.heightMatches, true);
-    assert.equal(mobile.topOffsetFromLabelMatches, true);
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
-
-    await page.locator(".fare-settings__trail a").last().focus();
-    await page.keyboard.press("Tab");
-    await page.keyboard.press("Tab");
-    await page.keyboard.press("Tab");
-    const focusedOutline = await page.locator("#minimum-rule-radius").evaluate((input) => {
-      return {
-        isFocused: input === document.activeElement,
-        isFocusVisible: input.matches(":focus-visible"),
-        matchesFareFocusSelector: input.matches(".fare-settings__form :focus-visible")
-      };
-    });
-    assert.equal(focusedOutline.isFocused, true);
-    assert.equal(focusedOutline.isFocusVisible, true);
-    assert.equal(focusedOutline.matchesFareFocusSelector, true);
-  } finally {
-    await browser.close();
-  }
+test("minimum fare forms omit radius for both new and saved rules", async () => {
+  const savedRule = {
+    id: "minimum-rule",
+    name: "BOH minimum",
+    poiId: "rm-boh-internal-id",
+    minimumBaseFare: "25.00"
+  };
+  const html = await renderMinimumFareRuleSettings([savedRule]);
+  assert.doesNotMatch(html, /Radius \(miles\)|name="radiusMiles"|minimum-rule-radius/);
+  assert.match(html, /name="poiId"/);
+  assert.match(html, /name="minimumBaseFare"/);
+  assert.match(html, /value="25\.00"/);
+  assert.match(html, /internal ID rm-boh-internal-id/);
 });
 
 test("distance slab editor adds contiguous editable rows and preserves values", async (t) => {

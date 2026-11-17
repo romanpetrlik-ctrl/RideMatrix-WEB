@@ -161,11 +161,11 @@ test("editing one surcharge category retains the other category's saved settings
 test("editing existing fare settings retains minimum and fixed fare configuration", () => {
   const current = {
     ...EMPTY_FARE_SETTINGS,
+    deadMileage: { freeRadiusMiles: "5.25" },
     minimumFareRules: [{
       id: "minimum-rule",
       name: "Minimum",
       poiId: "managed-id",
-      radiusMiles: "5",
       minimumBaseFare: "25.00"
     }],
     fixedFares: [{
@@ -182,6 +182,7 @@ test("editing existing fare settings retains minimum and fixed fare configuratio
   }, current);
   assert.deepEqual(edited.configuration.minimumFareRules, current.minimumFareRules);
   assert.deepEqual(edited.configuration.fixedFares, current.fixedFares);
+  assert.deepEqual(edited.configuration.deadMileage, current.deadMileage);
 });
 
 test("bank holiday settings represent the supplied multi-day Christmas and New Year periods exactly", () => {
@@ -427,65 +428,68 @@ test("minimum and fixed fare migration initializes only current configuration an
   assert.doesNotMatch(migration.sql, /fare_settings_history|customer_bookings|fare_totals|booking_total/i);
 });
 
-test("minimum fare rules retain the managed POI internal ID and validate configured operational coordinates", () => {
+test("obsolete minimum-fare radius migration preserves rule data and history", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0032_minimum_fare_rules_without_radius");
+  assert.ok(migration);
+  assert.match(migration.sql, /jsonb_array_elements\(configuration -> 'minimumFareRules'\)/);
+  assert.match(migration.sql, /rule_data - 'radiusMiles'/);
+  assert.match(migration.sql, /fare_settings_current/);
+  assert.doesNotMatch(migration.sql, /fare_settings_history|deadMileage|freeRadiusMiles|customer_bookings/i);
+});
+
+test("minimum fare rules retain the managed POI internal ID without a radius or coordinate requirement", () => {
   const airport = managedAirport();
   const valid = validateMinimumFareRuleForm({
     name: "BOH short journey",
     poiId: airport.id,
-    radiusMiles: "5",
     minimumBaseFare: "25"
   }, [airport]);
   assert.deepEqual(valid.errors, {});
   assert.deepEqual(valid.values, {
     name: "BOH short journey",
     poiId: "rm-boh-internal-id",
-    radiusMiles: "5",
     minimumBaseFare: "25.00"
   });
 
-  const invalidLocation = validateMinimumFareRuleForm({
-    name: "Missing operation point",
+  const missingCoordinates = validateMinimumFareRuleForm({
+    name: "No operational coordinates",
     poiId: airport.id,
-    radiusMiles: "5",
     minimumBaseFare: "25"
-  }, [managedAirport({ pickupLatitude: Number.NaN })]);
-  assert.match(invalidLocation.errors.poiId, /no valid configured pick-up and drop-off operational coordinates/);
+  }, [managedAirport({ pickupLatitude: Number.NaN, dropoffLongitude: Number.NaN })]);
+  assert.deepEqual(missingCoordinates.errors, {});
+  assert.deepEqual(missingCoordinates.values, {
+    name: "No operational coordinates",
+    poiId: "rm-boh-internal-id",
+    minimumBaseFare: "25.00"
+  });
   assert.match(validateMinimumFareRuleForm({
     name: "Unmanaged",
     poiId: "google-airport-label",
-    radiusMiles: "5",
     minimumBaseFare: "25"
   }, [airport]).errors.poiId, /active managed/);
 });
 
-test("minimum fare radius is geodesic, inclusive at five miles, direction-aware, and uses the Airport Fees operation point", () => {
+test("minimum fare rules match their selected POI at either endpoint regardless of the other endpoint distance", () => {
   const airport = managedAirport();
   const rule = {
     id: "minimum-rule",
-    name: "BOH five mile minimum",
+    name: "BOH minimum",
     poiId: airport.id,
-    radiusMiles: "5",
     minimumBaseFare: "25.00"
   };
-  const exactAngularDelta = 5 * 1609.344 / 6_371_008.8 * 180 / Math.PI;
-  const exactDropoffPoint = { latitude: 0, longitude: exactAngularDelta };
-  const exactPickupPoint = { latitude: 20 + exactAngularDelta, longitude: 20 };
-  const outsidePoint = { latitude: 0, longitude: exactAngularDelta + 0.00001 };
+  const distantEndpoint = { poiId: "another-managed-id", latitude: -80, longitude: 170 };
 
-  assert.equal(matchesMinimumFareRule(rule, exactDropoffPoint, { poiId: airport.id }, airport), true);
-  assert.equal(matchesMinimumFareRule(rule, { poiId: airport.id }, exactPickupPoint, airport), true);
-  assert.equal(matchesMinimumFareRule(rule, outsidePoint, { poiId: airport.id }, airport), false);
-  assert.equal(matchesMinimumFareRule(rule, exactDropoffPoint, { poiId: "different-id" }, airport), false);
-  assert.equal(matchesMinimumFareRule(rule, { latitude: NaN, longitude: 0 }, { poiId: airport.id }, airport), false);
-  assert.equal(matchesMinimumFareRule(rule, { poiId: airport.id }, {
-    ...exactDropoffPoint, poiId: airport.id
-  }, airport), false);
+  assert.equal(matchesMinimumFareRule(rule, distantEndpoint, { poiId: airport.id }, airport), true);
+  assert.equal(matchesMinimumFareRule(rule, { poiId: airport.id }, distantEndpoint, airport), true);
+  assert.equal(matchesMinimumFareRule(rule, { poiId: "google-airport-label" }, distantEndpoint, airport), false);
+  assert.equal(matchesMinimumFareRule(rule, distantEndpoint, { poiId: "different-id" }, airport), false);
+  assert.equal(matchesMinimumFareRule({ ...rule, poiId: "different-id" }, { poiId: airport.id }, {}, airport), false);
 });
 
 test("minimum and fixed base fares reject negative, malformed, and over-precision GBP values", () => {
   for (const amount of ["-1", "1.001", "1e2", "Infinity", "", "1000000"]) {
     assert.ok(validateMinimumFareRuleForm({
-      name: "Test", poiId: "rm-boh-internal-id", radiusMiles: "5", minimumBaseFare: amount
+      name: "Test", poiId: "rm-boh-internal-id", minimumBaseFare: amount
     }, [managedAirport()]).errors.minimumBaseFare, amount);
     assert.ok(validateFixedFareRuleForm({
       name: "Test",
