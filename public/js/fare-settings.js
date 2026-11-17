@@ -13,6 +13,8 @@
   const previewTotal = document.querySelector("[data-distance-preview-total]");
   const previewError = document.querySelector("#distance-test-error");
   const addSlabError = document.querySelector("[data-add-distance-slab-error]");
+  const copyBaseButton = document.querySelector("[data-copy-base-slabs]");
+  const copyBaseStatus = document.querySelector("[data-copy-base-status]");
   const fixedFareEndpoints = document.querySelectorAll("[data-fixed-endpoint]");
   if (!dailyDetails && !periodList && !distanceForm && fixedFareEndpoints.length === 0) return;
 
@@ -331,6 +333,46 @@
       submitError.textContent = "Complete a valid contiguous distance schedule, including a rate for every slab, before saving.";
       submitError.hidden = false;
       slabList.querySelector('[data-awaiting-boundary="true"] input[name$="[startMiles]"]')?.focus();
+    }
+  });
+  copyBaseButton?.addEventListener("click", (event) => {
+    if (!slabList || !slabTemplate) return;
+    event.preventDefault();
+    let baseSlabs;
+    try {
+      baseSlabs = JSON.parse(copyBaseButton.dataset.baseSlabs || "[]");
+    } catch {
+      baseSlabs = [];
+    }
+    if (!Array.isArray(baseSlabs) || baseSlabs.length === 0) return;
+    const hasValues = Array.from(slabList.querySelectorAll("[data-distance-slab] input"))
+      .some((input) => input.value.trim() !== "");
+    if (hasValues && !window.confirm("Replace the slab rows in this editor with the saved base Distance slabs? Unsaved slab values here will be replaced; the set name and linked POI or place are kept.")) {
+      return;
+    }
+    slabList.replaceChildren();
+    baseSlabs.forEach((baseSlab, index) => {
+      const fragment = slabTemplate.content.cloneNode(true);
+      const slab = fragment.querySelector("[data-distance-slab]");
+      slab.innerHTML = slab.innerHTML.replaceAll("ROW", String(index));
+      slab.querySelector('input[name$="[startMiles]"]').value = String(baseSlab.startMiles ?? "");
+      slab.querySelector('input[name$="[endMiles]"]').value = String(baseSlab.endMiles ?? "");
+      slab.querySelector('input[name$="[ratePerMile]"]').value = String(baseSlab.ratePerMile ?? "");
+      slabList.append(fragment);
+    });
+    if (addSlabError) {
+      addSlabError.textContent = "";
+      addSlabError.hidden = true;
+    }
+    const submitError = distanceForm?.querySelector("[data-distance-slab-submit-error]");
+    if (submitError) {
+      submitError.textContent = "";
+      submitError.hidden = true;
+    }
+    reindexSlabs();
+    calculatePreview();
+    if (copyBaseStatus) {
+      copyBaseStatus.textContent = `Copied ${baseSlabs.length} base slab${baseSlabs.length === 1 ? "" : "s"} into this editor. Review and save to keep them; base slabs are unchanged.`;
     }
   });
   testDistance?.addEventListener("input", calculatePreview);

@@ -33,15 +33,18 @@ import {
   type OperationalBase
 } from "../services/dead-mileage";
 import {
-  type AirportDistanceSlabSet,
-  type AirportDistanceSlabSetFormValues,
+  additionalSlabTargetKey,
+  type AdditionalDistanceSlabSet,
+  type AdditionalDistanceSlabSetFormValues,
   fareSettingsStore,
   FareSettingsVersionConflictError,
   fixedFareRuleToForm,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
-  validateAirportDistanceSlabSetForm,
+  resolveAdditionalDistanceSlabSets,
+  validateAdditionalDistanceSlabSetForm,
   validateDistanceSlabsForm,
+  withAdditionalDistanceSlabSets,
   validateDeadMileageRadius,
   validateFareSettingsForm,
   type FareSettingsConfiguration,
@@ -50,8 +53,10 @@ import {
   type MinimumFareRule,
   type MinimumFareRuleFormValues,
   type FareSettingsSnapshot,
-  type FareSettingsStore
+  type FareSettingsStore,
+  type ManagedSlabTarget
 } from "../services/fare-settings";
+import { poiManagementStore, type PoiManagementStore } from "../services/poi-management";
 import { randomUUID } from "node:crypto";
 
 type RoleSectionsRouterOptions = {
@@ -59,6 +64,7 @@ type RoleSectionsRouterOptions = {
   feeScheduleStore?: LondonFeeScheduleStore;
   airportFeeStore?: AirportFeeStore;
   fareSettingsStore?: FareSettingsStore;
+  poiManagementStore?: PoiManagementStore;
   loadOperationalBase?: () => Promise<OperationalBase | null>;
 };
 
@@ -159,6 +165,7 @@ export const fareSettingsCategories: readonly FareSettingsCategory[] = [
   { slug: "minimum-fare-rules", title: "Minimum fare rules", description: "Configure minimum base fares for journeys with a selected managed location as origin or destination.", configurable: true },
   { slug: "fixed-fares", title: "Fixed fares", description: "Configure directional fixed base fares between identified locations.", configurable: true },
   { slug: "distance-slabs", title: "Distance slabs", description: "Configure progressive base rates by journey distance.", configurable: true },
+  { slug: "additional-distance-slabs", title: "Additional distance slabs", description: "Configure independent progressive slab sets, each linked to one managed airport or POI. Configuration only; not yet used to price bookings.", configurable: true },
   { slug: "dead-mileage-settings", title: "Dead mileage settings", description: "Configure the free-radius circle around the verified operational base.", configurable: true },
   { slug: "extras", title: "Extras", description: "Future configuration for fare extras.", configurable: false },
   { slug: "fare-surcharge-settings", title: "Fare surcharge settings", description: "Configure a recurring daily fare surcharge.", configurable: true },
@@ -281,12 +288,16 @@ type FareSettingsRenderOptions = {
   errors?: Record<string, string>;
   formError?: string;
   statusCode?: number;
-  airportSetForm?: AirportDistanceSlabSetFormValues;
-  airportSetFormId?: string;
+  additionalSetForm?: AdditionalDistanceSlabSetFormValues;
+  additionalSetFormId?: string;
+  additionalCopied?: boolean;
+  additionalRemoveSetId?: string;
 };
 
 type FareSettingsPage = {
   category?: FareSettingsCategory;
+  /** Sub-page title below the category, e.g. the additional distance slab set editor. */
+  subpageTitle?: string;
 };
 
 async function renderTollFeesPage(
@@ -440,6 +451,11 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
   const feeScheduleStore = options.feeScheduleStore ?? londonFeeScheduleStore;
   const airportFeesStore = options.airportFeeStore ?? airportFeeStore;
   const fareStore = options.fareSettingsStore ?? fareSettingsStore;
+  const poiStore = options.poiManagementStore ?? poiManagementStore;
+  const loadManagedSlabTargets = async (): Promise<ManagedSlabTarget[]> => [
+    ...(await airportFeesStore.list()).map((airport) => ({ type: "airport" as const, id: airport.id, displayName: airport.displayName })),
+    ...(await poiStore.listPois()).map((poi) => ({ type: "poi" as const, id: poi.id, displayName: poi.displayName }))
+  ];
   const loadOperationalBase = options.loadOperationalBase ?? getOperationalBase;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   router.use(noStoreProtectedResponse);
@@ -529,35 +545,69 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           displayName: escapeHtml(poi.displayName)
         }))
         : [];
-      const isDistanceSlabsPage = page.category?.slug === "distance-slabs";
-      const managedAirports = isDistanceSlabsPage
-        ? (await airportFeesStore.list()).map((airport) => ({
-          id: escapeHtml(airport.id),
-          displayName: escapeHtml(airport.displayName)
-        }))
-        : [];
-      const airportSets = (configuration.airportDistanceSlabSets ?? []).map((set) => ({
-        id: escapeHtml(set.id),
-        name: escapeHtml(set.name),
-        airportIds: set.airportIds.map(escapeHtml),
-        distanceSlabs: set.distanceSlabs.map((slab) => ({
-          startMiles: escapeHtml(slab.startMiles),
-          endMiles: escapeHtml(slab.endMiles),
-          ratePerMile: escapeHtml(slab.ratePerMile)
-        }))
+      const isAdditionalSlabsPage = page.category?.slug === "additional-distance-slabs";
+      const slabTargets = isAdditionalSlabsPage ? await loadManagedSlabTargets() : [];
+      const escapeSlabs = (slabs: FareSettingsConfiguration["distanceSlabs"]) => slabs.map((slab) => ({
+        startMiles: escapeHtml(slab.startMiles),
+        endMiles: escapeHtml(slab.endMiles),
+        ratePerMile: escapeHtml(slab.ratePerMile)
       }));
-      const airportSetEditor = isDistanceSlabsPage && renderOptions.airportSetForm
+      const describeTarget = (target: AdditionalDistanceSlabSet["target"]) => {
+        const managed = slabTargets.find((item) => item.type === target.type && item.id === target.id);
+        const kind = target.type === "airport" ? "Airport" : "POI";
+        return managed
+          ? { available: true, label: `${escapeHtml(managed.displayName)} <span class="fare-settings__help">(${kind})</span>` }
+          : {
+            available: false,
+            label: target.id
+              ? `Unavailable ${kind === "Airport" ? "airport" : "POI"} (internal ID ${escapeHtml(target.id)}) — edit this set to link an active airport or POI.`
+              : "Not linked — edit this set to link an airport or POI."
+          };
+      };
+      const additionalSetRecords = isAdditionalSlabsPage ? resolveAdditionalDistanceSlabSets(configuration) : [];
+      const additionalSets = additionalSetRecords.map((set) => {
+        const target = describeTarget(set.target);
+        const finalSlab = set.distanceSlabs[set.distanceSlabs.length - 1];
+        return {
+          id: escapeHtml(set.id),
+          urlId: escapeHtml(encodeURIComponent(set.id)),
+          name: escapeHtml(set.name),
+          targetLabel: target.label,
+          targetAvailable: target.available,
+          slabSummary: escapeHtml(`${set.distanceSlabs.length} slab${set.distanceSlabs.length === 1 ? "" : "s"} from ${set.distanceSlabs[0]?.startMiles ?? "0"} miles` +
+            (finalSlab ? `; final slab open-ended from ${finalSlab.startMiles} miles at £${finalSlab.ratePerMile} per mile.` : ".")),
+          distanceSlabs: escapeSlabs(set.distanceSlabs)
+        };
+      });
+      const removeSet = renderOptions.additionalRemoveSetId
+        ? additionalSets.find((set) => set.id === escapeHtml(renderOptions.additionalRemoveSetId ?? ""))
+        : undefined;
+      const editorForm = isAdditionalSlabsPage ? renderOptions.additionalSetForm : undefined;
+      const editorUnavailableTarget = editorForm && editorForm.targetKey &&
+        !slabTargets.some((target) => additionalSlabTargetKey(target) === editorForm.targetKey)
+        ? (() => {
+          const [type, ...rest] = editorForm.targetKey.split(":");
+          const id = rest.join(":");
+          const kind = type === "airport" ? "airport" : type === "poi" ? "POI" : "location";
+          return escapeHtml(id ? `Unavailable ${kind} — internal ID ${id}` : `Unavailable location — ${editorForm.targetKey}`);
+        })()
+        : "";
+      const additionalEditor = editorForm
         ? {
-          id: escapeHtml(renderOptions.airportSetFormId ?? ""),
-          name: escapeHtml(renderOptions.airportSetForm.name),
-          airportIds: renderOptions.airportSetForm.airportIds.map(escapeHtml),
-          distanceSlabs: renderOptions.airportSetForm.distanceSlabs.map((slab) => ({
-            startMiles: escapeHtml(slab.startMiles),
-            endMiles: escapeHtml(slab.endMiles),
-            ratePerMile: escapeHtml(slab.ratePerMile)
-          }))
+          id: escapeHtml(renderOptions.additionalSetFormId ?? ""),
+          name: escapeHtml(editorForm.name),
+          targetKey: escapeHtml(editorForm.targetKey),
+          unavailableTargetLabel: editorUnavailableTarget,
+          distanceSlabs: escapeSlabs(editorForm.distanceSlabs)
         }
         : null;
+      const managedTargets = {
+        airports: slabTargets.filter((target) => target.type === "airport")
+          .map((target) => ({ key: escapeHtml(additionalSlabTargetKey(target)), displayName: escapeHtml(target.displayName) })),
+        pois: slabTargets.filter((target) => target.type === "poi")
+          .map((target) => ({ key: escapeHtml(additionalSlabTargetKey(target)), displayName: escapeHtml(target.displayName) }))
+      };
+      const baseSlabs = (snapshot.configuration.distanceSlabs ?? []).map(({ startMiles, endMiles, ratePerMile }) => ({ startMiles, endMiles, ratePerMile }));
       const ruleForm = Object.fromEntries(
         Object.entries(renderOptions.ruleForm ?? {}).map(([key, value]) => [key, escapeHtml(value)])
       );
@@ -592,11 +642,15 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       const breadcrumbs = [
         { label: "System Settings", href: "/settings" },
         { label: "Fare Settings", href: "/settings/fare-settings" },
-        ...(page.category ? [{ label: page.category.title }] : [])
+        ...(page.category
+          ? page.subpageTitle
+            ? [{ label: page.category.title, href: `/settings/fare-settings/${page.category.slug}` }, { label: page.subpageTitle }]
+            : [{ label: page.category.title }]
+          : [])
       ];
 
       res.status(renderOptions.statusCode ?? 200).render("pages/fare-settings", {
-        title: categoryTitle ? `Fare Settings: ${categoryTitle}` : "Fare Settings",
+        title: categoryTitle ? `Fare Settings: ${page.subpageTitle ?? categoryTitle}` : "Fare Settings",
         appTitle: options.appTitle,
         email: escapeHtml(session.user.email),
         grantedByLabel: grantingRoles(roles, systemSettingsModule).map(formatRoleLabel).join(", "),
@@ -612,9 +666,13 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         },
         operationalBaseVerified,
         managedPois,
-        managedAirports,
-        airportSets,
-        airportSetEditor,
+        additionalSets,
+        additionalEditor,
+        additionalRemoveSet: removeSet ?? null,
+        additionalCopied: renderOptions.additionalCopied ?? false,
+        managedTargets,
+        baseSlabsJson: escapeHtml(JSON.stringify(baseSlabs)),
+        baseSlabCount: baseSlabs.length,
         ruleForm,
         ruleFormId: renderOptions.ruleFormId ?? "",
         ruleFormSubmitted: renderOptions.ruleForm !== undefined,
@@ -635,13 +693,57 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     void renderFareSettingsPage(req, res, next, {});
   });
 
-  const airportSetsPath = `${fareSettingsPath}/distance-slabs/airport-sets`;
-  const distanceSlabsCategory = fareSettingsCategories.find((category) => category.slug === "distance-slabs");
+  const additionalSlabsCategory = fareSettingsCategories.find((category) => category.slug === "additional-distance-slabs");
+  const additionalSlabsPath = `${fareSettingsPath}/additional-distance-slabs`;
+  if (additionalSlabsCategory) {
+    const category = additionalSlabsCategory;
+    const createTitle = "Create additional distance slabs set";
+    const editTitle = "Edit additional distance slabs set";
+    const removeTitle = "Remove additional distance slabs set";
+    const blankForm = (): AdditionalDistanceSlabSetFormValues => ({
+      name: "",
+      targetKey: "",
+      distanceSlabs: [{ startMiles: "", endMiles: "", ratePerMile: "" }]
+    });
+    const formFromSet = (set: AdditionalDistanceSlabSet): AdditionalDistanceSlabSetFormValues => ({
+      name: set.name,
+      targetKey: set.target.id ? additionalSlabTargetKey(set.target) : "",
+      distanceSlabs: set.distanceSlabs.map((slab) => ({ ...slab }))
+    });
+    // An independent snapshot of the saved base slabs: later base edits never change it.
+    const copyOfBaseSlabs = (configuration: FareSettingsConfiguration) =>
+      (configuration.distanceSlabs ?? []).map(({ startMiles, endMiles, ratePerMile }) => ({ startMiles, endMiles, ratePerMile }));
+    const notFound = "The additional distance slabs set could not be found. Reload the page and try again.";
 
-  if (distanceSlabsCategory) {
-    const category = distanceSlabsCategory;
-    const categoryPath = `${fareSettingsPath}/${category.slug}`;
-    router.post(airportSetsPath, csrfGuard, async (req, res, next) => {
+    router.get(additionalSlabsPath, (req, res, next) => {
+      void renderFareSettingsPage(req, res, next, { category });
+    });
+
+    router.get(`${additionalSlabsPath}/new`, (req, res, next) => {
+      void renderFareSettingsPage(req, res, next, { category, subpageTitle: createTitle }, {
+        additionalSetForm: blankForm()
+      });
+    });
+
+    for (const action of ["edit", "remove"] as const) {
+      router.get(`${additionalSlabsPath}/:setId/${action}`, async (req, res, next) => {
+        try {
+          const snapshot = await fareStore.load();
+          const set = resolveAdditionalDistanceSlabSets(snapshot.configuration).find((item) => item.id === req.params.setId);
+          if (!set) {
+            void renderFareSettingsPage(req, res, next, { category }, { snapshot, formError: notFound, statusCode: 404 });
+            return;
+          }
+          void renderFareSettingsPage(req, res, next, { category, subpageTitle: action === "remove" ? removeTitle : editTitle }, action === "remove"
+            ? { snapshot, additionalRemoveSetId: set.id }
+            : { snapshot, additionalSetForm: formFromSet(set), additionalSetFormId: set.id });
+        } catch (error) {
+          next(error);
+        }
+      });
+    }
+
+    router.post(additionalSlabsPath, csrfGuard, async (req, res, next) => {
       try {
         const session = await getSessionAccount(req.headers.cookie);
         if (!session.authenticated || !session.user) return res.redirect("/access");
@@ -651,73 +753,99 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }
 
         const snapshot = await fareStore.load();
-        const sets = snapshot.configuration.airportDistanceSlabSets ?? [];
+        const sets = resolveAdditionalDistanceSlabSets(snapshot.configuration);
         const setId = typeof req.body?.setId === "string" ? req.body.setId.trim() : "";
-        const isDelete = req.body?.setAction === "delete";
+        const action = req.body?.setAction === "delete" || req.body?.setAction === "copy-base"
+          ? req.body.setAction as "delete" | "copy-base"
+          : "save";
+        const existing = setId ? sets.find((set) => set.id === setId) : undefined;
+        if (setId && !existing) {
+          return renderFareSettingsPage(req, res, next, { category }, { snapshot, formError: notFound, statusCode: 404 });
+        }
+        const editorPage = { category, subpageTitle: existing ? editTitle : createTitle };
+        const submittedForm = (): AdditionalDistanceSlabSetFormValues => ({
+          name: typeof req.body?.name === "string" ? req.body.name : "",
+          targetKey: typeof req.body?.targetKey === "string" ? req.body.targetKey : "",
+          distanceSlabs: validateDistanceSlabsForm({ distanceSlabs: req.body?.distanceSlabs }).distanceSlabs
+        });
+
+        if (action === "copy-base") {
+          // No-JavaScript fallback for "Copy base slabs data": re-render the unsaved editor only.
+          const baseSlabs = copyOfBaseSlabs(snapshot.configuration);
+          const form = submittedForm();
+          return renderFareSettingsPage(req, res, next, editorPage, {
+            snapshot,
+            additionalSetForm: { ...form, distanceSlabs: baseSlabs.length ? baseSlabs : form.distanceSlabs },
+            additionalSetFormId: existing?.id ?? "",
+            additionalCopied: baseSlabs.length > 0
+          });
+        }
+
         const rawVersion = req.body?.baseVersion;
         const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
           ? Number(rawVersion)
           : NaN;
-        if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
-          return renderFareSettingsPage(req, res, next, { category }, {
-            snapshot,
-            formError: "The settings version is missing or invalid. Reload this page before saving.",
-            statusCode: 400
-          });
-        }
-        if (expectedVersion !== snapshot.currentVersion) {
-          return renderFareSettingsPage(req, res, next, { category }, {
-            snapshot,
-            formError: new FareSettingsVersionConflictError().message,
-            statusCode: 409
-          });
-        }
-
-        const existing = setId ? sets.find((set) => set.id === setId) : undefined;
-        if (setId && !existing) {
-          return renderFareSettingsPage(req, res, next, { category }, {
-            snapshot,
-            formError: "The airport-specific slab set could not be found. Reload the page and try again.",
-            statusCode: 404
-          });
-        }
-
-        let nextSets: AirportDistanceSlabSet[];
-        if (isDelete) {
-          nextSets = sets.filter((set) => set.id !== setId);
-        } else {
-          const validation = validateAirportDistanceSlabSetForm(req.body, await airportFeesStore.list(), sets, setId);
-          if (Object.keys(validation.errors).length) {
-            return renderFareSettingsPage(req, res, next, { category }, {
+        const versionError = !Number.isSafeInteger(expectedVersion) || expectedVersion < 0
+          ? { formError: "The settings version is missing or invalid. Reload this page before saving.", statusCode: 400 }
+          : expectedVersion !== snapshot.currentVersion
+            ? { formError: new FareSettingsVersionConflictError().message, statusCode: 409 }
+            : null;
+        if (versionError) {
+          return action === "delete"
+            ? renderFareSettingsPage(req, res, next, { category }, { snapshot, ...versionError })
+            : renderFareSettingsPage(req, res, next, editorPage, {
               snapshot,
-              airportSetForm: validation.values,
-              airportSetFormId: setId,
+              additionalSetForm: submittedForm(),
+              additionalSetFormId: existing?.id ?? "",
+              ...versionError
+            });
+        }
+
+        let nextSets: AdditionalDistanceSlabSet[];
+        if (action === "delete") {
+          if (!existing) {
+            return renderFareSettingsPage(req, res, next, { category }, { snapshot, formError: notFound, statusCode: 404 });
+          }
+          nextSets = sets.filter((set) => set.id !== existing.id);
+        } else {
+          const validation = validateAdditionalDistanceSlabSetForm(req.body, await loadManagedSlabTargets(), sets, existing?.id ?? "");
+          if (Object.keys(validation.errors).length || !validation.target) {
+            return renderFareSettingsPage(req, res, next, editorPage, {
+              snapshot,
+              additionalSetForm: validation.values,
+              additionalSetFormId: existing?.id ?? "",
               errors: validation.errors,
               statusCode: 400
             });
           }
-          const updated: AirportDistanceSlabSet = { id: setId || randomUUID(), ...validation.values };
-          nextSets = setId ? sets.map((set) => set.id === setId ? updated : set) : [...sets, updated];
+          const updated: AdditionalDistanceSlabSet = {
+            id: existing?.id ?? randomUUID(),
+            name: validation.values.name,
+            target: validation.target,
+            distanceSlabs: validation.values.distanceSlabs
+          };
+          nextSets = existing ? sets.map((set) => set.id === existing.id ? updated : set) : [...sets, updated];
         }
 
         try {
-          await fareStore.save(expectedVersion, {
-            ...snapshot.configuration,
-            airportDistanceSlabSets: nextSets
-          }, {
+          await fareStore.save(expectedVersion, withAdditionalDistanceSlabSets(snapshot.configuration, nextSets), {
             accountId: session.user.id,
             email: session.user.email
           });
         } catch (error) {
           if (!(error instanceof FareSettingsVersionConflictError)) throw error;
           const latest = await fareStore.load();
-          return renderFareSettingsPage(req, res, next, { category }, {
-            snapshot: latest,
-            formError: error.message,
-            statusCode: 409
-          });
+          return action === "delete"
+            ? renderFareSettingsPage(req, res, next, { category }, { snapshot: latest, formError: error.message, statusCode: 409 })
+            : renderFareSettingsPage(req, res, next, editorPage, {
+              snapshot: latest,
+              additionalSetForm: submittedForm(),
+              additionalSetFormId: existing?.id ?? "",
+              formError: error.message,
+              statusCode: 409
+            });
         }
-        return res.redirect(303, `${categoryPath}?saved=1`);
+        return res.redirect(303, `${additionalSlabsPath}?saved=1`);
       } catch (error) {
         return next(error);
       }
@@ -725,42 +853,15 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
   }
 
   for (const category of fareSettingsCategories) {
+    if (category.slug === "additional-distance-slabs") continue;
     const categoryPath = `${fareSettingsPath}/${category.slug}`;
-    router.get(categoryPath, async (req, res, next) => {
-      if (category.slug !== "distance-slabs") {
-        void renderFareSettingsPage(req, res, next, { category });
+    router.get(categoryPath, (req, res, next) => {
+      // Links to the former airport-specific editor on Distance slabs now open Additional distance slabs.
+      if (category.slug === "distance-slabs" && typeof req.query.airportSet === "string") {
+        res.redirect(302, additionalSlabsPath);
         return;
       }
-      const target = typeof req.query.airportSet === "string" ? req.query.airportSet : "";
-      if (!target) {
-        void renderFareSettingsPage(req, res, next, { category });
-        return;
-      }
-      try {
-        const snapshot = await fareStore.load();
-        const sets = snapshot.configuration.airportDistanceSlabSets ?? [];
-        const copyStandard = target === "new" && req.query.copy === "standard";
-        const existing = target === "new" ? undefined : sets.find((set) => set.id === target);
-        const blank = { startMiles: "", endMiles: "", ratePerMile: "" };
-        const airportSetForm: AirportDistanceSlabSetFormValues = existing
-          ? { name: existing.name, airportIds: existing.airportIds, distanceSlabs: existing.distanceSlabs.map((slab) => ({ ...slab })) }
-          : {
-            name: "",
-            airportIds: [],
-            distanceSlabs: copyStandard && snapshot.configuration.distanceSlabs?.length
-              ? snapshot.configuration.distanceSlabs.map((slab) => ({ ...slab }))
-              : [blank]
-          };
-        void renderFareSettingsPage(req, res, next, { category }, {
-          snapshot,
-          airportSetForm,
-          airportSetFormId: existing?.id ?? "",
-          statusCode: target !== "new" && !existing ? 404 : 200,
-          formError: target !== "new" && !existing ? "The airport-specific slab set could not be found." : undefined
-        });
-      } catch (error) {
-        next(error);
-      }
+      void renderFareSettingsPage(req, res, next, { category });
     });
 
     if (!category.configurable) continue;

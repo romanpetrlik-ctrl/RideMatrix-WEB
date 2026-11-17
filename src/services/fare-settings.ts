@@ -27,6 +27,10 @@ export type DistanceSlab = {
   ratePerMile: string;
 };
 
+/**
+ * Legacy airport-specific slab set (one set shared by several airports). Read only: it is migrated to
+ * additional distance slab sets by resolveAdditionalDistanceSlabSets() and is never written again.
+ */
 export type AirportDistanceSlabSet = {
   id: string;
   name: string;
@@ -34,7 +38,28 @@ export type AirportDistanceSlabSet = {
   distanceSlabs: DistanceSlab[];
 };
 
-export type AirportDistanceSlabSetFormValues = Omit<AirportDistanceSlabSet, "id">;
+export type AdditionalSlabTargetType = "airport" | "poi";
+
+/** A managed RideMatrix airport (Airport Fees record) or POI, referenced only by its internal ID. */
+export type AdditionalSlabTarget = {
+  type: AdditionalSlabTargetType;
+  id: string;
+};
+
+export type ManagedSlabTarget = AdditionalSlabTarget & { displayName: string };
+
+export type AdditionalDistanceSlabSet = {
+  id: string;
+  name: string;
+  target: AdditionalSlabTarget;
+  distanceSlabs: DistanceSlab[];
+};
+
+export type AdditionalDistanceSlabSetFormValues = {
+  name: string;
+  targetKey: string;
+  distanceSlabs: DistanceSlab[];
+};
 
 export type DeadMileageSettings = {
   freeRadiusMiles: string;
@@ -82,7 +107,9 @@ export type FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive";
   precedence: "bank-holiday-over-daily";
   distanceSlabs: DistanceSlab[];
+  /** Legacy key; superseded by additionalDistanceSlabSets. */
   airportDistanceSlabSets?: AirportDistanceSlabSet[];
+  additionalDistanceSlabSets?: AdditionalDistanceSlabSet[];
   deadMileage: DeadMileageSettings;
   minimumFareRules: MinimumFareRule[];
   fixedFares: FixedFareRule[];
@@ -127,7 +154,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive",
   precedence: "bank-holiday-over-daily",
   distanceSlabs: [],
-  airportDistanceSlabSets: [],
+  additionalDistanceSlabSets: [],
   deadMileage: { freeRadiusMiles: "" },
   minimumFareRules: [],
   fixedFares: [],
@@ -473,51 +500,91 @@ export function validateDistanceSlabsForm(submitted: unknown): DistanceSlabFormV
   return { distanceSlabs, errors };
 }
 
-function submittedIds(value: unknown): string[] {
-  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
-  return [...new Set(values.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+export function additionalSlabTargetKey(target: AdditionalSlabTarget): string {
+  return `${target.type}:${target.id}`;
 }
 
-export type AirportDistanceSlabSetValidation = {
-  values: AirportDistanceSlabSetFormValues;
+export function parseAdditionalSlabTargetKey(value: string): AdditionalSlabTarget | null {
+  const match = /^(airport|poi):(.+)$/.exec(value.trim());
+  return match ? { type: match[1] as AdditionalSlabTargetType, id: match[2] } : null;
+}
+
+/**
+ * Returns the saved additional distance slab sets. When only legacy airport-specific sets exist, each
+ * legacy set is split into one set per airport (same name and an independent copy of its slabs) so every
+ * set links exactly one airport. The first airport keeps the legacy set ID; later airports get a stable,
+ * derived ID so edit links remain valid before the migrated data is first saved.
+ */
+export function resolveAdditionalDistanceSlabSets(configuration: FareSettingsConfiguration): AdditionalDistanceSlabSet[] {
+  if (Array.isArray(configuration.additionalDistanceSlabSets)) {
+    return configuration.additionalDistanceSlabSets;
+  }
+  return (configuration.airportDistanceSlabSets ?? []).flatMap((set) => {
+    const airportIds = set.airportIds.length ? set.airportIds : [""];
+    return airportIds.map((airportId, index) => ({
+      id: index === 0 ? set.id : `${set.id}--${airportId}`,
+      name: set.name,
+      target: { type: "airport" as const, id: airportId },
+      distanceSlabs: set.distanceSlabs.map((slab) => ({ ...slab }))
+    }));
+  });
+}
+
+/** Returns a configuration that stores additional sets under the current key and drops the legacy key. */
+export function withAdditionalDistanceSlabSets(
+  configuration: FareSettingsConfiguration,
+  sets: AdditionalDistanceSlabSet[]
+): FareSettingsConfiguration {
+  const { airportDistanceSlabSets: _legacy, ...rest } = configuration;
+  return { ...rest, additionalDistanceSlabSets: sets };
+}
+
+export type AdditionalDistanceSlabSetValidation = {
+  values: AdditionalDistanceSlabSetFormValues;
+  target: AdditionalSlabTarget | null;
   errors: Record<string, string>;
 };
 
 /**
- * Airports are referenced only by internal RideMatrix ID. Each airport may belong to at most one saved set.
- * Slab rules are identical to the standard Distance Slabs validation.
+ * Each set links exactly one managed airport or POI by internal RideMatrix ID, and each target may be
+ * linked to at most one set. Slab rules are identical to the base Distance Slabs validation.
  */
-export function validateAirportDistanceSlabSetForm(
+export function validateAdditionalDistanceSlabSetForm(
   submitted: unknown,
-  airports: Array<{ id: string; displayName: string }>,
-  existingSets: AirportDistanceSlabSet[],
+  targets: ManagedSlabTarget[],
+  existingSets: AdditionalDistanceSlabSet[],
   editingId = ""
-): AirportDistanceSlabSetValidation {
+): AdditionalDistanceSlabSetValidation {
   const body = submitted && typeof submitted === "object" ? submitted as Record<string, unknown> : {};
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  const airportIds = submittedIds(body.airportIds);
+  const targetKey = typeof body.targetKey === "string" ? body.targetKey.trim() : "";
   const slabValidation = validateDistanceSlabsForm({ distanceSlabs: body.distanceSlabs });
   const errors: Record<string, string> = { ...slabValidation.errors };
 
-  if (!name || name.length > 160) errors.name = "Enter a descriptive rule name no longer than 160 characters.";
-  if (airportIds.length === 0) {
-    errors.airportIds = "Select at least one managed airport.";
+  if (!name || name.length > 160) errors.name = "Enter a set name no longer than 160 characters.";
+
+  let target: AdditionalSlabTarget | null = null;
+  if (!targetKey) {
+    errors.targetKey = "Select the POI or place to link this set to.";
   } else {
-    const known = new Map(airports.map((airport) => [airport.id, airport.displayName]));
-    const unknown = airportIds.filter((id) => !known.has(id));
-    if (unknown.length) {
-      errors.airportIds = "Select only managed airports from the list.";
+    const parsed = parseAdditionalSlabTargetKey(targetKey);
+    const managed = parsed && targets.find((item) => item.type === parsed.type && item.id === parsed.id);
+    if (!parsed || !managed) {
+      errors.targetKey = "The selected airport or POI is missing or no longer available. Select an active managed airport or POI; no other location is substituted.";
     } else {
-      const conflicts = airportIds.filter((id) =>
-        existingSets.some((set) => set.id !== editingId && set.airportIds.includes(id)));
-      if (conflicts.length) {
-        errors.airportIds = `Already assigned to another airport-specific slab set: ${conflicts.map((id) => known.get(id)).join(", ")}. An airport can belong to only one set.`;
+      const conflict = existingSets.find((set) =>
+        set.id !== editingId && set.target.type === managed.type && set.target.id === managed.id);
+      if (conflict) {
+        errors.targetKey = `${managed.displayName} is already linked to the additional distance slab set "${conflict.name}". Each airport or POI can be linked to only one set.`;
+      } else {
+        target = { type: managed.type, id: managed.id };
       }
     }
   }
 
   return {
-    values: { name, airportIds, distanceSlabs: slabValidation.distanceSlabs },
+    values: { name, targetKey, distanceSlabs: slabValidation.distanceSlabs },
+    target: Object.keys(errors).length ? null : target,
     errors
   };
 }
@@ -719,7 +786,8 @@ export function validateFareSettingsForm(
       interval: "start-inclusive-end-exclusive",
       precedence: "bank-holiday-over-daily",
       distanceSlabs: current.distanceSlabs ?? [],
-      airportDistanceSlabSets: current.airportDistanceSlabSets ?? [],
+      ...(current.airportDistanceSlabSets ? { airportDistanceSlabSets: current.airportDistanceSlabSets } : {}),
+      ...(current.additionalDistanceSlabSets ? { additionalDistanceSlabSets: current.additionalDistanceSlabSets } : {}),
       deadMileage: current.deadMileage ?? { freeRadiusMiles: "" },
       minimumFareRules: current.minimumFareRules ?? [],
       fixedFares: current.fixedFares ?? [],

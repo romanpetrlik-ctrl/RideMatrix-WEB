@@ -10,11 +10,16 @@ import {
   matchesMinimumFareRule,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
-  validateAirportDistanceSlabSetForm,
+  resolveAdditionalDistanceSlabSets,
+  validateAdditionalDistanceSlabSetForm,
   validateDistanceSlabsForm,
+  withAdditionalDistanceSlabSets,
   validateFareSettingsForm,
+  type AdditionalDistanceSlabSet,
   type BankHolidaySurchargePeriod,
-  type DistanceSlab
+  type DistanceSlab,
+  type FareSettingsConfiguration,
+  type ManagedSlabTarget
 } from "./fare-settings";
 
 const dailyAndBankDisabled = {
@@ -579,34 +584,85 @@ test("fixed fares reject UK postcode letters that are invalid at their positions
   assert.ok(outward.errors.originPostcode, "Q1");
 });
 
-test("airport-specific slab sets apply standard slab rules, require known unique airport IDs, and allow shared sets", () => {
-  const airports = [managedAirport(), managedAirport({ id: "rm-sou", displayName: "Southampton Airport" })];
+test("additional slab sets link exactly one managed airport or POI by internal ID and apply base slab rules", () => {
+  const targets: ManagedSlabTarget[] = [
+    { type: "airport", id: "rm-boh-internal-id", displayName: "Bournemouth Airport (BOH)" },
+    { type: "poi", id: "poi-uuid-1", displayName: "Bournemouth Pier" }
+  ];
   const body = (overrides: Record<string, unknown> = {}) => ({
-    name: "South coast",
-    airportIds: ["rm-boh-internal-id", "rm-sou"],
+    name: "Bournemouth Airport rates",
+    targetKey: "airport:rm-boh-internal-id",
     distanceSlabs: [
       { startMiles: "0", endMiles: "5", ratePerMile: "3" },
       { startMiles: "5", endMiles: "", ratePerMile: "2" }
     ],
     ...overrides
   });
-  const ok = validateAirportDistanceSlabSetForm(body(), airports, []);
+  const ok = validateAdditionalDistanceSlabSetForm(body(), targets, []);
   assert.deepEqual(ok.errors, {});
-  assert.deepEqual(ok.values.airportIds, ["rm-boh-internal-id", "rm-sou"]);
+  assert.deepEqual(ok.target, { type: "airport", id: "rm-boh-internal-id" });
+  assert.deepEqual(validateAdditionalDistanceSlabSetForm(body({ targetKey: "poi:poi-uuid-1" }), targets, []).target, { type: "poi", id: "poi-uuid-1" });
 
-  const badSlabs = validateAirportDistanceSlabSetForm(body({
-    distanceSlabs: [{ startMiles: "1", endMiles: "5", ratePerMile: "3" }, { startMiles: "6", endMiles: "7", ratePerMile: "-1" }]
-  }), airports, []);
-  assert.ok(badSlabs.errors["distanceSlabs.0.startMiles"]);
-  assert.ok(badSlabs.errors["distanceSlabs.1.startMiles"]);
-  assert.ok(badSlabs.errors["distanceSlabs.1.endMiles"]);
-  assert.ok(badSlabs.errors["distanceSlabs.1.ratePerMile"]);
+  for (const targetKey of ["", "Bournemouth Airport (BOH)", "BH23 6SE", "50.78,-1.84", "airport:missing-id", "poi:rm-boh-internal-id", ["airport:rm-boh-internal-id", "poi:poi-uuid-1"]]) {
+    const result = validateAdditionalDistanceSlabSetForm(body({ targetKey }), targets, []);
+    assert.ok(result.errors.targetKey, `rejects ${JSON.stringify(targetKey)}`);
+    assert.equal(result.target, null);
+  }
+  assert.match(validateAdditionalDistanceSlabSetForm(body({ targetKey: "airport:missing-id" }), targets, []).errors.targetKey, /missing or no longer available.*no other location is substituted/);
+  assert.ok(validateAdditionalDistanceSlabSetForm(body({ name: " " }), targets, []).errors.name);
 
-  assert.ok(validateAirportDistanceSlabSetForm(body({ airportIds: [] }), airports, []).errors.airportIds);
-  assert.ok(validateAirportDistanceSlabSetForm(body({ airportIds: ["Southampton Airport"] }), airports, []).errors.airportIds);
-  assert.ok(validateAirportDistanceSlabSetForm(body({ name: " " }), airports, []).errors.name);
+  const invalidSlabs: Array<[string, DistanceSlab[], string]> = [
+    ["gapped", [{ startMiles: "0", endMiles: "5", ratePerMile: "3" }, { startMiles: "6", endMiles: "", ratePerMile: "2" }], "distanceSlabs.1.startMiles"],
+    ["overlapping", [{ startMiles: "0", endMiles: "5", ratePerMile: "3" }, { startMiles: "4", endMiles: "", ratePerMile: "2" }], "distanceSlabs.1.startMiles"],
+    ["not from zero", [{ startMiles: "1", endMiles: "", ratePerMile: "3" }], "distanceSlabs.0.startMiles"],
+    ["missing open-ended final", [{ startMiles: "0", endMiles: "5", ratePerMile: "3" }, { startMiles: "5", endMiles: "9", ratePerMile: "2" }], "distanceSlabs.1.endMiles"],
+    ["negative rate", [{ startMiles: "0", endMiles: "", ratePerMile: "-1" }], "distanceSlabs.0.ratePerMile"]
+  ];
+  for (const [label, distanceSlabs, key] of invalidSlabs) {
+    const result = validateAdditionalDistanceSlabSetForm(body({ distanceSlabs }), targets, []);
+    assert.ok(result.errors[key], label);
+    assert.equal(result.target, null, label);
+  }
+});
 
-  const existing = [{ id: "set-1", name: "Other", airportIds: ["rm-sou"], distanceSlabs: ok.values.distanceSlabs }];
-  assert.match(validateAirportDistanceSlabSetForm(body(), airports, existing).errors.airportIds, /Southampton Airport/);
-  assert.deepEqual(validateAirportDistanceSlabSetForm(body(), airports, existing, "set-1").errors, {});
+test("additional slab sets reject a target already linked to another set", () => {
+  const targets: ManagedSlabTarget[] = [{ type: "poi", id: "poi-uuid-1", displayName: "Bournemouth Pier" }];
+  const existing: AdditionalDistanceSlabSet[] = [{
+    id: "set-1",
+    name: "Pier rates",
+    target: { type: "poi", id: "poi-uuid-1" },
+    distanceSlabs: [{ startMiles: "0", endMiles: "", ratePerMile: "2" }]
+  }];
+  const body = { name: "Another", targetKey: "poi:poi-uuid-1", distanceSlabs: existing[0].distanceSlabs };
+  assert.match(validateAdditionalDistanceSlabSetForm(body, targets, existing).errors.targetKey, /Bournemouth Pier is already linked to the additional distance slab set "Pier rates"/);
+  assert.deepEqual(validateAdditionalDistanceSlabSetForm(body, targets, existing, "set-1").errors, {});
+});
+
+test("legacy airport-specific slab sets are preserved as one additional set per linked airport", () => {
+  const slabs: DistanceSlab[] = [{ startMiles: "0", endMiles: "5", ratePerMile: "3" }, { startMiles: "5", endMiles: "", ratePerMile: "2" }];
+  const legacy: FareSettingsConfiguration = {
+    ...EMPTY_FARE_SETTINGS,
+    distanceSlabs: [{ startMiles: "0", endMiles: "", ratePerMile: "1" }],
+    additionalDistanceSlabSets: undefined,
+    airportDistanceSlabSets: [
+      { id: "legacy-1", name: "South coast", airportIds: ["rm-boh", "rm-sou"], distanceSlabs: slabs },
+      { id: "legacy-2", name: "Unlinked", airportIds: [], distanceSlabs: slabs }
+    ]
+  };
+  const resolved = resolveAdditionalDistanceSlabSets(legacy);
+  assert.deepEqual(resolved.map((set) => [set.id, set.name, set.target]), [
+    ["legacy-1", "South coast", { type: "airport", id: "rm-boh" }],
+    ["legacy-1--rm-sou", "South coast", { type: "airport", id: "rm-sou" }],
+    ["legacy-2", "Unlinked", { type: "airport", id: "" }]
+  ]);
+  for (const set of resolved) assert.deepEqual(set.distanceSlabs, slabs);
+  resolved[0].distanceSlabs[0].ratePerMile = "99";
+  assert.equal(slabs[0].ratePerMile, "3", "migrated sets hold independent slab copies");
+
+  const saved = withAdditionalDistanceSlabSets(legacy, resolved);
+  assert.equal("airportDistanceSlabSets" in saved, false);
+  assert.equal(saved.additionalDistanceSlabSets?.length, 3);
+  assert.deepEqual(saved.distanceSlabs, legacy.distanceSlabs, "base slabs are untouched");
+  assert.equal(legacy.airportDistanceSlabSets?.length, 2, "the source configuration is not mutated");
+  assert.deepEqual(resolveAdditionalDistanceSlabSets({ ...legacy, additionalDistanceSlabSets: [] }), [], "saved current sets take precedence over legacy data");
 });
