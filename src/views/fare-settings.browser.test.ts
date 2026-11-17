@@ -339,3 +339,134 @@ test("fixed-fare endpoint selector switches required identity fields and preserv
     await browser.close();
   }
 });
+
+async function renderAdditionalSlabEditor(baseSlabs: Array<{ startMiles: string; endMiles: string; ratePerMile: string }>): Promise<string> {
+  const escapedJson = JSON.stringify(baseSlabs).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return ejs.renderFile(path.join(process.cwd(), "src/views/pages/fare-settings.ejs"), {
+    title: "Fare Settings: Create additional distance slabs set",
+    appTitle: "RideMatrix Test",
+    email: "operator@example.test",
+    grantedByLabel: "Superuser",
+    categories: [],
+    category: {
+      slug: "additional-distance-slabs",
+      title: "Additional distance slabs",
+      description: "Configure independent slab sets.",
+      configurable: true
+    },
+    breadcrumbs: [
+      { label: "System Settings", href: "/settings" },
+      { label: "Fare Settings", href: "/settings/fare-settings" },
+      { label: "Additional distance slabs", href: "/settings/fare-settings/additional-distance-slabs" },
+      { label: "Create additional distance slabs set" }
+    ],
+    configuration: {
+      distanceSlabs: baseSlabs,
+      dailySurcharge: { enabled: false, percentage: "", startTime: "", endTime: "" },
+      bankHolidaySurcharge: { enabled: false, periods: [] }
+    },
+    additionalSets: [],
+    additionalEditor: {
+      id: "",
+      name: "",
+      targetKey: "",
+      unavailableTargetLabel: "",
+      distanceSlabs: [{ startMiles: "", endMiles: "", ratePerMile: "" }]
+    },
+    additionalRemoveSet: null,
+    additionalCopied: false,
+    managedTargets: {
+      airports: [{ key: "airport:rm-boh", displayName: "Bournemouth Airport (BOH)" }],
+      pois: [{ key: "poi:poi-pier", displayName: "Bournemouth Pier" }]
+    },
+    baseSlabsJson: escapedJson,
+    baseSlabCount: baseSlabs.length,
+    currentVersion: 3,
+    history: [],
+    errors: {},
+    formError: "",
+    saved: false,
+    csrfField: ""
+  });
+}
+
+test("additional slab editor copies base slabs into the shared editor with the same live preview", async (t) => {
+  const baseSlabs = [
+    { startMiles: "0", endMiles: "10", ratePerMile: "3.00" },
+    { startMiles: "10", endMiles: "", ratePerMile: "2.70" }
+  ];
+  const executablePath = process.env.CHROMIUM_PATH
+    ?? ["/usr/bin/chromium", "/usr/bin/google-chrome"].find((candidate) => fs.existsSync(candidate));
+  if (!executablePath) {
+    t.skip("Chromium executable not found");
+    return;
+  }
+
+  const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    const dialogs: string[] = [];
+    page.on("dialog", (dialog) => {
+      dialogs.push(dialog.message());
+      void dialog.accept();
+    });
+    const html = (await renderAdditionalSlabEditor(baseSlabs))
+      .replace(/<link\b[^>]*>/g, "")
+      .replace(/<script\b[^>]*><\/script>/g, "");
+    await page.setContent(html);
+    await page.addScriptTag({ path: path.join(process.cwd(), "public/js/distance-slab-calculator.js") });
+    await page.addScriptTag({ path: path.join(process.cwd(), "public/js/fare-settings.js") });
+
+    assert.equal(await page.getByLabel("Select POI or Place to link it").isVisible(), true);
+    assert.equal(await page.getByLabel("Test distance (miles)").isVisible(), true);
+    assert.equal(await page.locator("[data-distance-slab]").count(), 1);
+
+    await page.locator("[data-test-distance]").fill("12");
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "—");
+
+    await page.getByRole("button", { name: "Copy base slabs data" }).click();
+    assert.deepEqual(dialogs, [], "an empty editor is replaced without confirmation");
+    assert.equal(await page.locator("[data-distance-slab]").count(), 2);
+    const values = await page.locator("[data-distance-slab-form]").evaluate((form) =>
+      Array.from(new FormData(form as HTMLFormElement).entries()).filter(([name]) => String(name).startsWith("distanceSlabs["))
+    );
+    assert.deepEqual(values, [
+      ["distanceSlabs[0][startMiles]", "0"],
+      ["distanceSlabs[0][endMiles]", "10"],
+      ["distanceSlabs[0][ratePerMile]", "3.00"],
+      ["distanceSlabs[1][startMiles]", "10"],
+      ["distanceSlabs[1][endMiles]", ""],
+      ["distanceSlabs[1][ratePerMile]", "2.70"]
+    ]);
+    assert.match(await page.locator("[data-slab-title]").nth(1).textContent() ?? "", /open-ended final slab/);
+    assert.equal(await page.locator("[data-open-ended-note]").nth(1).isVisible(), true);
+    assert.match(await page.locator("[data-copy-base-status]").textContent() ?? "", /Copied 2 base slabs.*base slabs are unchanged/);
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "£35.40");
+
+    await page.locator('[name="distanceSlabs[0][ratePerMile]"]').fill("3.50");
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "£40.40");
+    assert.equal(
+      await page.locator("[data-copy-base-slabs]").getAttribute("data-base-slabs"),
+      JSON.stringify(baseSlabs),
+      "editing the copy leaves the base snapshot unchanged"
+    );
+
+    await page.locator('[name="distanceSlabs[1][startMiles]"]').fill("11");
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "—");
+
+    await page.getByRole("button", { name: "Add distance slab" }).click();
+    assert.equal(await page.locator("[data-distance-slab]").count(), 3);
+    assert.match(await page.locator("[data-slab-title]").nth(2).textContent() ?? "", /open-ended final slab/);
+
+    await page.getByRole("button", { name: "Copy base slabs data" }).click();
+    assert.equal(dialogs.length, 1, "replacing edited rows asks for confirmation");
+    assert.equal(await page.locator("[data-distance-slab]").count(), 2);
+    assert.equal(await page.locator('[name="distanceSlabs[0][ratePerMile]"]').inputValue(), "3.00");
+    assert.equal(await page.locator("[data-distance-preview-total]").textContent(), "£35.40");
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser.close();
+  }
+});

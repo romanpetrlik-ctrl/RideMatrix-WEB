@@ -4729,40 +4729,39 @@ button:visited,
   height: 100% !important;
 }
 
-.fare-settings__airport-slab-sets {
-  display: grid;
-  gap: 1rem;
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 2px solid var(--rm-border);
-}
-
-.fare-settings__airport-slab-sets h2,
-.fare-settings__airport-slab-sets h3,
-.fare-settings__airport-slab-sets h4 {
-  margin: 0;
-}
-
-.fare-settings__airport-slab-sets ul {
+.fare-settings__help-list {
   margin: 0;
   padding-left: 1.25rem;
 }
 
-.fare-settings__airport-slab-sets ul.fare-settings__rule-list {
-  margin-top: 0;
-  padding-left: 0;
+.fare-settings__additional-list {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
-.fare-settings__airport-slab-sets fieldset {
-  min-width: 0;
-  border: 0;
-  padding: 0;
+.fare-settings__additional-list h3,
+.fare-settings__additional-remove h2 {
+  margin: 0;
 }
 
-.fare-settings__checkbox {
+.fare-settings__copy-base {
   display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-  padding: 0.25rem 0;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px dashed var(--rm-border);
+  border-radius: 0.5rem;
+}
+
+.fare-settings__copy-base p {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+.fare-settings__slab-table--summary {
+  min-width: 0;
 }
