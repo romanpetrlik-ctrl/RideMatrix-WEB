@@ -27,6 +27,15 @@ export type DistanceSlab = {
   ratePerMile: string;
 };
 
+export type AirportDistanceSlabSet = {
+  id: string;
+  name: string;
+  airportIds: string[];
+  distanceSlabs: DistanceSlab[];
+};
+
+export type AirportDistanceSlabSetFormValues = Omit<AirportDistanceSlabSet, "id">;
+
 export type DeadMileageSettings = {
   freeRadiusMiles: string;
 };
@@ -73,6 +82,7 @@ export type FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive";
   precedence: "bank-holiday-over-daily";
   distanceSlabs: DistanceSlab[];
+  airportDistanceSlabSets?: AirportDistanceSlabSet[];
   deadMileage: DeadMileageSettings;
   minimumFareRules: MinimumFareRule[];
   fixedFares: FixedFareRule[];
@@ -117,6 +127,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   interval: "start-inclusive-end-exclusive",
   precedence: "bank-holiday-over-daily",
   distanceSlabs: [],
+  airportDistanceSlabSets: [],
   deadMileage: { freeRadiusMiles: "" },
   minimumFareRules: [],
   fixedFares: [],
@@ -462,6 +473,55 @@ export function validateDistanceSlabsForm(submitted: unknown): DistanceSlabFormV
   return { distanceSlabs, errors };
 }
 
+function submittedIds(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return [...new Set(values.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+}
+
+export type AirportDistanceSlabSetValidation = {
+  values: AirportDistanceSlabSetFormValues;
+  errors: Record<string, string>;
+};
+
+/**
+ * Airports are referenced only by internal RideMatrix ID. Each airport may belong to at most one saved set.
+ * Slab rules are identical to the standard Distance Slabs validation.
+ */
+export function validateAirportDistanceSlabSetForm(
+  submitted: unknown,
+  airports: Array<{ id: string; displayName: string }>,
+  existingSets: AirportDistanceSlabSet[],
+  editingId = ""
+): AirportDistanceSlabSetValidation {
+  const body = submitted && typeof submitted === "object" ? submitted as Record<string, unknown> : {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const airportIds = submittedIds(body.airportIds);
+  const slabValidation = validateDistanceSlabsForm({ distanceSlabs: body.distanceSlabs });
+  const errors: Record<string, string> = { ...slabValidation.errors };
+
+  if (!name || name.length > 160) errors.name = "Enter a descriptive rule name no longer than 160 characters.";
+  if (airportIds.length === 0) {
+    errors.airportIds = "Select at least one managed airport.";
+  } else {
+    const known = new Map(airports.map((airport) => [airport.id, airport.displayName]));
+    const unknown = airportIds.filter((id) => !known.has(id));
+    if (unknown.length) {
+      errors.airportIds = "Select only managed airports from the list.";
+    } else {
+      const conflicts = airportIds.filter((id) =>
+        existingSets.some((set) => set.id !== editingId && set.airportIds.includes(id)));
+      if (conflicts.length) {
+        errors.airportIds = `Already assigned to another airport-specific slab set: ${conflicts.map((id) => known.get(id)).join(", ")}. An airport can belong to only one set.`;
+      }
+    }
+  }
+
+  return {
+    values: { name, airportIds, distanceSlabs: slabValidation.distanceSlabs },
+    errors
+  };
+}
+
 export function calculateDistanceSlabFare(distanceSlabs: DistanceSlab[], distanceMiles: string): string {
   const distance = parseNonNegativeDecimal(distanceMiles);
   const validation = validateDistanceSlabsForm({ distanceSlabs });
@@ -659,6 +719,7 @@ export function validateFareSettingsForm(
       interval: "start-inclusive-end-exclusive",
       precedence: "bank-holiday-over-daily",
       distanceSlabs: current.distanceSlabs ?? [],
+      airportDistanceSlabSets: current.airportDistanceSlabSets ?? [],
       deadMileage: current.deadMileage ?? { freeRadiusMiles: "" },
       minimumFareRules: current.minimumFareRules ?? [],
       fixedFares: current.fixedFares ?? [],
