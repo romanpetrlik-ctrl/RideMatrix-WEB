@@ -153,7 +153,7 @@ export type FareSettingsCategory = {
 };
 
 export const fareSettingsCategories: readonly FareSettingsCategory[] = [
-  { slug: "minimum-fare-rules", title: "Minimum fare rules", description: "Configure minimum base fares for journeys near managed locations.", configurable: true },
+  { slug: "minimum-fare-rules", title: "Minimum fare rules", description: "Configure minimum base fares for journeys with a selected managed location as origin or destination.", configurable: true },
   { slug: "fixed-fares", title: "Fixed fares", description: "Configure directional fixed base fares between identified locations.", configurable: true },
   { slug: "distance-slabs", title: "Distance slabs", description: "Configure progressive base rates by journey distance.", configurable: true },
   { slug: "dead-mileage-settings", title: "Dead mileage settings", description: "Configure the free-radius circle around the verified operational base.", configurable: true },
@@ -476,7 +476,6 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           id: escapeHtml(rule.id),
           name: escapeHtml(rule.name),
           poiId: escapeHtml(rule.poiId),
-          radiusMiles: escapeHtml(rule.radiusMiles),
           minimumBaseFare: escapeHtml(rule.minimumBaseFare)
         })),
         fixedFares: (configuration.fixedFares ?? []).map((rule) => ({

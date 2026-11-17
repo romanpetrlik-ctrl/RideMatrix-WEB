@@ -1583,6 +1583,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const initial = await getPage();
     const initialBody = await initial.text();
     assert.match(initialBody, /verified coordinates from the existing operational-base record/);
+    assert.match(initialBody, /\(50\.71, -2\.44\)/);
     assert.match(initialBody, /name="freeRadiusMiles"/);
     assert.match(initialBody, /no road-route geometry or confirmed-price snapshot flow/);
     const invalid = await postForm("0", "0");
@@ -1597,7 +1598,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(fareSettings.snapshot().history[0].createdAt, "2026-11-10T12:00:00.000Z");
     assert.equal(fareSettings.snapshot().history.length, 1);
     const savedPage = await getPage();
-    assert.match(await savedPage.text(), /bookings@romanairporttransfers\.co\.uk, 2026-11-10T12:00:00\.000Z/);
+    const savedBody = await savedPage.text();
+    assert.match(savedBody, /bookings@romanairporttransfers\.co\.uk, 2026-11-10T12:00:00\.000Z/);
+    assert.match(savedBody, /name="freeRadiusMiles"[^>]*value="5\.25"/);
 
     operationalBase = null;
     const unavailable = await getPage();
@@ -1636,6 +1639,12 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     airportFees.records.push(airport);
     const path = "/settings/fare-settings/minimum-fare-rules";
     const cookie = "sid=minimum-rules";
+    const initialPage = await fetch(`${baseUrl}${path}`, { headers: withSession(cookie, ["superuser"]) });
+    const initialBody = await initialPage.text();
+    assert.match(initialBody, /name="poiId"/);
+    assert.match(initialBody, /name="minimumBaseFare"/);
+    assert.doesNotMatch(initialBody, /Radius \(miles\)|name="radiusMiles"|minimum-rule-radius/);
+    assert.match(initialBody, /other endpoint's distance does not affect the match/);
     const postForm = async (version: string, values: Record<string, string>) => {
       const page = await fetch(`${baseUrl}${path}`, { headers: withSession(cookie, ["superuser"]) });
       const pageBody = await page.text();
@@ -1654,27 +1663,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     };
 
     airportFees.records[0].pickupLatitude = Number.NaN;
-    const invalidCoordinates = await postForm("0", {
-      ruleAction: "save",
-      ruleId: "",
-      name: "BOH short journey",
-      poiId: airport.id,
-      radiusMiles: "5",
-      minimumBaseFare: "25"
-    });
-    assert.equal(invalidCoordinates.status, 400);
-    const invalidCoordinatesBody = await invalidCoordinates.text();
-    assert.match(invalidCoordinatesBody, /no valid configured pick-up and drop-off operational coordinates/);
-    assert.match(invalidCoordinatesBody, /value="25"/);
-    assert.equal(fareSettings.snapshot().currentVersion, 0);
-
-    airportFees.records[0].pickupLatitude = 20;
     const invalidFare = await postForm("0", {
       ruleAction: "save",
       ruleId: "",
       name: "BOH short journey",
       poiId: airport.id,
-      radiusMiles: "5",
       minimumBaseFare: "-25"
     });
     assert.equal(invalidFare.status, 400);
@@ -1686,7 +1679,6 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       ruleId: "",
       name: "BOH short journey",
       poiId: airport.id,
-      radiusMiles: "5",
       minimumBaseFare: "25"
     });
     assert.equal(created.status, 303);
@@ -1695,10 +1687,17 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       id: createdRule.id,
       name: "BOH short journey",
       poiId: "rm-boh-internal-id",
-      radiusMiles: "5",
       minimumBaseFare: "25.00"
     });
     assert.equal(fareSettings.snapshot().history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
+    const savedPage = await (await fetch(`${baseUrl}${path}`, {
+      headers: withSession(cookie, ["superuser"])
+    })).text();
+    assert.match(savedPage, /name="poiId"[\s\S]*?selected>.*internal ID rm-boh-internal-id/);
+    assert.match(savedPage, /name="minimumBaseFare"[^>]*value="25\.00"/);
+    assert.doesNotMatch(savedPage, /name="radiusMiles"|minimum-rule-[^"]*-radius/);
+    const farAwayOrigin = { poiId: "another-location", latitude: -80, longitude: 170 };
+    const farAwayDestination = { poiId: "another-location", latitude: 89, longitude: -179 };
 
     const archivedAirport = structuredClone(airport);
     assert.equal(await airportFees.store.archive(airport.id, {
@@ -1712,23 +1711,15 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.doesNotMatch(unavailableMinimumPage.slice(0, unavailableMinimumPage.indexOf("Saved minimum fare rules")), /Unavailable managed location/);
     airportFees.records.push(archivedAirport);
 
-    const exactDelta = 5 * 1609.344 / 6_371_008.8 * 180 / Math.PI;
-    assert.equal(matchesMinimumFareRule(createdRule, {
-      latitude: 0, longitude: exactDelta
-    }, { poiId: airport.id }, airport), true);
-    assert.equal(matchesMinimumFareRule(createdRule, { poiId: airport.id }, {
-      latitude: 20 + exactDelta, longitude: 20
-    }, airport), true);
-    assert.equal(matchesMinimumFareRule(createdRule, {
-      latitude: 0, longitude: exactDelta + 0.00001
-    }, { poiId: airport.id }, airport), false);
+    assert.equal(matchesMinimumFareRule(createdRule, farAwayOrigin, { poiId: airport.id }, airport), true);
+    assert.equal(matchesMinimumFareRule(createdRule, { poiId: airport.id }, farAwayDestination, airport), true);
+    assert.equal(matchesMinimumFareRule(createdRule, farAwayOrigin, { poiId: "different-id" }, airport), false);
 
     const edited = await postForm("1", {
       ruleAction: "save",
       ruleId: createdRule.id,
       name: "BOH five mile minimum",
       poiId: airport.id,
-      radiusMiles: "5",
       minimumBaseFare: "30.50"
     });
     assert.equal(edited.status, 303);

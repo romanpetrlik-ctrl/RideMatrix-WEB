@@ -1577,6 +1577,31 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE operator_addresses
         ADD COLUMN IF NOT EXISTS coordinates_verified BOOLEAN NOT NULL DEFAULT FALSE;
     `
+  },
+  {
+    id: "0032_minimum_fare_rules_without_radius",
+    sql: `
+      UPDATE fare_settings_current
+         SET configuration = jsonb_set(
+           configuration,
+           '{minimumFareRules}',
+           (
+             SELECT COALESCE(
+               jsonb_agg(rule_data - 'radiusMiles' ORDER BY ordinality),
+               '[]'::jsonb
+             )
+               FROM jsonb_array_elements(configuration -> 'minimumFareRules')
+                    WITH ORDINALITY AS rules(rule_data, ordinality)
+           ),
+           true
+         )
+       WHERE jsonb_typeof(configuration -> 'minimumFareRules') = 'array'
+         AND EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(configuration -> 'minimumFareRules') AS rules(rule_data)
+            WHERE rule_data ? 'radiusMiles'
+         );
+    `
   }
 ];
 
