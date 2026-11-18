@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
 import type { AirportFeeRecord } from "./airport-fees";
+import {
+  RECENT_CONFIGURATION_HISTORY_LIMIT,
+  resolveHistoryPage,
+  type ConfigurationHistoryEntry,
+  type ConfigurationHistoryPage
+} from "./configuration-history";
 
 export type FareSurchargeSettings = {
   enabled: boolean;
@@ -117,16 +123,14 @@ export type FareSettingsConfiguration = {
   bankHolidaySurcharge: BankHolidayFareSettings;
 };
 
-export type FareSettingsHistoryEntry = {
-  version: number;
-  actorEmail: string | null;
-  createdAt: string;
-};
+export type FareSettingsHistoryEntry = ConfigurationHistoryEntry;
 
 export type FareSettingsSnapshot = {
   configuration: FareSettingsConfiguration;
   currentVersion: number;
+  /** The most recent history entries only (newest first); see historyTotal for the full count. */
   history: FareSettingsHistoryEntry[];
+  historyTotal: number;
 };
 
 export type FareSettingsActor = {
@@ -136,6 +140,7 @@ export type FareSettingsActor = {
 
 export type FareSettingsStore = {
   load: () => Promise<FareSettingsSnapshot>;
+  loadHistoryPage: (page: number, perPage?: number) => Promise<ConfigurationHistoryPage>;
   save: (
     expectedVersion: number,
     configuration: FareSettingsConfiguration,
@@ -183,6 +188,7 @@ type FareSettingsHistoryEntryRow = {
 
 type FareSettingsSnapshotRow = FareSettingsRow & {
   history: FareSettingsHistoryEntryRow[];
+  history_total: number;
 };
 
 export class FareSettingsVersionConflictError extends Error {
@@ -800,21 +806,27 @@ export function validateFareSettingsForm(
 
 export const fareSettingsStore: FareSettingsStore = {
   async load() {
+    // Version is UNIQUE, so ordering by it is deterministic even when timestamps tie.
     const result = await query<FareSettingsSnapshotRow>(
       `SELECT state.configuration, state.version,
+              (SELECT COUNT(*)::int FROM fare_settings_history) AS history_total,
               COALESCE(
                 (SELECT json_agg(
                     json_build_object(
-                      'version', history.version,
-                      'actorEmail', history.actor_email,
-                      'createdAt', history.occurred_at
-                    ) ORDER BY history.version DESC
+                      'version', recent.version,
+                      'actorEmail', recent.actor_email,
+                      'createdAt', recent.occurred_at
+                    ) ORDER BY recent.version DESC
                   )
-                   FROM fare_settings_history AS history),
+                   FROM (SELECT version, actor_email, occurred_at
+                           FROM fare_settings_history
+                          ORDER BY version DESC
+                          LIMIT $1) AS recent),
                 '[]'::json
               ) AS history
          FROM fare_settings_current AS state
-        WHERE state.id = 1`
+        WHERE state.id = 1`,
+      [RECENT_CONFIGURATION_HISTORY_LIMIT]
     );
     const row = result.rows[0];
     if (!row) throw new Error("Fare settings configuration is missing.");
@@ -825,7 +837,32 @@ export const fareSettingsStore: FareSettingsStore = {
         version: item.version,
         actorEmail: item.actorEmail,
         createdAt: new Date(item.createdAt).toISOString()
-      }))
+      })),
+      historyTotal: row.history_total
+    };
+  },
+
+  async loadHistoryPage(requestedPage, perPage) {
+    const count = await query<{ total: number }>("SELECT COUNT(*)::int AS total FROM fare_settings_history");
+    const totalRecords = count.rows[0]?.total ?? 0;
+    const page = resolveHistoryPage(requestedPage, totalRecords, perPage);
+    const result = await query<{ version: number; actor_email: string | null; occurred_at: string | Date }>(
+      `SELECT version, actor_email, occurred_at
+         FROM fare_settings_history
+        ORDER BY version DESC
+        LIMIT $1 OFFSET $2`,
+      [page.perPage, page.offset]
+    );
+    return {
+      entries: result.rows.map((row) => ({
+        version: row.version,
+        actorEmail: row.actor_email,
+        createdAt: new Date(row.occurred_at).toISOString()
+      })),
+      page: page.page,
+      perPage: page.perPage,
+      totalPages: page.totalPages,
+      totalRecords
     };
   },
 

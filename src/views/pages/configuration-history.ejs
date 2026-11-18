@@ -1,0 +1,47 @@
+<%- include("../layouts/base", {
+  title,
+  appTitle,
+  currentUserEmail: email,
+  currentUserHref: "/account",
+  pageTitle: title,
+  pageMeta,
+  activeRoleLabel: "System settings",
+  hintsLabel: "Hints: Off",
+  body: `
+    <section class="panel fare-settings configuration-history">
+      <nav class="fare-settings__trail" aria-label="Navigation path">
+        <ol>
+          ${breadcrumbs.map((crumb) => `
+            <li${crumb.href ? "" : ' aria-current="page"'}>${crumb.href ? `<a href="${crumb.href}">${crumb.label}</a>` : crumb.label}</li>
+          `).join("")}
+        </ol>
+      </nav>
+      <p class="configuration-history__back"><a href="${backHref}">&larr; Back to ${backLabel}</a></p>
+      <h1>${heading}</h1>
+      <section class="fare-settings__history" aria-labelledby="configuration-history-list-title">
+        <h2 id="configuration-history-list-title">All versions, newest first</h2>
+        ${entries.length ? `
+          <ol>
+            ${entries.map((entry) => `<li><strong>Version ${entry.version}</strong> — ${entry.actorEmail}, ${entry.createdAt}</li>`).join("")}
+          </ol>
+        ` : `<p>${emptyMessage}</p>`}
+      </section>
+      <nav class="pagination-bar configuration-history__pagination" aria-label="Configuration history pagination">
+        <div class="pagination-bar__summary">
+          ${pagination.totalRecords === 0
+            ? "No history to display"
+            : `Showing <strong>${pagination.startRecord}</strong>-<strong>${pagination.endRecord}</strong> of <strong>${pagination.totalRecords}</strong>`}
+        </div>
+        <div class="pagination-bar__controls">
+          ${pagination.previousHref
+            ? `<a class="pagination-bar__link" href="${pagination.previousHref}" rel="prev">Previous</a>`
+            : `<span class="pagination-bar__link pagination-bar__link--disabled" aria-disabled="true">Previous</span>`}
+          <span class="configuration-history__page" aria-current="page">Page ${pagination.page} of ${pagination.totalPages}</span>
+          ${pagination.nextHref
+            ? `<a class="pagination-bar__link" href="${pagination.nextHref}" rel="next">Next</a>`
+            : `<span class="pagination-bar__link pagination-bar__link--disabled" aria-disabled="true">Next</span>`}
+        </div>
+      </nav>
+    </section>
+  `
+}) %>

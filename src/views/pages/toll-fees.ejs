@@ -402,9 +402,11 @@
 
                 <section class="london-fee-draft__history" aria-labelledby="london-fee-history-title">
                   <h4 id="london-fee-history-title">Draft version history</h4>
+                  ${feeScheduleHistory.href ? `<p class="configuration-history__summary">Showing the ${feeScheduleHistory.entries.length} most recent of ${feeScheduleHistory.total} versions, newest first.</p>` : ""}
                   <ol>
-                    ${escapedFeeScheduleHistory.map((record) => `<li><strong>Version ${record.version}</strong> — ${record.actorEmail} — ${record.createdAt}</li>`).join("")}
+                    ${feeScheduleHistory.entries.map((record) => `<li><strong>Version ${record.version}</strong> — ${record.actorEmail} — ${record.createdAt}</li>`).join("")}
                   </ol>
+                  ${feeScheduleHistory.href ? `<p class="configuration-history__more"><a href="${feeScheduleHistory.href}">View all history<span class="visually-hidden"> for this draft fee schedule</span></a></p>` : ""}
                 </section>
               </section>
             ` : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No fee schedule is configured. This area does not calculate fees or charge customers.</div>`}

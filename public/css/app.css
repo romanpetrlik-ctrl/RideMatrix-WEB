@@ -4765,3 +4765,31 @@ button:visited,
 .fare-settings__slab-table--summary {
   min-width: 0;
 }
+
+.configuration-history__summary {
+  margin: 0;
+  color: var(--rm-text-soft);
+}
+
+.configuration-history__more {
+  margin: 0.75rem 0 0;
+}
+
+.configuration-history__more a,
+.configuration-history__back a {
+  color: var(--rm-menu-action-text);
+}
+
+.configuration-history__back {
+  margin: 0 0 0.75rem;
+}
+
+.configuration-history .pagination-bar {
+  margin-top: 1.25rem;
+  padding-inline: 0;
+}
+
+.configuration-history__page {
+  color: var(--rm-text-soft);
+  font-weight: 600;
+}
