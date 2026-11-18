@@ -895,9 +895,8 @@ export function matchLocationDiscount(
         continue;
       }
       const candidate = rule.postcodePrecision === "full" ? postcode : outwardCodeOf(postcode);
-      if (rule.postcodes.includes(candidate)) {
+      if (rule.postcodes.includes(candidate) && !matches.some((match) => match.rule.id === rule.id)) {
         matches.push({ status: "matched", rule, direction, endpointPostcode: postcode, matchedEntry: candidate, discountPercentage: rule.discountPercentage });
-        break;
       }
     }
   }
