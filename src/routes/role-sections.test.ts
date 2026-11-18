@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import http from "node:http";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import test, { after, before, describe } from "node:test";
 import express from "express";
@@ -2173,6 +2175,226 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(fareSettings.snapshot().currentVersion, 0);
   });
 
+  const discountsClient = (cookie: string) => {
+    const path = "/settings/fare-settings/location-based-discounts";
+    const getPage = (suffix = "") => fetch(`${baseUrl}${path}${suffix}`, { headers: withSession(cookie, ["superuser"]), redirect: "manual" });
+    const post = async (version: string, values: Record<string, string>) => {
+      const page = await getPage();
+      const body = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie && token);
+      const postCookie = `${cookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ baseVersion: version, _csrf: token, ...values }),
+        redirect: "manual"
+      });
+    };
+    return { path, getPage, post };
+  };
+  const discountFields = (overrides: Record<string, string> = {}) => ({
+    name: "BH1 airport promotion",
+    locationKey: "airport:rm-boh",
+    postcodePrecision: "full",
+    postcodes: "bh14rs\nBH2 5AA",
+    discountPercentage: "10",
+    startDate: "",
+    endDate: "",
+    enabled: "no",
+    ...overrides
+  });
+
+  test("Fare Settings navigation exposes Location-based discounts with documented matching semantics", async () => {
+    fareSettings.reset();
+    const headers = withSession("sid=fare-nav-discounts", ["superuser"]);
+    const landingBody = await (await fetch(`${baseUrl}/settings/fare-settings`, { headers })).text();
+    assert.match(landingBody, /href="\/settings\/fare-settings\/location-based-discounts"/);
+    assert.match(landingBody, />Location-based discounts</);
+
+    const page = await (await fetch(`${baseUrl}/settings/fare-settings/location-based-discounts`, { headers })).text();
+    assert.match(page, /No location-based discounts have been configured/);
+    assert.match(page, /discounts are not yet applied to booking prices/);
+    assert.match(page, /href="\/settings\/fare-settings\/location-based-discounts\/new"/);
+
+    const editor = await (await fetch(`${baseUrl}/settings/fare-settings/location-based-discounts/new`, { headers })).text();
+    assert.match(editor, /data-location-discount-form/);
+    assert.match(editor, /\/js\/location-discounts\.js/);
+    assert.match(editor, /name="enabled" value="no" checked/, "new rules default to disabled");
+    for (const semantic of [/either direction/i, /internal RideMatrix ID/i, /Google/, /unresolved/i, /passing through/i, /Distance Slabs/, /not discounted/i, /stack/i]) {
+      assert.match(editor, semantic);
+    }
+    assert.equal(fareSettings.snapshot().currentVersion, 0, "viewing does not seed configuration");
+  });
+
+  test("Location-based discounts create, edit, disable, enable, and remove with attributed history", async () => {
+    fareSettings.reset();
+    airportFees.reset();
+    poiManagement.reset();
+    airportFees.records.push(slabAirport("rm-boh", "Bournemouth Airport"));
+    poiManagement.pois.push(slabPoi("poi-pier", "Bournemouth Pier"));
+    const { path, getPage, post } = discountsClient("sid=discounts-crud");
+
+    const slabPost = additionalSlabsClient("sid=discounts-crud").post;
+    assert.equal((await slabPost("/settings/fare-settings/distance-slabs", "0", slabFields("3.00"))).status, 303);
+    const before = fareSettings.snapshot().configuration;
+    const airportsBefore = structuredClone(airportFees.records);
+    const poisBefore = structuredClone(poiManagement.pois);
+
+    const editor = await (await getPage("/new")).text();
+    assert.match(editor, /value="airport:rm-boh"[^>]*>Bournemouth Airport/);
+    assert.match(editor, /value="poi:poi-pier"[^>]*>Bournemouth Pier/);
+
+    const created = await post("1", discountFields());
+    assert.equal(created.status, 303);
+    assert.equal(created.headers.get("location"), `${path}?saved=1`);
+    let snapshot = fareSettings.snapshot();
+    assert.equal(snapshot.configuration.locationDiscounts?.length, 1);
+    const [rule] = snapshot.configuration.locationDiscounts!;
+    assert.deepEqual({ ...rule, id: "" }, {
+      id: "",
+      name: "BH1 airport promotion",
+      location: { type: "airport", id: "rm-boh" },
+      postcodePrecision: "full",
+      postcodes: ["BH1 4RS", "BH2 5AA"],
+      discountPercentage: "10",
+      startDate: "",
+      endDate: "",
+      enabled: false,
+      discountBasis: "standard-distance-slabs-base-fare"
+    });
+    assert.equal(snapshot.history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
+    assert.equal(snapshot.currentVersion, 2);
+
+    const list = await (await getPage()).text();
+    assert.match(list, /BH1 airport promotion/);
+    assert.match(list, /Bournemouth Airport/);
+    assert.match(list, /BH1 4RS/);
+    assert.match(list, /Disabled/);
+    assert.match(list, /Configuration history/);
+
+    const editPage = await (await getPage(`/${rule.id}/edit`)).text();
+    assert.match(editPage, /BH1 4RS\nBH2 5AA/);
+
+    const edited = await post("2", discountFields({
+      ruleId: rule.id, postcodePrecision: "outward", postcodes: "BH22", discountPercentage: "12.5",
+      startDate: "2027-01-01", endDate: "2027-03-31"
+    }));
+    assert.equal(edited.status, 303);
+    snapshot = fareSettings.snapshot();
+    assert.equal(snapshot.configuration.locationDiscounts?.length, 1);
+    assert.deepEqual(snapshot.configuration.locationDiscounts![0], {
+      ...rule, postcodePrecision: "outward", postcodes: ["BH22"], discountPercentage: "12.5", startDate: "2027-01-01", endDate: "2027-03-31"
+    });
+
+    assert.equal((await post("3", { ruleAction: "enable", ruleId: rule.id })).status, 303);
+    assert.equal(fareSettings.snapshot().configuration.locationDiscounts![0].enabled, true);
+    assert.match(await (await getPage()).text(), /Enabled/);
+    assert.equal((await post("4", { ruleAction: "disable", ruleId: rule.id })).status, 303);
+    assert.equal(fareSettings.snapshot().configuration.locationDiscounts![0].enabled, false);
+
+    const removePage = await (await getPage(`/${rule.id}/remove`)).text();
+    assert.match(removePage, /Yes, remove this discount/);
+    assert.equal((await post("5", { ruleAction: "delete", ruleId: rule.id })).status, 303);
+    snapshot = fareSettings.snapshot();
+    assert.deepEqual(snapshot.configuration.locationDiscounts, []);
+    assert.equal(snapshot.currentVersion, 6);
+    assert.equal(snapshot.history.length, 6, "each change is appended to Fare Settings history");
+
+    const { locationDiscounts: _ignored, ...otherAfter } = snapshot.configuration;
+    const { locationDiscounts: _before, ...otherBefore } = before;
+    assert.deepEqual(otherAfter, otherBefore, "Distance Slabs, Additional Distance Slabs, minimum/fixed fares, surcharges, and dead mileage are unchanged");
+    assert.deepEqual(airportFees.records, airportsBefore, "airport fees are unchanged");
+    assert.deepEqual(poiManagement.pois, poisBefore, "POI fees are unchanged");
+
+    assert.equal((await getPage("/missing/edit")).status, 404);
+    assert.equal((await post("6", { ruleAction: "delete", ruleId: "missing" })).status, 404);
+  });
+
+  test("Location-based discounts reject invalid and overlapping rules with preserved values and clear errors", async () => {
+    fareSettings.reset();
+    airportFees.reset();
+    poiManagement.reset();
+    airportFees.records.push(slabAirport("rm-boh", "Bournemouth Airport"));
+    const { post } = discountsClient("sid=discounts-invalid");
+
+    const invalid = await post("0", discountFields({ postcodes: "BH1 4R", discountPercentage: "101", startDate: "2027-02-01", endDate: "2027-01-01", locationKey: "Bournemouth Airport" }));
+    assert.equal(invalid.status, 400);
+    const invalidBody = await invalid.text();
+    assert.match(invalidBody, /BH1 4R is not a valid UK full postcode/);
+    assert.match(invalidBody, /percentage greater than 0 and no more than 100/);
+    assert.match(invalidBody, /end date cannot be before the start date/);
+    assert.match(invalidBody, /missing or no longer available/);
+    assert.match(invalidBody, /id="discount-postcodes"[^>]*aria-invalid="true"|aria-invalid="true"[^>]*id="discount-postcodes"/);
+    assert.match(invalidBody, />BH1 4R<\/textarea>/, "submitted postcodes are preserved");
+    assert.match(invalidBody, /value="101"/, "submitted percentage is preserved");
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    assert.equal((await post("0", discountFields({ name: "BH22 area", postcodePrecision: "outward", postcodes: "BH22", enabled: "yes" }))).status, 303);
+    const overlap = await post("1", discountFields({ name: "Ferndown street", postcodes: "BH22 8AB" }));
+    assert.equal(overlap.status, 400);
+    const overlapBody = await overlap.text();
+    assert.match(overlapBody, /BH22 8AB overlaps the outward code entry BH22 in the rule &(?:quot|#34);BH22 area&(?:quot|#34);/);
+    assert.match(overlapBody, /cannot be stacked or combined/);
+    assert.equal(fareSettings.snapshot().configuration.locationDiscounts?.length, 1);
+
+    const dated = await post("1", discountFields({ name: "Later promotion", postcodes: "BH22 8AB", startDate: "2027-01-01" }));
+    assert.equal(dated.status, 400, "an open-ended rule overlaps every later period");
+
+    const stale = await post("0", discountFields({ name: "Stale" }));
+    assert.equal(stale.status, 409);
+    assert.match(await stale.text(), /value="Stale"/);
+  });
+
+  test("Location-based discounts cannot enable a rule whose location is unavailable", async () => {
+    fareSettings.reset();
+    airportFees.reset();
+    poiManagement.reset();
+    poiManagement.pois.push(slabPoi("poi-pier", "Bournemouth Pier"));
+    const { post } = discountsClient("sid=discounts-enable");
+    assert.equal((await post("0", discountFields({ name: "Pier", locationKey: "poi:poi-pier" }))).status, 303);
+    const [rule] = fareSettings.snapshot().configuration.locationDiscounts!;
+    poiManagement.reset();
+    const rejected = await post("1", { ruleAction: "enable", ruleId: rule.id });
+    assert.equal(rejected.status, 400);
+    assert.match(await rejected.text(), /was not enabled\. The selected airport or POI is missing or no longer available/);
+    assert.equal(fareSettings.snapshot().configuration.locationDiscounts![0].enabled, false);
+  });
+
+  test("Location-based discount changes keep System Settings authorization", async () => {
+    fareSettings.reset();
+    for (const suffix of ["", "/new", "/any-rule/edit", "/any-rule/remove"]) {
+      const denied = await fetch(`${baseUrl}/settings/fare-settings/location-based-discounts${suffix}`, {
+        headers: withSession("sid=discounts-denied", ["admin", "staff", "tech_support"]),
+        redirect: "manual"
+      });
+      assert.equal(denied.status, 403, suffix);
+      const anonymous = await fetch(`${baseUrl}/settings/fare-settings/location-based-discounts${suffix}`, { redirect: "manual" });
+      assert.equal(anonymous.status, 302, suffix);
+      assert.equal(anonymous.headers.get("location"), "/access");
+    }
+    const anonymousPost = await fetch(`${baseUrl}/settings/fare-settings/location-based-discounts`, { method: "POST", redirect: "manual" });
+    assert.notEqual(anonymousPost.status, 303);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+  });
+
+  test("location-based discount configuration is not read by booking or pricing code", () => {
+    const sources: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/\.(ts|ejs|js)$/.test(entry) && !/\.test\.ts$/.test(entry)) sources.push(full);
+      }
+    };
+    walk("src");
+    walk("public/js");
+    const readers = sources.filter((file) => /locationDiscounts|matchLocationDiscount/.test(readFileSync(file, "utf8")));
+    assert.deepEqual(readers.sort(), ["src/routes/role-sections.ts", "src/services/fare-settings.ts", "src/views/pages/fare-settings.ejs"]);
+  });
+
   test("Fare surcharge setting validates, saves, disables, and retains its saved values", async () => {
     fareSettings.reset();
     const path = "/settings/fare-settings/fare-surcharge-settings";
@@ -2331,7 +2553,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   });
 
   test("Fare Settings remains restricted to superuser sessions", async () => {
-    for (const destination of ["distance-slabs", "additional-distance-slabs", "additional-distance-slabs/new", "minimum-fare-rules", "fixed-fares"]) {
+    for (const destination of ["distance-slabs", "additional-distance-slabs", "additional-distance-slabs/new", "minimum-fare-rules", "fixed-fares", "location-based-discounts", "location-based-discounts/new"]) {
       const denied = await fetch(`${baseUrl}/settings/fare-settings/${destination}`, {
         headers: withSession(`sid=fare-denied-${destination}`, ["admin", "staff", "tech_support"]),
         redirect: "manual"

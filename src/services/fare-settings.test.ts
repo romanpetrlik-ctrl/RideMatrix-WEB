@@ -7,7 +7,10 @@ import type { AirportFeeRecord } from "./airport-fees";
 import {
   EMPTY_FARE_SETTINGS,
   calculateDistanceSlabFare,
+  findLocationDiscountConflict,
+  matchLocationDiscount,
   matchesMinimumFareRule,
+  validateLocationDiscountForm,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
   resolveAdditionalDistanceSlabSets,
@@ -19,6 +22,7 @@ import {
   type BankHolidaySurchargePeriod,
   type DistanceSlab,
   type FareSettingsConfiguration,
+  type LocationDiscountRule,
   type ManagedSlabTarget
 } from "./fare-settings";
 
@@ -71,6 +75,7 @@ test("fare settings start disabled without assumed percentages or times", () => 
     endTime: ""
   });
   assert.deepEqual(EMPTY_FARE_SETTINGS.bankHolidaySurcharge, { enabled: false, periods: [] });
+  assert.deepEqual(EMPTY_FARE_SETTINGS.locationDiscounts, [], "no location-based discounts are seeded");
 });
 
 test("editing another fare category preserves the saved dead-mileage radius", () => {
@@ -665,4 +670,214 @@ test("legacy airport-specific slab sets are preserved as one additional set per 
   assert.deepEqual(saved.distanceSlabs, legacy.distanceSlabs, "base slabs are untouched");
   assert.equal(legacy.airportDistanceSlabSets?.length, 2, "the source configuration is not mutated");
   assert.deepEqual(resolveAdditionalDistanceSlabSets({ ...legacy, additionalDistanceSlabSets: [] }), [], "saved current sets take precedence over legacy data");
+});
+
+const discountTargets: ManagedSlabTarget[] = [
+  { type: "airport", id: "rm-boh", displayName: "Bournemouth Airport" },
+  { type: "poi", id: "poi-pier", displayName: "Bournemouth Pier" }
+];
+
+function discountForm(overrides: Record<string, string> = {}) {
+  return {
+    name: "BH22 airport promotion",
+    locationKey: "airport:rm-boh",
+    postcodePrecision: "full",
+    postcodes: "BH1 4RS",
+    discountPercentage: "10",
+    startDate: "",
+    endDate: "",
+    enabled: "yes",
+    ...overrides
+  };
+}
+
+function discountRule(id: string, overrides: Partial<LocationDiscountRule> = {}): LocationDiscountRule {
+  return {
+    id,
+    name: `Rule ${id}`,
+    location: { type: "airport", id: "rm-boh" },
+    postcodePrecision: "full",
+    postcodes: ["BH1 4RS"],
+    discountPercentage: "10",
+    startDate: "",
+    endDate: "",
+    enabled: true,
+    discountBasis: "standard-distance-slabs-base-fare",
+    ...overrides
+  };
+}
+
+test("location discount validation normalizes postcodes and stores the exact managed ID and precision", () => {
+  const result = validateLocationDiscountForm(
+    discountForm({ postcodes: " bh14rs \nbh2  5aa, SO15 1AA", discountPercentage: "12.50", startDate: "2027-01-01", endDate: "2027-01-31" }),
+    discountTargets,
+    []
+  );
+  assert.deepEqual(result.errors, {});
+  assert.deepEqual(result.rule, {
+    name: "BH22 airport promotion",
+    location: { type: "airport", id: "rm-boh" },
+    postcodePrecision: "full",
+    postcodes: ["BH1 4RS", "BH2 5AA", "SO15 1AA"],
+    discountPercentage: "12.5",
+    startDate: "2027-01-01",
+    endDate: "2027-01-31",
+    enabled: true,
+    discountBasis: "standard-distance-slabs-base-fare"
+  });
+
+  const outward = validateLocationDiscountForm(discountForm({ postcodePrecision: "outward", postcodes: "bh22\nSO15" }), discountTargets, []);
+  assert.deepEqual(outward.rule?.postcodes, ["BH22", "SO15"]);
+});
+
+test("location discount validation rejects invalid postcodes, precision mismatches, duplicates, and missing managed IDs", () => {
+  const invalid = validateLocationDiscountForm(discountForm({ postcodes: "BH1 4R\nQQ1 1AA" }), discountTargets, []);
+  assert.match(invalid.errors.postcodes, /BH1 4R is not a valid UK full postcode/);
+  assert.match(invalid.errors.postcodes, /QQ1 1AA is not a valid UK full postcode/);
+  assert.equal(invalid.rule, null);
+  assert.equal(invalid.values.postcodes, "BH1 4R\nQQ1 1AA", "submitted values are preserved");
+
+  assert.match(validateLocationDiscountForm(discountForm({ postcodes: "BH22" }), discountTargets, []).errors.postcodes,
+    /BH22 is an outward code, not a full postcode/);
+  assert.match(validateLocationDiscountForm(discountForm({ postcodePrecision: "outward", postcodes: "BH22 8AB" }), discountTargets, []).errors.postcodes,
+    /BH22 8AB is a full postcode, not an outward code/);
+  assert.match(validateLocationDiscountForm(discountForm({ postcodes: "BH1 4RS\nbh14rs" }), discountTargets, []).errors.postcodes,
+    /Remove duplicate postcode entries: BH1 4RS/);
+  assert.match(validateLocationDiscountForm(discountForm({ postcodes: " \n, " }), discountTargets, []).errors.postcodes,
+    /at least one UK postcode/);
+  assert.match(validateLocationDiscountForm(discountForm({ postcodePrecision: "partial" }), discountTargets, []).errors.postcodePrecision,
+    /full postcodes or outward codes/);
+
+  for (const locationKey of ["", "Bournemouth Airport", "airport:unknown", "poi:rm-boh", "airport:Bournemouth Airport"]) {
+    const result = validateLocationDiscountForm(discountForm({ locationKey }), discountTargets, []);
+    assert.ok(result.errors.locationKey, `location ${JSON.stringify(locationKey)} is rejected`);
+    assert.equal(result.rule, null);
+  }
+  assert.match(validateLocationDiscountForm(discountForm({ name: " " }), discountTargets, []).errors.name, /rule name/);
+  assert.match(validateLocationDiscountForm(discountForm({ enabled: "" }), discountTargets, []).errors.enabled, /enabled or disabled/);
+});
+
+test("location discount percentages and optional validity dates are validated", () => {
+  for (const discountPercentage of ["", "0", "0.00", "-1", "101", "100.01", "abc", "1.234", "1e2", "Infinity", " 5 %"]) {
+    assert.ok(validateLocationDiscountForm(discountForm({ discountPercentage }), discountTargets, []).errors.discountPercentage,
+      `${discountPercentage} is rejected`);
+  }
+  for (const discountPercentage of ["0.01", "15", "100"]) {
+    assert.deepEqual(validateLocationDiscountForm(discountForm({ discountPercentage }), discountTargets, []).errors, {});
+  }
+  for (const date of ["2027-02-30", "2027-13-01", "27-01-01", "01/02/2027", "2027-1-1"]) {
+    assert.ok(validateLocationDiscountForm(discountForm({ startDate: date }), discountTargets, []).errors.startDate, date);
+    assert.ok(validateLocationDiscountForm(discountForm({ endDate: date }), discountTargets, []).errors.endDate, date);
+  }
+  assert.match(validateLocationDiscountForm(discountForm({ startDate: "2027-02-01", endDate: "2027-01-31" }), discountTargets, []).errors.endDate,
+    /cannot be before the start date/);
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ startDate: "2027-02-01", endDate: "2027-02-01" }), discountTargets, []).errors, {});
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ startDate: "2028-02-29" }), discountTargets, []).errors, {});
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ endDate: "2027-03-01" }), discountTargets, []).errors, {});
+});
+
+test("overlapping location discount rules are rejected with the conflicting rule and postcode identified", () => {
+  const existing = [
+    discountRule("outward-rule", { name: "BH22 area", postcodePrecision: "outward", postcodes: ["BH22"] }),
+    discountRule("full-rule", { name: "Pier postcodes", location: { type: "poi", id: "poi-pier" }, postcodes: ["BH2 5AA"], enabled: false })
+  ];
+  const coveredFull = validateLocationDiscountForm(discountForm({ postcodes: "BH22 8AB" }), discountTargets, existing);
+  assert.equal(coveredFull.rule, null);
+  assert.match(coveredFull.errors.postcodes, /BH22 8AB overlaps the outward code entry BH22 in the rule "BH22 area"/);
+  assert.match(coveredFull.errors.postcodes, /cannot be stacked or combined/);
+
+  const sameOutward = validateLocationDiscountForm(discountForm({ postcodePrecision: "outward", postcodes: "bh22" }), discountTargets, existing);
+  assert.match(sameOutward.errors.postcodes, /BH22 overlaps the outward code entry BH22/);
+
+  const disabledConflict = validateLocationDiscountForm(
+    discountForm({ locationKey: "poi:poi-pier", postcodePrecision: "outward", postcodes: "BH2" }), discountTargets, existing);
+  assert.match(disabledConflict.errors.postcodes, /BH2 overlaps the full postcode entry BH2 5AA in the rule "Pier postcodes" \(with no date limits, currently disabled\)/);
+
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ postcodes: "BH2 8AB" }), discountTargets, existing).errors, {},
+    "BH2 is not treated as a partial-string match for BH22");
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ locationKey: "poi:poi-pier", postcodes: "BH22 8AB" }), discountTargets, existing).errors, {},
+    "the same postcode for a different managed location is allowed");
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ postcodePrecision: "outward", postcodes: "BH22" }), discountTargets, existing, "outward-rule").errors, {},
+    "editing a rule does not conflict with itself");
+});
+
+test("location discount overlap checks consider only overlapping validity periods", () => {
+  const january = [discountRule("jan", { startDate: "2027-01-01", endDate: "2027-01-31" })];
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ startDate: "2027-02-01" }), discountTargets, january).errors, {});
+  assert.deepEqual(validateLocationDiscountForm(discountForm({ endDate: "2026-12-31" }), discountTargets, january).errors, {});
+  assert.ok(validateLocationDiscountForm(discountForm({ startDate: "2027-01-31" }), discountTargets, january).errors.postcodes, "end date is inclusive");
+  assert.ok(validateLocationDiscountForm(discountForm(), discountTargets, january).errors.postcodes, "an open rule overlaps every period");
+  assert.equal(findLocationDiscountConflict(discountRule("x", { postcodePrecision: "outward", postcodes: ["BH1"] }), january)?.conflictingEntry, "BH1 4RS");
+});
+
+test("location discount matching uses the exact managed ID, explicit precision, and either direction", () => {
+  const fullRule = discountRule("full", { postcodes: ["BH1 4RS"] });
+  const outwardRule = discountRule("outward", { location: { type: "poi", id: "poi-pier" }, postcodePrecision: "outward", postcodes: ["BH22"], discountPercentage: "7.5" });
+  const rules = [fullRule, outwardRule];
+  const airport = { managedLocation: { type: "airport" as const, id: "rm-boh" } };
+  const pier = { managedLocation: { type: "poi" as const, id: "poi-pier" } };
+
+  const toAirport = matchLocationDiscount(rules, { postcode: "bh14rs" }, airport, "2027-01-10");
+  assert.equal(toAirport.status, "matched");
+  assert.equal(toAirport.status === "matched" && toAirport.direction, "postcode-to-location");
+  assert.equal(toAirport.status === "matched" && toAirport.rule.id, "full");
+  const fromAirport = matchLocationDiscount(rules, airport, { postcode: "BH1 4RS" }, "2027-01-10");
+  assert.equal(fromAirport.status === "matched" && fromAirport.direction, "location-to-postcode");
+
+  const outward = matchLocationDiscount(rules, pier, { postcode: "BH22 8AB" }, "2027-01-10");
+  assert.equal(outward.status === "matched" && outward.matchedEntry, "BH22");
+  assert.equal(outward.status === "matched" && outward.discountPercentage, "7.5");
+  assert.deepEqual(matchLocationDiscount(rules, pier, { postcode: "BH2 2AB" }, "2027-01-10"), { status: "no-match" }, "no partial-string match");
+  assert.deepEqual(matchLocationDiscount(rules, airport, { postcode: "BH1 4RT" }, "2027-01-10"), { status: "no-match" },
+    "a full-postcode rule does not match other postcodes in the same outward code");
+
+  for (const notManaged of [
+    { managedLocation: { type: "poi" as const, id: "rm-boh" } },
+    { managedLocation: { type: "airport" as const, id: "Bournemouth Airport" } },
+    { postcode: "BH23 6SE" }
+  ]) {
+    assert.deepEqual(matchLocationDiscount(rules, notManaged, { postcode: "BH1 4RS" }, "2027-01-10"), { status: "no-match" },
+      "matching uses only the exact internal ID, not labels, the location's postcode, or proximity");
+  }
+  assert.deepEqual(matchLocationDiscount(rules, { postcode: "BH1 4RS" }, { postcode: "BH22 8AB" }, "2027-01-10"), { status: "no-match" },
+    "a postcode-to-postcode route through a configured area does not match");
+});
+
+test("location discount matching reports missing or invalid endpoint postcodes as unresolved", () => {
+  const rules = [discountRule("full")];
+  const airport = { managedLocation: { type: "airport" as const, id: "rm-boh" } };
+  for (const other of [{}, { postcode: null }, { postcode: "" }, { postcode: "BH1" }, { postcode: "Bournemouth BH1 4RS" }]) {
+    assert.deepEqual(matchLocationDiscount(rules, airport, other, "2027-01-10"),
+      { status: "unresolved", reason: "missing-postcode", ruleIds: ["full"] });
+  }
+  assert.deepEqual(matchLocationDiscount(rules, airport, { postcode: "BH1 4RS" }, "10/01/2027"),
+    { status: "unresolved", reason: "invalid-service-date", ruleIds: ["full"] });
+});
+
+test("location discount matching honours validity dates, disabled rules, and never stacks", () => {
+  const airport = { managedLocation: { type: "airport" as const, id: "rm-boh" } };
+  const dated = [discountRule("jan", { startDate: "2027-01-01", endDate: "2027-01-31" })];
+  assert.equal(matchLocationDiscount(dated, airport, { postcode: "BH1 4RS" }, "2027-01-01").status, "matched");
+  assert.equal(matchLocationDiscount(dated, airport, { postcode: "BH1 4RS" }, "2027-01-31").status, "matched");
+  assert.equal(matchLocationDiscount(dated, airport, { postcode: "BH1 4RS" }, "2026-12-31").status, "no-match");
+  assert.equal(matchLocationDiscount(dated, airport, { postcode: "BH1 4RS" }, "2027-02-01").status, "no-match");
+  assert.equal(matchLocationDiscount([discountRule("off", { enabled: false })], airport, { postcode: "BH1 4RS" }, "2027-01-10").status, "no-match");
+
+  const ambiguous = matchLocationDiscount(
+    [discountRule("a"), discountRule("b", { postcodePrecision: "outward", postcodes: ["BH1"] })],
+    airport, { postcode: "BH1 4RS" }, "2027-01-10");
+  assert.deepEqual(ambiguous, { status: "unresolved", reason: "ambiguous-rules", ruleIds: ["a", "b"] });
+});
+
+test("location discount configuration is preserved by other category saves and is not used by fare calculation", () => {
+  const rule = discountRule("kept");
+  const current: FareSettingsConfiguration = { ...EMPTY_FARE_SETTINGS, locationDiscounts: [rule] };
+  const result = validateFareSettingsForm(dailyAndBankDisabled, current);
+  assert.deepEqual(result.configuration.locationDiscounts, [rule]);
+
+  const slabs: DistanceSlab[] = [{ startMiles: "0", endMiles: "", ratePerMile: "2.00" }];
+  assert.equal(calculateDistanceSlabFare(slabs, "10"), "20.00", "base fare calculation is unchanged by configured discounts");
+  const source = readFileSync("src/services/fare-settings.ts", "utf8");
+  const calculator = source.slice(source.indexOf("export function calculateDistanceSlabFare"));
+  assert.doesNotMatch(calculator.slice(0, calculator.indexOf("\n}\n")), /locationDiscount/i);
 });

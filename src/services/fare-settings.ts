@@ -101,6 +101,40 @@ export type FixedFareRuleFormValues = {
   baseFare: string;
 };
 
+export type LocationDiscountPostcodePrecision = "full" | "outward";
+
+/**
+ * Percentage discount for journeys between one managed airport/POI (exact internal RideMatrix ID) and an
+ * explicit set of UK postcode entries, in either direction. Configuration only: not applied to prices.
+ */
+export type LocationDiscountRule = {
+  id: string;
+  name: string;
+  location: AdditionalSlabTarget;
+  postcodePrecision: LocationDiscountPostcodePrecision;
+  /** Normalized entries: full postcodes as "BH1 4RS", outward codes as "BH22". */
+  postcodes: string[];
+  /** Normalized decimal percentage greater than 0 and at most 100, e.g. "10" or "12.5". */
+  discountPercentage: string;
+  /** Inclusive Europe/London local dates (YYYY-MM-DD); "" means unbounded. */
+  startDate: string;
+  endDate: string;
+  enabled: boolean;
+  /** The future pricing basis: only the standard Distance Slabs base fare is discounted. */
+  discountBasis: "standard-distance-slabs-base-fare";
+};
+
+export type LocationDiscountFormValues = {
+  name: string;
+  locationKey: string;
+  postcodePrecision: string;
+  postcodes: string;
+  discountPercentage: string;
+  startDate: string;
+  endDate: string;
+  enabled: string;
+};
+
 export type FareSettingsConfiguration = {
   timezone: "Europe/London";
   matchingBasis: "scheduled-service-time";
@@ -113,6 +147,7 @@ export type FareSettingsConfiguration = {
   deadMileage: DeadMileageSettings;
   minimumFareRules: MinimumFareRule[];
   fixedFares: FixedFareRule[];
+  locationDiscounts?: LocationDiscountRule[];
   dailySurcharge: FareSurchargeSettings;
   bankHolidaySurcharge: BankHolidayFareSettings;
 };
@@ -158,6 +193,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   deadMileage: { freeRadiusMiles: "" },
   minimumFareRules: [],
   fixedFares: [],
+  locationDiscounts: [],
   dailySurcharge: {
     enabled: false,
     percentage: "",
@@ -589,6 +625,287 @@ export function validateAdditionalDistanceSlabSetForm(
   };
 }
 
+export const MAX_LOCATION_DISCOUNT_POSTCODES = 500;
+
+const locationDiscountDatePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function validCalendarDate(value: string): boolean {
+  const match = locationDiscountDatePattern.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function normalizeDiscountPercentage(value: string): string | null {
+  if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 100) return null;
+  return String(numeric);
+}
+
+/** Outward code of a normalized full postcode ("BH1 4RS" → "BH1"). */
+function outwardCodeOf(fullPostcode: string): string {
+  return fullPostcode.slice(0, fullPostcode.indexOf(" "));
+}
+
+function datePeriodsOverlap(
+  left: Pick<LocationDiscountRule, "startDate" | "endDate">,
+  right: Pick<LocationDiscountRule, "startDate" | "endDate">
+): boolean {
+  return (!left.startDate || !right.endDate || left.startDate <= right.endDate) &&
+    (!right.startDate || !left.endDate || right.startDate <= left.endDate);
+}
+
+function describeValidity(rule: Pick<LocationDiscountRule, "startDate" | "endDate">): string {
+  if (!rule.startDate && !rule.endDate) return "with no date limits";
+  if (rule.startDate && rule.endDate) return `valid ${rule.startDate} to ${rule.endDate}`;
+  return rule.startDate ? `valid from ${rule.startDate}` : `valid until ${rule.endDate}`;
+}
+
+export function locationDiscountRuleToForm(rule: LocationDiscountRule): LocationDiscountFormValues {
+  return {
+    name: rule.name,
+    locationKey: rule.location.id ? additionalSlabTargetKey(rule.location) : "",
+    postcodePrecision: rule.postcodePrecision,
+    postcodes: rule.postcodes.join("\n"),
+    discountPercentage: rule.discountPercentage,
+    startDate: rule.startDate,
+    endDate: rule.endDate,
+    enabled: rule.enabled ? "yes" : "no"
+  };
+}
+
+/**
+ * Finds the first conflict between a candidate rule and other saved rules. Rules conflict when they target
+ * the same managed location, their validity periods overlap, and a postcode entry is identical at the same
+ * precision or a full postcode falls inside an outward-code entry. Disabled rules are included so that
+ * enabling a rule can never create ambiguous (stacked) discounts.
+ */
+export function findLocationDiscountConflict(
+  candidate: Omit<LocationDiscountRule, "id"> & { id?: string },
+  rules: LocationDiscountRule[]
+): { rule: LocationDiscountRule; postcode: string; conflictingEntry: string } | null {
+  for (const rule of rules) {
+    if (candidate.id && rule.id === candidate.id) continue;
+    if (rule.location.type !== candidate.location.type || rule.location.id !== candidate.location.id) continue;
+    if (!datePeriodsOverlap(candidate, rule)) continue;
+    const existing = new Set(rule.postcodes);
+    for (const postcode of candidate.postcodes) {
+      if (candidate.postcodePrecision === rule.postcodePrecision) {
+        if (existing.has(postcode)) return { rule, postcode, conflictingEntry: postcode };
+      } else if (candidate.postcodePrecision === "full") {
+        const outward = outwardCodeOf(postcode);
+        if (existing.has(outward)) return { rule, postcode, conflictingEntry: outward };
+      } else {
+        const covered = rule.postcodes.find((full) => outwardCodeOf(full) === postcode);
+        if (covered) return { rule, postcode, conflictingEntry: covered };
+      }
+    }
+  }
+  return null;
+}
+
+export type LocationDiscountValidation = {
+  values: LocationDiscountFormValues;
+  rule: Omit<LocationDiscountRule, "id"> | null;
+  errors: Record<string, string>;
+};
+
+/**
+ * Validates a location-based discount rule. Errors are keyed by form field name. The location must be an
+ * active managed airport or POI identified by its internal ID; postcode entries are normalized for the
+ * explicitly selected precision and stored without duplicates; overlapping rules are rejected.
+ */
+export function validateLocationDiscountForm(
+  submitted: unknown,
+  targets: ManagedSlabTarget[],
+  existingRules: LocationDiscountRule[],
+  editingId = ""
+): LocationDiscountValidation {
+  const body = submitted && typeof submitted === "object" ? submitted as Record<string, unknown> : {};
+  const values: LocationDiscountFormValues = {
+    name: submittedValue(body, "name"),
+    locationKey: submittedValue(body, "locationKey"),
+    postcodePrecision: submittedValue(body, "postcodePrecision"),
+    postcodes: submittedValue(body, "postcodes"),
+    discountPercentage: submittedValue(body, "discountPercentage"),
+    startDate: submittedValue(body, "startDate"),
+    endDate: submittedValue(body, "endDate"),
+    enabled: submittedValue(body, "enabled")
+  };
+  const errors: Record<string, string> = {};
+
+  const name = values.name.trim();
+  if (!name || name.length > 160) errors.name = "Enter a rule name or description no longer than 160 characters.";
+
+  let location: AdditionalSlabTarget | null = null;
+  const locationKey = values.locationKey.trim();
+  const parsedLocation = locationKey ? parseAdditionalSlabTargetKey(locationKey) : null;
+  const managed = parsedLocation && targets.find((item) => item.type === parsedLocation.type && item.id === parsedLocation.id);
+  if (!locationKey) {
+    errors.locationKey = "Select a managed airport or POI.";
+  } else if (!parsedLocation || !managed) {
+    errors.locationKey = "The selected airport or POI is missing or no longer available. Select an active managed airport or POI; no other location is substituted.";
+  } else {
+    location = { type: managed.type, id: managed.id };
+  }
+
+  const precision = values.postcodePrecision.trim();
+  const validPrecision = precision === "full" || precision === "outward";
+  if (!validPrecision) errors.postcodePrecision = "Choose whether the entries are full postcodes or outward codes.";
+
+  const entries = values.postcodes.split(/[\n\r,;]+/).map((entry) => entry.trim()).filter(Boolean);
+  const postcodes: string[] = [];
+  if (values.postcodes.length > 20_000 || entries.length > MAX_LOCATION_DISCOUNT_POSTCODES) {
+    errors.postcodes = `Enter no more than ${MAX_LOCATION_DISCOUNT_POSTCODES} postcode entries.`;
+  } else if (entries.length === 0) {
+    errors.postcodes = "Enter at least one UK postcode entry.";
+  } else if (validPrecision) {
+    const invalid: string[] = [];
+    const duplicates: string[] = [];
+    for (const entry of entries) {
+      const normalized = normalizeUkPostcode(entry, precision);
+      if (!normalized) {
+        if (precision === "full" && normalizeUkPostcode(entry, "outward")) {
+          invalid.push(`${entry} is an outward code, not a full postcode; choose Outward code precision to match the whole area`);
+        } else if (precision === "outward" && normalizeUkPostcode(entry, "full")) {
+          invalid.push(`${entry} is a full postcode, not an outward code; choose Full postcode precision for exact postcodes`);
+        } else {
+          invalid.push(`${entry} is not a valid UK ${precision === "full" ? "full postcode" : "outward code"}`);
+        }
+      } else if (postcodes.includes(normalized)) {
+        if (!duplicates.includes(normalized)) duplicates.push(normalized);
+      } else {
+        postcodes.push(normalized);
+      }
+    }
+    if (invalid.length) {
+      errors.postcodes = `${invalid.slice(0, 5).join("; ")}${invalid.length > 5 ? `; and ${invalid.length - 5} more` : ""}.`;
+    } else if (duplicates.length) {
+      errors.postcodes = `Remove duplicate postcode entries: ${duplicates.join(", ")}.`;
+    }
+  }
+
+  const discountPercentage = normalizeDiscountPercentage(values.discountPercentage.trim());
+  if (discountPercentage === null) {
+    errors.discountPercentage = "Enter a percentage greater than 0 and no more than 100, with up to 2 decimal places.";
+  }
+
+  const startDate = values.startDate.trim();
+  const endDate = values.endDate.trim();
+  if (startDate && !validCalendarDate(startDate)) errors.startDate = "Enter a valid start date or leave it blank.";
+  if (endDate && !validCalendarDate(endDate)) errors.endDate = "Enter a valid end date or leave it blank.";
+  if (!errors.startDate && !errors.endDate && startDate && endDate && endDate < startDate) {
+    errors.endDate = "The end date cannot be before the start date.";
+  }
+
+  const enabled = values.enabled.trim();
+  if (enabled !== "yes" && enabled !== "no") errors.enabled = "Choose whether this rule is enabled or disabled.";
+
+  if (Object.keys(errors).length || !location || !validPrecision || discountPercentage === null) {
+    return { values, rule: null, errors };
+  }
+  const rule: Omit<LocationDiscountRule, "id"> = {
+    name,
+    location,
+    postcodePrecision: precision,
+    postcodes,
+    discountPercentage,
+    startDate,
+    endDate,
+    enabled: enabled === "yes",
+    discountBasis: "standard-distance-slabs-base-fare"
+  };
+  const conflict = findLocationDiscountConflict({ ...rule, id: editingId }, existingRules);
+  if (conflict) {
+    const precisionLabel = conflict.rule.postcodePrecision === "full" ? "full postcode" : "outward code";
+    errors.postcodes = `${conflict.postcode} overlaps the ${precisionLabel} entry ${conflict.conflictingEntry} in the rule "${conflict.rule.name}" ` +
+      `(${describeValidity(conflict.rule)}${conflict.rule.enabled ? "" : ", currently disabled"}) for the same ${managed!.displayName} location and an overlapping validity period. ` +
+      "Location-based discounts cannot be stacked or combined; remove the overlapping entry or change the validity dates.";
+    return { values, rule: null, errors };
+  }
+  return {
+    values: { ...values, name, locationKey, postcodePrecision: precision, postcodes: postcodes.join("\n"), discountPercentage, startDate, endDate, enabled },
+    rule,
+    errors
+  };
+}
+
+/** A journey endpoint as it would be supplied by future pricing. */
+export type LocationDiscountJourneyEndpoint = {
+  /** Set only when the endpoint is a selected managed airport/POI record. */
+  managedLocation?: AdditionalSlabTarget | null;
+  /** Structured postcode from the selected address / Google Places address components; never parsed from text. */
+  postcode?: string | null;
+};
+
+export type LocationDiscountMatch =
+  | {
+    status: "matched";
+    rule: LocationDiscountRule;
+    direction: "postcode-to-location" | "location-to-postcode";
+    endpointPostcode: string;
+    matchedEntry: string;
+    discountPercentage: string;
+  }
+  | { status: "no-match" }
+  | { status: "unresolved"; reason: "missing-postcode" | "invalid-service-date" | "ambiguous-rules"; ruleIds: string[] };
+
+/**
+ * Evaluates enabled location-based discount rules for one journey. Not connected to booking prices.
+ * A rule matches only when one endpoint is the exact managed location ID and the other endpoint's structured
+ * postcode equals a configured entry (full precision) or its outward code equals one (outward precision).
+ * If a relevant endpoint has no valid structured full postcode, the result is unresolved rather than guessed.
+ * More than one matching rule is reported as unresolved; discounts are never stacked or selected.
+ */
+export function matchLocationDiscount(
+  rules: LocationDiscountRule[],
+  origin: LocationDiscountJourneyEndpoint,
+  destination: LocationDiscountJourneyEndpoint,
+  serviceDate: string
+): LocationDiscountMatch {
+  const sameLocation = (endpoint: LocationDiscountJourneyEndpoint, rule: LocationDiscountRule) =>
+    Boolean(endpoint.managedLocation && rule.location.id &&
+      endpoint.managedLocation.type === rule.location.type && endpoint.managedLocation.id === rule.location.id);
+  const relevant = rules.filter((rule) => rule.enabled && (sameLocation(origin, rule) || sameLocation(destination, rule)));
+  if (!relevant.length) return { status: "no-match" };
+  if (!validCalendarDate(serviceDate)) {
+    return { status: "unresolved", reason: "invalid-service-date", ruleIds: relevant.map((rule) => rule.id) };
+  }
+  const active = relevant.filter((rule) =>
+    (!rule.startDate || rule.startDate <= serviceDate) && (!rule.endDate || serviceDate <= rule.endDate));
+
+  const matches: Extract<LocationDiscountMatch, { status: "matched" }>[] = [];
+  const unresolved: string[] = [];
+  for (const rule of active) {
+    const pairs: Array<[LocationDiscountJourneyEndpoint, LocationDiscountJourneyEndpoint, "postcode-to-location" | "location-to-postcode"]> = [
+      [destination, origin, "postcode-to-location"],
+      [origin, destination, "location-to-postcode"]
+    ];
+    for (const [locationEndpoint, otherEndpoint, direction] of pairs) {
+      if (!sameLocation(locationEndpoint, rule)) continue;
+      const postcode = typeof otherEndpoint.postcode === "string"
+        ? normalizeUkPostcode(otherEndpoint.postcode, "full")
+        : null;
+      if (!postcode) {
+        if (!unresolved.includes(rule.id)) unresolved.push(rule.id);
+        continue;
+      }
+      const candidate = rule.postcodePrecision === "full" ? postcode : outwardCodeOf(postcode);
+      if (rule.postcodes.includes(candidate)) {
+        matches.push({ status: "matched", rule, direction, endpointPostcode: postcode, matchedEntry: candidate, discountPercentage: rule.discountPercentage });
+        break;
+      }
+    }
+  }
+  if (unresolved.length) return { status: "unresolved", reason: "missing-postcode", ruleIds: unresolved };
+  if (matches.length > 1) return { status: "unresolved", reason: "ambiguous-rules", ruleIds: matches.map((match) => match.rule.id) };
+  return matches[0] ?? { status: "no-match" };
+}
+
 export function calculateDistanceSlabFare(distanceSlabs: DistanceSlab[], distanceMiles: string): string {
   const distance = parseNonNegativeDecimal(distanceMiles);
   const validation = validateDistanceSlabsForm({ distanceSlabs });
@@ -791,6 +1108,7 @@ export function validateFareSettingsForm(
       deadMileage: current.deadMileage ?? { freeRadiusMiles: "" },
       minimumFareRules: current.minimumFareRules ?? [],
       fixedFares: current.fixedFares ?? [],
+      ...(current.locationDiscounts ? { locationDiscounts: current.locationDiscounts } : {}),
       dailySurcharge,
       bankHolidaySurcharge
     },
