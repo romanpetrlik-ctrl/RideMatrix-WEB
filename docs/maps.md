@@ -52,5 +52,7 @@ Implement `MapProvider`, validate and normalize the provider response to the
 internal types, then inject the adapter into `createMapService`. Future Places,
 Address Validation, and Routes APIs can be added behind the same boundary.
 
-Route planning, navigation, live tracking, address autocomplete, and booking
-route overlays are intentionally out of scope for this foundation.
+New Booking computes its ordered passenger route with the Google Routes API
+(`src/services/booking-routing.ts`, using `GOOGLE_MAPS_SERVER_API_KEY`) and draws
+it on the booking map; without that key the route is reported as unresolved.
+Navigation and live tracking remain out of scope.

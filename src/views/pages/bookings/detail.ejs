@@ -1,0 +1,96 @@
+<%
+  const stopTypeLabel = (stop) => stop.stopType === "pickup" ? "Pickup" : stop.stopType === "dropoff" ? "Drop-off" : "Via";
+  const kindLabel = { airport: "Managed airport", poi: "Managed POI", address: "Address" };
+  const route = booking.price ? booking.price.route : null;
+  const formatDuration = (seconds) => {
+    const minutes = Math.round(Number(seconds) / 60);
+    return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
+  };
+  const yesNo = (value) => value === true ? "Yes" : value === false ? "No" : "Not recorded";
+%>
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+
+    <main class="container rm-page-shell new-booking-page new-booking-page--detail">
+      <div class="new-booking-page__title">
+        <h1>Booking <%= booking.reference %></h1>
+        <p><a href="/customers/<%= encodeURIComponent(booking.customerId) %>">Booking manager customer record</a> · <a href="/customers/<%= encodeURIComponent(booking.customerId) %>/bookings/<%= encodeURIComponent(booking.id) %>/assignment">Vehicle and driver assignment</a></p>
+      </div>
+
+      <% if (notice === "created") { %>
+        <section class="notice" role="status" data-booking-notice>Booking <%= booking.reference %> saved<%= booking.price && booking.price.status === "incomplete" ? " with an incomplete price. No total is confirmed." : "." %></section>
+      <% } %>
+
+      <section class="panel new-booking-block" aria-labelledby="detail-reference-title">
+        <h2 id="detail-reference-title">1. Booking reference</h2>
+        <dl class="new-booking-reference">
+          <div><dt>Booking ID</dt><dd data-booking-id><%= booking.reference %></dd></div>
+          <div><dt>Created</dt><dd data-booking-created><%= createdAtDisplay %> (<%= serviceTimezone %>)</dd></div>
+          <div><dt>Created by</dt><dd data-booking-created-by><%= booking.createdByEmail || "Not recorded" %></dd></div>
+          <div><dt>Status</dt><dd><%= booking.status %></dd></div>
+        </dl>
+      </section>
+
+      <section class="panel new-booking-block" aria-labelledby="detail-people-title">
+        <h2 id="detail-people-title">2. Booking manager and passenger</h2>
+        <div class="new-booking-columns">
+          <dl class="new-booking-detail-list">
+            <div><dt>Booking manager</dt><dd><%= booking.managerName || "—" %></dd></div>
+            <div><dt>Phone</dt><dd><%= booking.managerPhone || "—" %></dd></div>
+            <div><dt>Email</dt><dd><%= booking.managerEmail || "—" %></dd></div>
+          </dl>
+          <dl class="new-booking-detail-list">
+            <div><dt>Passenger</dt><dd><%= booking.passengerName || "—" %><%= booking.passengerIsManager ? " (booking manager)" : "" %></dd></div>
+            <div><dt>Phone</dt><dd><%= booking.passengerPhone || "—" %></dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel new-booking-block" aria-labelledby="detail-journey-title">
+        <h2 id="detail-journey-title">3. Journey</h2>
+        <p><strong>Service:</strong> <%= booking.serviceDate %><%= booking.serviceTime ? ` ${booking.serviceTime}` : "" %> (<%= serviceTimezone %>)</p>
+        <ol class="new-booking-map__stops" data-route-stops>
+          <% booking.stops.forEach((stop) => { %>
+            <li><strong><%= stopTypeLabel(stop) %>:</strong> <%= stop.label %> <span class="form-hint">(<%= kindLabel[stop.kind] || stop.kind %><%= stop.postcode ? `, ${stop.postcode}` : "" %><%= stop.coordinatesVerified ? "" : ", unverified — no coordinates" %>)</span></li>
+          <% }) %>
+        </ol>
+        <dl class="new-booking-detail-list" data-route-summary>
+          <% if (route && route.status === "resolved") { %>
+            <div><dt>Total distance</dt><dd><%= Number(route.distanceMiles).toFixed(2) %> miles</dd></div>
+            <div><dt>Estimated time on road</dt><dd><%= formatDuration(route.durationSeconds) %></dd></div>
+            <div><dt>Tolls / charges</dt><dd><% const warnings = [...(route.tollsReported ? ["Tolls reported on route"] : []), ...((route.zones || []).map((zone) => `Enters ${zone.label}`))]; %><%= warnings.length ? warnings.join("; ") : "None detected" %></dd></div>
+          <% } else { %>
+            <div><dt>Route</dt><dd>Unresolved<%= route && route.message ? ` — ${route.message}` : "" %></dd></div>
+          <% } %>
+        </dl>
+      </section>
+
+      <section class="panel new-booking-block" aria-labelledby="detail-cargo-title">
+        <h2 id="detail-cargo-title">4. Passengers and luggage</h2>
+        <p data-cargo-summary><%= cargoSummaryText %></p>
+        <p>Child seat required: <%= yesNo(booking.childSeatRequired) %> · Booster required: <%= yesNo(booking.boosterRequired) %></p>
+      </section>
+
+      <section class="panel new-booking-block" aria-labelledby="detail-fare-title">
+        <h2 id="detail-fare-title">5. Fare and itemized breakdown (saved snapshot)</h2>
+        <% if (booking.price) { %>
+          <p class="form-hint">Quoted <%= booking.price.createdAt ? new Date(booking.price.createdAt).toISOString() : "" %> by <%= booking.price.createdByEmail %> using Fare Settings version <%= booking.price.fareSettingsVersion ?? "unavailable" %>. Later configuration edits do not change this snapshot.</p>
+          <%- include("../../partials/booking-price-breakdown", { price: { status: booking.price.status, total: booking.price.total, lines: booking.price.lines } }) %>
+        <% } else { %>
+          <p class="notice notice--warning">No price snapshot was recorded for this booking.</p>
+        <% } %>
+      </section>
+    </main>
+
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

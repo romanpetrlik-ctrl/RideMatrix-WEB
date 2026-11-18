@@ -292,7 +292,7 @@ function normalizeMoney(value: string): string | null {
   return value.includes(".") ? value.padEnd(value.indexOf(".") + 3, "0") : `${value}.00`;
 }
 
-function normalizeUkPostcode(value: string, scope: "full" | "outward"): string | null {
+export function normalizeUkPostcode(value: string, scope: "full" | "outward"): string | null {
   const compact = value.trim().toUpperCase().replace(/\s+/g, "");
   const outwardPattern = /^(?:[A-PR-UWYZ](?:[0-9]{1,2}|[A-HK-Y][0-9]{1,2}|[0-9][A-HJKPSTUW]|[A-HK-Y][0-9][ABEHMNPRVWXY]))$/;
   if (scope === "outward") {

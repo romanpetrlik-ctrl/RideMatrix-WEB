@@ -2442,7 +2442,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(fareSettings.snapshot().currentVersion, 0);
   });
 
-  test("location-based discount configuration is not read by booking or pricing code", () => {
+  test("location-based discount configuration is read only by settings and the New Booking pricing service", () => {
     const sources: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir)) {
@@ -2456,6 +2456,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const readers = sources.filter((file) => /locationDiscounts|matchLocationDiscount|LocationDiscounts|calculateJourneyFare|resolveJourneyLocationDiscount/.test(readFileSync(file, "utf8")));
     assert.deepEqual(readers.sort(), [
       "src/routes/role-sections.ts",
+      "src/services/booking-pricing.ts",
       "src/services/fare-calculation.ts",
       "src/services/fare-settings.ts",
       "src/views/pages/fare-settings.ejs"

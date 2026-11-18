@@ -357,11 +357,6 @@ function getNotice(code: unknown, customer?: CustomerRecord): PageNotice | undef
         tone: "warning",
         message: "New Customer is visible in the workflow, but the creation form is not connected to backend persistence yet."
       };
-    case "new-booking":
-      return {
-        tone: "warning",
-        message: `New Booking is reserved as the primary CTA for ${name}, but booking creation is not connected in this web layer yet.`
-      };
     case "suspend-customer":
       return {
         tone: "warning",
@@ -1162,11 +1157,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           emailHref: customer.email ? `mailto:${customer.email}` : null,
           deleteHref: `/customers/${customer.id}/delete?returnTo=${encodeURIComponent(backToCustomersHref)}${isChildWindow ? "&layout=child" : ""}`,
           bookingsHref: buildCustomerBookingsHref(customer.id, backToCustomersHref, undefined, isChildWindow ? "child" : undefined),
-          newBookingHref: buildCustomerHref(customer.id, {
-            returnTo: backToCustomersHref,
-            notice: "new-booking",
-            layout: isChildWindow ? "child" : undefined
-          }),
+          newBookingHref: `/bookings/new?customerId=${encodeURIComponent(customer.id)}`,
           editHref: buildCustomerEditHref(customer.id, backToCustomersHref, isChildWindow ? "child" : undefined)
         },
         backToCustomersHref,

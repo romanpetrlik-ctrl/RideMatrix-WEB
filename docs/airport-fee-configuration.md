@@ -2,7 +2,7 @@
 
 System Settings → Toll & Fees → Airport fees stores each airport's customer-facing name, independent Google Place selections and coordinates for pickup and drop-off, and GBP amounts. Google Places must be enabled with a browser API key for location selection. The database migration retains archived records and append-only create, update, and archive audit events.
 
-These settings are configuration only. They are not used in fares, estimates, bookings, invoices, or customer charges; pricing integration will be added with the pricing work.
+New Booking itemizes the pick-up and drop-off fees of the exact selected Airport Fees record as separate lines and stores them in the booking's price snapshot (see [New Booking](new-booking.md)). Existing bookings, invoices, and customer charges are not changed.
 
 ## Manual verification
 

@@ -1602,6 +1602,114 @@ export const MIGRATIONS: Migration[] = [
             WHERE rule_data ? 'radiusMiles'
          );
     `
+  },
+  {
+    id: "0033_new_booking_price_snapshots",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS service_time TEXT,
+        ADD COLUMN IF NOT EXISTS service_timezone TEXT,
+        ADD COLUMN IF NOT EXISTS created_by_account_id TEXT,
+        ADD COLUMN IF NOT EXISTS created_by_email TEXT,
+        ADD COLUMN IF NOT EXISTS booking_manager_name TEXT,
+        ADD COLUMN IF NOT EXISTS booking_manager_phone TEXT,
+        ADD COLUMN IF NOT EXISTS booking_manager_email TEXT,
+        ADD COLUMN IF NOT EXISTS passenger_is_booking_manager BOOLEAN,
+        ADD COLUMN IF NOT EXISTS passenger_name TEXT,
+        ADD COLUMN IF NOT EXISTS passenger_phone TEXT,
+        ADD COLUMN IF NOT EXISTS adults SMALLINT,
+        ADD COLUMN IF NOT EXISTS children SMALLINT,
+        ADD COLUMN IF NOT EXISTS sports_equipment SMALLINT,
+        ADD COLUMN IF NOT EXISTS xl_baggage SMALLINT,
+        ADD COLUMN IF NOT EXISTS l_baggage SMALLINT,
+        ADD COLUMN IF NOT EXISTS cabin_hand_bags SMALLINT,
+        ADD COLUMN IF NOT EXISTS backpacks SMALLINT,
+        ADD COLUMN IF NOT EXISTS child_seat_required BOOLEAN,
+        ADD COLUMN IF NOT EXISTS booster_required BOOLEAN,
+        ADD COLUMN IF NOT EXISTS price_status TEXT;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'customer_bookings_new_booking_values_check') THEN
+          ALTER TABLE customer_bookings ADD CONSTRAINT customer_bookings_new_booking_values_check CHECK (
+            (price_status IS NULL OR price_status IN ('complete', 'incomplete'))
+            AND (service_time IS NULL OR service_time ~ '^([01][0-9]|2[0-3]):[0-5][05]$')
+            AND (adults IS NULL OR adults BETWEEN 0 AND 7)
+            AND (children IS NULL OR children BETWEEN 0 AND 7)
+            AND (sports_equipment IS NULL OR sports_equipment BETWEEN 0 AND 7)
+            AND (xl_baggage IS NULL OR xl_baggage BETWEEN 0 AND 7)
+            AND (l_baggage IS NULL OR l_baggage BETWEEN 0 AND 7)
+            AND (cabin_hand_bags IS NULL OR cabin_hand_bags BETWEEN 0 AND 7)
+            AND (backpacks IS NULL OR backpacks BETWEEN 0 AND 7)
+          );
+        END IF;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS booking_journey_stops (
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        position SMALLINT NOT NULL CHECK (position BETWEEN 0 AND 3),
+        stop_type TEXT NOT NULL CHECK (stop_type IN ('pickup', 'via', 'dropoff')),
+        location_kind TEXT NOT NULL CHECK (location_kind IN ('airport', 'poi', 'address')),
+        managed_location_id TEXT,
+        provider_place_id TEXT,
+        label TEXT NOT NULL CHECK (btrim(label) <> ''),
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        postcode TEXT,
+        coordinates_verified BOOLEAN NOT NULL,
+        PRIMARY KEY (booking_id, position),
+        CHECK ((location_kind = 'address') = (managed_location_id IS NULL)),
+        CHECK ((latitude IS NULL) = (longitude IS NULL)),
+        CHECK (NOT coordinates_verified OR latitude IS NOT NULL)
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_price_snapshots (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL UNIQUE REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (status IN ('complete', 'incomplete')),
+        currency TEXT NOT NULL DEFAULT 'GBP' CHECK (currency = 'GBP'),
+        total_amount NUMERIC(12,2),
+        fare_settings_version INTEGER,
+        inputs JSONB NOT NULL CHECK (jsonb_typeof(inputs) = 'object'),
+        route JSONB NOT NULL CHECK (jsonb_typeof(route) = 'object'),
+        calculation JSONB NOT NULL CHECK (jsonb_typeof(calculation) = 'object'),
+        unresolved_acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_by_account_id TEXT,
+        created_by_email TEXT NOT NULL,
+        CHECK ((status = 'complete') = (total_amount IS NOT NULL)),
+        CHECK (status = 'complete' OR unresolved_acknowledged)
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_price_line_items (
+        snapshot_id TEXT NOT NULL REFERENCES booking_price_snapshots(id) ON DELETE CASCADE,
+        position SMALLINT NOT NULL CHECK (position >= 0),
+        line_type TEXT NOT NULL,
+        label TEXT NOT NULL CHECK (btrim(label) <> ''),
+        status TEXT NOT NULL CHECK (status IN ('applied', 'zero', 'not-applicable', 'unresolved')),
+        amount NUMERIC(12,2),
+        basis TEXT NOT NULL,
+        source JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(source) = 'object'),
+        PRIMARY KEY (snapshot_id, position),
+        CHECK ((status IN ('applied', 'zero')) = (amount IS NOT NULL)),
+        CHECK (status <> 'zero' OR amount = 0)
+      );
+
+      CREATE OR REPLACE FUNCTION rm_reject_booking_price_snapshot_mutation() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Booking price snapshots are immutable once saved.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_booking_price_snapshots_immutable ON booking_price_snapshots;
+      CREATE TRIGGER trg_booking_price_snapshots_immutable
+        BEFORE UPDATE ON booking_price_snapshots
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_price_snapshot_mutation();
+      DROP TRIGGER IF EXISTS trg_booking_price_line_items_immutable ON booking_price_line_items;
+      CREATE TRIGGER trg_booking_price_line_items_immutable
+        BEFORE UPDATE ON booking_price_line_items
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_price_snapshot_mutation();
+    `
   }
 ];
 

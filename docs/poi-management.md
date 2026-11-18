@@ -8,7 +8,7 @@ POI Fees are optional records linked to an active POI by its RideMatrix ID. Each
 
 POI and POI Fee changes are retained in append-only audit tables. A POI with active fees cannot be deleted until those fees are deleted. No sample POIs or fees are seeded.
 
-POI Fee configuration is not applied to booking prices, fare calculations, booking totals, customer charges, or payment processing. Airports and Airport Fees remain separately managed and are not migrated into the POI model.
+New Booking itemizes POI Fees only for the exact selected POI ID (automatic triggers at pickup/drop-off, confirmation fees when ticked by the dispatcher) and stores them in the price snapshot (see [New Booking](new-booking.md)). They are not applied to existing bookings, customer charges, or payment processing. Airports and Airport Fees remain separately managed and are not migrated into the POI model.
 
 ## Manual verification
 
@@ -16,4 +16,4 @@ POI Fee configuration is not applied to booking prices, fare calculations, booki
 2. Create and edit a POI, choose a Google Places result, and confirm the configured display name, RideMatrix ID, location label, and notes appear independently on the saved list.
 3. Add two fee records for the same POI, using different actions or fee bases; try both trigger choices and confirm the fee list displays the linked POI name and ID.
 4. Confirm a POI without fees can be deleted, while a POI with active fees reports that the fees must be removed first.
-5. Open `/settings/toll-fees/airport-fees` and verify the existing Airport Fees records and controls remain separate; check that no POI Fee is added to booking prices.
+5. Open `/settings/toll-fees/airport-fees` and verify the existing Airport Fees records and controls remain separate; check that no POI Fee is added to existing booking prices.
