@@ -4793,3 +4793,87 @@ button:visited,
   color: var(--rm-text-soft);
   font-weight: 600;
 }
+
+/* Location-based discounts */
+.fare-settings__field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+  background: var(--rm-page-bg);
+  color: var(--rm-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.fare-settings__field textarea[aria-invalid="true"],
+.fare-settings__percentage-input input[aria-invalid="true"] {
+  border-color: var(--rm-error, #a32222);
+}
+
+.fare-settings__percentage-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.fare-settings__percentage-input > span {
+  font-weight: 700;
+}
+
+.fare-settings__discount-semantics {
+  margin-top: 1.25rem;
+}
+
+.fare-settings__discount-semantics h2,
+.fare-settings__discount-remove h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.fare-settings__discount-semantics li + li {
+  margin-top: 0.35rem;
+}
+
+.fare-settings__discount-summary {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.fare-settings__discount-summary dt {
+  font-weight: 700;
+}
+
+.fare-settings__discount-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fare-settings__status {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--rm-border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  vertical-align: middle;
+}
+
+.fare-settings__status--enabled {
+  border-color: var(--rm-dark-teal);
+  color: var(--rm-dark-teal);
+}
+
+.fare-settings__status--disabled {
+  color: var(--rm-text-soft);
+}
+
+@media (max-width: 40rem) {
+  .fare-settings__discount-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

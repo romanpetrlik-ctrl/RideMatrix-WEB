@@ -39,7 +39,9 @@ import {
   fareSettingsStore,
   FareSettingsVersionConflictError,
   fixedFareRuleToForm,
+  locationDiscountRuleToForm,
   validateFixedFareRuleForm,
+  validateLocationDiscountForm,
   validateMinimumFareRuleForm,
   resolveAdditionalDistanceSlabSets,
   validateAdditionalDistanceSlabSetForm,
@@ -50,6 +52,8 @@ import {
   type FareSettingsConfiguration,
   type FixedFareRule,
   type FixedFareRuleFormValues,
+  type LocationDiscountFormValues,
+  type LocationDiscountRule,
   type MinimumFareRule,
   type MinimumFareRuleFormValues,
   type FareSettingsSnapshot,
@@ -170,6 +174,7 @@ export type FareSettingsCategory = {
 export const fareSettingsCategories: readonly FareSettingsCategory[] = [
   { slug: "minimum-fare-rules", title: "Minimum fare rules", description: "Configure minimum base fares for journeys with a selected managed location as origin or destination.", configurable: true },
   { slug: "fixed-fares", title: "Fixed fares", description: "Configure directional fixed base fares between identified locations.", configurable: true },
+  { slug: "location-based-discounts", title: "Location-based discounts", description: "Configure percentage discounts for journeys between a managed airport or POI and explicit UK postcodes. Configuration only; not yet applied to booking prices.", configurable: true },
   { slug: "distance-slabs", title: "Distance slabs", description: "Configure progressive base rates by journey distance.", configurable: true },
   { slug: "additional-distance-slabs", title: "Additional distance slabs", description: "Configure independent progressive slab sets, each linked to one managed airport or POI. Configuration only; not yet used to price bookings.", configurable: true },
   { slug: "dead-mileage-settings", title: "Dead mileage settings", description: "Configure the free-radius circle around the verified operational base.", configurable: true },
@@ -376,6 +381,9 @@ type FareSettingsRenderOptions = {
   additionalSetFormId?: string;
   additionalCopied?: boolean;
   additionalRemoveSetId?: string;
+  discountForm?: LocationDiscountFormValues;
+  discountFormId?: string;
+  discountRemoveId?: string;
 };
 
 type FareSettingsPage = {
@@ -633,7 +641,8 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }))
         : [];
       const isAdditionalSlabsPage = page.category?.slug === "additional-distance-slabs";
-      const slabTargets = isAdditionalSlabsPage ? await loadManagedSlabTargets() : [];
+      const isDiscountPage = page.category?.slug === "location-based-discounts";
+      const slabTargets = isAdditionalSlabsPage || isDiscountPage ? await loadManagedSlabTargets() : [];
       const escapeSlabs = (slabs: FareSettingsConfiguration["distanceSlabs"]) => slabs.map((slab) => ({
         startMiles: escapeHtml(slab.startMiles),
         endMiles: escapeHtml(slab.endMiles),
@@ -686,6 +695,47 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           targetKey: escapeHtml(editorForm.targetKey),
           unavailableTargetLabel: editorUnavailableTarget,
           distanceSlabs: escapeSlabs(editorForm.distanceSlabs)
+        }
+        : null;
+      const locationDiscounts = isDiscountPage
+        ? (configuration.locationDiscounts ?? []).map((rule) => {
+          const target = describeTarget(rule.location);
+          return {
+            id: escapeHtml(rule.id),
+            urlId: escapeHtml(encodeURIComponent(rule.id)),
+            name: escapeHtml(rule.name),
+            locationLabel: target.label,
+            locationAvailable: target.available,
+            locationId: escapeHtml(rule.location.id),
+            precisionLabel: rule.postcodePrecision === "full" ? "Full postcode" : "Outward code",
+            postcodes: rule.postcodes.map(escapeHtml),
+            discountPercentage: escapeHtml(rule.discountPercentage),
+            validity: escapeHtml(rule.startDate && rule.endDate
+              ? `${rule.startDate} to ${rule.endDate} (inclusive)`
+              : rule.startDate ? `From ${rule.startDate} (no end date)`
+                : rule.endDate ? `Until ${rule.endDate} (inclusive)` : "No date limits"),
+            enabled: rule.enabled
+          };
+        })
+        : [];
+      const discountRemove = isDiscountPage && renderOptions.discountRemoveId
+        ? locationDiscounts.find((rule) => rule.id === escapeHtml(renderOptions.discountRemoveId ?? "")) ?? null
+        : null;
+      const discountForm = isDiscountPage ? renderOptions.discountForm : undefined;
+      const discountUnavailableLocation = discountForm && discountForm.locationKey &&
+        !slabTargets.some((target) => additionalSlabTargetKey(target) === discountForm.locationKey)
+        ? (() => {
+          const [type, ...rest] = discountForm.locationKey.split(":");
+          const id = rest.join(":");
+          const kind = type === "airport" ? "airport" : type === "poi" ? "POI" : "location";
+          return escapeHtml(id ? `Unavailable ${kind} — internal ID ${id}` : `Unavailable location — ${discountForm.locationKey}`);
+        })()
+        : "";
+      const discountEditor = discountForm
+        ? {
+          id: escapeHtml(renderOptions.discountFormId ?? ""),
+          ...Object.fromEntries(Object.entries(discountForm).map(([key, value]) => [key, escapeHtml(value)])) as LocationDiscountFormValues,
+          unavailableLocationLabel: discountUnavailableLocation
         }
         : null;
       const managedTargets = {
@@ -757,6 +807,9 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         additionalEditor,
         additionalRemoveSet: removeSet ?? null,
         additionalCopied: renderOptions.additionalCopied ?? false,
+        locationDiscounts,
+        discountEditor,
+        discountRemove,
         managedTargets,
         baseSlabsJson: escapeHtml(JSON.stringify(baseSlabs)),
         baseSlabCount: baseSlabs.length,
@@ -957,8 +1010,144 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     });
   }
 
+  const discountsCategory = fareSettingsCategories.find((category) => category.slug === "location-based-discounts");
+  const discountsPath = `${fareSettingsPath}/location-based-discounts`;
+  if (discountsCategory) {
+    const category = discountsCategory;
+    const createTitle = "Create location-based discount";
+    const editTitle = "Edit location-based discount";
+    const removeTitle = "Remove location-based discount";
+    const notFound = "The location-based discount could not be found. Reload the page and try again.";
+    // New rules are never enabled by default.
+    const blankForm = (): LocationDiscountFormValues => ({
+      name: "", locationKey: "", postcodePrecision: "", postcodes: "", discountPercentage: "", startDate: "", endDate: "", enabled: "no"
+    });
+    const rulesOf = (configuration: FareSettingsConfiguration): LocationDiscountRule[] => configuration.locationDiscounts ?? [];
+
+    router.get(discountsPath, (req, res, next) => {
+      void renderFareSettingsPage(req, res, next, { category });
+    });
+
+    router.get(`${discountsPath}/new`, (req, res, next) => {
+      void renderFareSettingsPage(req, res, next, { category, subpageTitle: createTitle }, { discountForm: blankForm() });
+    });
+
+    for (const action of ["edit", "remove"] as const) {
+      router.get(`${discountsPath}/:ruleId/${action}`, async (req, res, next) => {
+        try {
+          const snapshot = await fareStore.load();
+          const rule = rulesOf(snapshot.configuration).find((item) => item.id === req.params.ruleId);
+          if (!rule) {
+            void renderFareSettingsPage(req, res, next, { category }, { snapshot, formError: notFound, statusCode: 404 });
+            return;
+          }
+          void renderFareSettingsPage(req, res, next, { category, subpageTitle: action === "remove" ? removeTitle : editTitle }, action === "remove"
+            ? { snapshot, discountRemoveId: rule.id }
+            : { snapshot, discountForm: locationDiscountRuleToForm(rule), discountFormId: rule.id });
+        } catch (error) {
+          next(error);
+        }
+      });
+    }
+
+    router.post(discountsPath, csrfGuard, async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const snapshot = await fareStore.load();
+        const rules = rulesOf(snapshot.configuration);
+        const ruleId = typeof req.body?.ruleId === "string" ? req.body.ruleId.trim() : "";
+        const rawAction = req.body?.ruleAction;
+        const action = rawAction === "delete" || rawAction === "enable" || rawAction === "disable"
+          ? rawAction as "delete" | "enable" | "disable"
+          : "save";
+        const existing = ruleId ? rules.find((rule) => rule.id === ruleId) : undefined;
+        if ((ruleId || action !== "save") && !existing) {
+          return renderFareSettingsPage(req, res, next, { category }, { snapshot, formError: notFound, statusCode: 404 });
+        }
+        const editorPage = { category, subpageTitle: existing ? editTitle : createTitle };
+        const submittedForm = (): LocationDiscountFormValues => validateLocationDiscountForm(req.body, [], []).values;
+
+        const rawVersion = req.body?.baseVersion;
+        const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion) ? Number(rawVersion) : NaN;
+        const versionError = !Number.isSafeInteger(expectedVersion) || expectedVersion < 0
+          ? { formError: "The settings version is missing or invalid. Reload this page before saving.", statusCode: 400 }
+          : expectedVersion !== snapshot.currentVersion
+            ? { formError: new FareSettingsVersionConflictError().message, statusCode: 409 }
+            : null;
+        if (versionError) {
+          return action === "save"
+            ? renderFareSettingsPage(req, res, next, editorPage, {
+              snapshot, discountForm: submittedForm(), discountFormId: existing?.id ?? "", ...versionError
+            })
+            : renderFareSettingsPage(req, res, next, { category }, { snapshot, ...versionError });
+        }
+
+        let nextRules: LocationDiscountRule[];
+        if (action === "delete") {
+          nextRules = rules.filter((rule) => rule.id !== existing!.id);
+        } else if (action === "disable") {
+          nextRules = rules.map((rule) => rule.id === existing!.id ? { ...rule, enabled: false } : rule);
+        } else if (action === "enable") {
+          // Re-validate the saved rule so a conflicting or unavailable rule can never be enabled.
+          const validation = validateLocationDiscountForm(
+            { ...locationDiscountRuleToForm(existing!), enabled: "yes" },
+            await loadManagedSlabTargets(),
+            rules,
+            existing!.id
+          );
+          if (!validation.rule) {
+            const reason = Object.values(validation.errors).join(" ");
+            return renderFareSettingsPage(req, res, next, { category }, {
+              snapshot,
+              formError: `“${existing!.name}” was not enabled. ${reason}`,
+              statusCode: 400
+            });
+          }
+          nextRules = rules.map((rule) => rule.id === existing!.id ? { ...rule, enabled: true } : rule);
+        } else {
+          const validation = validateLocationDiscountForm(req.body, await loadManagedSlabTargets(), rules, existing?.id ?? "");
+          if (!validation.rule) {
+            return renderFareSettingsPage(req, res, next, editorPage, {
+              snapshot,
+              discountForm: validation.values,
+              discountFormId: existing?.id ?? "",
+              errors: validation.errors,
+              statusCode: 400
+            });
+          }
+          const updated: LocationDiscountRule = { id: existing?.id ?? randomUUID(), ...validation.rule };
+          nextRules = existing ? rules.map((rule) => rule.id === existing.id ? updated : rule) : [...rules, updated];
+        }
+
+        try {
+          await fareStore.save(expectedVersion, { ...snapshot.configuration, locationDiscounts: nextRules }, {
+            accountId: session.user.id,
+            email: session.user.email
+          });
+        } catch (error) {
+          if (!(error instanceof FareSettingsVersionConflictError)) throw error;
+          const latest = await fareStore.load();
+          return action === "save"
+            ? renderFareSettingsPage(req, res, next, editorPage, {
+              snapshot: latest, discountForm: submittedForm(), discountFormId: existing?.id ?? "", formError: error.message, statusCode: 409
+            })
+            : renderFareSettingsPage(req, res, next, { category }, { snapshot: latest, formError: error.message, statusCode: 409 });
+        }
+        return res.redirect(303, `${discountsPath}?saved=1`);
+      } catch (error) {
+        return next(error);
+      }
+    });
+  }
+
   for (const category of fareSettingsCategories) {
-    if (category.slug === "additional-distance-slabs") continue;
+    if (category.slug === "additional-distance-slabs" || category.slug === "location-based-discounts") continue;
     const categoryPath = `${fareSettingsPath}/${category.slug}`;
     router.get(categoryPath, (req, res, next) => {
       // Links to the former airport-specific editor on Distance slabs now open Additional distance slabs.
