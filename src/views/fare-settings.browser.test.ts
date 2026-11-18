@@ -470,3 +470,87 @@ test("additional slab editor copies base slabs into the shared editor with the s
     await browser.close();
   }
 });
+
+test("location-based discount form validates client-side and keeps entered values", async (t) => {
+  const executablePath = process.env.CHROMIUM_PATH
+    ?? ["/usr/bin/chromium", "/usr/bin/google-chrome"].find((candidate) => fs.existsSync(candidate));
+  if (!executablePath) {
+    t.skip("Chromium executable not found");
+    return;
+  }
+  const html = (await ejs.renderFile(path.join(process.cwd(), "src/views/pages/fare-settings.ejs"), {
+    title: "Fare Settings: Create location-based discount",
+    appTitle: "RideMatrix Test",
+    email: "operator@example.test",
+    grantedByLabel: "Superuser",
+    categories: [],
+    category: { slug: "location-based-discounts", title: "Location-based discounts", description: "Configure discounts.", configurable: true },
+    breadcrumbs: [{ label: "System Settings", href: "/settings" }, { label: "Location-based discounts" }],
+    configuration: {
+      distanceSlabs: [],
+      dailySurcharge: { enabled: false, percentage: "", startTime: "", endTime: "" },
+      bankHolidaySurcharge: { enabled: false, periods: [] }
+    },
+    managedTargets: { airports: [{ key: "airport:rm-boh", displayName: "Bournemouth Airport" }], pois: [] },
+    locationDiscounts: [],
+    discountEditor: {
+      id: "", name: "", locationKey: "", postcodePrecision: "", postcodes: "", discountPercentage: "",
+      startDate: "", endDate: "", enabled: "no", unavailableLocationLabel: ""
+    },
+    discountRemove: null,
+    currentVersion: 0,
+    history: [],
+    errors: {},
+    formError: "",
+    saved: false,
+    csrfField: ""
+  }))
+    .replace(/<link\b[^>]*>/g, "")
+    .replace(/<script\b[^>]*><\/script>/g, "");
+
+  const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setContent(html);
+    await page.addScriptTag({ path: path.join(process.cwd(), "public/js/location-discounts.js") });
+    let submitted = false;
+    await page.exposeFunction("markSubmitted", () => { submitted = true; });
+    await page.locator("[data-location-discount-form]").evaluate((form) => {
+      form.addEventListener("submit", (event) => {
+        if (!event.defaultPrevented) (window as unknown as { markSubmitted: () => void }).markSubmitted();
+        event.preventDefault();
+      });
+    });
+
+    await page.locator("#discount-name").fill("BH22 promotion");
+    await page.locator("#discount-location").selectOption("airport:rm-boh");
+    await page.locator('input[name="postcodePrecision"][value="full"]').check();
+    await page.locator("#discount-postcodes").fill("BH22\nbh14rs\nBH1 4RS");
+    await page.locator("#discount-percentage").fill("101");
+    await page.locator("#discount-start").fill("2027-02-01");
+    await page.locator("#discount-end").fill("2027-01-01");
+    await page.locator("[data-location-discount-form] button[type=submit]").first().click();
+
+    assert.equal(submitted, false, "invalid values are not submitted");
+    assert.match(await page.locator('[data-discount-error="postcodes"]').textContent() ?? "", /BH22 is an outward code/);
+    assert.match(await page.locator('[data-discount-error="discountPercentage"]').textContent() ?? "", /greater than 0 and no more than 100/);
+    assert.match(await page.locator('[data-discount-error="endDate"]').textContent() ?? "", /cannot be before the start date/);
+    assert.equal(await page.locator("#discount-postcodes").getAttribute("aria-invalid"), "true");
+    assert.equal(await page.locator("#discount-postcodes").inputValue(), "BH22\nbh14rs\nBH1 4RS", "entered values are kept");
+
+    await page.locator("#discount-postcodes").fill("bh14rs\nBH1 4RS");
+    await page.locator("[data-location-discount-form] button[type=submit]").first().click();
+    assert.match(await page.locator('[data-discount-error="postcodes"]').textContent() ?? "", /duplicate.*BH1 4RS/i);
+
+    await page.locator("#discount-postcodes").fill("bh14rs");
+    await page.locator("#discount-percentage").fill("12.5");
+    await page.locator("#discount-end").fill("2027-03-01");
+    await page.locator("[data-location-discount-form] button[type=submit]").first().click();
+    assert.equal(submitted, true, "a valid rule submits to the server");
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser.close();
+  }
+});

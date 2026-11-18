@@ -39,7 +39,7 @@
         </div>
       ` : `
         <p class="fare-settings__intro">${category.description}</p>
-        ${category.slug !== "distance-slabs" && category.slug !== "additional-distance-slabs" && category.slug !== "dead-mileage-settings" ? `<div class="notice fare-settings__configuration-only" role="status">
+        ${category.slug !== "distance-slabs" && category.slug !== "additional-distance-slabs" && category.slug !== "dead-mileage-settings" && category.slug !== "location-based-discounts" ? `<div class="notice fare-settings__configuration-only" role="status">
           This saves configuration only. No fare is calculated or applied and booking totals are unchanged. Time values use <strong>Europe/London</strong> local time.
         </div>` : ""}
         ${category.slug === "minimum-fare-rules" ? `
@@ -293,6 +293,131 @@
                     <a class="button button--secondary" href="/settings/fare-settings/additional-distance-slabs/${set.urlId}/remove" aria-label="Remove ${set.name}">Remove</a>
                   </div>
                 </li>`).join("")}</ul>` : `<p>No additional distance slab sets have been configured.</p>`}
+            </section>
+          `}
+        ` : category.slug === "location-based-discounts" ? `
+          <div class="notice fare-settings__configuration-only" role="status" data-location-discount-pricing-note>
+            <strong>Configuration only — discounts are not yet applied to booking prices.</strong> These rules are saved for future pricing work. No fare calculation, New Booking behaviour, booking total or customer charge uses them yet.
+          </div>
+          <section class="fare-settings__discount-semantics" aria-labelledby="discount-semantics-title">
+            <h2 id="discount-semantics-title">How a location-based discount matches</h2>
+            <ul class="fare-settings__help-list">
+              <li>A rule matches only when one journey endpoint is the selected managed airport or POI, identified by its internal RideMatrix ID, and the other endpoint has a postcode matching one of the rule's configured postcode entries.</li>
+              <li>The rule applies in either direction: postcode area → selected location, or selected location → postcode area.</li>
+              <li>Matching uses the exact managed location ID only — never Google's display label, a free-text name, nearby coordinates, the airport's own postcode, or general proximity.</li>
+              <li>UK postcodes are normalized (case and spacing) before exact comparison; partial-string matching is never used. <strong>Full postcode</strong> precision matches only that exact postcode (for example <code>BH1 4RS</code>). <strong>Outward code</strong> precision intentionally matches the entire outward-code area (for example <code>BH22</code> matches <code>BH22 8AB</code> but not <code>BH2 2AB</code>); this only happens when outward-code precision is explicitly selected.</li>
+              <li>The endpoint postcode comes from the structured postcode of the selected address / Google Places data. If no valid postcode is available, the future pricing decision is reported as unresolved — it is never guessed from address text or a postcode centroid.</li>
+              <li>Only the configured origin and destination endpoints are considered; a route passing through the postcode area does not match.</li>
+              <li><strong>Discount basis:</strong> the percentage is a discount on the base fare calculated from the standard Distance Slabs. Airport and POI fees, road charges, dead mileage and other separately itemized fees are not discounted. Additional distance slabs are not used or changed by these rules.</li>
+              <li><strong>No stacking:</strong> rules for the same location with overlapping validity dates cannot share a postcode at the same precision, and a full postcode cannot be covered by another rule's outward code. Disabled rules are included in this check so enabling a rule never creates an ambiguous discount. Optional dates are inclusive Europe/London local dates.</li>
+            </ul>
+          </section>
+          ${locals.discountRemove ? (() => { const rule = locals.discountRemove; return `
+            <section class="fare-settings__rule-card fare-settings__discount-remove" aria-labelledby="discount-remove-title">
+              <h2 id="discount-remove-title">Remove “${rule.name}”?</h2>
+              <p><strong>Location:</strong> ${rule.locationLabel}</p>
+              <p><strong>Postcode entries (${rule.precisionLabel}):</strong> ${rule.postcodes.join(", ")}</p>
+              <p>This removes the rule from the current configuration. The removal is saved as a new configuration history version with your name and the time; earlier versions remain in history.</p>
+              <form class="fare-settings__actions" method="post" action="/settings/fare-settings/location-based-discounts">
+                ${locals.csrfField || ""}
+                <input type="hidden" name="baseVersion" value="${currentVersion}" />
+                <input type="hidden" name="ruleId" value="${rule.id}" />
+                <button class="button button--primary" type="submit" name="ruleAction" value="delete">Yes, remove this discount</button>
+                <a class="button button--secondary" href="/settings/fare-settings/location-based-discounts">Cancel</a>
+              </form>
+            </section>
+          `; })() : locals.discountEditor ? (() => { const editor = locals.discountEditor; const fieldError = (key) => `<p id="discount-${key}-error" class="fare-settings__field-error${errors[key] ? " fare-settings__field-error--invalid" : ""}" ${errors[key] ? 'role="alert"' : ""} data-discount-error="${key}">${errors[key] || ""}</p>`; return `
+            <form class="fare-settings__form fare-settings__discount-form" method="post" action="/settings/fare-settings/location-based-discounts" data-location-discount-form novalidate>
+              ${locals.csrfField || ""}
+              <input type="hidden" name="baseVersion" value="${currentVersion}" />
+              <input type="hidden" name="ruleId" value="${editor.id}" />
+              <h2>${editor.id ? "Edit location-based discount" : "Create location-based discount"}</h2>
+              ${Object.keys(errors).length ? `<div class="notice fare-settings__error" role="alert"><strong>Correct the highlighted fields before saving.</strong></div>` : ""}
+              <div class="fare-settings__fields">
+                <div class="fare-settings__field">
+                  <label for="discount-name">Rule name or description</label>
+                  <input id="discount-name" name="name" type="text" maxlength="160" required value="${editor.name}" aria-invalid="${errors.name ? "true" : "false"}" aria-describedby="discount-name-error" />
+                  ${fieldError("name")}
+                </div>
+                <div class="fare-settings__field">
+                  <label for="discount-location">Managed airport or POI</label>
+                  <select id="discount-location" name="locationKey" required aria-invalid="${errors.locationKey || editor.unavailableLocationLabel ? "true" : "false"}" aria-describedby="discount-location-help discount-locationKey-error">
+                    <option value="">Select a managed airport or POI</option>
+                    ${editor.unavailableLocationLabel ? `<option value="${editor.locationKey}" selected disabled>${editor.unavailableLocationLabel}</option>` : ""}
+                    ${managedTargets.airports.length ? `<optgroup label="Airports">${managedTargets.airports.map((target) => `<option value="${target.key}" ${editor.locationKey === target.key ? "selected" : ""}>${target.displayName}</option>`).join("")}</optgroup>` : ""}
+                    ${managedTargets.pois.length ? `<optgroup label="Points of interest">${managedTargets.pois.map((target) => `<option value="${target.key}" ${editor.locationKey === target.key ? "selected" : ""}>${target.displayName}</option>`).join("")}</optgroup>` : ""}
+                  </select>
+                  <p id="discount-location-help" class="fare-settings__help">Saved against the record's internal RideMatrix ID, not a Google label, free text, postcode or coordinates.</p>
+                  ${errors.locationKey || !editor.unavailableLocationLabel ? fieldError("locationKey") : `<p id="discount-locationKey-error" class="fare-settings__field-error fare-settings__field-error--invalid" role="alert" data-discount-error="locationKey">The linked airport or POI is missing or unavailable. Select an active managed airport or POI before saving; no other location is substituted.</p>`}
+                  ${!managedTargets.airports.length && !managedTargets.pois.length ? `<p class="fare-settings__help">No managed airports or POIs are available. Add one under Toll &amp; Fees → Airport Fees or POI management first.</p>` : ""}
+                </div>
+                <fieldset class="fare-settings__choice" aria-describedby="discount-precision-help discount-postcodePrecision-error">
+                  <legend>Postcode match precision</legend>
+                  <label><input type="radio" name="postcodePrecision" value="full" ${editor.postcodePrecision === "full" ? "checked" : ""} required /> Full postcode (e.g. BH1 4RS)</label>
+                  <label><input type="radio" name="postcodePrecision" value="outward" ${editor.postcodePrecision === "outward" ? "checked" : ""} required /> Outward code — matches the entire area (e.g. BH22)</label>
+                  <p id="discount-precision-help" class="fare-settings__help">Applies to every entry in this rule. Create a separate rule to mix precisions.</p>
+                  ${fieldError("postcodePrecision")}
+                </fieldset>
+                <div class="fare-settings__field fare-settings__wide">
+                  <label for="discount-postcodes">Postcode area entries</label>
+                  <textarea id="discount-postcodes" name="postcodes" rows="5" required aria-invalid="${errors.postcodes ? "true" : "false"}" aria-describedby="discount-postcodes-help discount-postcodes-error">${editor.postcodes}</textarea>
+                  <p id="discount-postcodes-help" class="fare-settings__help">Enter one UK postcode per line or separate entries with commas. Entries are normalized to upper case with standard spacing; duplicates are rejected.</p>
+                  ${fieldError("postcodes")}
+                </div>
+                <div class="fare-settings__field">
+                  <label for="discount-percentage">Discount percentage</label>
+                  <div class="fare-settings__percentage-input"><input id="discount-percentage" name="discountPercentage" type="text" inputmode="decimal" required pattern="[0-9]{1,3}([.][0-9]{1,2})?" value="${editor.discountPercentage}" aria-invalid="${errors.discountPercentage ? "true" : "false"}" aria-describedby="discount-percentage-help discount-discountPercentage-error" /><span aria-hidden="true">%</span></div>
+                  <p id="discount-percentage-help" class="fare-settings__help">Greater than 0 and at most 100, up to 2 decimal places. Applies to the standard Distance Slabs base fare only.</p>
+                  ${fieldError("discountPercentage")}
+                </div>
+                <div class="fare-settings__field">
+                  <label for="discount-start">Start date (optional)</label>
+                  <input id="discount-start" name="startDate" type="date" value="${editor.startDate}" aria-invalid="${errors.startDate ? "true" : "false"}" aria-describedby="discount-dates-help discount-startDate-error" />
+                  ${fieldError("startDate")}
+                </div>
+                <div class="fare-settings__field">
+                  <label for="discount-end">End date (optional)</label>
+                  <input id="discount-end" name="endDate" type="date" value="${editor.endDate}" aria-invalid="${errors.endDate ? "true" : "false"}" aria-describedby="discount-dates-help discount-endDate-error" />
+                  ${fieldError("endDate")}
+                </div>
+                <p id="discount-dates-help" class="fare-settings__help fare-settings__wide">For a temporary promotion. Dates are inclusive Europe/London local dates; leave both blank for no date limits. The end date cannot be before the start date.</p>
+                <fieldset class="fare-settings__choice" aria-describedby="discount-enabled-error">
+                  <legend>Status</legend>
+                  <label><input type="radio" name="enabled" value="yes" ${editor.enabled === "yes" ? "checked" : ""} required /> Enabled</label>
+                  <label><input type="radio" name="enabled" value="no" ${editor.enabled === "yes" ? "" : "checked"} required /> Disabled</label>
+                  ${fieldError("enabled")}
+                </fieldset>
+              </div>
+              <div class="fare-settings__actions">
+                <button class="button button--primary" type="submit" name="ruleAction" value="save">Save location-based discount</button>
+                <a class="button button--secondary" href="/settings/fare-settings/location-based-discounts">Cancel</a>
+              </div>
+            </form>
+            <script src="/js/location-discounts.js" defer></script>
+          `; })() : `
+            <p><a class="button button--primary" href="/settings/fare-settings/location-based-discounts/new">Create location-based discount</a></p>
+            <section class="fare-settings__rule-list" aria-labelledby="discount-list-title">
+              <h2 id="discount-list-title">Saved location-based discounts</h2>
+              ${locationDiscounts.length ? `<ul class="fare-settings__additional-list">${locationDiscounts.map((rule) => `
+                <li class="fare-settings__rule-card">
+                  <h3>${rule.name} <span class="fare-settings__status fare-settings__status--${rule.enabled ? "enabled" : "disabled"}">${rule.enabled ? "Enabled" : "Disabled"}</span></h3>
+                  <dl class="fare-settings__discount-summary">
+                    <dt>Location</dt><dd>${rule.locationAvailable ? rule.locationLabel : `<span class="fare-settings__field-error fare-settings__field-error--invalid">${rule.locationLabel}</span>`} <span class="fare-settings__help">internal ID ${rule.locationId}</span></dd>
+                    <dt>Postcode entries (${rule.precisionLabel})</dt><dd>${rule.postcodes.join(", ")}</dd>
+                    <dt>Discount</dt><dd>${rule.discountPercentage}% of the standard Distance Slabs base fare</dd>
+                    <dt>Validity</dt><dd>${rule.validity}</dd>
+                  </dl>
+                  <div class="fare-settings__actions">
+                    <form method="post" action="/settings/fare-settings/location-based-discounts">
+                      ${locals.csrfField || ""}
+                      <input type="hidden" name="baseVersion" value="${currentVersion}" />
+                      <input type="hidden" name="ruleId" value="${rule.id}" />
+                      <button class="button button--secondary" type="submit" name="ruleAction" value="${rule.enabled ? "disable" : "enable"}" aria-label="${rule.enabled ? "Disable" : "Enable"} ${rule.name}">${rule.enabled ? "Disable" : "Enable"}</button>
+                    </form>
+                    <a class="button button--secondary" href="/settings/fare-settings/location-based-discounts/${rule.urlId}/edit" aria-label="Edit ${rule.name}">Edit</a>
+                    <a class="button button--secondary" href="/settings/fare-settings/location-based-discounts/${rule.urlId}/remove" aria-label="Remove ${rule.name}">Remove</a>
+                  </div>
+                </li>`).join("")}</ul>` : `<p>No location-based discounts have been configured.</p>`}
             </section>
           `}
         ` : category.slug === "fare-surcharge-settings" ? `
