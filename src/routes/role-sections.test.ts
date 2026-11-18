@@ -2453,8 +2453,202 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     };
     walk("src");
     walk("public/js");
-    const readers = sources.filter((file) => /locationDiscounts|matchLocationDiscount/.test(readFileSync(file, "utf8")));
-    assert.deepEqual(readers.sort(), ["src/routes/role-sections.ts", "src/services/fare-settings.ts", "src/views/pages/fare-settings.ejs"]);
+    const readers = sources.filter((file) => /locationDiscounts|matchLocationDiscount|LocationDiscounts|calculateJourneyFare|resolveJourneyLocationDiscount/.test(readFileSync(file, "utf8")));
+    assert.deepEqual(readers.sort(), [
+      "src/routes/role-sections.ts",
+      "src/services/fare-calculation.ts",
+      "src/services/fare-settings.ts",
+      "src/views/pages/fare-settings.ejs"
+    ], "only Fare Settings and the fare calculation service read discount rules; no booking surface calls it yet");
+  });
+
+  const radiusClient = (cookie: string) => {
+    const path = "/settings/fare-settings/operational-base-radius-discounts";
+    const getPage = (suffix = "") => fetch(`${baseUrl}${path}${suffix}`, { headers: withSession(cookie, ["superuser"]), redirect: "manual" });
+    const post = async (version: string, values: Record<string, string>) => {
+      const page = await getPage();
+      const body = await page.text();
+      const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+      const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+      assert.ok(csrfCookie && token);
+      const postCookie = `${cookie}; ${csrfCookie}`;
+      withSession(postCookie, ["superuser"]);
+      return fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ baseVersion: version, _csrf: token, ...values }),
+        redirect: "manual"
+      });
+    };
+    return { path, getPage, post };
+  };
+  const verifiedRadiusBase = (): OperationalBase => ({
+    operatorId: "test-operator",
+    latitude: 50.71,
+    longitude: -2.44,
+    providerPlaceId: "verified-operational-point",
+    coordinatesVerified: true,
+    updatedAt: "2026-11-10T12:00:00.000Z"
+  });
+  const radiusFields = (overrides: Record<string, string> = {}) => ({
+    name: "Base area to Heathrow",
+    locationKey: "airport:rm-lhr",
+    radiusMiles: "10",
+    discountPercentage: "15",
+    startDate: "",
+    endDate: "",
+    enabled: "no",
+    ...overrides
+  });
+
+  test("Operational-base radius discounts are listed in Fare Settings, unseeded, and explain precedence", async () => {
+    fareSettings.reset();
+    operationalBase = verifiedRadiusBase();
+    airportFees.reset();
+    airportFees.records.push(slabAirport("rm-lhr", "Heathrow Airport"));
+    const headers = withSession("sid=radius-nav", ["superuser"]);
+    const landing = await (await fetch(`${baseUrl}/settings/fare-settings`, { headers })).text();
+    assert.match(landing, /href="\/settings\/fare-settings\/operational-base-radius-discounts"/);
+    assert.match(landing, />Operational-base radius discounts</);
+
+    const page = await (await fetch(`${baseUrl}/settings/fare-settings/operational-base-radius-discounts`, { headers })).text();
+    assert.match(page, /No operational-base radius discounts have been configured/);
+    assert.match(page, /data-radius-discount-pricing-note/);
+    assert.match(page, /Not yet applied to booking prices/);
+    assert.match(page, /data-radius-discount-centre/);
+    assert.match(page, /50\.71, -2\.44/);
+
+    const editor = await (await fetch(`${baseUrl}/settings/fare-settings/operational-base-radius-discounts/new`, { headers })).text();
+    assert.match(editor, /data-radius-discount-form/);
+    assert.match(editor, /value="airport:rm-lhr"[^>]*>Heathrow Airport/);
+    assert.match(editor, /name="enabled" value="no" checked/, "new rules default to disabled");
+    for (const semantic of [/either direction/i, /internal RideMatrix ID/i, /boundary is included/i, /no discount/i, /stack/i, /Distance Slabs/]) {
+      assert.match(editor, semantic);
+    }
+    assert.equal(fareSettings.snapshot().currentVersion, 0, "viewing does not seed configuration");
+  });
+
+  test("Operational-base radius discounts create, edit, enable, disable and remove with history, leaving other settings unchanged", async () => {
+    fareSettings.reset();
+    operationalBase = verifiedRadiusBase();
+    airportFees.reset();
+    poiManagement.reset();
+    airportFees.records.push(slabAirport("rm-lhr", "Heathrow Airport"));
+    const { path, getPage, post } = radiusClient("sid=radius-crud");
+    const slabPost = additionalSlabsClient("sid=radius-crud").post;
+    assert.equal((await slabPost("/settings/fare-settings/distance-slabs", "0", slabFields("3.00"))).status, 303);
+    const discountsPost = discountsClient("sid=radius-crud").post;
+    assert.equal((await discountsPost("1", {
+      name: "Heathrow postcode promotion", locationKey: "airport:rm-lhr", postcodePrecision: "outward", postcodes: "DT1",
+      discountPercentage: "20", startDate: "", endDate: "", enabled: "yes"
+    })).status, 303);
+    const before = fareSettings.snapshot().configuration;
+
+    const created = await post("2", radiusFields({ radiusMiles: "10.500" }));
+    assert.equal(created.status, 303);
+    assert.equal(created.headers.get("location"), `${path}?saved=1`);
+    let snapshot = fareSettings.snapshot();
+    const [rule] = snapshot.configuration.radiusLocationDiscounts!;
+    assert.deepEqual({ ...rule, id: "" }, {
+      id: "",
+      name: "Base area to Heathrow",
+      location: { type: "airport", id: "rm-lhr" },
+      radiusMiles: "10.5",
+      discountPercentage: "15",
+      startDate: "",
+      endDate: "",
+      enabled: false,
+      radiusCentre: "operational-base",
+      discountBasis: "standard-distance-slabs-base-fare"
+    });
+    assert.equal(snapshot.history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
+
+    const list = await (await getPage()).text();
+    assert.match(list, /Base area to Heathrow/);
+    assert.match(list, /Heathrow Airport/);
+    assert.match(list, /Disabled/);
+    assert.match(list, /Configuration history/);
+    assert.match(await (await getPage(`/${rule.id}/edit`)).text(), /value="10\.5"/);
+
+    assert.equal((await post("3", radiusFields({ ruleId: rule.id, radiusMiles: "12", startDate: "2027-01-01", endDate: "2027-12-31" }))).status, 303);
+    assert.deepEqual(fareSettings.snapshot().configuration.radiusLocationDiscounts![0], { ...rule, radiusMiles: "12", startDate: "2027-01-01", endDate: "2027-12-31" });
+    assert.equal((await post("4", { ruleAction: "enable", ruleId: rule.id })).status, 303);
+    assert.equal(fareSettings.snapshot().configuration.radiusLocationDiscounts![0].enabled, true);
+    assert.match(await (await getPage()).text(), /Enabled/);
+    assert.equal((await post("5", { ruleAction: "disable", ruleId: rule.id })).status, 303);
+    assert.equal(fareSettings.snapshot().configuration.radiusLocationDiscounts![0].enabled, false);
+    assert.match(await (await getPage(`/${rule.id}/remove`)).text(), /Yes, remove this discount/);
+    assert.equal((await post("6", { ruleAction: "delete", ruleId: rule.id })).status, 303);
+
+    snapshot = fareSettings.snapshot();
+    assert.deepEqual(snapshot.configuration.radiusLocationDiscounts, []);
+    assert.equal(snapshot.history.length, 7, "each change is appended to Fare Settings history");
+    const { radiusLocationDiscounts: _after, ...otherAfter } = snapshot.configuration;
+    const { radiusLocationDiscounts: _before, ...otherBefore } = before;
+    assert.deepEqual(otherAfter, otherBefore, "postcode discounts, slabs, surcharges and the dead-mileage free radius are unchanged");
+
+    assert.equal((await getPage("/missing/edit")).status, 404);
+    assert.equal((await post("7", { ruleAction: "delete", ruleId: "missing" })).status, 404);
+  });
+
+  test("Operational-base radius discounts reject invalid, overlapping and unverified-base rules clearly", async () => {
+    fareSettings.reset();
+    operationalBase = verifiedRadiusBase();
+    airportFees.reset();
+    airportFees.records.push(slabAirport("rm-lhr", "Heathrow Airport"));
+    const { post, getPage } = radiusClient("sid=radius-invalid");
+
+    const invalid = await post("0", radiusFields({ radiusMiles: "0", discountPercentage: "101", startDate: "2027-02-01", endDate: "2027-01-01", locationKey: "Heathrow Airport" }));
+    assert.equal(invalid.status, 400);
+    const invalidBody = await invalid.text();
+    assert.match(invalidBody, /radius greater than 0/);
+    assert.match(invalidBody, /percentage greater than 0 and no more than 100/);
+    assert.match(invalidBody, /end date cannot be before the start date/);
+    assert.match(invalidBody, /missing or no longer available/);
+    assert.match(invalidBody, /id="radius-discount-radius"[^>]*value="0"[^>]*aria-invalid="true"/);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
+
+    assert.equal((await post("0", radiusFields({ name: "First", enabled: "yes" }))).status, 303);
+    const overlap = await post("1", radiusFields({ name: "Second", radiusMiles: "20", startDate: "2027-01-01" }));
+    assert.equal(overlap.status, 400);
+    assert.match(await overlap.text(), /already has the operational-base radius discount &(?:quot|#34);First&(?:quot|#34);.*cannot be stacked, combined or chosen between/s);
+    assert.equal(fareSettings.snapshot().configuration.radiusLocationDiscounts?.length, 1);
+
+    const stale = await post("0", radiusFields({ name: "Stale", startDate: "2030-01-01" }));
+    assert.equal(stale.status, 409);
+
+    const [first] = fareSettings.snapshot().configuration.radiusLocationDiscounts!;
+    assert.equal((await post("1", { ruleAction: "disable", ruleId: first.id })).status, 303);
+    const saved = operationalBase;
+    operationalBase = { ...saved!, coordinatesVerified: false };
+    try {
+      const page = await (await getPage()).text();
+      assert.match(page, /The operational base has no verified coordinates/);
+      const unverified = await post("2", radiusFields({ name: "Later", startDate: "2030-01-01" }));
+      assert.equal(unverified.status, 400);
+      assert.match(await unverified.text(), /operational base has no verified coordinates/);
+      const enable = await post("2", { ruleAction: "enable", ruleId: first.id });
+      assert.equal(enable.status, 400);
+      assert.equal(fareSettings.snapshot().configuration.radiusLocationDiscounts![0].enabled, false);
+    } finally {
+      operationalBase = saved;
+    }
+  });
+
+  test("Operational-base radius discount changes keep System Settings authorization", async () => {
+    fareSettings.reset();
+    for (const suffix of ["", "/new", "/any-rule/edit", "/any-rule/remove"]) {
+      const denied = await fetch(`${baseUrl}/settings/fare-settings/operational-base-radius-discounts${suffix}`, {
+        headers: withSession("sid=radius-denied", ["admin", "staff", "tech_support"]),
+        redirect: "manual"
+      });
+      assert.equal(denied.status, 403, suffix);
+      const anonymous = await fetch(`${baseUrl}/settings/fare-settings/operational-base-radius-discounts${suffix}`, { redirect: "manual" });
+      assert.equal(anonymous.status, 302, suffix);
+    }
+    const anonymousPost = await fetch(`${baseUrl}/settings/fare-settings/operational-base-radius-discounts`, { method: "POST", redirect: "manual" });
+    assert.notEqual(anonymousPost.status, 303);
+    assert.equal(fareSettings.snapshot().currentVersion, 0);
   });
 
   test("Fare surcharge setting validates, saves, disables, and retains its saved values", async () => {
@@ -2615,7 +2809,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
   });
 
   test("Fare Settings remains restricted to superuser sessions", async () => {
-    for (const destination of ["distance-slabs", "additional-distance-slabs", "additional-distance-slabs/new", "minimum-fare-rules", "fixed-fares", "location-based-discounts", "location-based-discounts/new"]) {
+    for (const destination of ["distance-slabs", "additional-distance-slabs", "additional-distance-slabs/new", "minimum-fare-rules", "fixed-fares", "location-based-discounts", "location-based-discounts/new", "operational-base-radius-discounts", "operational-base-radius-discounts/new"]) {
       const denied = await fetch(`${baseUrl}/settings/fare-settings/${destination}`, {
         headers: withSession(`sid=fare-denied-${destination}`, ["admin", "staff", "tech_support"]),
         redirect: "manual"
