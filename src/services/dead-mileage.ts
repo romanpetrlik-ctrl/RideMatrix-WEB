@@ -6,7 +6,8 @@ import {
   type DistanceSlab
 } from "./fare-settings";
 
-const EARTH_RADIUS_MILES = 6_371_008.8 / 1609.344;
+/** Mean Earth radius convention shared by every operational-base radius rule. */
+export const EARTH_RADIUS_MILES = 6_371_008.8 / 1609.344;
 
 export type GeoPoint = { latitude: number; longitude: number };
 export type DeadMileageLeg = "base-to-pickup" | "dropoff-to-base";
@@ -116,7 +117,7 @@ export type DeadMileageCalculation =
     snapshot: DeadMileageSnapshot;
   };
 
-function validPoint(point: GeoPoint): boolean {
+export function validPoint(point: GeoPoint): boolean {
   return Number.isFinite(point.latitude) && Number.isFinite(point.longitude) &&
     point.latitude >= -90 && point.latitude <= 90 &&
     point.longitude >= -180 && point.longitude <= 180;

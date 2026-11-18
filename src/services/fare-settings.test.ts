@@ -11,6 +11,7 @@ import {
   matchLocationDiscount,
   matchesMinimumFareRule,
   validateLocationDiscountForm,
+  validateRadiusLocationDiscountForm,
   validateFixedFareRuleForm,
   validateMinimumFareRuleForm,
   resolveAdditionalDistanceSlabSets,
@@ -23,7 +24,8 @@ import {
   type DistanceSlab,
   type FareSettingsConfiguration,
   type LocationDiscountRule,
-  type ManagedSlabTarget
+  type ManagedSlabTarget,
+  type RadiusLocationDiscountRule
 } from "./fare-settings";
 
 const dailyAndBankDisabled = {
@@ -889,4 +891,95 @@ test("location discount configuration is preserved by other category saves and i
   const source = readFileSync("src/services/fare-settings.ts", "utf8");
   const calculator = source.slice(source.indexOf("export function calculateDistanceSlabFare"));
   assert.doesNotMatch(calculator.slice(0, calculator.indexOf("\n}\n")), /locationDiscount/i);
+});
+
+function radiusForm(overrides: Record<string, string> = {}) {
+  return {
+    name: "Base area to Bournemouth Airport",
+    locationKey: "airport:rm-boh",
+    radiusMiles: "5",
+    discountPercentage: "10",
+    startDate: "",
+    endDate: "",
+    enabled: "no",
+    ...overrides
+  };
+}
+
+function radiusRule(id: string, overrides: Partial<RadiusLocationDiscountRule> = {}): RadiusLocationDiscountRule {
+  return {
+    id,
+    name: `Radius ${id}`,
+    location: { type: "airport", id: "rm-boh" },
+    radiusMiles: "5",
+    discountPercentage: "10",
+    startDate: "",
+    endDate: "",
+    enabled: true,
+    radiusCentre: "operational-base",
+    discountBasis: "standard-distance-slabs-base-fare",
+    ...overrides
+  };
+}
+
+test("radius discount validation stores the exact managed ID, normalized radius and percentage", () => {
+  const result = validateRadiusLocationDiscountForm(
+    radiusForm({ radiusMiles: "7.250", discountPercentage: "12.50", startDate: "2027-01-01", endDate: "2027-01-31", enabled: "yes" }),
+    discountTargets, [], true);
+  assert.deepEqual(result.errors, {});
+  assert.deepEqual(result.rule, {
+    name: "Base area to Bournemouth Airport",
+    location: { type: "airport", id: "rm-boh" },
+    radiusMiles: "7.25",
+    discountPercentage: "12.5",
+    startDate: "2027-01-01",
+    endDate: "2027-01-31",
+    enabled: true,
+    radiusCentre: "operational-base",
+    discountBasis: "standard-distance-slabs-base-fare"
+  });
+});
+
+test("radius discount validation rejects invalid radii, percentages, dates, locations and an unverified base", () => {
+  for (const radiusMiles of ["", "0", "0.000", "-1", "1.2345", "abc", "1e2", "100000"]) {
+    assert.match(validateRadiusLocationDiscountForm(radiusForm({ radiusMiles }), discountTargets, [], true).errors.radiusMiles ?? "",
+      /greater than 0/, `radius ${radiusMiles}`);
+  }
+  for (const discountPercentage of ["", "0", "-5", "100.01", "101", "10.123", "ten"]) {
+    assert.match(validateRadiusLocationDiscountForm(radiusForm({ discountPercentage }), discountTargets, [], true).errors.discountPercentage ?? "",
+      /greater than 0 and no more than 100/, `percentage ${discountPercentage}`);
+  }
+  assert.equal(validateRadiusLocationDiscountForm(radiusForm({ discountPercentage: "100" }), discountTargets, [], true).rule?.discountPercentage, "100");
+  assert.match(validateRadiusLocationDiscountForm(radiusForm({ startDate: "2027-02-30" }), discountTargets, [], true).errors.startDate ?? "", /valid start date/);
+  assert.match(validateRadiusLocationDiscountForm(radiusForm({ endDate: "31/01/2027" }), discountTargets, [], true).errors.endDate ?? "", /valid end date/);
+  assert.match(validateRadiusLocationDiscountForm(radiusForm({ startDate: "2027-02-01", endDate: "2027-01-31" }), discountTargets, [], true).errors.endDate ?? "",
+    /cannot be before the start date/);
+  assert.match(validateRadiusLocationDiscountForm(radiusForm({ locationKey: "airport:rm-unknown" }), discountTargets, [], true).errors.locationKey ?? "",
+    /no other location is substituted/);
+  assert.match(validateRadiusLocationDiscountForm(radiusForm({ locationKey: "Bournemouth Airport" }), discountTargets, [], true).errors.locationKey ?? "",
+    /missing or no longer available/, "a display name is never accepted in place of the managed ID");
+  assert.match(validateRadiusLocationDiscountForm(radiusForm({ enabled: "maybe" }), discountTargets, [], true).errors.enabled ?? "", /enabled or disabled/);
+  const unverified = validateRadiusLocationDiscountForm(radiusForm(), discountTargets, [], false);
+  assert.equal(unverified.rule, null);
+  assert.match(unverified.errors.radiusMiles ?? "", /operational base has no verified coordinates/);
+});
+
+test("radius discount validation rejects overlapping rules for the same location, including disabled ones", () => {
+  const existing = [radiusRule("current", { startDate: "2027-01-01", endDate: "2027-06-30", enabled: false })];
+  const overlap = validateRadiusLocationDiscountForm(radiusForm({ startDate: "2027-06-30" }), discountTargets, existing, true);
+  assert.equal(overlap.rule, null);
+  assert.match(overlap.errors.locationKey ?? "", /already has the operational-base radius discount "Radius current".*currently disabled.*cannot be stacked, combined or chosen between/);
+  assert.match(validateRadiusLocationDiscountForm(radiusForm(), discountTargets, existing, true).errors.locationKey ?? "", /overlapping validity period/,
+    "an open-ended rule overlaps every dated rule");
+
+  assert.deepEqual(validateRadiusLocationDiscountForm(radiusForm({ startDate: "2027-07-01" }), discountTargets, existing, true).errors, {});
+  assert.deepEqual(validateRadiusLocationDiscountForm(radiusForm({ locationKey: "poi:poi-pier" }), discountTargets, existing, true).errors, {});
+  assert.deepEqual(validateRadiusLocationDiscountForm(radiusForm({ startDate: "2027-02-01" }), discountTargets, existing, true, "current").errors, {},
+    "editing a rule does not conflict with itself");
+});
+
+test("radius discount configuration is preserved by other category saves", () => {
+  const rule = { ...radiusRule("kept") };
+  const current: FareSettingsConfiguration = { ...EMPTY_FARE_SETTINGS, radiusLocationDiscounts: [rule] };
+  assert.deepEqual(validateFareSettingsForm(dailyAndBankDisabled, current).configuration.radiusLocationDiscounts, [rule]);
 });

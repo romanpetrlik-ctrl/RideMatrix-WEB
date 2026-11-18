@@ -111,7 +111,8 @@ export type LocationDiscountPostcodePrecision = "full" | "outward";
 
 /**
  * Percentage discount for journeys between one managed airport/POI (exact internal RideMatrix ID) and an
- * explicit set of UK postcode entries, in either direction. Configuration only: not applied to prices.
+ * explicit set of UK postcode entries, in either direction. An active radius rule for the same location takes
+ * precedence (see resolveJourneyLocationDiscount). Not yet applied to booking prices.
  */
 export type LocationDiscountRule = {
   id: string;
@@ -141,6 +142,37 @@ export type LocationDiscountFormValues = {
   enabled: string;
 };
 
+/**
+ * Percentage discount for journeys between one managed airport/POI (exact internal RideMatrix ID) and any
+ * endpoint whose coordinates lie within a straight-line (geodesic) radius of the verified operational-base
+ * coordinates, in either direction. An enabled rule effective on the service date takes exclusive precedence
+ * over postcode-scoped location discounts for the same location: outside the radius no discount applies.
+ */
+export type RadiusLocationDiscountRule = {
+  id: string;
+  name: string;
+  location: AdditionalSlabTarget;
+  /** Normalized decimal miles (greater than 0, up to 3 decimal places); the boundary itself is included. */
+  radiusMiles: string;
+  discountPercentage: string;
+  /** Inclusive Europe/London local dates (YYYY-MM-DD); "" means unbounded. */
+  startDate: string;
+  endDate: string;
+  enabled: boolean;
+  radiusCentre: "operational-base";
+  discountBasis: "standard-distance-slabs-base-fare";
+};
+
+export type RadiusLocationDiscountFormValues = {
+  name: string;
+  locationKey: string;
+  radiusMiles: string;
+  discountPercentage: string;
+  startDate: string;
+  endDate: string;
+  enabled: string;
+};
+
 export type FareSettingsConfiguration = {
   timezone: "Europe/London";
   matchingBasis: "scheduled-service-time";
@@ -154,6 +186,7 @@ export type FareSettingsConfiguration = {
   minimumFareRules: MinimumFareRule[];
   fixedFares: FixedFareRule[];
   locationDiscounts?: LocationDiscountRule[];
+  radiusLocationDiscounts?: RadiusLocationDiscountRule[];
   dailySurcharge: FareSurchargeSettings;
   bankHolidaySurcharge: BankHolidayFareSettings;
 };
@@ -199,6 +232,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   minimumFareRules: [],
   fixedFares: [],
   locationDiscounts: [],
+  radiusLocationDiscounts: [],
   dailySurcharge: {
     enabled: false,
     percentage: "",
@@ -635,7 +669,8 @@ export const MAX_LOCATION_DISCOUNT_POSTCODES = 500;
 
 const locationDiscountDatePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-function validCalendarDate(value: string): boolean {
+/** True for a real calendar date written as YYYY-MM-DD. */
+export function validCalendarDate(value: string): boolean {
   const match = locationDiscountDatePattern.exec(value);
   if (!match) return false;
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
@@ -840,7 +875,139 @@ export function validateLocationDiscountForm(
   };
 }
 
-/** A journey endpoint as it would be supplied by future pricing. */
+/** Upper bound for a radius around the operational base: half the Earth's circumference (same convention as dead mileage). */
+export const MAX_RADIUS_LOCATION_DISCOUNT_MILES = MAX_DEAD_MILEAGE_RADIUS_MILES;
+
+function normalizeRadiusMiles(value: string): string | null {
+  if (!/^\d{1,5}(?:\.\d{1,3})?$/.test(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0 || numeric > MAX_RADIUS_LOCATION_DISCOUNT_MILES) return null;
+  return String(numeric);
+}
+
+export function radiusLocationDiscountRuleToForm(rule: RadiusLocationDiscountRule): RadiusLocationDiscountFormValues {
+  return {
+    name: rule.name,
+    locationKey: rule.location.id ? additionalSlabTargetKey(rule.location) : "",
+    radiusMiles: rule.radiusMiles,
+    discountPercentage: rule.discountPercentage,
+    startDate: rule.startDate,
+    endDate: rule.endDate,
+    enabled: rule.enabled ? "yes" : "no"
+  };
+}
+
+/**
+ * Finds another radius rule for the same managed location whose validity period overlaps the candidate's.
+ * Disabled rules are included so enabling a rule can never create two competing radius rules.
+ */
+export function findRadiusLocationDiscountConflict(
+  candidate: Pick<RadiusLocationDiscountRule, "location" | "startDate" | "endDate"> & { id?: string },
+  rules: RadiusLocationDiscountRule[]
+): RadiusLocationDiscountRule | null {
+  return rules.find((rule) =>
+    (!candidate.id || rule.id !== candidate.id) &&
+    rule.location.type === candidate.location.type &&
+    rule.location.id === candidate.location.id &&
+    datePeriodsOverlap(candidate, rule)) ?? null;
+}
+
+export type RadiusLocationDiscountValidation = {
+  values: RadiusLocationDiscountFormValues;
+  rule: Omit<RadiusLocationDiscountRule, "id"> | null;
+  errors: Record<string, string>;
+};
+
+/**
+ * Validates an operational-base radius discount. The location must be an active managed airport/POI selected
+ * by internal ID, and the operational base must have verified coordinates because the radius is measured from
+ * them. Overlapping rules for the same location are rejected rather than combined.
+ */
+export function validateRadiusLocationDiscountForm(
+  submitted: unknown,
+  targets: ManagedSlabTarget[],
+  existingRules: RadiusLocationDiscountRule[],
+  operationalBaseVerified: boolean,
+  editingId = ""
+): RadiusLocationDiscountValidation {
+  const body = submitted && typeof submitted === "object" ? submitted as Record<string, unknown> : {};
+  const values: RadiusLocationDiscountFormValues = {
+    name: submittedValue(body, "name"),
+    locationKey: submittedValue(body, "locationKey"),
+    radiusMiles: submittedValue(body, "radiusMiles"),
+    discountPercentage: submittedValue(body, "discountPercentage"),
+    startDate: submittedValue(body, "startDate"),
+    endDate: submittedValue(body, "endDate"),
+    enabled: submittedValue(body, "enabled")
+  };
+  const errors: Record<string, string> = {};
+
+  const name = values.name.trim();
+  if (!name || name.length > 160) errors.name = "Enter a rule name or description no longer than 160 characters.";
+
+  let location: AdditionalSlabTarget | null = null;
+  const locationKey = values.locationKey.trim();
+  const parsedLocation = locationKey ? parseAdditionalSlabTargetKey(locationKey) : null;
+  const managed = parsedLocation && targets.find((item) => item.type === parsedLocation.type && item.id === parsedLocation.id);
+  if (!locationKey) {
+    errors.locationKey = "Select a managed airport or POI.";
+  } else if (!parsedLocation || !managed) {
+    errors.locationKey = "The selected airport or POI is missing or no longer available. Select an active managed airport or POI; no other location is substituted.";
+  } else {
+    location = { type: managed.type, id: managed.id };
+  }
+
+  const radiusMiles = normalizeRadiusMiles(values.radiusMiles.trim());
+  if (radiusMiles === null) {
+    errors.radiusMiles = `Enter a radius greater than 0 and no greater than ${MAX_RADIUS_LOCATION_DISCOUNT_MILES.toFixed(3)} miles, with up to 3 decimal places.`;
+  } else if (!operationalBaseVerified) {
+    errors.radiusMiles = "The operational base has no verified coordinates. Complete or correct the existing operational-base location first; no postcode centroid or other point is substituted.";
+  }
+
+  const discountPercentage = normalizeDiscountPercentage(values.discountPercentage.trim());
+  if (discountPercentage === null) {
+    errors.discountPercentage = "Enter a percentage greater than 0 and no more than 100, with up to 2 decimal places.";
+  }
+
+  const startDate = values.startDate.trim();
+  const endDate = values.endDate.trim();
+  if (startDate && !validCalendarDate(startDate)) errors.startDate = "Enter a valid start date or leave it blank.";
+  if (endDate && !validCalendarDate(endDate)) errors.endDate = "Enter a valid end date or leave it blank.";
+  if (!errors.startDate && !errors.endDate && startDate && endDate && endDate < startDate) {
+    errors.endDate = "The end date cannot be before the start date.";
+  }
+
+  const enabled = values.enabled.trim();
+  if (enabled !== "yes" && enabled !== "no") errors.enabled = "Choose whether this rule is enabled or disabled.";
+
+  if (Object.keys(errors).length || !location || radiusMiles === null || discountPercentage === null) {
+    return { values, rule: null, errors };
+  }
+  const conflict = findRadiusLocationDiscountConflict({ id: editingId, location, startDate, endDate }, existingRules);
+  if (conflict) {
+    errors.locationKey = `${managed!.displayName} already has the operational-base radius discount "${conflict.name}" ` +
+      `(${describeValidity(conflict)}${conflict.enabled ? "" : ", currently disabled"}) for an overlapping validity period. ` +
+      "Radius discounts for the same location cannot be stacked, combined or chosen between; change the validity dates or edit the existing rule.";
+    return { values, rule: null, errors };
+  }
+  return {
+    values: { ...values, name, locationKey, radiusMiles, discountPercentage, startDate, endDate, enabled },
+    rule: {
+      name,
+      location,
+      radiusMiles,
+      discountPercentage,
+      startDate,
+      endDate,
+      enabled: enabled === "yes",
+      radiusCentre: "operational-base",
+      discountBasis: "standard-distance-slabs-base-fare"
+    },
+    errors
+  };
+}
+
+/** A journey endpoint from structured booking/location data. */
 export type LocationDiscountJourneyEndpoint = {
   /** Set only when the endpoint is a selected managed airport/POI record. */
   managedLocation?: AdditionalSlabTarget | null;
@@ -861,7 +1028,8 @@ export type LocationDiscountMatch =
   | { status: "unresolved"; reason: "missing-postcode" | "invalid-service-date" | "ambiguous-rules"; ruleIds: string[] };
 
 /**
- * Evaluates enabled location-based discount rules for one journey. Not connected to booking prices.
+ * Evaluates enabled location-based discount rules for one journey. Used by resolveJourneyLocationDiscount in
+ * fare-calculation.ts, which applies operational-base radius precedence first; not connected to booking prices.
  * A rule matches only when one endpoint is the exact managed location ID and the other endpoint's structured
  * postcode equals a configured entry (full precision) or its outward code equals one (outward precision).
  * If a relevant endpoint has no valid structured full postcode, the result is unresolved rather than guessed.
@@ -1114,6 +1282,7 @@ export function validateFareSettingsForm(
       minimumFareRules: current.minimumFareRules ?? [],
       fixedFares: current.fixedFares ?? [],
       ...(current.locationDiscounts ? { locationDiscounts: current.locationDiscounts } : {}),
+      ...(current.radiusLocationDiscounts ? { radiusLocationDiscounts: current.radiusLocationDiscounts } : {}),
       dailySurcharge,
       bankHolidaySurcharge
     },
