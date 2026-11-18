@@ -518,10 +518,12 @@
         `}
         <section class="fare-settings__history" aria-labelledby="fare-settings-history-title">
           <h2 id="fare-settings-history-title">Configuration history</h2>
-          ${history.length ? `
+          ${history.entries.length ? `
+            ${history.href ? `<p class="configuration-history__summary">Showing the ${history.entries.length} most recent of ${history.total} versions, newest first.</p>` : ""}
             <ol>
-              ${history.map((entry) => `<li><strong>Version ${entry.version}</strong> — ${entry.actorEmail}, ${entry.createdAt}</li>`).join("")}
+              ${history.entries.map((entry) => `<li><strong>Version ${entry.version}</strong> — ${entry.actorEmail}, ${entry.createdAt}</li>`).join("")}
             </ol>
+            ${history.href ? `<p class="configuration-history__more"><a href="${history.href}">View all history<span class="visually-hidden"> for Fare Settings configuration</span></a></p>` : ""}
           ` : `<p>No changes have been saved yet.</p>`}
         </section>
         <script src="/js/distance-slab-calculator.js" defer></script>

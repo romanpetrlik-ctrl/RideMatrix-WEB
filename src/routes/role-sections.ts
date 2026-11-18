@@ -61,6 +61,12 @@ import {
   type ManagedSlabTarget
 } from "../services/fare-settings";
 import { poiManagementStore, type PoiManagementStore } from "../services/poi-management";
+import {
+  parseHistoryPageParam,
+  RECENT_CONFIGURATION_HISTORY_LIMIT,
+  type ConfigurationHistoryEntry,
+  type ConfigurationHistoryPage
+} from "../services/configuration-history";
 import { randomUUID } from "node:crypto";
 
 type RoleSectionsRouterOptions = {
@@ -285,6 +291,84 @@ function renderUnavailable(res: Response, appTitle: string, module: WorkspaceMod
   });
 }
 
+function safeHistoryEntries(entries: ConfigurationHistoryEntry[], fallbackActor: string) {
+  return entries.map((entry) => ({
+    version: entry.version,
+    actorEmail: entry.actorEmail ? escapeHtml(entry.actorEmail) : fallbackActor,
+    createdAt: escapeHtml(entry.createdAt)
+  }));
+}
+
+/** Inline history on a settings page: only the most recent entries plus an optional full-history link. */
+function recentHistoryView(entries: ConfigurationHistoryEntry[], total: number, historyHref: string, fallbackActor: string) {
+  return {
+    entries: safeHistoryEntries(entries.slice(0, RECENT_CONFIGURATION_HISTORY_LIMIT), fallbackActor),
+    total,
+    href: total > RECENT_CONFIGURATION_HISTORY_LIMIT ? historyHref : ""
+  };
+}
+
+type ConfigurationHistoryPageOptions = {
+  title: string;
+  heading: string;
+  pageMeta: string;
+  breadcrumbs: Breadcrumb[];
+  basePath: string;
+  backHref: string;
+  backLabel: string;
+  fallbackActor: string;
+  emptyMessage: string;
+  loadPage: (page: number) => Promise<ConfigurationHistoryPage>;
+};
+
+/** Dedicated, paginated configuration history page; authorized exactly like System Settings pages. */
+async function renderConfigurationHistoryPage(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  appTitle: string,
+  view: ConfigurationHistoryPageOptions
+): Promise<void> {
+  try {
+    const session = await getSessionAccount(req.headers.cookie);
+    if (!session.authenticated || !session.user) {
+      res.redirect("/access");
+      return;
+    }
+    const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+    if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+      renderUnavailable(res, appTitle, systemSettingsModule);
+      return;
+    }
+
+    const result = await view.loadPage(parseHistoryPageParam(req.query.page));
+    const hrefFor = (page: number) => page > 1 ? `${view.basePath}?page=${page}` : view.basePath;
+    res.render("pages/configuration-history", {
+      title: view.title,
+      appTitle,
+      email: escapeHtml(session.user.email),
+      pageMeta: view.pageMeta,
+      heading: escapeHtml(view.heading),
+      breadcrumbs: view.breadcrumbs.map((crumb) => ({ ...crumb, label: escapeHtml(crumb.label) })),
+      backHref: view.backHref,
+      backLabel: escapeHtml(view.backLabel),
+      emptyMessage: view.emptyMessage,
+      entries: safeHistoryEntries(result.entries, view.fallbackActor),
+      pagination: {
+        page: result.page,
+        totalPages: result.totalPages,
+        totalRecords: result.totalRecords,
+        startRecord: result.totalRecords ? (result.page - 1) * result.perPage + 1 : 0,
+        endRecord: Math.min(result.totalRecords, result.page * result.perPage),
+        previousHref: result.page > 1 ? hrefFor(result.page - 1) : "",
+        nextHref: result.page < result.totalPages ? hrefFor(result.page + 1) : ""
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 type FareSettingsRenderOptions = {
   snapshot?: FareSettingsSnapshot;
   configuration?: FareSettingsConfiguration;
@@ -406,10 +490,14 @@ async function renderTollFeesPage(
       feeScheduleFormError: renderOptions.feeScheduleFormError,
       feeScheduleSaved: req.query.saved === "1",
       submittedAmounts: renderOptions.submittedAmounts ?? {},
-      escapedFeeScheduleHistory: feeScheduleSnapshot?.history.map((record) => ({
-        ...record,
-        actorEmail: record.actorEmail?.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;") ?? "Initial supplied draft"
-      })),
+      feeScheduleHistory: feeScheduleSnapshot
+        ? recentHistoryView(
+          feeScheduleSnapshot.history,
+          feeScheduleSnapshot.historyTotal,
+          `${leafPathFor(page)}/fee-settings/history`,
+          "Initial supplied draft"
+        )
+        : undefined,
       londonLezBoundaryMetadata,
       londonCongestionChargeBoundaryMetadata: page.area?.slug === "london-congestion-charge" && page.section === "reference-data"
         ? londonCongestionChargeBoundaryMetadata
@@ -466,6 +554,8 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
   ];
   const loadOperationalBase = options.loadOperationalBase ?? getOperationalBase;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
+  const fareSettingsPath = "/settings/fare-settings";
+  const fareSettingsHistoryPath = `${fareSettingsPath}/history`;
   router.use(noStoreProtectedResponse);
 
   const renderFareSettingsPage = async (
@@ -540,10 +630,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           }))
         }
       };
-      const safeHistory = snapshot.history.map((entry) => ({
-        ...entry,
-        actorEmail: entry.actorEmail ? escapeHtml(entry.actorEmail) : "System"
-      }));
+      const history = recentHistoryView(snapshot.history, snapshot.historyTotal, fareSettingsHistoryPath, "System");
       const safeErrors = Object.fromEntries(
         Object.entries(renderOptions.errors ?? {}).map(([key, value]) => [key, escapeHtml(value)])
       );
@@ -731,7 +818,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         ruleFormSubmitted: renderOptions.ruleForm !== undefined,
         fixedFareForms,
         currentVersion: snapshot.currentVersion,
-        history: safeHistory,
+        history,
         errors: safeErrors,
         formError: renderOptions.formError ? escapeHtml(renderOptions.formError) : "",
         saved: req.query.saved === "1"
@@ -741,9 +828,27 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     }
   };
 
-  const fareSettingsPath = "/settings/fare-settings";
   router.get(fareSettingsPath, (req, res, next) => {
     void renderFareSettingsPage(req, res, next, {});
+  });
+
+  router.get(fareSettingsHistoryPath, (req, res, next) => {
+    void renderConfigurationHistoryPage(req, res, next, options.appTitle, {
+      title: "Fare Settings: Configuration history",
+      heading: "Fare Settings: Configuration history",
+      pageMeta: "System Settings · Fare Settings",
+      breadcrumbs: [
+        { label: "System Settings", href: "/settings" },
+        { label: "Fare Settings", href: fareSettingsPath },
+        { label: "Configuration history" }
+      ],
+      basePath: fareSettingsHistoryPath,
+      backHref: fareSettingsPath,
+      backLabel: "Fare Settings",
+      fallbackActor: "System",
+      emptyMessage: "No changes have been saved yet.",
+      loadPage: (page) => fareStore.loadHistoryPage(page)
+    });
   });
 
   const additionalSlabsCategory = fareSettingsCategories.find((category) => category.slug === "additional-distance-slabs");
@@ -1444,6 +1549,33 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     });
   };
 
+  const registerFeeScheduleHistory = (
+    feeSettingsPath: string,
+    scheme: LondonFeeScheduleScheme,
+    page: TollFeesPage
+  ) => {
+    const historyPath = `${feeSettingsPath}/history`;
+    const feeSettingsPage: TollFeesPage = { ...page, section: "fee-settings" };
+    router.get(historyPath, (req, res, next) => {
+      const breadcrumbs = buildBreadcrumbs(feeSettingsPage);
+      breadcrumbs[breadcrumbs.length - 1].href = feeSettingsPath;
+      breadcrumbs.push({ label: "Draft version history" });
+      const title = `${pageTitle(feeSettingsPage)}: Draft version history`;
+      void renderConfigurationHistoryPage(req, res, next, options.appTitle, {
+        title,
+        heading: title,
+        pageMeta: "System Settings · Toll & Fees",
+        breadcrumbs,
+        basePath: historyPath,
+        backHref: feeSettingsPath,
+        backLabel: pageTitle(feeSettingsPage),
+        fallbackActor: "Initial supplied draft",
+        emptyMessage: "No draft versions have been recorded yet.",
+        loadPage: (requestedPage) => feeScheduleStore.loadHistoryPage(scheme, requestedPage)
+      });
+    });
+  };
+
   const registerAirportFeesRoutes = (path: string, category: TollFeeCategory) => {
     router.get(path, (req, res, next) => {
       void renderTollFeesPage(req, res, next, options.appTitle, { category }, feeScheduleStore, airportFeesStore);
@@ -1537,6 +1669,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         if (area.slug === "london-lez" || area.slug === "london-ulez") {
           const scheme: LondonFeeScheduleScheme = area.slug;
           registerFeeSchedulePost(`${areaPath}/fee-settings`, scheme, { category, area });
+          registerFeeScheduleHistory(`${areaPath}/fee-settings`, scheme, { category, area });
         }
       }
       continue;
@@ -1550,6 +1683,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
 
     if (category.slug === "dartford-crossing" || category.slug === "blackwall-silvertown-tunnels") {
       registerFeeSchedulePost(`${categoryPath}/fee-settings`, category.slug, { category });
+      registerFeeScheduleHistory(`${categoryPath}/fee-settings`, category.slug, { category });
     }
   }
 

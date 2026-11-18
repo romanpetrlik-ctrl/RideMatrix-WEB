@@ -40,6 +40,11 @@ import {
   type FareSettingsSnapshot,
   type FareSettingsStore
 } from "../services/fare-settings";
+import {
+  RECENT_CONFIGURATION_HISTORY_LIMIT,
+  resolveHistoryPage,
+  type ConfigurationHistoryEntry
+} from "../services/configuration-history";
 import type { OperationalBase } from "../services/dead-mileage";
 import {
   createRoleSectionsRouter,
@@ -243,8 +248,42 @@ function createMemoryPoiManagementStore(): {
   };
 }
 
-function createMemoryFeeScheduleStore(): { store: LondonFeeScheduleStore; reset: () => void } {
-  const snapshots = new Map<LondonFeeScheduleScheme, LondonFeeScheduleSnapshot>();
+/** Mirrors the PostgreSQL stores: callers only receive the recent entries plus a total count. */
+function recentHistory<T extends { history: ConfigurationHistoryEntry[] }>(state: T): T & { historyTotal: number } {
+  return {
+    ...structuredClone(state),
+    history: structuredClone(state.history.slice(0, RECENT_CONFIGURATION_HISTORY_LIMIT)),
+    historyTotal: state.history.length
+  };
+}
+
+function historyPage(history: ConfigurationHistoryEntry[], requestedPage: number, perPage?: number) {
+  const page = resolveHistoryPage(requestedPage, history.length, perPage);
+  return {
+    entries: structuredClone(history.slice(page.offset, page.offset + page.perPage)),
+    page: page.page,
+    perPage: page.perPage,
+    totalPages: page.totalPages,
+    totalRecords: history.length
+  };
+}
+
+/** Builds newest-first history entries for versions count..1. */
+function seededHistory(count: number, actorEmail = "history@example.com"): ConfigurationHistoryEntry[] {
+  return Array.from({ length: count }, (_, index) => ({
+    version: count - index,
+    actorEmail,
+    createdAt: "2026-11-01T00:00:00.000Z"
+  }));
+}
+
+function createMemoryFeeScheduleStore(): {
+  store: LondonFeeScheduleStore;
+  reset: () => void;
+  seedHistory: (scheme: LondonFeeScheduleScheme, count: number) => void;
+  history: (scheme: LondonFeeScheduleScheme) => ConfigurationHistoryEntry[];
+} {
+  const snapshots = new Map<LondonFeeScheduleScheme, Omit<LondonFeeScheduleSnapshot, "historyTotal">>();
   const reset = () => {
     snapshots.clear();
     for (const scheme of [
@@ -267,11 +306,22 @@ function createMemoryFeeScheduleStore(): { store: LondonFeeScheduleStore; reset:
 
   return {
     reset,
+    seedHistory(scheme, count) {
+      const current = snapshots.get(scheme);
+      assert.ok(current);
+      snapshots.set(scheme, { ...current, currentVersion: count, history: seededHistory(count) });
+    },
+    history: (scheme) => structuredClone(snapshots.get(scheme)?.history ?? []),
     store: {
       async load(scheme) {
         const snapshot = snapshots.get(scheme);
         assert.ok(snapshot);
-        return structuredClone(snapshot);
+        return recentHistory(snapshot);
+      },
+      async loadHistoryPage(scheme, page, perPage) {
+        const snapshot = snapshots.get(scheme);
+        assert.ok(snapshot);
+        return historyPage(snapshot.history, page, perPage);
       },
       async save(scheme, expectedVersion, amounts, actor: LondonFeeScheduleActor) {
         const current = snapshots.get(scheme);
@@ -299,18 +349,30 @@ function createMemoryFeeScheduleStore(): { store: LondonFeeScheduleStore; reset:
   };
 }
 
-function createMemoryFareSettingsStore(): { store: FareSettingsStore; reset: () => void; snapshot: () => FareSettingsSnapshot } {
-  let state: FareSettingsSnapshot;
+function createMemoryFareSettingsStore(): {
+  store: FareSettingsStore;
+  reset: () => void;
+  seedHistory: (count: number) => void;
+  /** The full internal state, including every history entry (newest first). */
+  snapshot: () => Omit<FareSettingsSnapshot, "historyTotal">;
+} {
+  let state: Omit<FareSettingsSnapshot, "historyTotal">;
   const reset = () => {
     state = { configuration: structuredClone(EMPTY_FARE_SETTINGS), currentVersion: 0, history: [] };
   };
   reset();
   return {
     reset,
+    seedHistory(count) {
+      state = { ...state, currentVersion: count, history: seededHistory(count) };
+    },
     snapshot: () => structuredClone(state),
     store: {
       async load() {
-        return structuredClone(state);
+        return recentHistory(state);
+      },
+      async loadHistoryPage(page, perPage) {
+        return historyPage(state.history, page, perPage);
       },
       async save(expectedVersion: number, configuration: FareSettingsConfiguration, actor: FareSettingsActor) {
         if (expectedVersion !== state.currentVersion) throw new FareSettingsVersionConflictError();
@@ -2567,5 +2629,159 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     });
     assert.equal(anonymous.status, 302);
     assert.equal(anonymous.headers.get("location"), "/access");
+  });
+
+  const listedVersions = (html: string) => [...html.matchAll(/<li><strong>Version (\d+)<\/strong>/g)].map((match) => Number(match[1]));
+  const feeScheduleHistoryLeaves = [
+    { scheme: "london-lez", path: "/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/fee-settings" },
+    { scheme: "london-ulez", path: "/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/fee-settings" },
+    { scheme: "dartford-crossing", path: "/settings/toll-fees/dartford-crossing/fee-settings" },
+    { scheme: "blackwall-silvertown-tunnels", path: "/settings/toll-fees/blackwall-silvertown-tunnels/fee-settings" }
+  ] as const;
+
+  test("every Fare Settings page shows at most 3 recent history entries and links to full history only when there are more", async () => {
+    const headers = withSession("sid=fare-history-recent", ["superuser"]);
+    const configurable = fareSettingsCategories.filter((category) => category.configurable);
+    assert.ok(configurable.some((category) => category.slug === "additional-distance-slabs"));
+
+    fareSettings.reset();
+    fareSettings.seedHistory(3);
+    for (const category of configurable) {
+      const body = await (await fetch(`${baseUrl}/settings/fare-settings/${category.slug}`, { headers })).text();
+      assert.deepEqual(listedVersions(body), [3, 2, 1], `${category.slug} shows all of a short history`);
+      assert.doesNotMatch(body, /View all history/, `${category.slug} has no full-history link at exactly 3 entries`);
+    }
+
+    fareSettings.seedHistory(25);
+    for (const category of configurable) {
+      const body = await (await fetch(`${baseUrl}/settings/fare-settings/${category.slug}`, { headers })).text();
+      assert.deepEqual(listedVersions(body), [25, 24, 23], `${category.slug} shows only the newest 3 entries`);
+      assert.match(body, /<a href="\/settings\/fare-settings\/history">View all history<span class="visually-hidden"> for Fare Settings configuration<\/span><\/a>/);
+      assert.match(body, /Showing the 3 most recent of 25 versions, newest first\./);
+    }
+    assert.equal(fareSettings.snapshot().history.length, 25, "rendering never removes stored history");
+    fareSettings.reset();
+  });
+
+  test("Fare Settings history page paginates newest first and validates the page parameter", async () => {
+    const headers = withSession("sid=fare-history-page", ["superuser"]);
+    const historyPath = "/settings/fare-settings/history";
+    fareSettings.reset();
+    const empty = await (await fetch(`${baseUrl}${historyPath}`, { headers })).text();
+    assert.match(empty, /No changes have been saved yet\./);
+    assert.match(empty, /Page 1 of 1/);
+
+    fareSettings.seedHistory(45);
+    const first = await fetch(`${baseUrl}${historyPath}`, { headers });
+    const firstBody = await first.text();
+    assert.equal(first.status, 200);
+    assert.deepEqual(listedVersions(firstBody), Array.from({ length: 20 }, (_, index) => 45 - index));
+    assert.match(firstBody, /aria-label="Configuration history pagination"/);
+    assert.match(firstBody, /Showing <strong>1<\/strong>-<strong>20<\/strong> of <strong>45<\/strong>/);
+    assert.match(firstBody, /Page 1 of 3/);
+    assert.match(firstBody, /<span class="pagination-bar__link pagination-bar__link--disabled" aria-disabled="true">Previous<\/span>/);
+    assert.match(firstBody, /href="\/settings\/fare-settings\/history\?page=2" rel="next">Next</);
+    assert.match(firstBody, /<a href="\/settings\/fare-settings">Fare Settings<\/a>/);
+
+    const second = await (await fetch(`${baseUrl}${historyPath}?page=2`, { headers })).text();
+    assert.deepEqual(listedVersions(second), Array.from({ length: 20 }, (_, index) => 25 - index));
+    assert.match(second, /href="\/settings\/fare-settings\/history" rel="prev">Previous</);
+    assert.match(second, /href="\/settings\/fare-settings\/history\?page=3" rel="next">Next</);
+
+    const last = await (await fetch(`${baseUrl}${historyPath}?page=3`, { headers })).text();
+    assert.deepEqual(listedVersions(last), [5, 4, 3, 2, 1]);
+    assert.match(last, /Page 3 of 3/);
+    assert.match(last, /aria-disabled="true">Next<\/span>/);
+
+    for (const invalid of ["abc", "0", "-1", "1.5", "2abc", ""]) {
+      const response = await fetch(`${baseUrl}${historyPath}?page=${encodeURIComponent(invalid)}`, { headers });
+      assert.equal(response.status, 200);
+      const body = await response.text();
+      assert.match(body, /Page 1 of 3/, `invalid page ${JSON.stringify(invalid)} falls back to page 1`);
+      assert.equal(listedVersions(body)[0], 45);
+    }
+    const outOfRange = await fetch(`${baseUrl}${historyPath}?page=99`, { headers });
+    assert.equal(outOfRange.status, 200);
+    const outOfRangeBody = await outOfRange.text();
+    assert.match(outOfRangeBody, /Page 3 of 3/, "out-of-range pages show the last page");
+    assert.deepEqual(listedVersions(outOfRangeBody), [5, 4, 3, 2, 1]);
+    fareSettings.reset();
+  });
+
+  test("draft fee schedule pages show 3 recent versions, link to a paginated history, and keep version numbering", async () => {
+    const headers = withSession("sid=fee-history", ["superuser"]);
+    for (const leaf of feeScheduleHistoryLeaves) {
+      feeSchedules.reset();
+      const initial = await (await fetch(`${baseUrl}${leaf.path}`, { headers })).text();
+      assert.deepEqual(listedVersions(initial), [1]);
+      assert.doesNotMatch(initial, /View all history/, `${leaf.scheme} has no full-history link with one version`);
+
+      feeSchedules.seedHistory(leaf.scheme, 23);
+      const settings = await (await fetch(`${baseUrl}${leaf.path}`, { headers })).text();
+      assert.deepEqual(listedVersions(settings), [23, 22, 21], `${leaf.scheme} shows only the newest 3 versions`);
+      assert.ok(settings.includes(`<a href="${leaf.path}/history">View all history`), `${leaf.scheme} links to its own history`);
+
+      const firstPage = await fetch(`${baseUrl}${leaf.path}/history`, { headers });
+      const firstBody = await firstPage.text();
+      assert.equal(firstPage.status, 200);
+      assert.match(firstBody, /Draft version history/);
+      assert.deepEqual(listedVersions(firstBody), Array.from({ length: 20 }, (_, index) => 23 - index));
+      assert.match(firstBody, /Page 1 of 2/);
+      assert.ok(firstBody.includes(`href="${leaf.path}/history?page=2" rel="next"`));
+      assert.ok(firstBody.includes(`<a href="${leaf.path}">`), "breadcrumb links back to the fee settings page");
+
+      const secondBody = await (await fetch(`${baseUrl}${leaf.path}/history?page=2`, { headers })).text();
+      assert.deepEqual(listedVersions(secondBody), [3, 2, 1]);
+      const clamped = await (await fetch(`${baseUrl}${leaf.path}/history?page=500`, { headers })).text();
+      assert.deepEqual(listedVersions(clamped), [3, 2, 1]);
+      const invalid = await (await fetch(`${baseUrl}${leaf.path}/history?page=nope`, { headers })).text();
+      assert.match(invalid, /Page 1 of 2/);
+    }
+
+    // Saving still appends the next version on top of the existing history.
+    feeSchedules.reset();
+    feeSchedules.seedHistory("london-lez", 23);
+    const lezPath = feeScheduleHistoryLeaves[0].path;
+    const page = await fetch(`${baseUrl}${lezPath}`, { headers });
+    const pageBody = await page.text();
+    const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+    const token = pageBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(csrfCookie);
+    assert.ok(token);
+    sessionsByCookie.set(`sid=fee-history; ${csrfCookie}`, sessionsByCookie.get("sid=fee-history"));
+    const form = new URLSearchParams({ _csrf: token, baseVersion: "23" });
+    for (const rate of londonFeeScheduleDrafts["london-lez"].rates) form.set(`amount_${rate.key}`, rate.amount.toFixed(2));
+    const saved = await fetch(`${baseUrl}${lezPath}`, {
+      method: "POST",
+      headers: { cookie: `sid=fee-history; ${csrfCookie}`, "content-type": "application/x-www-form-urlencoded" },
+      body: form,
+      redirect: "manual"
+    });
+    assert.equal(saved.status, 303);
+    assert.deepEqual(feeSchedules.history("london-lez").map((entry) => entry.version), Array.from({ length: 24 }, (_, index) => 24 - index));
+    const afterSave = await (await fetch(`${baseUrl}${lezPath}`, { headers })).text();
+    assert.deepEqual(listedVersions(afterSave), [24, 23, 22]);
+    feeSchedules.reset();
+  });
+
+  test("configuration history pages enforce System Settings authorization", async () => {
+    fareSettings.reset();
+    fareSettings.seedHistory(25);
+    const paths = ["/settings/fare-settings/history", ...feeScheduleHistoryLeaves.map((leaf) => `${leaf.path}/history`)];
+    for (const path of paths) {
+      const denied = await fetch(`${baseUrl}${path}`, {
+        headers: withSession("sid=history-denied", ["admin", "staff", "tech_support"]),
+        redirect: "manual"
+      });
+      assert.equal(denied.status, 403, `${path} denies non-superusers`);
+      const deniedBody = await denied.text();
+      assert.match(deniedBody, /does not include the System Control role required for System settings/);
+      assert.doesNotMatch(deniedBody, /<strong>Version \d+<\/strong>/);
+
+      const anonymous = await fetch(`${baseUrl}${path}?page=2`, { headers: { cookie: "sid=history-anonymous" }, redirect: "manual" });
+      assert.equal(anonymous.status, 302, `${path} redirects anonymous sessions`);
+      assert.equal(anonymous.headers.get("location"), "/access");
+    }
+    fareSettings.reset();
   });
 });
