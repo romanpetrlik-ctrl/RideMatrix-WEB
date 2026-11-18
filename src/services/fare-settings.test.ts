@@ -846,6 +846,15 @@ test("location discount matching uses the exact managed ID, explicit precision, 
 test("location discount matching reports missing or invalid endpoint postcodes as unresolved", () => {
   const rules = [discountRule("full")];
   const airport = { managedLocation: { type: "airport" as const, id: "rm-boh" } };
+  const airportWithPostcode = { ...airport, postcode: "BH1 4RS" };
+  for (const [origin, destination] of [[airportWithPostcode, airport], [airport, airportWithPostcode]] as const) {
+    assert.deepEqual(matchLocationDiscount(rules, origin, destination, "2027-01-10"),
+      { status: "unresolved", reason: "missing-postcode", ruleIds: ["full"] });
+  }
+  const sameRuleBothDirections = matchLocationDiscount(rules, airportWithPostcode, airportWithPostcode, "2027-01-10");
+  assert.equal(sameRuleBothDirections.status, "matched");
+  assert.equal(sameRuleBothDirections.status === "matched" && sameRuleBothDirections.rule.id, "full");
+
   for (const other of [{}, { postcode: null }, { postcode: "" }, { postcode: "BH1" }, { postcode: "Bournemouth BH1 4RS" }]) {
     assert.deepEqual(matchLocationDiscount(rules, airport, other, "2027-01-10"),
       { status: "unresolved", reason: "missing-postcode", ruleIds: ["full"] });
