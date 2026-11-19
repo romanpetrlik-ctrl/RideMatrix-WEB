@@ -89,6 +89,16 @@
           <p class="notice notice--warning">No price snapshot was recorded for this booking.</p>
         <% } %>
       </section>
+
+      <section class="panel new-booking-block" aria-labelledby="detail-customer-quote-title">
+        <h2 id="detail-customer-quote-title">6. Customer quote preview</h2>
+        <% if (customerQuote) { %>
+          <p class="form-hint">What the customer would see for the saved price snapshot: payable items and total only, without statuses, calculation basis, internal IDs or configuration versions.</p>
+          <%- include("../../partials/customer-quote-preview", { customerQuote }) %>
+        <% } else { %>
+          <p class="notice notice--warning" data-customer-quote-unavailable>No customer quote is available because no price snapshot was recorded for this booking.</p>
+        <% } %>
+      </section>
     </main>
 
     <%- include("../../partials/footer") %>

@@ -4,6 +4,7 @@ import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
 import type { BookingRoute } from "../services/booking-routing";
 import type { BookingPrice, BookingStops } from "../services/booking-pricing";
+import { buildCustomerQuote } from "../services/customer-quote";
 import { readMapConfiguration } from "../services/maps";
 import {
   BOOKING_COUNT_FIELDS,
@@ -288,7 +289,8 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         serviceTimezone: booking.serviceTimezone ?? SERVICE_TIMEZONE,
         cargoSummaryText: cargoSummary(counts, booking.childSeatRequired === true, booking.boosterRequired === true),
         mapsBrowserApiKey: maps.browserApiKey ?? "",
-        mapsMapId: maps.mapId ?? ""
+        mapsMapId: maps.mapId ?? "",
+        customerQuote: booking.price ? buildCustomerQuote(booking.price) : null
       });
     } catch (error) {
       return next(error);

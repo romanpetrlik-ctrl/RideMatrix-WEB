@@ -49,7 +49,7 @@ const resolvedRoute: BookingRoute = {
 type Saved = Parameters<NonNullable<BookingsRouterOptions["createBooking"]>>;
 
 async function withApp(
-  options: { roles?: string[] | null; route?: BookingRoute; reference?: () => PricingReferenceData; csrf?: boolean } = {},
+  options: { roles?: string[] | null; route?: BookingRoute; reference?: () => PricingReferenceData; csrf?: boolean; booking?: SavedNewBooking } = {},
   run: (baseUrl: string, saved: Saved[]) => Promise<void>
 ) {
   const saved: Saved[] = [];
@@ -78,7 +78,7 @@ async function withApp(
       saved.push(args);
       return { id: "booking-uuid", reference: "RMB-000042", customerId: args[0].customerId };
     },
-    getBooking: async (id) => id === "booking-uuid" ? savedBooking : null,
+    getBooking: async (id) => id === "booking-uuid" ? options.booking ?? savedBooking : null,
     mapConfiguration: () => ({})
   }));
   const server = app.listen(0);
@@ -283,6 +283,110 @@ test("booking detail shows the saved reference, actor and snapshot lines with To
     assert.match(html, /£33\.00/);
     assert.match(html, /\/customers\/cust-b\/bookings\/booking-uuid\/assignment/);
     assert.equal((await fetch(`${baseUrl}/bookings/unknown`)).status, 404);
+  });
+});
+
+function customerQuoteSection(html: string): string {
+  const start = html.indexOf('aria-labelledby="detail-customer-quote-title"');
+  assert.ok(start > 0, "customer quote preview section is rendered");
+  return html.slice(start, html.indexOf("</section>", start));
+}
+
+const detailedSnapshotBooking: SavedNewBooking = {
+  ...savedBooking,
+  price: {
+    ...savedBooking.price!,
+    total: "32.50",
+    lines: [
+      { type: "ride-fare", label: "Ride fare", status: "applied", amount: "25.00", basis: "12.50 mi on standard Distance Slabs = £25.00.", source: { fareSettingsVersion: 4 } },
+      { type: "location-discount", label: "Location discount: BH internal radius rule", status: "applied", amount: "-2.50", basis: "Operational-base radius discount (10%)", source: { ruleId: "disc-rule-uuid" } },
+      { type: "airport-pickup-fee", label: "Airport pick-up fee — Airport X", status: "applied", amount: "10.00", basis: "Airport Fees record pick-up fee.", source: { airportId: "airport-x" } },
+      { type: "airport-dropoff-fee", label: "Airport drop-off fee", status: "not-applicable", amount: null, basis: "The drop-off is not a managed airport.", source: {} },
+      { type: "poi-fee", label: "POI fee — Stadium: drop-off", status: "zero", amount: "0.00", basis: "Configured POI fee", source: { poiFeeId: "poi-fee-uuid" } },
+      { type: "toll", label: "Toll charges", status: "not-applicable", amount: null, basis: "No tolls reported on this route.", source: {} },
+      { type: "parking", label: "Parking", status: "not-applicable", amount: null, basis: "Not requested.", source: {} },
+      { type: "dead-mileage", label: "Dead mileage", status: "not-applicable", amount: null, basis: "Recorded on assignment.", source: {} }
+    ]
+  }
+};
+
+test("booking detail adds a customer-safe quote preview from the saved snapshot alongside the staff breakdown", async () => {
+  await withApp({ booking: detailedSnapshotBooking }, async (baseUrl) => {
+    const html = await (await fetch(`${baseUrl}/bookings/booking-uuid`)).text();
+    // The full diagnostic breakdown remains for authorized staff.
+    assert.match(html, /data-price-line-status="not-applicable"/);
+    assert.match(html, /12\.50 mi on standard Distance Slabs/);
+    assert.match(html, /Fare Settings version 4/);
+
+    const preview = customerQuoteSection(html);
+    assert.match(preview, /Preview only — this has not been sent to the customer/);
+    assert.doesNotMatch(preview, /<form|<button|type="submit"/);
+    assert.match(preview, /data-customer-quote-status="confirmed"/);
+    const rows = [...preview.matchAll(/<tr data-customer-quote-line>\s*<th scope="row">([^<]+)<\/th>\s*<td[^>]*>([^<]+)<\/td>/g)].map((match) => [match[1], match[2]]);
+    assert.deepEqual(rows, [
+      ["Ride fare", "£25.00"],
+      ["Location discount", "−£2.50"],
+      ["Airport pick-up fee — Airport X", "£10.00"],
+      ["Location fee — Stadium: drop-off", "£0.00"]
+    ]);
+    assert.match(preview, /Total payable<\/th>\s*<td class="booking-price__amount"><strong>£32\.50<\/strong>/);
+    for (const hidden of [/Not applicable/, /Unresolved/i, /Applied/, /Configured £0\.00/, /Distance Slabs/, /radius/i, /disc-rule-uuid|poi-fee-uuid|airport-x/, /version 4/i, /Parking|Dead mileage|Toll/]) {
+      assert.doesNotMatch(preview.replace(/<p class="form-hint">[\s\S]*?<\/p>/, ""), hidden);
+    }
+  });
+});
+
+test("customer quote preview for an incomplete snapshot shows no payable total and is marked not confirmed", async () => {
+  const incomplete: SavedNewBooking = {
+    ...detailedSnapshotBooking,
+    price: {
+      ...detailedSnapshotBooking.price!,
+      status: "incomplete",
+      total: null,
+      lines: [
+        ...detailedSnapshotBooking.price!.lines,
+        { type: "road-charge", label: "Road charge — London ULEZ", status: "unresolved", amount: null, basis: "Draft London fee schedules.", source: { zone: "ulez" } }
+      ]
+    }
+  };
+  await withApp({ booking: incomplete }, async (baseUrl) => {
+    const preview = customerQuoteSection(await (await fetch(`${baseUrl}/bookings/booking-uuid`)).text());
+    assert.match(preview, /data-customer-quote-status="not-confirmed"/);
+    assert.match(preview, /Quote not yet confirmed/);
+    assert.match(preview, /must not be sent/);
+    assert.match(preview, /Not yet confirmed<\/strong>/);
+    assert.doesNotMatch(preview, /Total payable/);
+    assert.doesNotMatch(preview, /£32\.50/);
+    assert.doesNotMatch(preview, /Unresolved|Draft London|ulez/i);
+    assert.doesNotMatch(preview, /<form|<button/);
+  });
+});
+
+test("customer quote preview renders the historical snapshot unchanged after fare settings change", async () => {
+  let referenceLoads = 0;
+  const changedSettings = () => {
+    referenceLoads += 1;
+    return reference("9.99");
+  };
+  await withApp({ booking: detailedSnapshotBooking, reference: changedSettings }, async (baseUrl) => {
+    const preview = customerQuoteSection(await (await fetch(`${baseUrl}/bookings/booking-uuid`)).text());
+    assert.match(preview, /Ride fare<\/th>\s*<td class="booking-price__amount">£25\.00/);
+    assert.match(preview, /<strong>£32\.50<\/strong>/);
+    assert.equal(referenceLoads, 0);
+  });
+});
+
+test("customer quote preview and diagnostic breakdown are unavailable to non-admin staff and signed-out users", async () => {
+  await withApp({ roles: ["staff", "driver"], booking: detailedSnapshotBooking }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/bookings/booking-uuid`);
+    assert.equal(response.status, 403);
+    const html = await response.text();
+    assert.doesNotMatch(html, /data-customer-quote|data-price-line|£32\.50/);
+  });
+  await withApp({ roles: null, booking: detailedSnapshotBooking }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/bookings/booking-uuid`, { redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/access");
   });
 });
 
