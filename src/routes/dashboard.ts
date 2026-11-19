@@ -31,7 +31,7 @@ export const operationalMenuRows: OperationalMenuRow[] = [
   {
     category: "Bookings",
     actions: [
-      { label: "New", href: "/dashboard?tile=bookings-new" },
+      { label: "New", href: "/bookings/new" },
       { label: "Today", href: "/dashboard?tile=bookings-today" },
       {
         label: "Upcoming",

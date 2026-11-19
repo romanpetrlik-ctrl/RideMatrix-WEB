@@ -78,6 +78,7 @@ test("dashboard operational menu is the canonical navigation", () => {
     "Pricing",
     "Settings"
   ]);
+  assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "New")?.href, "/bookings/new");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "All customers")?.href, "/customers");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "New customer")?.href, "/customers/register");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "All staff")?.href, "/staff");
