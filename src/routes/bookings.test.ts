@@ -196,7 +196,7 @@ test("quote returns separately itemized lines, ordered stops and route summary d
     assert.equal(body.price.total, null);
     assert.match(body.fingerprint, /^[a-f0-9]{64}$/);
 
-    const withVias = await (await post(`${baseUrl}/bookings/quote`, form({ via1Active: "yes", via1Kind: "airport", via1AirportId: "airport-x", via2Active: "yes", via2Kind: "address", via2Label: "Typed only" }))).json() as { stops: Array<{ type: string; coordinatesVerified: boolean }>; route: { status: string }; price: { status: string; total: null } };
+    const withVias = await (await post(`${baseUrl}/bookings/quote`, form({ via1Active: "yes", via1Kind: "airport", via1AirportId: "airport-x", via2Active: "yes", via2Kind: "address", via2Label: "Typed only", via2HouseNameNumber: "2" }))).json() as { stops: Array<{ type: string; coordinatesVerified: boolean }>; route: { status: string }; price: { status: string; total: null } };
     assert.deepEqual(withVias.stops.map((stop) => stop.type), ["pickup", "via", "via", "dropoff"]);
     assert.equal(withVias.stops[2].coordinatesVerified, false);
     assert.equal(withVias.route.status, "unresolved");

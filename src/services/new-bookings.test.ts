@@ -71,6 +71,7 @@ function body(overrides: Record<string, unknown> = {}) {
     dropoffKind: "address",
     dropoffLabel: "1 High Street",
     dropoffPlaceId: "place-1",
+    dropoffHouseNameNumber: "",
     adults: "1",
     ...overrides
   };
@@ -155,7 +156,7 @@ test("cargo summary lists only non-zero bag types and omits the bag part when th
 test("journey keeps structured stop IDs, ordered vias and rejects invalid date/time or via order", async () => {
   const draft = readNewBookingDraft(body({
     via1Active: "yes", via1Kind: "poi", via1PoiId: "poi-1",
-    via2Active: "yes", via2Kind: "address", via2Label: "Unverified Lane", via2PlaceId: "bad"
+    via2Active: "yes", via2Kind: "address", via2Label: "Unverified Lane", via2PlaceId: "bad", via2HouseNameNumber: "2"
   }));
   const journey = await validateJourney(draft, reference, dependencies, []);
   assert.ok(journey);
@@ -164,6 +165,7 @@ test("journey keeps structured stop IDs, ordered vias and rejects invalid date/t
   assert.deepEqual(journey.stops.vias.map((stop) => [stop.kind, stop.managedId, stop.coordinatesVerified]), [["poi", "poi-1", true], ["address", null, false]]);
   assert.equal(journey.stops.dropoff.postcode, "BH15 1AA");
   assert.equal(journey.stops.dropoff.placeId, "place-1");
+  assert.equal(journey.stops.dropoff.label, "1 High Street, Poole BH15 1AA, UK");
 
   let routed = false;
   const quote = await quoteJourney(journey, reference, async () => { routed = true; throw new Error("must not route"); });
@@ -188,6 +190,30 @@ test("journey keeps structured stop IDs, ordered vias and rejects invalid date/t
     assert.equal(await validateJourney(readNewBookingDraft(body(overrides)), reference, dependencies, fieldErrors), null, field);
     assert.ok(fieldErrors.some((error) => error.field === field), `${field}: ${JSON.stringify(fieldErrors)}`);
   }
+});
+
+test("address stops require a house name or number and save it in the resolved stop label", async () => {
+  const verifiedWithoutHouse: OperationalPlaceVerification = {
+    status: "verified",
+    address: { ...verifiedPlace("place-1").address, houseNameNumber: null }
+  };
+  const dependenciesWithoutHouse = { ...dependencies, verifyPlace: async () => verifiedWithoutHouse };
+  const errors: Array<{ field: string; message: string }> = [];
+  const missing = await validateJourney(readNewBookingDraft(body()), reference, dependenciesWithoutHouse, errors);
+  assert.equal(missing, null);
+  assert.ok(errors.some((error) => error.field === "dropoffHouseNameNumber"));
+
+  const manual = await validateJourney(readNewBookingDraft(body({
+    dropoffHouseNameNumber: "The Old Rectory"
+  })), reference, dependenciesWithoutHouse, []);
+  assert.equal(manual!.stops.dropoff.label, "The Old Rectory, 1 High Street, Poole BH15 1AA, UK");
+
+  const unverifiedErrors: Array<{ field: string; message: string }> = [];
+  const unverified = await validateJourney(readNewBookingDraft(body({
+    via1Active: "yes", via1Kind: "address", via1Label: "Unverified Lane", via1PlaceId: "bad"
+  })), reference, dependencies, unverifiedErrors);
+  assert.equal(unverified, null);
+  assert.ok(unverifiedErrors.some((error) => error.field === "via1HouseNameNumber"));
 });
 
 test("removed dispatcher parking and waiting fields are ignored rather than parsed", async () => {

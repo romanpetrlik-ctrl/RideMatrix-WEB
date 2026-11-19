@@ -59,7 +59,7 @@ async function requireAdmin(cookieHeader: string | undefined, loadSession: (cook
 
 function emptyDraft(now: Date): NewBookingDraft {
   const service = defaultServiceDateTime(now);
-  const emptyStop = { kind: "", managedId: "", placeId: "", label: "" };
+  const emptyStop = { kind: "", managedId: "", placeId: "", label: "", houseNameNumber: "" };
   return {
     customerId: "",
     managerName: "",
