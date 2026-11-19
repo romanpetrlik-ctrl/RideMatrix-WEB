@@ -31,3 +31,14 @@ Each line is separate and fees are never folded into the ride fare.
 The server re-validates every field and recalculates the price. The save is rejected (409) when the result differs from the quote the dispatcher last saw. An incomplete price can only be saved when **Save with price unresolved** is ticked; the booking then has no total (`price_status = 'incomplete'`).
 
 Migration `0033_new_booking_price_snapshots` adds booking-manager, passenger, service-time, cargo and creator columns to `customer_bookings`, plus `booking_journey_stops`, `booking_price_snapshots` and `booking_price_line_items`. The booking, its stops, the snapshot and every line item are written in one transaction. The snapshot stores the pricing inputs, route result, Fare Settings version and each line's basis and source rule/record IDs, so later settings edits do not change a saved booking. Database triggers reject updates and deletes on snapshots and line items. Existing bookings are not modified.
+
+## Customer quote preview (`src/services/customer-quote.ts`)
+
+The booking detail page (`GET /bookings/:id`, `admin` only) shows **6. Customer quote preview** below the dispatcher breakdown. It is built only from the saved price snapshot — never recalculated from current settings — so later Fare Settings, Airport Fee or POI fee edits do not change it.
+
+- Shows each payable line separately: ride fare, location discount (negative, own line), airport pick-up/drop-off fees, POI fees ("Location fee — …"), tolls, road/zone charges and time-based surcharges, followed by **Total payable**.
+- Omits not-applicable lines; shows a configured £0.00 for the ride fare, airport and POI fees. Parking, extra waiting, dead mileage and fixed-fare lines are never shown.
+- Never shows line statuses, calculation basis, rule names or IDs, source records or Fare Settings versions.
+- **Total payable** is shown only when the snapshot is complete, no line is unresolved and the saved total equals the sum of the displayed lines. Otherwise the preview is marked **Quote not yet confirmed**, shows no total and must not be sent.
+
+This is a preview only. RideMatrix has no active customer quote delivery channel (no email or WhatsApp sending), so nothing is sent to customers.

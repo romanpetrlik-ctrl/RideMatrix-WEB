@@ -1,0 +1,37 @@
+<%
+  const formatCustomerAmount = (amount) => {
+    const negative = String(amount).startsWith("-");
+    return `${negative ? "−" : ""}£${negative ? String(amount).slice(1) : amount}`;
+  };
+%>
+<div class="customer-quote" data-customer-quote data-customer-quote-status="<%= customerQuote.status %>">
+  <p class="notice customer-quote__preview-notice" data-customer-quote-preview>Preview only — this has not been sent to the customer. RideMatrix has no active customer quote delivery channel.</p>
+  <% if (customerQuote.status !== "confirmed") { %>
+    <p class="notice notice--warning" role="status" data-customer-quote-not-confirmed>Quote not yet confirmed. Some charges for this journey are still to be confirmed, so no total is payable and this quote must not be sent.</p>
+  <% } %>
+  <table class="booking-price__table customer-quote__table">
+    <caption class="visually-hidden">Customer quote preview</caption>
+    <thead>
+      <tr><th scope="col">Item</th><th scope="col" class="booking-price__amount">Amount</th></tr>
+    </thead>
+    <tbody>
+      <% customerQuote.lines.forEach((line) => { %>
+        <tr data-customer-quote-line>
+          <th scope="row"><%= line.label %></th>
+          <td class="booking-price__amount"><%= formatCustomerAmount(line.amount) %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+    <tfoot>
+      <tr class="booking-price__total" data-customer-quote-total>
+        <% if (customerQuote.status === "confirmed") { %>
+          <th scope="row">Total payable</th>
+          <td class="booking-price__amount"><strong><%= formatCustomerAmount(customerQuote.total) %></strong></td>
+        <% } else { %>
+          <th scope="row">Total</th>
+          <td class="booking-price__amount"><strong>Not yet confirmed</strong></td>
+        <% } %>
+      </tr>
+    </tfoot>
+  </table>
+</div>
