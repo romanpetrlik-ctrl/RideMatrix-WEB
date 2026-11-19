@@ -194,11 +194,9 @@
       fieldset.querySelector("[data-stop-kind]").addEventListener("change", () => showKindPanel(fieldset));
       showKindPanel(fieldset);
       const label = fieldset.querySelector("[data-address-label]");
-      const houseNameNumber = fieldset.querySelector("[data-address-house-name-number]");
       const placeId = fieldset.querySelector("[data-address-place-id]");
       label.addEventListener("input", () => {
         placeId.value = "";
-        houseNameNumber.value = "";
         fieldset.querySelector("[data-address-status]").textContent = "Unverified address: select a Google Places suggestion to resolve the route.";
       });
     });
