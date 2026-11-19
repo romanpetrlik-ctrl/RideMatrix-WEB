@@ -128,43 +128,45 @@ test("the real LEZ boundary is detected separately from ULEZ and CC for an outer
   assert.ok(!outer.some((zone) => zone.zone === "london-congestion-charge"));
 });
 
-const testGates: TunnelReferenceGeometry = {
+const testPortals: TunnelReferenceGeometry = {
   verified: true,
   provenance: "test fixture",
-  gates: [
-    { tunnel: "blackwall", label: "Blackwall Tunnel", gate: [[-0.01, 51.5], [0, 51.5]] },
-    { tunnel: "silvertown", label: "Silvertown Tunnel", gate: [[0.01, 51.5], [0.02, 51.5]] }
+  portals: [
+    { tunnel: "blackwall", label: "Blackwall Tunnel", south: { latitude: 51.49, longitude: -0.005 }, north: { latitude: 51.51, longitude: -0.005 } },
+    { tunnel: "silvertown", label: "Silvertown Tunnel", south: { latitude: 51.49, longitude: 0.015 }, north: { latitude: 51.51, longitude: 0.015 } }
   ]
 };
 
 test("tunnel crossings are identified per tunnel with direction, and repeated crossings are each counted", () => {
-  const north = { latitude: 51.51, longitude: -0.005 };
-  const south = { latitude: 51.49, longitude: -0.005 };
+  const blackwallNorth = { latitude: 51.51, longitude: -0.005 };
+  const blackwallSouth = { latitude: 51.49, longitude: -0.005 };
   const silverNorth = { latitude: 51.51, longitude: 0.015 };
   const silverSouth = { latitude: 51.49, longitude: 0.015 };
-  const crossings = detectTunnelCrossings([north, south, silverSouth, silverNorth], testGates);
+  const crossings = detectTunnelCrossings([blackwallNorth, blackwallSouth, silverSouth, silverNorth], testPortals);
   assert.deepEqual(crossings.map((crossing) => [crossing.tunnel, crossing.direction]), [
     ["blackwall", "southbound"],
     ["silvertown", "northbound"]
   ]);
   assert.ok(crossings.every((crossing) => crossing.geometry.verified));
 
-  const returnTrip = detectTunnelCrossings([south, north, { latitude: 51.51, longitude: 0 }, { latitude: 51.505, longitude: -0.005 }, south], testGates);
+  const returnTrip = detectTunnelCrossings([blackwallSouth, blackwallNorth, blackwallSouth], testPortals);
   assert.deepEqual(returnTrip.map((crossing) => `${crossing.tunnel}:${crossing.direction}`), ["blackwall:northbound", "blackwall:southbound"]);
 
-  // Travelling along the river (never crossing a gate) or passing east of both gates is not a crossing.
-  assert.deepEqual(detectTunnelCrossings([{ latitude: 51.51, longitude: 0.05 }, { latitude: 51.49, longitude: 0.05 }], testGates), []);
-
-  // A vertex exactly on the gate is counted once, not twice.
-  const onGate = detectTunnelCrossings([north, { latitude: 51.5, longitude: -0.005 }, south], testGates);
-  assert.equal(onGate.length, 1);
-  assert.equal(onGate[0].direction, "southbound");
+  assert.deepEqual(detectTunnelCrossings([{ latitude: 51.51, longitude: 0.05 }, { latitude: 51.49, longitude: 0.05 }], testPortals), []);
 });
 
-test("the bundled tunnel gate geometry is flagged unverified and propagated with each crossing", () => {
-  assert.equal(TUNNEL_REFERENCE_GEOMETRY.verified, false);
-  const crossings = detectTunnelCrossings([{ latitude: 51.51, longitude: -0.003 }, { latitude: 51.498, longitude: -0.003 }]);
+test("owner-supplied portal coordinates detect real tunnel route crossings", () => {
+  assert.equal(TUNNEL_REFERENCE_GEOMETRY.verified, true);
+  const portals = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === "silvertown")!;
+  const crossings = detectTunnelCrossings([portals.south, portals.north]);
   assert.equal(crossings.length, 1);
-  assert.equal(crossings[0].tunnel, "blackwall");
-  assert.equal(crossings[0].geometry.verified, false);
+  assert.equal(crossings[0].tunnel, "silvertown");
+  assert.equal(crossings[0].direction, "northbound");
+  assert.equal(crossings[0].geometry.verified, true);
+});
+
+test("a route must pass both portal locations before the tunnel is charged", () => {
+  const portals = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === "blackwall")!;
+  const nearOnlyOnePortal = detectTunnelCrossings([portals.south, { latitude: 51.504, longitude: -0.003 }]);
+  assert.deepEqual(nearOnlyOnePortal, []);
 });

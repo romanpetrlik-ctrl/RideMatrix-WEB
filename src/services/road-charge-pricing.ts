@@ -355,7 +355,7 @@ function tunnelLine(
     direction: crossing.direction,
     crossing: ordinal,
     schedule: scheduleSource(record),
-    matchingBasis: { method: "route-gate-crossing", segmentIndex: crossing.segmentIndex, point: crossing.point, geometry: crossing.geometry },
+    matchingBasis: { method: "ordered-route-portal-match", segmentIndex: crossing.segmentIndex, point: crossing.point, geometry: crossing.geometry },
     journeyWindow: windowSource(window),
     vehicleInput: { tunnelVehicleClass: profile?.tunnelVehicleClass || null, tunnelAutoPay: profile?.tunnelAutoPay || null, vehicleAssigned: profile !== null }
   };
