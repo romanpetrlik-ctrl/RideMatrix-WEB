@@ -9,7 +9,7 @@ import { BOOKING_COUNT_FIELDS, BOOKING_COUNT_MAX, cargoSummary, serviceTimeOptio
 const ORIGIN = "http://booking.test";
 
 async function renderNewBooking(): Promise<string> {
-  const emptyStop = { kind: "", managedId: "", placeId: "", label: "" };
+  const emptyStop = { kind: "", managedId: "", placeId: "", label: "", houseNameNumber: "" };
   return ejs.renderFile(path.join(process.cwd(), "src/views/pages/bookings/new.ejs"), {
     title: "New Booking",
     appTitle: "RideMatrix Test",
@@ -181,7 +181,9 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     await page.click("[data-add-via]");
     assert.equal(await page.locator("[data-add-via]").isVisible(), false);
     await page.selectOption("#via2Kind", "address");
+    assert.equal(await page.locator("#via2HouseNameNumber").getAttribute("required"), "");
     await page.fill("#via2Label", "Typed Lane");
+    await page.fill("#via2HouseNameNumber", "12");
     assert.equal(await page.locator("[data-poi-fee-option]").isVisible(), false, "POI fees only for selected POIs");
     await page.selectOption("#dropoffKind", "poi");
     await page.selectOption("#dropoffPoiId", "poi-1");
@@ -196,6 +198,7 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     );
     assert.equal(request.get("via1Active"), "yes");
     assert.equal(request.get("via2Active"), "yes");
+    assert.equal(request.get("via2HouseNameNumber"), "12");
     assert.equal(request.get("dropoffPoiId"), "poi-1");
 
     assert.equal(await page.locator("[data-route-distance]").textContent(), "18.40 miles");

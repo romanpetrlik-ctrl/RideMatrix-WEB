@@ -49,6 +49,7 @@ export type SubmittedStop = {
   managedId: string;
   placeId: string;
   label: string;
+  houseNameNumber: string;
 };
 
 export type NewBookingDraft = {
@@ -162,7 +163,8 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
       kind,
       managedId: kind === "airport" ? text(source, `${key}AirportId`, 100) : kind === "poi" ? text(source, `${key}PoiId`, 100) : "",
       placeId: kind === "address" ? text(source, `${key}PlaceId`, 300) : "",
-      label: kind === "address" ? text(source, `${key}Label`, 300) : ""
+      label: kind === "address" ? text(source, `${key}Label`, 300) : "",
+      houseNameNumber: kind === "address" ? text(source, `${key}HouseNameNumber`, 120) : ""
     };
   };
   const counts = Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, text(source, field, 5)])) as Record<BookingCountField, string>;
@@ -261,6 +263,19 @@ function isValidPhone(phone: string): boolean {
 
 const STOP_TITLES: Record<StopKey, string> = { pickup: "Pickup", via1: "Via 1", via2: "Via 2", dropoff: "Drop-off" };
 
+function formatAddressLabel(houseNameNumber: string, address: string): string {
+  const house = houseNameNumber.trim();
+  const formattedAddress = address.trim();
+  const normalizedAddress = formattedAddress.toLocaleLowerCase("en-GB");
+  const normalizedHouse = house.toLocaleLowerCase("en-GB");
+  const addressStartsWithHouse = normalizedAddress === normalizedHouse
+    || normalizedAddress.startsWith(`${normalizedHouse},`)
+    || normalizedAddress.startsWith(`${normalizedHouse} `);
+  return house && !addressStartsWithHouse
+    ? `${house}, ${formattedAddress}`
+    : formattedAddress;
+}
+
 async function resolveStop(
   key: StopKey,
   submitted: SubmittedStop,
@@ -308,6 +323,9 @@ async function resolveStop(
   if (submitted.kind === "address") {
     if (!submitted.label) {
       errors.push({ field, message: `${title}: enter or select an address.` });
+      if (!submitted.houseNameNumber) {
+        errors.push({ field: `${key}HouseNameNumber`, message: `${title}: enter a house name or number.` });
+      }
       return null;
     }
     if (submitted.placeId) {
@@ -317,11 +335,16 @@ async function resolveStop(
         return null;
       }
       if (verification.status === "verified") {
+        const houseNameNumber = submitted.houseNameNumber || verification.address.houseNameNumber || "";
+        if (!houseNameNumber) {
+          errors.push({ field: `${key}HouseNameNumber`, message: `${title}: enter a house name or number.` });
+          return null;
+        }
         return {
           kind: "address",
           managedId: null,
           placeId: verification.address.providerPlaceId,
-          label: verification.address.formattedAddress || submitted.label,
+          label: formatAddressLabel(houseNameNumber, verification.address.formattedAddress || submitted.label),
           latitude: verification.address.latitude,
           longitude: verification.address.longitude,
           coordinatesVerified: true,
@@ -329,11 +352,15 @@ async function resolveStop(
         };
       }
     }
+    if (!submitted.houseNameNumber) {
+      errors.push({ field: `${key}HouseNameNumber`, message: `${title}: enter a house name or number.` });
+      return null;
+    }
     return {
       kind: "address",
       managedId: null,
       placeId: null,
-      label: submitted.label,
+      label: formatAddressLabel(submitted.houseNameNumber, submitted.label),
       latitude: null,
       longitude: null,
       coordinatesVerified: false,

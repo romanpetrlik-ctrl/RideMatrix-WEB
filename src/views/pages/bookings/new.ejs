@@ -182,6 +182,10 @@
                     <input id="<%= key %>Label" name="<%= key %>Label" type="text" autocomplete="off" value="<%= stop.label %>" data-address-label data-quote-input>
                     <input type="hidden" name="<%= key %>PlaceId" value="<%= stop.placeId %>" data-address-place-id>
                     <p class="form-hint" data-address-status><%= mapsBrowserApiKey ? "Select a Google Places suggestion so coordinates and postcode can be verified." : "Address search is unavailable (Google Maps not configured). Typed addresses are saved unverified and the route stays unresolved." %></p>
+                    <label for="<%= key %>HouseNameNumber">House name / number</label>
+                    <input id="<%= key %>HouseNameNumber" name="<%= key %>HouseNameNumber" type="text" maxlength="120" autocomplete="address-line2" placeholder="For example, 12 or The Old Rectory" value="<%= stop.houseNameNumber %>" data-address-house-name-number data-quote-input <%- invalid(`${key}HouseNameNumber`) %>>
+                    <% if (fieldError(`${key}HouseNameNumber`)) { %><p class="field-error" id="<%= key %>HouseNameNumber-error"><%= fieldError(`${key}HouseNameNumber`) %></p><% } %>
+                    <p class="form-hint">Required for address stops; Google may fill it when available.</p>
                   </div>
                   <% if (isVia(key)) { %>
                     <button type="button" class="button button--secondary" data-remove-via="<%= key %>">Remove <%= stopTitles[key] %></button>

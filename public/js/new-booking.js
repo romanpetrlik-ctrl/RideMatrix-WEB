@@ -183,14 +183,22 @@
     const showKindPanel = (fieldset) => {
       const kind = fieldset.querySelector("[data-stop-kind]").value;
       fieldset.querySelectorAll("[data-stop-panel]").forEach((panel) => { panel.hidden = panel.dataset.stopPanel !== kind; });
+      const houseNameNumber = fieldset.querySelector("[data-address-house-name-number]");
+      if (houseNameNumber) {
+        const isAddress = kind === "address" && !fieldset.hidden;
+        houseNameNumber.required = isAddress;
+        houseNameNumber.disabled = !isAddress;
+      }
     };
     $$("[data-stop]").forEach((fieldset) => {
       fieldset.querySelector("[data-stop-kind]").addEventListener("change", () => showKindPanel(fieldset));
       showKindPanel(fieldset);
       const label = fieldset.querySelector("[data-address-label]");
+      const houseNameNumber = fieldset.querySelector("[data-address-house-name-number]");
       const placeId = fieldset.querySelector("[data-address-place-id]");
       label.addEventListener("input", () => {
         placeId.value = "";
+        houseNameNumber.value = "";
         fieldset.querySelector("[data-address-status]").textContent = "Unverified address: select a Google Places suggestion to resolve the route.";
       });
     });
@@ -203,13 +211,13 @@
       fieldset.querySelector("[data-via-active]").value = active ? "yes" : "";
     };
     const copyStop = (from, to) => {
-      ["Kind", "AirportId", "PoiId", "Label", "PlaceId"].forEach((suffix) => {
+      ["Kind", "AirportId", "PoiId", "Label", "PlaceId", "HouseNameNumber"].forEach((suffix) => {
         form.elements[`${to}${suffix}`].value = form.elements[`${from}${suffix}`].value;
       });
       showKindPanel(stopElement(to));
     };
     const clearStop = (key) => {
-      ["Kind", "AirportId", "PoiId", "Label", "PlaceId"].forEach((suffix) => { form.elements[`${key}${suffix}`].value = ""; });
+      ["Kind", "AirportId", "PoiId", "Label", "PlaceId", "HouseNameNumber"].forEach((suffix) => { form.elements[`${key}${suffix}`].value = ""; });
       showKindPanel(stopElement(key));
     };
     const refreshViaButton = () => { addViaButton.hidden = nextViaToAdd(viaState()) === null; };
@@ -349,6 +357,7 @@
       form.querySelectorAll("[data-stop]").forEach((fieldset) => {
         const host = fieldset.querySelector("[data-address-autocomplete-host]");
         const label = fieldset.querySelector("[data-address-label]");
+        const houseNameNumber = fieldset.querySelector("[data-address-house-name-number]");
         const placeId = fieldset.querySelector("[data-address-place-id]");
         const status = fieldset.querySelector("[data-address-status]");
         const autocomplete = new places.PlaceAutocompleteElement({ includedRegionCodes: ["gb"] });
@@ -358,11 +367,16 @@
           const prediction = event && (event.placePrediction || (event.detail && event.detail.placePrediction));
           if (!prediction || typeof prediction.toPlace !== "function") return;
           const place = prediction.toPlace();
-          Promise.resolve(place.fetchFields({ fields: ["id", "displayName", "formattedAddress", "location"] })).then(() => {
+          Promise.resolve(place.fetchFields({ fields: ["id", "displayName", "formattedAddress", "location", "addressComponents"] })).then(() => {
             if (!place.id) return;
             label.value = place.formattedAddress || (place.displayName && place.displayName.text) || place.displayName || "";
+            const components = Array.isArray(place.addressComponents) ? place.addressComponents : [];
+            houseNameNumber.value = ["subpremise", "premise", "street_number"]
+              .map((type) => components.find((component) => Array.isArray(component.types) && component.types.includes(type))?.longText)
+              .filter((value, index, values) => typeof value === "string" && value.trim() && values.findIndex((other) => typeof other === "string" && other.trim().toLocaleLowerCase("en-GB") === value.trim().toLocaleLowerCase("en-GB")) === index)
+              .join(", ");
             placeId.value = place.id;
-            status.textContent = "Google Place selected. Coordinates and postcode are verified on the server.";
+            status.textContent = "Google Place selected. Coordinates and postcode are verified on the server; enter the house name or number if not supplied.";
             onSelect();
           }).catch(() => { status.textContent = "The selected Google Place could not be loaded. Choose another result."; });
         });
