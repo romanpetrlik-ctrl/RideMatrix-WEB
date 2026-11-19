@@ -72,8 +72,6 @@ function body(overrides: Record<string, unknown> = {}) {
     dropoffLabel: "1 High Street",
     dropoffPlaceId: "place-1",
     adults: "1",
-    parkingRequired: "no",
-    extraWaitingMinutes: "0",
     ...overrides
   };
 }
@@ -174,7 +172,6 @@ test("journey keeps structured stop IDs, ordered vias and rejects invalid date/t
     ["serviceTime", { serviceTime: "08:00" }],
     ["serviceDate", { serviceDate: "2027-02-30" }],
     ["serviceTime", { serviceDate: "2027-03-28", serviceTime: "01:30" }],
-    ["extraWaitingMinutes", { extraWaitingMinutes: "7" }],
     ["pickupKind", { pickupAirportId: "unknown-airport" }],
     ["confirmedPoiFeeIds", { confirmedPoiFeeIds: ["fee-unknown"] }]
   ] as const) {
@@ -182,6 +179,13 @@ test("journey keeps structured stop IDs, ordered vias and rejects invalid date/t
     assert.equal(await validateJourney(readNewBookingDraft(body(overrides)), reference, dependencies, fieldErrors), null, field);
     assert.ok(fieldErrors.some((error) => error.field === field), `${field}: ${JSON.stringify(fieldErrors)}`);
   }
+});
+
+test("removed dispatcher parking and waiting fields are ignored rather than parsed", async () => {
+  const errors: Array<{ field: string; message: string }> = [];
+  const journey = await validateJourney(readNewBookingDraft(body({ parkingRequired: "yes", extraWaitingMinutes: "999" })), reference, dependencies, errors);
+  assert.ok(journey, JSON.stringify(errors));
+  assert.equal(errors.length, 0);
 });
 
 test("confirmed POI fees are kept only for POIs selected in the journey", async () => {
@@ -226,7 +230,7 @@ test("browser price breakdown escapes labels, keeps lines separate and shows Tot
   assert.match(html, /&lt;b&gt;Hotel&lt;\/b&gt;/);
   assert.match(html, /−£2\.50/);
   assert.ok(html.lastIndexOf("data-price-line=") < html.indexOf("Total payable"));
-  const incomplete = newBookingClient.priceBreakdownHtml({ status: "incomplete", total: null, lines: [{ type: "parking", label: "Parking", status: "unresolved", amount: null, basis: "" }] });
+  const incomplete = newBookingClient.priceBreakdownHtml({ status: "incomplete", total: null, lines: [{ type: "road-charge", label: "London ULEZ daily charge", status: "unresolved", amount: null, basis: "" }] });
   assert.match(incomplete, /Not confirmed/);
   assert.match(incomplete, /1 item unresolved/);
 });

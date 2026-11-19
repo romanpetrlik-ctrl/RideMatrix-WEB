@@ -20,7 +20,7 @@ async function renderNewBooking(): Promise<string> {
       stops: { pickup: { ...emptyStop }, via1: { ...emptyStop }, via2: { ...emptyStop }, dropoff: { ...emptyStop } },
       viaActive: { via1: false, via2: false },
       counts: Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, "0"])),
-      childSeatRequired: "no", boosterRequired: "no", parkingRequired: "no", extraWaitingMinutes: "0",
+      childSeatRequired: "no", boosterRequired: "no",
       confirmedPoiFeeIds: [], saveWithUnresolvedPrice: false, quotedTotal: "", quotedStatus: "", quotedFingerprint: ""
     },
     errors: [],
@@ -36,7 +36,6 @@ async function renderNewBooking(): Promise<string> {
     countFields: BOOKING_COUNT_FIELDS,
     countMax: BOOKING_COUNT_MAX,
     timeOptions: serviceTimeOptions(),
-    maxExtraWaitingMinutes: 240,
     serviceTimezone: "Europe/London",
     cargoSummaryText: cargoSummary({ adults: 0, children: 0, sportsEquipment: 0, xlBaggage: 0, lBaggage: 0, cabinHandBags: 0, backpacks: 0 }, false, false),
     createdByEmail: "dispatcher@example.test",
@@ -234,11 +233,10 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     delayNextQuote = true;
     await page.selectOption("#serviceTime", "15:10");
     await delayedQuoteReady;
-    await page.fill("#extraWaitingMinutes", "5");
+    assert.equal(await value("[data-quoted-status]"), "", "no quote is shown while the new request is in flight");
+    assert.equal(await value("[data-quote-fingerprint]"), "");
     releaseDelayedQuote();
     await page.waitForTimeout(100);
-    assert.equal(await value("[data-quoted-status]"), "", "an earlier response cannot restore a quote during the debounce");
-    assert.equal(await value("[data-quote-fingerprint]"), "");
     await page.waitForFunction(() => (document.querySelector("[data-quoted-status]") as HTMLInputElement).value === "incomplete");
     const times = await page.locator("#serviceTime option").allTextContents();
     assert.ok(times.every((time) => /^([01]\d|2[0-3]):[0-5][05]$/.test(time)));

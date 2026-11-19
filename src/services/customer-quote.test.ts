@@ -19,10 +19,6 @@ const completeLines: PriceLine[] = [
   line({ type: "poi-fee", label: "POI fee — Stadium: drop-off", status: "zero", amount: "0.00" }),
   line({ type: "toll", label: "Toll charges", status: "not-applicable" }),
   line({ type: "road-charge", label: "Road / zone charges", status: "not-applicable" }),
-  line({ type: "parking", label: "Parking", status: "not-applicable" }),
-  line({ type: "extra-waiting", label: "Extra waiting time", status: "not-applicable" }),
-  line({ type: "time-surcharge", label: "Time-based fare surcharge", status: "not-applicable" }),
-  line({ type: "fixed-fare", label: "Fixed fare rule", status: "not-applicable" }),
   line({ type: "dead-mileage", label: "Dead mileage", status: "not-applicable" })
 ];
 
@@ -39,7 +35,7 @@ test("customer quote lists only applicable payable lines, keeps fees and discoun
     ]
   });
   const serialized = JSON.stringify(quote);
-  for (const hidden of ["Internal BH rule", "internal basis", "rule-uuid-1", "fareSettingsVersion", "not-applicable", "Parking", "waiting", "Dead mileage", "POI"]) {
+  for (const hidden of ["Internal BH rule", "internal basis", "rule-uuid-1", "fareSettingsVersion", "not-applicable", "Dead mileage", "POI"]) {
     assert.ok(!serialized.includes(hidden), `${hidden} must not be exposed`);
   }
 });
@@ -51,10 +47,10 @@ test("customer quote never confirms a total for incomplete snapshots or unresolv
   assert.equal(incomplete.total, null);
   assert.ok(!JSON.stringify(incomplete).includes("ULEZ"));
 
-  // A driver-managed unresolved line still prevents confirmation, even though it is never displayed.
-  const parking = buildCustomerQuote({ status: "incomplete", total: null, lines: [...completeLines.slice(0, 3), line({ type: "parking", status: "unresolved" })] });
-  assert.equal(parking.status, "not-confirmed");
-  assert.equal(parking.total, null);
+  // A hidden unresolved line still prevents confirmation, even though it is never displayed.
+  const hiddenUnresolved = buildCustomerQuote({ status: "incomplete", total: null, lines: [...completeLines.slice(0, 3), line({ type: "dead-mileage", status: "unresolved" })] });
+  assert.equal(hiddenUnresolved.status, "not-confirmed");
+  assert.equal(hiddenUnresolved.total, null);
 
   // Defensive: a snapshot marked complete must still have no unresolved lines and a non-null total.
   assert.equal(buildCustomerQuote({ status: "complete", total: "43.00", lines: unresolvedRoad }).status, "not-confirmed");

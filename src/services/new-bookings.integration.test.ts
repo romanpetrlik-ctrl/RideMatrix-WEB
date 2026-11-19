@@ -44,7 +44,7 @@ async function priceFor(customerId: string, airportId: string, extra: Record<str
   const draft = readNewBookingDraft({
     customerId, managerName: manager.name, managerPhone: manager.phone, managerEmail: manager.email, passengerIsManager: "yes",
     serviceDate: "2027-03-10", serviceTime: "12:05", pickupKind: "airport", pickupAirportId: airportId,
-    dropoffKind: "airport", dropoffAirportId: airportId, adults: "2", xlBaggage: "1", parkingRequired: "no", extraWaitingMinutes: "0", ...extra
+    dropoffKind: "airport", dropoffAirportId: airportId, adults: "2", xlBaggage: "1", ...extra
   });
   const reference = await loadPricingReferenceData();
   const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getBookingManagerCandidate);
@@ -154,7 +154,8 @@ test("a new booking persists its stops and itemized price snapshot transactional
 test("an unresolved price is stored as incomplete without a total only when acknowledged", async () => {
   const customer = await createCustomer({ givenName: "Una", surname: "Resolved", email: "una@example.test", phone: "+44 7911 123457" } as Parameters<typeof createCustomer>[0]);
   const airport = (await airportFeeStore.list())[0];
-  const { draft, booking, reference, quote } = await priceFor(customer.id, airport.id, { parkingRequired: "yes" });
+  const { draft, booking, reference } = await priceFor(customer.id, airport.id);
+  const quote = await quoteJourney(booking, reference, async () => ({ status: "unresolved", reason: "provider-error", message: "Routing temporarily unavailable." }));
   assert.equal(quote.price.status, "incomplete");
   assert.equal(quote.price.total, null);
   const unresolvedRouteQuote = await quoteJourney(booking, {
@@ -176,7 +177,7 @@ test("an unresolved price is stored as incomplete without a total only when ackn
   const loaded = await getNewBooking(saved.id);
   assert.equal(loaded?.price?.status, "incomplete");
   assert.equal(loaded?.price?.total, null);
-  assert.ok(loaded?.price?.lines.some((line) => line.type === "parking" && line.status === "unresolved" && line.amount === null));
+  assert.ok(loaded?.price?.lines.some((line) => line.type === "ride-fare" && line.status === "unresolved" && line.amount === null));
   const row = await query<{ total_fare_amount: string | null; price_status: string }>("SELECT total_fare_amount, price_status FROM customer_bookings WHERE id = $1", [saved.id]);
   assert.deepEqual(row.rows[0], { total_fare_amount: null, price_status: "incomplete" });
 });
@@ -245,13 +246,13 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
       tunnelCrossings: [], computedAt: now.toISOString()
     };
   };
-  const quoteWith = async (extra: Record<string, unknown>) => {
+  const quoteWith = async () => {
     const manager = await getBookingManagerCandidate(customer.id);
     assert.ok(manager);
     const draft = readNewBookingDraft({
       customerId: customer.id, managerName: manager.name, managerPhone: manager.phone, managerEmail: manager.email, passengerIsManager: "yes",
       serviceDate: "2027-03-10", serviceTime: "12:05", pickupKind: "airport", pickupAirportId: airport.id,
-      dropoffKind: "airport", dropoffAirportId: airport.id, adults: "1", parkingRequired: "no", extraWaitingMinutes: "0", ...extra
+      dropoffKind: "airport", dropoffAirportId: airport.id, adults: "1"
     });
     const reference = await loadPricingReferenceData();
     const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getBookingManagerCandidate);
@@ -261,57 +262,34 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
   };
   const lezLine = (lines: Array<{ type: string; status: string; amount: string | null; label: string }>) => lines.filter((line) => line.type === "road-charge");
 
-  // Seeded schedules are inactive, so the LEZ charge is unresolved and the quote has no total.
-  const inactive = await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" });
+  // No vehicle is assigned at quote time, so zone charges stay unresolved while the schedule is inactive or active.
+  const inactive = await quoteWith();
   assert.deepEqual(lezLine(inactive.quote.price.lines).map((line) => line.status), ["unresolved"]);
   assert.equal(inactive.quote.price.total, null);
-
-  const invalid = readNewBookingDraft({ roadChargeLez: "made-up" });
-  const reference = await loadPricingReferenceData();
-  const invalidResult = await validateNewBooking({ ...inactive.draft, roadChargeProfile: invalid.roadChargeProfile }, reference, dependencies, getBookingManagerCandidate);
-  assert.ok(invalidResult.errors.some((error) => error.field === "roadChargeLez"));
 
   const lez = await londonFeeScheduleStore.load("london-lez");
   await londonFeeScheduleStore.setActivation("london-lez", lez.currentVersion, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, new Date("2026-11-20T00:00:00Z"));
   const enabledVersion = lez.currentVersion + 1;
 
-  const unstated = await quoteWith({});
-  assert.equal(lezLine(unstated.quote.price.lines)[0].status, "unresolved", "an active schedule still needs the vehicle's LEZ position");
-  assert.equal(unstated.quote.price.total, null);
-
-  const { draft, booking, quote } = await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" });
-  assert.equal(quote.price.status, "complete");
-  assert.deepEqual(lezLine(quote.price.lines).map((line) => [line.status, line.amount, line.label]), [["applied", "100.00", "London LEZ daily charge — Wed, 10 Mar 2027"]]);
-  assert.equal(quote.price.total, "120.00", "20.00 ride fare + 100.00 LEZ");
-  const saved = await createNewBooking(booking, quote, { ...draft, quotedStatus: "complete", quotedTotal: "120.00", quotedFingerprint: quote.fingerprint }, actor, now);
+  const { draft, booking, quote } = await quoteWith();
+  assert.deepEqual(lezLine(quote.price.lines).map((line) => [line.status, line.amount]), [["unresolved", null]]);
+  assert.equal(quote.price.status, "incomplete");
+  assert.equal(quote.price.total, null);
+  const saved = await createNewBooking(booking, quote, { ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true }, actor, now);
 
   // Editing the schedule (and re-enabling it) changes new quotes but never the saved snapshot.
   const amounts = Object.fromEntries(roadChargeScheduleSeeds["london-lez"].rates.map((rate) => [rate.key, rate.amount]));
   await londonFeeScheduleStore.save("london-lez", enabledVersion, { ...amounts, "lez-vans-specialist-minibuses": "150.00" }, actor, { effectiveFrom: "2021-03-01", effectiveUntil: null });
-  const requoted = await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" });
-  assert.equal(lezLine(requoted.quote.price.lines)[0].status, "unresolved", "an edited schedule is inactive until re-enabled");
-  await assert.rejects(
-    createNewBooking(requoted.booking, requoted.quote, { ...draft, quotedStatus: "complete", quotedTotal: "120.00", quotedFingerprint: quote.fingerprint }, actor, now),
-    BookingPriceChangedError,
-    "saving revalidates the quote against the current schedule"
-  );
   await londonFeeScheduleStore.setActivation("london-lez", enabledVersion + 1, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, new Date("2026-11-20T00:00:00Z"));
-  assert.equal(lezLine((await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" })).quote.price.lines)[0].amount, "150.00");
+  assert.deepEqual(lezLine((await quoteWith()).quote.price.lines).map((line) => line.status), ["unresolved"]);
 
   const reloaded = await getNewBooking(saved.id);
-  assert.deepEqual(lezLine(reloaded!.price!.lines).map((line) => [line.status, line.amount]), [["applied", "100.00"]]);
-  assert.equal(reloaded?.price?.total, "120.00");
-  const stored = await query<{ source: Record<string, any>; calculation: Record<string, any> }>(
-    `SELECT li.source, s.calculation FROM booking_price_line_items li JOIN booking_price_snapshots s ON s.id = li.snapshot_id
-      WHERE s.booking_id = $1 AND li.line_type = 'road-charge'`,
+  assert.deepEqual(lezLine(reloaded!.price!.lines).map((line) => [line.status, line.amount]), [["unresolved", null]]);
+  assert.equal(reloaded?.price?.total, null);
+  const stored = await query<{ calculation: Record<string, any> }>(
+    `SELECT s.calculation FROM booking_price_snapshots s WHERE s.booking_id = $1`,
     [saved.id]
   );
-  assert.equal(stored.rows[0].source.schedule.version, enabledVersion);
-  assert.equal(stored.rows[0].source.schedule.verifiedOn, "2026-11-19");
-  assert.equal(stored.rows[0].source.rate.amount, "100.00");
-  assert.equal(stored.rows[0].source.matchingBasis.method, "route-polygon-intersection");
-  assert.equal(stored.rows[0].source.vehicleInput.value, "lez-vans-specialist-minibuses");
   assert.equal(stored.rows[0].calculation.roadChargeSchedules["london-lez"].version, enabledVersion);
-
   await londonFeeScheduleStore.setActivation("london-lez", enabledVersion + 2, { action: "disable" }, actor, new Date("2026-11-20T00:00:00Z"));
 });

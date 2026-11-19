@@ -18,8 +18,8 @@ export type CustomerQuote =
   | { status: "not-confirmed"; lines: CustomerQuoteLine[]; total: null };
 
 /**
- * Payable line types a customer may see. Parking and extra waiting are driver-managed, dead mileage is an
- * operational cost and fixed-fare lines are dispatcher diagnostics, so none of them is ever shown to customers.
+ * Payable line types a customer may see. Dead mileage is an operational cost and fixed-fare lines are dispatcher
+ * diagnostics, so neither is ever shown to customers.
  */
 const CUSTOMER_LINE_TYPES: ReadonlySet<PriceLineType> = new Set<PriceLineType>([
   "ride-fare",

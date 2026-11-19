@@ -4,10 +4,8 @@ import {
   activationBlockers,
   applyRoadChargeActivation,
   applyRoadChargeEdit,
-  EMPTY_ROAD_CHARGE_PROFILE,
   RoadChargeActivationError,
   roadChargeScheduleSeeds,
-  validateRoadChargeProfile,
   validateRoadChargeScheduleEdit,
   type RoadChargeSchedule
 } from "./road-charge-schedules";
@@ -95,11 +93,4 @@ test("edits validate amounts and dates and always produce an inactive, unverifie
   const ccBody = { ...Object.fromEntries(cc.rates.map((rate) => [`amount_${rate.key}`, rate.amount])), effectiveFrom: "2026-01-02", effectiveUntil: "2030-03-03" };
   assert.deepEqual(validateRoadChargeScheduleEdit(cc, ccBody).errors, {}, "the registered 100% discount may be £0.00");
   assert.equal(validateRoadChargeScheduleEdit(cc, ccBody).amounts["cc-registered-100-percent-discount"], "0.00");
-});
-
-test("dispatcher road-charge answers reject unknown and contradictory values", () => {
-  assert.deepEqual(validateRoadChargeProfile(EMPTY_ROAD_CHARGE_PROFILE), []);
-  assert.equal(validateRoadChargeProfile({ ...EMPTY_ROAD_CHARGE_PROFILE, tunnelVehicleClass: "bus" })[0].field, "roadChargeTunnelClass");
-  assert.equal(validateRoadChargeProfile({ ...EMPTY_ROAD_CHARGE_PROFILE, lez: "lez-heavy-euro-iv-pm", ulez: "ulez-cars" })[0].field, "roadChargeUlez");
-  assert.equal(validateRoadChargeProfile({ ...EMPTY_ROAD_CHARGE_PROFILE, lez: "lez-vans-specialist-minibuses", ulez: "ulez-cars" }).length, 1);
 });

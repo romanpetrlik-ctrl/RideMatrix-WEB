@@ -220,9 +220,12 @@ function zoneChargingDay(schedule: DailyZoneSchedule, window: JourneyWindow): Zo
   };
 }
 
+/** Quotes have no assigned vehicle, so vehicle-dependent charges stay unresolved rather than being guessed. */
+const NO_VEHICLE_BASIS = "No vehicle is assigned at quote time and RideMatrix does not record this vehicle's LEZ, ULEZ, Congestion Charge, tunnel class or Auto Pay attributes, so the charge cannot be calculated.";
+
 function zoneLine(
   detection: RoadChargeZoneDetection & { zone: DailyZoneScheme },
-  profile: RoadChargeProfile,
+  profile: RoadChargeProfile | null,
   record: RoadChargeScheduleRecord | undefined,
   window: JourneyWindow,
   options: RoadChargeLineOptions
@@ -230,20 +233,21 @@ function zoneLine(
   const scheme = detection.zone;
   const title = ZONE_TITLES[scheme];
   const profileKey = ZONE_PROFILE_KEY[scheme];
-  const declared = profile[profileKey];
+  const declared = profile?.[profileKey] ?? "";
   const source: Record<string, unknown> = {
     scheme,
     schedule: scheduleSource(record),
     matchingBasis: detection.evidence,
     journeyWindow: windowSource(window),
-    vehicleInput: { field: profileKey, value: declared || null, statedBy: "dispatcher" }
+    vehicleInput: { field: profileKey, value: declared || null, vehicleAssigned: profile !== null }
   };
   const label = `${title} daily charge`;
   const unresolved = (basis: string): PriceLine => ({ type: "road-charge", label, status: "unresolved", amount: null, basis: `The route enters the ${detection.label}. ${basis}`, source });
   const unavailable = scheduleUnavailable(record, title, options);
   if (unavailable) return unresolved(unavailable);
+  if (!profile) return unresolved(NO_VEHICLE_BASIS);
   const schedule = record!.schedule as DailyZoneSchedule;
-  if (!declared) return unresolved(`The vehicle's ${ROAD_CHARGE_PROFILE_OPTIONS[profileKey].label} was not stated, so whether and how much it is charged cannot be determined.`);
+  if (!declared) return unresolved(`The assigned vehicle's ${ROAD_CHARGE_PROFILE_OPTIONS[profileKey].label} is not recorded, so whether and how much it is charged cannot be determined.`);
   const outcome = zoneChargingDay(schedule, window);
   if (outcome.kind === "unresolved") return unresolved(outcome.reason);
   if (declared === NO_CHARGE) {
@@ -320,7 +324,7 @@ const DIRECTION_LABEL = { northbound: "northbound", southbound: "southbound" } a
 function tunnelLine(
   crossing: TunnelCrossing,
   ordinal: number,
-  profile: RoadChargeProfile,
+  profile: RoadChargeProfile | null,
   record: RoadChargeScheduleRecord | undefined,
   window: JourneyWindow,
   options: RoadChargeLineOptions
@@ -334,15 +338,16 @@ function tunnelLine(
     schedule: scheduleSource(record),
     matchingBasis: { method: "route-gate-crossing", segmentIndex: crossing.segmentIndex, point: crossing.point, geometry: crossing.geometry },
     journeyWindow: windowSource(window),
-    vehicleInput: { tunnelVehicleClass: profile.tunnelVehicleClass || null, tunnelAutoPay: profile.tunnelAutoPay || null, statedBy: "dispatcher" }
+    vehicleInput: { tunnelVehicleClass: profile?.tunnelVehicleClass || null, tunnelAutoPay: profile?.tunnelAutoPay || null, vehicleAssigned: profile !== null }
   };
   const unresolved = (basis: string): PriceLine => ({ type: "tunnel-charge", label, status: "unresolved", amount: null, basis: `The route crosses the ${crossing.label} ${crossing.direction}. ${basis}`, source });
   const unavailable = scheduleUnavailable(record, "Blackwall and Silvertown tunnels", options);
   if (unavailable) return unresolved(unavailable);
   if (!crossing.geometry.verified) return unresolved("The tunnel was identified with unverified reference geometry.");
+  if (!profile) return unresolved(NO_VEHICLE_BASIS);
   const schedule = record!.schedule as TunnelSchedule;
-  if (!profile.tunnelVehicleClass) return unresolved("The tunnel vehicle class was not stated.");
-  if (profile.tunnelAutoPay !== "yes" && profile.tunnelAutoPay !== "no") return unresolved("Whether the vehicle pays by Auto Pay was not stated.");
+  if (!profile.tunnelVehicleClass) return unresolved("The assigned vehicle's tunnel vehicle class is not recorded.");
+  if (profile.tunnelAutoPay !== "yes" && profile.tunnelAutoPay !== "no") return unresolved("Whether the assigned vehicle pays by Auto Pay is not recorded.");
   const band = tunnelBand(schedule, crossing, profile.tunnelAutoPay === "yes", window);
   if ("unresolved" in band) return unresolved(band.unresolved);
   if (band.band === "free") {
@@ -389,7 +394,8 @@ function tollLine(route: ResolvedBookingRoute): PriceLine {
 export function roadChargeLines(
   serviceDate: string,
   serviceTime: string,
-  profile: RoadChargeProfile,
+  /** Persisted facts of the vehicle assigned to the booking; null when no vehicle is assigned at quote time. */
+  profile: RoadChargeProfile | null,
   route: BookingRoute,
   schedules: RoadChargeScheduleSet,
   options: RoadChargeLineOptions = {}
