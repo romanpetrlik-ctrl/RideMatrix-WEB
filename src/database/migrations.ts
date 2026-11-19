@@ -1710,6 +1710,28 @@ export const MIGRATIONS: Migration[] = [
         BEFORE UPDATE ON booking_price_line_items
         FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_price_snapshot_mutation();
     `
+  },
+  {
+    id: "0034_protect_booking_price_snapshot_deletes",
+    sql: `
+      CREATE OR REPLACE FUNCTION rm_guard_booking_price_snapshot_delete() RETURNS trigger AS $$
+      BEGIN
+        IF current_setting('ridematrix.allow_booking_price_snapshot_delete', true) IS DISTINCT FROM 'on' THEN
+          RAISE EXCEPTION 'Booking price snapshots can only be deleted during authorized retention cleanup.';
+        END IF;
+        RETURN OLD;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_booking_price_snapshots_immutable_delete ON booking_price_snapshots;
+      CREATE TRIGGER trg_booking_price_snapshots_immutable_delete
+        BEFORE DELETE ON booking_price_snapshots
+        FOR EACH ROW EXECUTE FUNCTION rm_guard_booking_price_snapshot_delete();
+      DROP TRIGGER IF EXISTS trg_booking_price_line_items_immutable_delete ON booking_price_line_items;
+      CREATE TRIGGER trg_booking_price_line_items_immutable_delete
+        BEFORE DELETE ON booking_price_line_items
+        FOR EACH ROW EXECUTE FUNCTION rm_guard_booking_price_snapshot_delete();
+    `
   }
 ];
 

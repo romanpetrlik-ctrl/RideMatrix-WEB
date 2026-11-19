@@ -48,6 +48,7 @@
         <%- locals.csrfField || "" %>
         <input type="hidden" name="quotedStatus" value="<%= draft.quotedStatus %>" data-quoted-status>
         <input type="hidden" name="quotedTotal" value="<%= draft.quotedTotal %>" data-quoted-total>
+        <input type="hidden" name="quotedFingerprint" value="<%= draft.quotedFingerprint %>" data-quote-fingerprint>
 
         <section class="panel new-booking-block new-booking-block--reference" aria-labelledby="booking-reference-title">
           <h2 id="booking-reference-title">1. Booking reference</h2>

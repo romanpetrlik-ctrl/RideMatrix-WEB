@@ -317,3 +317,34 @@ test("enabled surcharges and matching fixed fares are surfaced as unresolved rat
   assert.equal(one(price.lines, "fixed-fare").status, "unresolved");
   assert.equal(price.total, null);
 });
+
+test("unknown postcodes keep potentially matching fixed fares unresolved", () => {
+  const fixedFares = [{
+    id: "postcode-fare",
+    name: "BH15 to DT1",
+    origin: { type: "postcode" as const, postcode: "BH15", scope: "outward" as const },
+    destination: { type: "postcode" as const, postcode: "DT1 1AA", scope: "full" as const },
+    baseFare: "80.00"
+  }];
+  for (const postcode of [null, "not a postcode"]) {
+    const price = priceBooking(inputs({
+      stops: {
+        pickup: addressStop(50.7, "BH15 1AA"),
+        vias: [],
+        dropoff: addressStop(50.8, postcode)
+      }
+    }), context({ configuration: { fixedFares } }));
+    assert.equal(one(price.lines, "fixed-fare").status, "unresolved", String(postcode));
+    assert.match(one(price.lines, "fixed-fare").basis, /postcode is unavailable/);
+    assert.equal(price.total, null);
+  }
+
+  const definiteMismatch = priceBooking(inputs({
+    stops: {
+      pickup: addressStop(50.7, "BH14 1AA"),
+      vias: [],
+      dropoff: addressStop(50.8, null)
+    }
+  }), context({ configuration: { fixedFares } }));
+  assert.equal(one(definiteMismatch.lines, "fixed-fare").status, "not-applicable");
+});

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
 import { query, withTransaction } from "../database/connection";
 import { airportFeeStore, type AirportFeeRecord } from "./airport-fees";
@@ -71,6 +71,7 @@ export type NewBookingDraft = {
   saveWithUnresolvedPrice: boolean;
   quotedTotal: string;
   quotedStatus: string;
+  quotedFingerprint: string;
 };
 
 export type ValidatedJourney = {
@@ -184,7 +185,8 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     confirmedPoiFeeIds: list(source, "confirmedPoiFeeIds"),
     saveWithUnresolvedPrice: text(source, "saveWithUnresolvedPrice") === "yes",
     quotedTotal: text(source, "quotedTotal", 20),
-    quotedStatus: text(source, "quotedStatus", 20)
+    quotedStatus: text(source, "quotedStatus", 20),
+    quotedFingerprint: text(source, "quotedFingerprint", 64)
   };
 }
 
@@ -358,6 +360,11 @@ export async function validateJourney(
     errors.push({ field: "serviceTime", message: "Select a service time in 24-hour HH:mm using five-minute steps." });
   }
   if (validCalendarDate(draft.serviceDate) && isFiveMinuteTime(draft.serviceTime)) {
+    const serviceInstant = serviceLocalToUtc(draft.serviceDate, draft.serviceTime);
+    const roundTrip = zonedParts(serviceInstant, SERVICE_TIMEZONE);
+    if (roundTrip.date !== draft.serviceDate || roundTrip.time !== draft.serviceTime) {
+      errors.push({ field: "serviceTime", message: `Select a valid service time in ${SERVICE_TIMEZONE}.` });
+    }
     const local = defaultServiceDateTime(new Date(dependencies.now().getTime() - 300_000));
     if (`${draft.serviceDate}T${draft.serviceTime}` < `${local.date}T${local.time}`) {
       errors.push({ field: "serviceTime", message: `The service date and time must not be in the past (${SERVICE_TIMEZONE}).` });
@@ -467,7 +474,7 @@ export async function quoteJourney(
   journey: ValidatedJourney,
   reference: PricingReferenceData,
   computeRoute: BookingRouteProvider
-): Promise<{ route: BookingRoute; price: BookingPrice }> {
+): Promise<{ route: BookingRoute; price: BookingPrice; fingerprint: string }> {
   const points = routeStops(journey.stops);
   const route: BookingRoute = points
     ? await computeRoute(points, { departureTime: serviceLocalToUtc(journey.serviceDate, journey.serviceTime) })
@@ -481,7 +488,16 @@ export async function quoteJourney(
     operationalBase: reference.operationalBase,
     route
   });
-  return { route, price };
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    pricingInputs: journey.pricingInputs,
+    price: {
+      status: price.status,
+      total: price.total,
+      fareSettingsVersion: price.fareSettingsVersion,
+      lines: price.lines
+    }
+  })).digest("hex");
+  return { route, price, fingerprint };
 }
 
 type ManagerRow = {
@@ -570,10 +586,11 @@ function routeForSnapshot(route: BookingRoute) {
 /** Rejects a save unless the dispatcher saw this exact server price (and acknowledged it if incomplete). */
 export function assertQuoteAcknowledged(
   price: BookingPrice,
-  draft: Pick<NewBookingDraft, "quotedTotal" | "quotedStatus" | "saveWithUnresolvedPrice">
+  fingerprint: string,
+  draft: Pick<NewBookingDraft, "quotedTotal" | "quotedStatus" | "quotedFingerprint" | "saveWithUnresolvedPrice">
 ): void {
   const shownTotal = draft.quotedStatus === "complete" ? draft.quotedTotal : "";
-  if (draft.quotedStatus !== price.status || (price.status === "complete" && shownTotal !== price.total)) {
+  if (draft.quotedStatus !== price.status || (price.status === "complete" && shownTotal !== price.total) || draft.quotedFingerprint !== fingerprint) {
     throw new BookingPriceChangedError();
   }
   if (price.status === "incomplete" && !draft.saveWithUnresolvedPrice) throw new UnresolvedPriceNotAcknowledgedError();
@@ -585,13 +602,13 @@ export function assertQuoteAcknowledged(
  */
 export async function createNewBooking(
   booking: ValidatedBooking,
-  quote: { route: BookingRoute; price: BookingPrice },
-  draft: Pick<NewBookingDraft, "quotedTotal" | "quotedStatus" | "saveWithUnresolvedPrice">,
+  quote: { route: BookingRoute; price: BookingPrice; fingerprint: string },
+  draft: Pick<NewBookingDraft, "quotedTotal" | "quotedStatus" | "quotedFingerprint" | "saveWithUnresolvedPrice">,
   actor: BookingActor,
   now: Date
 ): Promise<{ id: string; reference: string; customerId: string }> {
   const { price, route } = quote;
-  assertQuoteAcknowledged(price, draft);
+  assertQuoteAcknowledged(price, quote.fingerprint, draft);
   const id = randomUUID();
   const snapshotId = randomUUID();
   const createdAt = now.toISOString();
@@ -646,7 +663,7 @@ export async function createNewBooking(
         [snapshotId, position, line.type, line.label, line.status, line.amount, line.basis, JSON.stringify(line.source)]
       );
     }
-    await updateCustomerLastBookingAt(booking.customerId, createdAt, client);
+    await updateCustomerLastBookingAt(booking.customerId, serviceLocalToUtc(booking.serviceDate, booking.serviceTime).toISOString(), client);
     return { id, reference, customerId: booking.customerId };
   });
 }

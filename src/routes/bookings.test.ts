@@ -74,7 +74,7 @@ async function withApp(
     listManagers: async () => managers,
     getManager: async (id) => managers.find((manager) => manager.customerId === id) ?? null,
     createBooking: async (...args) => {
-      assertQuoteAcknowledged(args[1].price, args[2]);
+      assertQuoteAcknowledged(args[1].price, args[1].fingerprint, args[2]);
       saved.push(args);
       return { id: "booking-uuid", reference: "RMB-000042", customerId: args[0].customerId };
     },
@@ -104,6 +104,11 @@ function form(fields: Record<string, string | string[]> = {}) {
 }
 const post = (url: string, params: URLSearchParams, headers: Record<string, string> = {}) =>
   fetch(url, { method: "POST", body: params, redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", ...headers } });
+async function quoteFingerprint(baseUrl: string, params = form(), headers: Record<string, string> = {}): Promise<string> {
+  const response = await post(`${baseUrl}/bookings/quote`, params, headers);
+  assert.equal(response.status, 200);
+  return ((await response.json()) as { fingerprint: string }).fingerprint;
+}
 
 const savedBooking: SavedNewBooking = {
   id: "booking-uuid", customerId: "cust-b", reference: "RMB-000042", createdAt: "2027-03-10T09:00:00.000Z", createdByEmail: "dispatcher@example.test",
@@ -177,7 +182,7 @@ test("quote returns separately itemized lines, ordered stops and route summary d
   await withApp({}, async (baseUrl) => {
     const response = await post(`${baseUrl}/bookings/quote`, form());
     assert.equal(response.status, 200);
-    const body = await response.json() as { ok: boolean; stops: Array<{ type: string }>; route: { status: string; path: number[][]; distanceMiles: string }; price: { status: string; total: string; lines: Array<{ type: string; amount: string | null }> } };
+    const body = await response.json() as { ok: boolean; fingerprint: string; stops: Array<{ type: string }>; route: { status: string; path: number[][]; distanceMiles: string }; price: { status: string; total: string; lines: Array<{ type: string; amount: string | null }> } };
     assert.equal(body.ok, true);
     assert.deepEqual(body.stops.map((stop) => stop.type), ["pickup", "dropoff"]);
     assert.equal(body.route.distanceMiles, "10.000000");
@@ -187,6 +192,7 @@ test("quote returns separately itemized lines, ordered stops and route summary d
       ["ride-fare", "20.00"], ["airport-pickup-fee", "7.00"], ["airport-dropoff-fee", "6.00"]
     ]);
     assert.equal(body.price.total, "33.00");
+    assert.match(body.fingerprint, /^[a-f0-9]{64}$/);
 
     const withVias = await (await post(`${baseUrl}/bookings/quote`, form({ via1Active: "yes", via1Kind: "airport", via1AirportId: "airport-x", via2Active: "yes", via2Kind: "address", via2Label: "Typed only" }))).json() as { stops: Array<{ type: string; coordinatesVerified: boolean }>; route: { status: string }; price: { status: string; total: null } };
     assert.deepEqual(withVias.stops.map((stop) => stop.type), ["pickup", "via", "via", "dropoff"]);
@@ -211,11 +217,15 @@ test("saving records the actor and redirects; a price the dispatcher did not see
     assert.match(html, /data-price-line="ride-fare"/);
     assert.equal(saved.length, 0);
 
-    const stale = await post(`${baseUrl}/bookings`, form({ quotedStatus: "complete", quotedTotal: "30.00" }));
+    const fingerprint = await quoteFingerprint(baseUrl);
+    const stale = await post(`${baseUrl}/bookings`, form({ quotedStatus: "complete", quotedTotal: "30.00", quotedFingerprint: fingerprint }));
     assert.equal(stale.status, 409);
     assert.equal(saved.length, 0);
 
-    const ok = await post(`${baseUrl}/bookings`, form({ quotedStatus: "complete", quotedTotal: "33.00", passengerName: "stale", passengerPhone: "1" }));
+    const ok = await post(`${baseUrl}/bookings`, form({
+      quotedStatus: "complete", quotedTotal: "33.00", quotedFingerprint: fingerprint,
+      passengerName: "stale", passengerPhone: "1"
+    }));
     assert.equal(ok.status, 303);
     assert.equal(ok.headers.get("location"), "/bookings/booking-uuid?notice=created");
     assert.equal(saved.length, 1);
@@ -231,7 +241,8 @@ test("saving records the actor and redirects; a price the dispatcher did not see
 test("an incomplete price saves only with explicit acknowledgement and never with a total", async () => {
   const unresolved: BookingRoute = { status: "unresolved", reason: "routing-not-configured", message: "Routing is not configured." };
   await withApp({ route: unresolved }, async (baseUrl, saved) => {
-    const noAck = await post(`${baseUrl}/bookings`, form({ quotedStatus: "incomplete" }));
+    const fingerprint = await quoteFingerprint(baseUrl);
+    const noAck = await post(`${baseUrl}/bookings`, form({ quotedStatus: "incomplete", quotedFingerprint: fingerprint }));
     assert.equal(noAck.status, 409);
     const html = await noAck.text();
     assert.match(html, /Save with price unresolved/);
@@ -239,7 +250,9 @@ test("an incomplete price saves only with explicit acknowledgement and never wit
     assert.doesNotMatch(html, /data-unresolved-ack hidden/);
     assert.equal(saved.length, 0);
 
-    const ack = await post(`${baseUrl}/bookings`, form({ quotedStatus: "incomplete", saveWithUnresolvedPrice: "yes" }));
+    const ack = await post(`${baseUrl}/bookings`, form({
+      quotedStatus: "incomplete", quotedFingerprint: fingerprint, saveWithUnresolvedPrice: "yes"
+    }));
     assert.equal(ack.status, 303);
     assert.equal(saved[0][1].price.status, "incomplete");
     assert.equal(saved[0][1].price.total, null);
@@ -283,7 +296,13 @@ test("booking POSTs are CSRF protected", async () => {
     const page = await fetch(`${baseUrl}/bookings/new`);
     const cookie = page.headers.getSetCookie().find((entry) => entry.startsWith(`${CSRF_COOKIE_NAME}=`))!.split(";")[0];
     const token = /name="_csrf" value="([^"]+)"/.exec(await page.text())![1];
-    const accepted = await post(`${baseUrl}/bookings`, form({ _csrf: token, quotedStatus: "complete", quotedTotal: "33.00" }), { cookie });
+    const headers = { cookie };
+    const fingerprint = await quoteFingerprint(baseUrl, form({ _csrf: token }), headers);
+    const accepted = await post(
+      `${baseUrl}/bookings`,
+      form({ _csrf: token, quotedStatus: "complete", quotedTotal: "33.00", quotedFingerprint: fingerprint }),
+      headers
+    );
     assert.equal(accepted.status, 303);
     assert.equal(saved.length, 1);
   });

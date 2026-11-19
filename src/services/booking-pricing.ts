@@ -374,17 +374,34 @@ function surchargeLine(inputs: BookingPricingInputs, context: BookingPricingCont
   return { type: "time-surcharge", label, status: "not-applicable", amount: null, basis: "No enabled daily or bank-holiday surcharge covers this service time.", source: {} };
 }
 
-function fixedEndpointMatches(rule: FixedFareEndpoint, stop: BookingStop): boolean {
+function fixedEndpointMatches(rule: FixedFareEndpoint, stop: BookingStop): boolean | "unknown" {
   if (rule.type === "poi") return Boolean(stop.managedId) && stop.kind !== "address" && stop.managedId === rule.poiId;
-  if (!stop.postcode) return false;
+  if (!stop.postcode) return "unknown";
   const full = normalizeUkPostcode(stop.postcode, "full");
-  if (!full) return false;
+  if (!full) return "unknown";
   return rule.scope === "full" ? full === rule.postcode : full.slice(0, full.indexOf(" ")) === rule.postcode;
 }
 
 function fixedFareLine(inputs: BookingPricingInputs, context: BookingPricingContext): PriceLine {
-  const matches = (context.configuration.fixedFares ?? []).filter((rule) =>
-    fixedEndpointMatches(rule.origin, inputs.stops.pickup) && fixedEndpointMatches(rule.destination, inputs.stops.dropoff));
+  const matches: NonNullable<typeof context.configuration.fixedFares> = [];
+  let unknownMatch = false;
+  for (const rule of context.configuration.fixedFares ?? []) {
+    const originMatches = fixedEndpointMatches(rule.origin, inputs.stops.pickup);
+    const destinationMatches = fixedEndpointMatches(rule.destination, inputs.stops.dropoff);
+    if (originMatches === false || destinationMatches === false) continue;
+    if (originMatches === true && destinationMatches === true) matches.push(rule);
+    else unknownMatch = true;
+  }
+  if (unknownMatch) {
+    return {
+      type: "fixed-fare",
+      label: matches.length ? `Fixed fare rule — ${matches.map((rule) => rule.name).join(", ")}` : "Fixed fare rule — postcode match unknown",
+      status: "unresolved",
+      amount: null,
+      basis: "A configured fixed fare rule may match this journey, but a required endpoint postcode is unavailable, so the fixed fare cannot be ruled out.",
+      source: { fixedFareRuleIds: matches.map((rule) => rule.id), postcodeMatchUnknown: true }
+    };
+  }
   if (!matches.length) {
     return { type: "fixed-fare", label: "Fixed fare rule", status: "not-applicable", amount: null, basis: "No fixed fare rule matches this pickup → drop-off.", source: {} };
   }

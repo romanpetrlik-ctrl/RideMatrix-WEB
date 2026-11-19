@@ -80,7 +80,8 @@ function emptyDraft(now: Date): NewBookingDraft {
     confirmedPoiFeeIds: [],
     saveWithUnresolvedPrice: false,
     quotedTotal: "",
-    quotedStatus: ""
+    quotedStatus: "",
+    quotedFingerprint: ""
   };
 }
 
@@ -150,7 +151,11 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
     status: number,
     draft: NewBookingDraft,
     reference: PricingReferenceData,
-    extras: { errors?: BookingFieldError[]; formError?: string; quote?: { route: BookingRoute; price: BookingPrice; stops: BookingStops } | null }
+    extras: {
+      errors?: BookingFieldError[];
+      formError?: string;
+      quote?: { route: BookingRoute; price: BookingPrice; fingerprint: string; stops: BookingStops } | null
+    }
   ) {
     const actor = res.locals.bookingActor as BookingActor;
     const managers = await listManagers();
@@ -183,7 +188,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       mapsBrowserApiKey: maps.browserApiKey ?? "",
       mapsMapId: maps.mapId ?? "",
       quote: extras.quote
-        ? { route: serializeRoute(extras.quote.route), price: extras.quote.price, stops: serializeStops(extras.quote.stops) }
+        ? { route: serializeRoute(extras.quote.route), price: extras.quote.price, fingerprint: extras.quote.fingerprint, stops: serializeStops(extras.quote.stops) }
         : null
     });
   }
@@ -221,7 +226,8 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         errors: [],
         stops: serializeStops(journey.stops),
         route: serializeRoute(quote.route),
-        price: quote.price
+        price: quote.price,
+        fingerprint: quote.fingerprint
       });
     } catch (error) {
       return next(error);
@@ -247,6 +253,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
             ...draft,
             quotedStatus: quote.price.status,
             quotedTotal: quote.price.total ?? "",
+            quotedFingerprint: quote.fingerprint,
             saveWithUnresolvedPrice: error instanceof BookingPriceChangedError ? false : draft.saveWithUnresolvedPrice
           };
           return await renderForm(res, 409, refreshed, reference, {

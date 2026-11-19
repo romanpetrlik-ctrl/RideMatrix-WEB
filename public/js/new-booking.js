@@ -211,6 +211,7 @@
       if (!key) return;
       setVia(key, true);
       refreshViaButton();
+      scheduleQuote();
       stopElement(key).querySelector("[data-stop-kind]").focus();
     });
     $$("[data-remove-via]").forEach((button) => button.addEventListener("click", () => {
@@ -246,6 +247,7 @@
 
     const quotedStatus = $("[data-quoted-status]");
     const quotedTotal = $("[data-quoted-total]");
+    const quoteFingerprint = $("[data-quote-fingerprint]");
     const priceContainer = $("[data-price-container]");
     const quoteStatus = $("[data-quote-status]");
     const ack = $("[data-unresolved-ack]");
@@ -272,6 +274,7 @@
       priceContainer.innerHTML = priceBreakdownHtml(result ? result.price : null);
       quotedStatus.value = result ? result.price.status : "";
       quotedTotal.value = result && result.price.total ? result.price.total : "";
+      quoteFingerprint.value = result ? result.fingerprint : "";
       const incomplete = Boolean(result && result.price.status === "incomplete");
       ack.hidden = !incomplete;
       if (!incomplete) ackInput.checked = false;
@@ -285,9 +288,12 @@
     let sequence = 0;
     function scheduleQuote() {
       clearTimeout(timer);
+      sequence += 1;
       // Any edit invalidates the quote the dispatcher saw until the server recalculates it.
       quotedStatus.value = "";
       quotedTotal.value = "";
+      quoteFingerprint.value = "";
+      ackInput.checked = false;
       timer = setTimeout(requestQuote, 350);
     }
     function requestQuote() {

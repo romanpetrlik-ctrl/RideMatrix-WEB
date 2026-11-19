@@ -21,7 +21,7 @@ async function renderNewBooking(): Promise<string> {
       viaActive: { via1: false, via2: false },
       counts: Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, "0"])),
       childSeatRequired: "no", boosterRequired: "no", parkingRequired: "no", extraWaitingMinutes: "0",
-      confirmedPoiFeeIds: [], saveWithUnresolvedPrice: false, quotedTotal: "", quotedStatus: ""
+      confirmedPoiFeeIds: [], saveWithUnresolvedPrice: false, quotedTotal: "", quotedStatus: "", quotedFingerprint: ""
     },
     errors: [],
     formError: "",
@@ -50,6 +50,7 @@ async function renderNewBooking(): Promise<string> {
 const resolvedQuote = {
   ok: true,
   errors: [],
+  fingerprint: "a".repeat(64),
   stops: [
     { type: "pickup", label: "Airport X — Arrivals", latitude: 51.47, longitude: -0.45, coordinatesVerified: true },
     { type: "via", label: "Airport X — Departures", latitude: 51.47, longitude: -0.45, coordinatesVerified: true },
@@ -71,6 +72,7 @@ const resolvedQuote = {
 const unresolvedQuote = {
   ok: true,
   errors: [],
+  fingerprint: "b".repeat(64),
   stops: resolvedQuote.stops.filter((_, index) => index !== 1),
   route: { status: "unresolved", reason: "missing-stops", message: "One or more stops is an unverified address without coordinates." },
   price: {
@@ -94,6 +96,10 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     const quoteRequests: URLSearchParams[] = [];
+    let delayNextQuote = false;
+    let releaseDelayedQuote = () => {};
+    let delayedQuoteStarted: (() => void) | null = null;
+    const delayedQuoteReady = new Promise<void>((resolve) => { delayedQuoteStarted = resolve; });
     let nextQuote: unknown = resolvedQuote;
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
@@ -101,6 +107,11 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
       if (url.pathname === "/bookings/new") return route.fulfill({ contentType: "text/html", body: html });
       if (url.pathname === "/bookings/quote") {
         quoteRequests.push(new URLSearchParams(route.request().postData() ?? ""));
+        if (delayNextQuote) {
+          delayNextQuote = false;
+          delayedQuoteStarted?.();
+          await new Promise<void>((resolve) => { releaseDelayedQuote = resolve; });
+        }
         return route.fulfill({ contentType: "application/json", body: JSON.stringify(nextQuote) });
       }
       const file = path.join(process.cwd(), "public", url.pathname);
@@ -151,7 +162,14 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     assert.equal(await page.locator('[data-stop="via1"]').isVisible(), false);
     await page.selectOption("#pickupKind", "airport");
     await page.selectOption("#pickupAirportId", "airport-x");
+    await page.selectOption("#dropoffKind", "airport");
+    await page.selectOption("#dropoffAirportId", "airport-x");
+    await page.waitForFunction(() => (document.querySelector("[data-quoted-status]") as HTMLInputElement).value === "complete");
+    const beforeAddVia = quoteRequests.length;
     await page.click("[data-add-via]");
+    await page.waitForTimeout(500);
+    assert.ok(quoteRequests.length > beforeAddVia, "adding a Via requests a refreshed quote");
+    assert.equal(quoteRequests.at(-1)?.get("via1Active"), "yes");
     await page.selectOption("#via1Kind", "airport");
     await page.selectOption("#via1AirportId", "airport-x");
     await page.click("[data-add-via]");
@@ -207,10 +225,21 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     assert.match(await page.locator("[data-price-total]").textContent() ?? "", /Not confirmed/);
     assert.equal(await value("[data-quoted-total]"), "");
     assert.equal(await page.locator("[data-unresolved-ack]").isVisible(), true);
+    await page.check("#saveWithUnresolvedPrice");
 
     // Editing a priced input invalidates the shown quote until the server recalculates it.
     await page.selectOption("#serviceTime", "15:05");
     assert.equal(await value("[data-quoted-status]"), "");
+    assert.equal(await page.locator("#saveWithUnresolvedPrice").isChecked(), false);
+    delayNextQuote = true;
+    await page.selectOption("#serviceTime", "15:10");
+    await delayedQuoteReady;
+    await page.fill("#extraWaitingMinutes", "5");
+    releaseDelayedQuote();
+    await page.waitForTimeout(100);
+    assert.equal(await value("[data-quoted-status]"), "", "an earlier response cannot restore a quote during the debounce");
+    assert.equal(await value("[data-quote-fingerprint]"), "");
+    await page.waitForFunction(() => (document.querySelector("[data-quoted-status]") as HTMLInputElement).value === "incomplete");
     const times = await page.locator("#serviceTime option").allTextContents();
     assert.ok(times.every((time) => /^([01]\d|2[0-3]):[0-5][05]$/.test(time)));
 

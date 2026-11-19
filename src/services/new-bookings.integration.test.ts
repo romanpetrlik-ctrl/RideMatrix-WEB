@@ -4,7 +4,7 @@ import { initializeDatabase, query } from "../database/connection";
 import { createTestDatabaseContext, safeCleanupTestDatabase, type TestDatabaseContext } from "../database/test-helper";
 import { airportFeeStore } from "./airport-fees";
 import type { BookingRouteProvider } from "./booking-routing";
-import { createCustomer } from "./customers";
+import { anonymizeCustomer, createCustomer, purgeCustomer } from "./customers";
 import { EMPTY_FARE_SETTINGS, fareSettingsStore } from "./fare-settings";
 import {
   BookingPriceChangedError,
@@ -48,7 +48,7 @@ async function priceFor(customerId: string, airportId: string, extra: Record<str
   const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getBookingManagerCandidate);
   assert.deepEqual(errors, []);
   assert.ok(booking);
-  return { draft, booking, quote: await quoteJourney(booking, reference, route) };
+  return { draft, booking, reference, quote: await quoteJourney(booking, reference, route) };
 }
 
 test("a new booking persists its stops and itemized price snapshot transactionally and keeps it after settings edits", async () => {
@@ -64,7 +64,7 @@ test("a new booking persists its stops and itemized price snapshot transactional
   }, actor);
   assert.ok(airport);
 
-  const { draft, booking, quote } = await priceFor(customer.id, airport.id);
+  const { draft, booking, reference, quote } = await priceFor(customer.id, airport.id);
   assert.equal(quote.price.status, "complete");
   assert.equal(quote.price.total, "27.00");
 
@@ -72,14 +72,44 @@ test("a new booking persists its stops and itemized price snapshot transactional
   const countBookings = async () => Number((await query<{ count: string }>("SELECT COUNT(*)::text AS count FROM customer_bookings")).rows[0].count);
   const beforeCount = await countBookings();
   await assert.rejects(
-    createNewBooking(booking, quote, { ...draft, quotedStatus: "complete", quotedTotal: "26.00" }, actor, now),
+    createNewBooking(booking, quote, {
+      ...draft, quotedStatus: "complete", quotedTotal: "26.00", quotedFingerprint: quote.fingerprint
+    }, actor, now),
     BookingPriceChangedError
   );
   assert.equal(await countBookings(), beforeCount);
 
-  const saved = await createNewBooking(booking, quote, { ...draft, quotedStatus: "complete", quotedTotal: "27.00" }, actor, now);
-  const second = await createNewBooking(booking, quote, { ...draft, quotedStatus: "complete", quotedTotal: "27.00" }, actor, now);
+  const changedReference = {
+    ...reference,
+    fareSettings: {
+      ...reference.fareSettings,
+      currentVersion: reference.fareSettings.currentVersion + 1,
+      configuration: {
+        ...reference.fareSettings.configuration,
+        distanceSlabs: [{ startMiles: "0", endMiles: "", ratePerMile: "2.10" }]
+      }
+    },
+    airports: reference.airports.map((record) => ({ ...record, pickupFee: "6.00" }))
+  };
+  const changedQuote = await quoteJourney(booking, changedReference, route);
+  assert.equal(changedQuote.price.status, quote.price.status);
+  assert.equal(changedQuote.price.total, quote.price.total, "line-item changes cancel out in the total");
+  assert.notEqual(changedQuote.fingerprint, quote.fingerprint);
+  await assert.rejects(
+    createNewBooking(booking, changedQuote, {
+      ...draft, quotedStatus: "complete", quotedTotal: "27.00", quotedFingerprint: quote.fingerprint
+    }, actor, now),
+    BookingPriceChangedError
+  );
+
+  const acknowledgedDraft = {
+    ...draft, quotedStatus: "complete", quotedTotal: "27.00", quotedFingerprint: quote.fingerprint
+  };
+  const saved = await createNewBooking(booking, quote, acknowledgedDraft, actor, now);
+  const second = await createNewBooking(booking, quote, acknowledgedDraft, actor, now);
   assert.notEqual(saved.reference, second.reference, "booking IDs are unique");
+  const customerBookingAt = await query<{ last_booking_at: string }>("SELECT last_booking_at FROM customers WHERE id = $1", [customer.id]);
+  assert.equal(customerBookingAt.rows[0].last_booking_at, "2027-03-10T12:05:00.000Z");
 
   const loaded = await getNewBooking(saved.id);
   assert.ok(loaded?.price);
@@ -115,19 +145,79 @@ test("a new booking persists its stops and itemized price snapshot transactional
   // The snapshot and line items are immutable at the database level.
   await assert.rejects(query("UPDATE booking_price_snapshots SET total_amount = 1 WHERE booking_id = $1", [saved.id]), /immutable/);
   await assert.rejects(query("UPDATE booking_price_line_items SET amount = 1 WHERE line_type = 'ride-fare'"), /immutable/);
+  await assert.rejects(query("DELETE FROM booking_price_line_items WHERE snapshot_id = (SELECT id FROM booking_price_snapshots WHERE booking_id = $1)", [saved.id]), /authorized retention cleanup/);
+  await assert.rejects(query("DELETE FROM booking_price_snapshots WHERE booking_id = $1", [saved.id]), /authorized retention cleanup/);
 });
 
 test("an unresolved price is stored as incomplete without a total only when acknowledged", async () => {
   const customer = await createCustomer({ givenName: "Una", surname: "Resolved", email: "una@example.test", phone: "+44 7911 123457" } as Parameters<typeof createCustomer>[0]);
   const airport = (await airportFeeStore.list())[0];
-  const { draft, booking, quote } = await priceFor(customer.id, airport.id, { parkingRequired: "yes" });
+  const { draft, booking, reference, quote } = await priceFor(customer.id, airport.id, { parkingRequired: "yes" });
   assert.equal(quote.price.status, "incomplete");
   assert.equal(quote.price.total, null);
-  const saved = await createNewBooking(booking, quote, { ...draft, quotedStatus: "incomplete", quotedTotal: "", saveWithUnresolvedPrice: true }, actor, now);
+  const unresolvedRouteQuote = await quoteJourney(booking, {
+    ...reference,
+    airports: reference.airports.map((record) => ({ ...record, pickupFee: "8.00" }))
+  }, async () => ({ status: "unresolved", reason: "provider-error", message: "Routing temporarily unavailable." }));
+  assert.equal(unresolvedRouteQuote.price.status, "incomplete");
+  assert.equal(unresolvedRouteQuote.price.total, null);
+  assert.notEqual(unresolvedRouteQuote.fingerprint, quote.fingerprint);
+  await assert.rejects(
+    createNewBooking(booking, unresolvedRouteQuote, {
+      ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
+    }, actor, now),
+    BookingPriceChangedError
+  );
+  const saved = await createNewBooking(booking, quote, {
+    ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
+  }, actor, now);
   const loaded = await getNewBooking(saved.id);
   assert.equal(loaded?.price?.status, "incomplete");
   assert.equal(loaded?.price?.total, null);
   assert.ok(loaded?.price?.lines.some((line) => line.type === "parking" && line.status === "unresolved" && line.amount === null));
   const row = await query<{ total_fare_amount: string | null; price_status: string }>("SELECT total_fare_amount, price_status FROM customer_bookings WHERE id = $1", [saved.id]);
   assert.deepEqual(row.rows[0], { total_fare_amount: null, price_status: "incomplete" });
+});
+
+test("customer anonymization redacts the new booking copies and removes its immutable price snapshot", async () => {
+  const customer = await createCustomer({ givenName: "Casey", surname: "Passenger", email: "casey.passenger@example.test", phone: "+44 7911 123458" } as Parameters<typeof createCustomer>[0]);
+  const airport = (await airportFeeStore.list())[0];
+  const { draft, booking, quote } = await priceFor(customer.id, airport.id);
+  const saved = await createNewBooking(booking, quote, {
+    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint
+  }, actor, now);
+  await query("UPDATE customers SET purge_after = '2020-01-01T00:00:00.000Z' WHERE id = $1", [customer.id]);
+
+  assert.equal(await anonymizeCustomer(customer.id), true);
+  const anonymized = await getNewBooking(saved.id);
+  assert.ok(anonymized);
+  assert.equal(anonymized.managerName, "Anonymized Customer");
+  assert.equal(anonymized.managerPhone, null);
+  assert.equal(anonymized.managerEmail, null);
+  assert.equal(anonymized.passengerName, "Anonymized Customer");
+  assert.equal(anonymized.passengerPhone, null);
+  assert.ok(anonymized.stops.every((stop) =>
+    stop.label === "[anonymized]" && stop.latitude === null && stop.longitude === null && stop.postcode === null
+      && stop.placeId === null && stop.managedId === null && !stop.coordinatesVerified
+  ));
+  assert.equal(anonymized.price, null);
+  assert.equal((await query(
+    `SELECT snapshot_id FROM booking_price_line_items
+     WHERE snapshot_id IN (SELECT id FROM booking_price_snapshots WHERE booking_id = $1)`,
+    [saved.id]
+  )).rowCount, 0);
+});
+
+test("authorized retention purge can remove bookings and their snapshots", async () => {
+  const customer = await createCustomer({ givenName: "Riley", surname: "Purger", email: "riley.purger@example.test", phone: "+44 7911 123459" } as Parameters<typeof createCustomer>[0]);
+  const airport = (await airportFeeStore.list())[0];
+  const { draft, booking, quote } = await priceFor(customer.id, airport.id);
+  const saved = await createNewBooking(booking, quote, {
+    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint
+  }, actor, now);
+  await query("UPDATE customers SET purge_after = '2020-01-01T00:00:00.000Z' WHERE id = $1", [customer.id]);
+
+  assert.equal(await purgeCustomer(customer.id), true);
+  assert.equal((await query("SELECT id FROM customer_bookings WHERE id = $1", [saved.id])).rowCount, 0);
+  assert.equal((await query("SELECT id FROM booking_price_snapshots WHERE booking_id = $1", [saved.id])).rowCount, 0);
 });

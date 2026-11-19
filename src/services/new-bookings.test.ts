@@ -172,6 +172,7 @@ test("journey keeps structured stop IDs, ordered vias and rejects invalid date/t
     ["serviceTime", { serviceTime: "12:03" }],
     ["serviceTime", { serviceTime: "08:00" }],
     ["serviceDate", { serviceDate: "2027-02-30" }],
+    ["serviceTime", { serviceDate: "2027-03-28", serviceTime: "01:30" }],
     ["extraWaitingMinutes", { extraWaitingMinutes: "7" }],
     ["pickupKind", { pickupAirportId: "unknown-airport" }],
     ["confirmedPoiFeeIds", { confirmedPoiFeeIds: ["fee-unknown"] }]
