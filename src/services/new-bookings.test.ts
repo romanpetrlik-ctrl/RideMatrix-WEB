@@ -71,8 +71,6 @@ function body(overrides: Record<string, unknown> = {}) {
     dropoffLabel: "1 High Street",
     dropoffPlaceId: "place-1",
     adults: "1",
-    parkingRequired: "no",
-    extraWaitingMinutes: "0",
     ...overrides
   };
 }
@@ -173,7 +171,6 @@ test("journey keeps structured stop IDs, ordered vias and rejects invalid date/t
     ["serviceTime", { serviceTime: "08:00" }],
     ["serviceDate", { serviceDate: "2027-02-30" }],
     ["serviceTime", { serviceDate: "2027-03-28", serviceTime: "01:30" }],
-    ["extraWaitingMinutes", { extraWaitingMinutes: "7" }],
     ["pickupKind", { pickupAirportId: "unknown-airport" }],
     ["confirmedPoiFeeIds", { confirmedPoiFeeIds: ["fee-unknown"] }]
   ] as const) {
@@ -188,6 +185,20 @@ test("confirmed POI fees are kept only for POIs selected in the journey", async 
     dropoffKind: "poi", dropoffPoiId: "poi-1", confirmedPoiFeeIds: ["fee-confirm", "fee-elsewhere"]
   })), reference, dependencies, []);
   assert.deepEqual(journey!.pricingInputs.confirmedPoiFeeIds, ["fee-confirm"]);
+});
+
+test("driver-managed parking and extra waiting are ignored and excluded from fare lines", async () => {
+  const draft = readNewBookingDraft(body({ parkingRequired: "yes", extraWaitingMinutes: "45" }));
+  assert.equal("parkingRequired" in draft, false);
+  assert.equal("extraWaitingMinutes" in draft, false);
+  const journey = await validateJourney(draft, reference, dependencies, []);
+  assert.ok(journey);
+  const quote = await quoteJourney(journey, reference, async () => ({
+    status: "resolved", provider: "google-routes", distanceMeters: 10000, distanceMiles: "6.213712",
+    durationSeconds: 1000, trafficModel: "traffic-aware", path: [], tollsReported: false, zones: [], computedAt: timestamp
+  }));
+  assert.ok(!quote.price.lines.some((line) => line.type === "parking" || line.type === "extra-waiting"));
+  assert.equal(quote.price.status, "complete");
 });
 
 test("browser passenger sync, via ordering and route summary helpers", () => {
@@ -225,7 +236,7 @@ test("browser price breakdown escapes labels, keeps lines separate and shows Tot
   assert.match(html, /&lt;b&gt;Hotel&lt;\/b&gt;/);
   assert.match(html, /−£2\.50/);
   assert.ok(html.lastIndexOf("data-price-line=") < html.indexOf("Total payable"));
-  const incomplete = newBookingClient.priceBreakdownHtml({ status: "incomplete", total: null, lines: [{ type: "parking", label: "Parking", status: "unresolved", amount: null, basis: "" }] });
+  const incomplete = newBookingClient.priceBreakdownHtml({ status: "incomplete", total: null, lines: [{ type: "toll", label: "Toll charges", status: "unresolved", amount: null, basis: "" }] });
   assert.match(incomplete, /Not confirmed/);
   assert.match(incomplete, /1 item unresolved/);
 });

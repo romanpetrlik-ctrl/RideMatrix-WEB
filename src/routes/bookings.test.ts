@@ -96,7 +96,7 @@ function form(fields: Record<string, string | string[]> = {}) {
     customerId: "cust-b", managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test",
     passengerIsManager: "yes", serviceDate: "2027-03-10", serviceTime: "14:30",
     pickupKind: "airport", pickupAirportId: "airport-x", dropoffKind: "airport", dropoffAirportId: "airport-x",
-    adults: "2", children: "0", xlBaggage: "1", childSeatRequired: "no", boosterRequired: "no", parkingRequired: "no", extraWaitingMinutes: "0",
+    adults: "2", children: "0", xlBaggage: "1", childSeatRequired: "no", boosterRequired: "no",
     ...fields
   };
   for (const [key, value] of Object.entries(all)) for (const entry of [value].flat()) params.append(key, entry);

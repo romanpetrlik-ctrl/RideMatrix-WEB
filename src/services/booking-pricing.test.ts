@@ -86,8 +86,6 @@ function inputs(overrides: Partial<BookingPricingInputs> = {}): BookingPricingIn
     serviceTime: "10:00",
     stops: { pickup: addressStop(northOfBase(50), null, "Start"), vias: [], dropoff: addressStop(northOfBase(60), null, "End") },
     confirmedPoiFeeIds: [],
-    parkingRequired: false,
-    extraWaitingMinutes: 0,
     ...overrides
   };
 }
@@ -267,16 +265,17 @@ test("every component is its own line and the total equals the sum of resolved l
   );
   assert.equal(price.status, "complete");
   const types = price.lines.map((line) => line.type);
-  for (const type of ["ride-fare", "location-discount", "airport-pickup-fee", "airport-dropoff-fee", "poi-fee", "toll", "road-charge", "parking", "extra-waiting", "time-surcharge", "fixed-fare", "dead-mileage"] as const) {
+  for (const type of ["ride-fare", "location-discount", "airport-pickup-fee", "airport-dropoff-fee", "poi-fee", "toll", "road-charge", "time-surcharge", "fixed-fare", "dead-mileage"] as const) {
     assert.ok(types.includes(type), type);
   }
+  assert.ok(!types.includes("parking") && !types.includes("extra-waiting"), "driver-managed charges are not part of the passenger quote");
   const sum = price.lines.reduce((total, line) => total + (line.amount === null ? 0 : pennies(line.amount)), 0);
   assert.equal(pennies(price.total!), sum);
   assert.equal(price.total, "34.50");
   assert.equal(price.fareSettingsVersion, 7);
 });
 
-test("unresolved route, tolls, zones, parking and waiting make the price incomplete without a total", () => {
+test("unresolved route, tolls and zones make the price incomplete without a total", () => {
   const noRoute = priceBooking(inputs(), context({ route: { status: "unresolved", reason: "routing-not-configured", message: "Routing off." } }));
   assert.equal(noRoute.status, "incomplete");
   assert.equal(noRoute.total, null);
@@ -285,17 +284,15 @@ test("unresolved route, tolls, zones, parking and waiting make the price incompl
   assert.equal(one(noRoute.lines, "toll").status, "unresolved");
 
   const charges = priceBooking(
-    inputs({ parkingRequired: true, extraWaitingMinutes: 15 }),
+    inputs(),
     context({ route: route("12", { tollsReported: true, zones: [{ zone: "london-ulez", label: "London ULEZ" }, { zone: "london-congestion-charge", label: "Congestion Charge zone" }] }) })
   );
   assert.equal(one(charges.lines, "ride-fare").amount, "23.00");
   assert.equal(one(charges.lines, "toll").status, "unresolved");
   assert.deepEqual(lineOf(charges.lines, "road-charge").map((line) => line.status), ["unresolved", "unresolved"]);
-  assert.equal(one(charges.lines, "parking").status, "unresolved");
-  assert.equal(one(charges.lines, "extra-waiting").status, "unresolved");
-  assert.match(one(charges.lines, "extra-waiting").label, /15 min/);
+  assert.ok(!charges.lines.some((line) => line.type === "parking" || line.type === "extra-waiting"));
   assert.ok(charges.lines.every((line) => line.status !== "unresolved" || line.amount === null), "unresolved lines never carry invented amounts");
-  assert.equal(charges.unresolvedCount, 5);
+  assert.equal(charges.unresolvedCount, 3);
   assert.equal(charges.total, null);
 
   const noSlabs = priceBooking(inputs(), context({ configuration: { distanceSlabs: [] } }));

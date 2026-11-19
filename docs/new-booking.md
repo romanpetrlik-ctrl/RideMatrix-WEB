@@ -21,10 +21,13 @@ Each line is separate and fees are never folded into the ride fare.
 - **Unresolved charge types** – the application has no reliable rate source for these, so they are never estimated:
   - tolls reported by the route (no toll schedule);
   - ULEZ / Congestion Charge (London fee schedules are drafts only);
-  - parking and extra waiting time when requested (no rate configuration);
   - daily/bank-holiday surcharges and fixed fares that match the journey (their booking basis is not defined);
   - dead mileage (assessed on the booking assignment page).
   If one of these applies, or the route or required configuration is missing, the price is **incomplete**.
+
+Parking and extra waiting are managed by the driver, so New Booking does not ask the dispatcher to enter them and does not include them in the passenger fare breakdown.
+
+The price breakdown on New Booking is an internal dispatcher quote and is not sent to customers. A future customer-facing quote should include only applicable charge lines (including a configured £0.00 line when relevant) and the total; internal statuses such as **Not applicable** or **Unresolved** and calculation diagnostics are not customer-facing. This application does not currently send a customer quote from this page.
 
 ## Saving
 

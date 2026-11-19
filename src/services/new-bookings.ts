@@ -30,7 +30,6 @@ export const BOOKING_COUNT_FIELDS = [
 export type BookingCountField = (typeof BOOKING_COUNT_FIELDS)[number][0];
 export const STOP_KEYS = ["pickup", "via1", "via2", "dropoff"] as const;
 export type StopKey = (typeof STOP_KEYS)[number];
-export const MAX_EXTRA_WAITING_MINUTES = 240;
 
 export type BookingFieldError = { field: string; message: string };
 
@@ -65,8 +64,6 @@ export type NewBookingDraft = {
   counts: Record<BookingCountField, string>;
   childSeatRequired: string;
   boosterRequired: string;
-  parkingRequired: string;
-  extraWaitingMinutes: string;
   confirmedPoiFeeIds: string[];
   saveWithUnresolvedPrice: boolean;
   quotedTotal: string;
@@ -180,8 +177,6 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     counts,
     childSeatRequired: text(source, "childSeatRequired", 5),
     boosterRequired: text(source, "boosterRequired", 5),
-    parkingRequired: text(source, "parkingRequired", 5),
-    extraWaitingMinutes: text(source, "extraWaitingMinutes", 5),
     confirmedPoiFeeIds: list(source, "confirmedPoiFeeIds"),
     saveWithUnresolvedPrice: text(source, "saveWithUnresolvedPrice") === "yes",
     quotedTotal: text(source, "quotedTotal", 20),
@@ -379,12 +374,6 @@ export async function validateJourney(
   if (draft.viaActive.via2 && !draft.viaActive.via1) {
     errors.push({ field: "via1Kind", message: "Add Via 1 before Via 2." });
   }
-  const extraWaiting = draft.extraWaitingMinutes === "" ? 0 : Number(draft.extraWaitingMinutes);
-  if (!/^\d{0,3}$/.test(draft.extraWaitingMinutes) || !Number.isInteger(extraWaiting) || extraWaiting % 5 !== 0 || extraWaiting > MAX_EXTRA_WAITING_MINUTES) {
-    errors.push({ field: "extraWaitingMinutes", message: `Extra waiting must be 0–${MAX_EXTRA_WAITING_MINUTES} minutes in five-minute steps.` });
-  }
-  const parking = yesNo(draft.parkingRequired);
-  if (parking === null) errors.push({ field: "parkingRequired", message: "Select whether parking is required." });
   const knownConfirmationFees = new Set(reference.poiFees.filter((fee) => fee.trigger === "confirmation").map((fee) => fee.id));
   if (draft.confirmedPoiFeeIds.some((id) => !knownConfirmationFees.has(id))) {
     errors.push({ field: "confirmedPoiFeeIds", message: "A confirmed POI fee is no longer configured. Refresh the price." });
@@ -405,9 +394,7 @@ export async function validateJourney(
       serviceTime: draft.serviceTime,
       stops,
       confirmedPoiFeeIds: draft.confirmedPoiFeeIds.filter((id) =>
-        reference.poiFees.some((fee) => fee.id === id && selectedPoiIds.has(fee.poiId))),
-      parkingRequired: parking === true,
-      extraWaitingMinutes: extraWaiting
+        reference.poiFees.some((fee) => fee.id === id && selectedPoiIds.has(fee.poiId)))
     }
   };
 }

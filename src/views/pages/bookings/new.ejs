@@ -256,18 +256,6 @@
         <section class="panel new-booking-block" aria-labelledby="booking-fare-title">
           <h2 id="booking-fare-title">5. Fare and itemized breakdown</h2>
           <div class="new-booking-charge-inputs">
-            <div class="form-field">
-              <label for="parkingRequired">Parking required?</label>
-              <select id="parkingRequired" name="parkingRequired" data-quote-input <%- invalid("parkingRequired") %>>
-                <option value="no" <%= draft.parkingRequired !== "yes" ? "selected" : "" %>>No</option>
-                <option value="yes" <%= draft.parkingRequired === "yes" ? "selected" : "" %>>Yes</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="extraWaitingMinutes">Expected extra waiting (minutes)</label>
-              <input id="extraWaitingMinutes" name="extraWaitingMinutes" type="number" min="0" max="<%= maxExtraWaitingMinutes %>" step="5" value="<%= draft.extraWaitingMinutes || "0" %>" data-quote-input <%- invalid("extraWaitingMinutes") %>>
-              <% if (fieldError("extraWaitingMinutes")) { %><p class="field-error" id="extraWaitingMinutes-error"><%= fieldError("extraWaitingMinutes") %></p><% } %>
-            </div>
             <% if (confirmationFees.length) { %>
               <fieldset class="new-booking-fieldset" id="confirmedPoiFeeIds">
                 <legend>Optional POI services (charged only when confirmed)</legend>

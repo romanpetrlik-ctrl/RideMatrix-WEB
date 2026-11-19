@@ -20,7 +20,7 @@ async function renderNewBooking(): Promise<string> {
       stops: { pickup: { ...emptyStop }, via1: { ...emptyStop }, via2: { ...emptyStop }, dropoff: { ...emptyStop } },
       viaActive: { via1: false, via2: false },
       counts: Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, "0"])),
-      childSeatRequired: "no", boosterRequired: "no", parkingRequired: "no", extraWaitingMinutes: "0",
+      childSeatRequired: "no", boosterRequired: "no",
       confirmedPoiFeeIds: [], saveWithUnresolvedPrice: false, quotedTotal: "", quotedStatus: "", quotedFingerprint: ""
     },
     errors: [],
@@ -122,6 +122,7 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     await page.waitForFunction(() => Boolean((window as unknown as { RideMatrixNewBooking?: unknown }).RideMatrixNewBooking));
 
     assert.deepEqual(pageErrors, []);
+    assert.equal(await page.locator("#parkingRequired, #extraWaitingMinutes").count(), 0, "driver-managed charges are not dispatcher inputs");
     const value = (selector: string) => page.locator(selector).inputValue();
 
     // Existing customer data selection fills the booking manager, and the passenger follows it.
@@ -234,7 +235,7 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     delayNextQuote = true;
     await page.selectOption("#serviceTime", "15:10");
     await delayedQuoteReady;
-    await page.fill("#extraWaitingMinutes", "5");
+    await page.fill("#serviceDate", "2027-03-11");
     releaseDelayedQuote();
     await page.waitForTimeout(100);
     assert.equal(await value("[data-quoted-status]"), "", "an earlier response cannot restore a quote during the debounce");

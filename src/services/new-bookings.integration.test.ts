@@ -42,7 +42,7 @@ async function priceFor(customerId: string, airportId: string, extra: Record<str
   const draft = readNewBookingDraft({
     customerId, managerName: manager.name, managerPhone: manager.phone, managerEmail: manager.email, passengerIsManager: "yes",
     serviceDate: "2027-03-10", serviceTime: "12:05", pickupKind: "airport", pickupAirportId: airportId,
-    dropoffKind: "airport", dropoffAirportId: airportId, adults: "2", xlBaggage: "1", parkingRequired: "no", extraWaitingMinutes: "0", ...extra
+    dropoffKind: "airport", dropoffAirportId: airportId, adults: "2", xlBaggage: "1", ...extra
   });
   const reference = await loadPricingReferenceData();
   const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getBookingManagerCandidate);
@@ -152,18 +152,21 @@ test("a new booking persists its stops and itemized price snapshot transactional
 test("an unresolved price is stored as incomplete without a total only when acknowledged", async () => {
   const customer = await createCustomer({ givenName: "Una", surname: "Resolved", email: "una@example.test", phone: "+44 7911 123457" } as Parameters<typeof createCustomer>[0]);
   const airport = (await airportFeeStore.list())[0];
-  const { draft, booking, reference, quote } = await priceFor(customer.id, airport.id, { parkingRequired: "yes" });
+  const { draft, booking, reference } = await priceFor(customer.id, airport.id);
+  const quote = await quoteJourney(booking, reference, async () => ({
+    status: "unresolved", reason: "provider-error", message: "Routing temporarily unavailable."
+  }));
   assert.equal(quote.price.status, "incomplete");
   assert.equal(quote.price.total, null);
-  const unresolvedRouteQuote = await quoteJourney(booking, {
+  const changedRouteQuote = await quoteJourney(booking, {
     ...reference,
     airports: reference.airports.map((record) => ({ ...record, pickupFee: "8.00" }))
   }, async () => ({ status: "unresolved", reason: "provider-error", message: "Routing temporarily unavailable." }));
-  assert.equal(unresolvedRouteQuote.price.status, "incomplete");
-  assert.equal(unresolvedRouteQuote.price.total, null);
-  assert.notEqual(unresolvedRouteQuote.fingerprint, quote.fingerprint);
+  assert.equal(changedRouteQuote.price.status, "incomplete");
+  assert.equal(changedRouteQuote.price.total, null);
+  assert.notEqual(changedRouteQuote.fingerprint, quote.fingerprint);
   await assert.rejects(
-    createNewBooking(booking, unresolvedRouteQuote, {
+    createNewBooking(booking, changedRouteQuote, {
       ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
     }, actor, now),
     BookingPriceChangedError
@@ -174,7 +177,7 @@ test("an unresolved price is stored as incomplete without a total only when ackn
   const loaded = await getNewBooking(saved.id);
   assert.equal(loaded?.price?.status, "incomplete");
   assert.equal(loaded?.price?.total, null);
-  assert.ok(loaded?.price?.lines.some((line) => line.type === "parking" && line.status === "unresolved" && line.amount === null));
+  assert.ok(!loaded?.price?.lines.some((line) => line.type === "parking" || line.type === "extra-waiting"));
   const row = await query<{ total_fare_amount: string | null; price_status: string }>("SELECT total_fare_amount, price_status FROM customer_bookings WHERE id = $1", [saved.id]);
   assert.deepEqual(row.rows[0], { total_fare_amount: null, price_status: "incomplete" });
 });
