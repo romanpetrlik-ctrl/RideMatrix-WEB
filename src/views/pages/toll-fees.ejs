@@ -22,7 +22,7 @@
 
       ${!category ? `
         <p class="toll-fees-page__intro">Manage external tolls and fees. Each category keeps managed reference data separate from configurable fee schedules.</p>
-        <div class="notice toll-fees-page__placeholder" role="status"><strong>Draft schedules only.</strong> Four schedules are configured as editable inactive drafts. None is used in booking prices; fees are not calculated or charged.</div>
+        <div class="notice toll-fees-page__placeholder" role="status"><strong>Fee schedules are inactive unless enabled.</strong> The London LEZ, ULEZ and Congestion Charge schedules and the Blackwall and Silvertown tunnel schedule are used for New Booking prices only after a System Settings user verifies and enables them on their Fee settings page. Each Fee settings page shows the schedule's status. The Dartford schedule remains an inactive draft and is not used in booking prices.</div>
         <nav class="toll-fees-cards" aria-label="Toll & Fees categories">
           ${categories.map((item) => `
             <a class="toll-fees-card" href="/settings/toll-fees/${item.slug}">
@@ -308,8 +308,8 @@
         ` : section === "fee-settings" ? `
           <section class="toll-fees-detail" aria-labelledby="toll-fees-detail-title">
             <h2 id="toll-fees-detail-title">Fee settings</h2>
-            <p>Edit the draft schedule below. Rate conditions and reference information are available alongside the rates.</p>
-            ${feeScheduleSnapshot ? `
+            ${roadChargeView ? include("../partials/road-charge-schedule", { view: roadChargeView, history: feeScheduleHistory, csrfField: locals.csrfField || "" }) : feeScheduleSnapshot ? `
+              <p>Edit the draft schedule below. Rate conditions and reference information are available alongside the rates.</p>
               <section class="london-fee-draft" aria-labelledby="london-fee-draft-title">
                 <h3 id="london-fee-draft-title">${feeScheduleSnapshot.schedule.title} draft schedule</h3>
                 <div class="notice london-fee-draft__status" role="status"><strong>Draft / Inactive — not used for booking prices</strong></div>
@@ -409,15 +409,13 @@
                   ${feeScheduleHistory.href ? `<p class="configuration-history__more"><a href="${feeScheduleHistory.href}">View all history<span class="visually-hidden"> for this draft fee schedule</span></a></p>` : ""}
                 </section>
               </section>
-            ` : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No fee schedule is configured. This area does not calculate fees or charge customers.</div>`}
+            ` : `<p>Edit the draft schedule below. Rate conditions and reference information are available alongside the rates.</p><div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> No fee schedule is configured. This area does not calculate fees or charge customers.</div>`}
           </section>
         ` : `
-          ${area?.slug === "london-lez" || area?.slug === "london-ulez"
-            ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Draft fee schedule available.</strong> This scheme has an editable Draft / Inactive fee schedule on its Fee settings page. The draft is not used for booking prices and does not calculate or charge fees.</div>`
-            : category?.slug === "dartford-crossing" || category?.slug === "blackwall-silvertown-tunnels"
+          ${area?.slug === "london-lez" || area?.slug === "london-ulez" || area?.slug === "london-congestion-charge" || category?.slug === "blackwall-silvertown-tunnels"
+            ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Fee schedule available.</strong> This scheme's fee schedule is on its Fee settings page. That page shows whether the schedule is active for New Booking prices, its effective dates, sources and verification, and anything that blocks enabling it. Inactive schedules do not calculate or charge fees.</div>`
+            : category?.slug === "dartford-crossing"
               ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Draft fee schedule available.</strong> This crossing scheme has an editable Draft / Inactive fee schedule on its Fee settings page. It is not used for booking prices and does not calculate or charge fees.</div>`
-            : area?.slug === "london-congestion-charge"
-              ? `<div class="notice toll-fees-page__placeholder" role="status"><strong>Reference data and fee settings are separate.</strong> The boundary reference is available on its Reference data page. No Congestion Charge fee schedule is configured; fees are not calculated or charged.</div>`
               : `<div class="notice toll-fees-page__placeholder" role="status"><strong>Not configured yet.</strong> Both reference data and fee settings are placeholders. They do not calculate or charge fees.</div>`}
         `}
       `}

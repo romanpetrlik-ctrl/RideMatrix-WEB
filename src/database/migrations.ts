@@ -3,6 +3,7 @@ import {
   crossingFeeScheduleDrafts,
   londonFeeScheduleDrafts
 } from "../services/london-fee-schedule-data";
+import { roadChargeScheduleSeeds } from "../services/road-charge-schedules";
 
 export type Migration = {
   id: string;
@@ -1731,6 +1732,76 @@ export const MIGRATIONS: Migration[] = [
       CREATE TRIGGER trg_booking_price_line_items_immutable_delete
         BEFORE DELETE ON booking_price_line_items
         FOR EACH ROW EXECUTE FUNCTION rm_guard_booking_price_snapshot_delete();
+    `
+  },
+  {
+    // Allows structured road-charge schedules to be enabled through an audited, append-only version. Legacy
+    // drafts remain valid history; Dartford Crossing stays draft-only. Nothing is seeded active.
+    id: "0035_road_charge_schedule_activation",
+    sql: `
+      ALTER TABLE london_fee_schedule_versions DROP CONSTRAINT IF EXISTS london_fee_schedule_versions_status_check;
+      ALTER TABLE london_fee_schedule_versions DROP CONSTRAINT IF EXISTS london_fee_schedule_versions_payload_check;
+      ALTER TABLE london_fee_schedule_versions DROP CONSTRAINT IF EXISTS london_fee_schedule_versions_scheme_check;
+
+      ALTER TABLE london_fee_schedule_versions
+        ADD CONSTRAINT london_fee_schedule_versions_scheme_check
+        CHECK (scheme IN ('london-lez', 'london-ulez', 'london-congestion-charge', 'dartford-crossing', 'blackwall-silvertown-tunnels'));
+      ALTER TABLE london_fee_schedule_versions
+        ADD CONSTRAINT london_fee_schedule_versions_status_check
+        CHECK (status IN ('draft_inactive', 'inactive', 'active'));
+      ALTER TABLE london_fee_schedule_versions
+        ADD CONSTRAINT london_fee_schedule_versions_payload_check
+        CHECK (
+          jsonb_typeof(payload) = 'object'
+          AND (
+            (
+              status = 'draft_inactive'
+              AND payload->>'status' = 'draft_inactive'
+              AND payload->>'active' = 'false'
+              AND payload->>'bookingPriceUsage' = 'never'
+            )
+            OR (
+              payload->>'format' = 'road-charge-schedule-v1'
+              AND scheme IN ('london-lez', 'london-ulez', 'london-congestion-charge', 'blackwall-silvertown-tunnels')
+              AND payload->>'scheme' = scheme
+              AND payload->>'status' = status
+              AND (
+                (
+                  status = 'inactive'
+                  AND payload->>'active' = 'false'
+                  AND payload->>'bookingPriceUsage' = 'never'
+                )
+                OR (
+                  status = 'active'
+                  AND payload->>'active' = 'true'
+                  AND payload->>'bookingPriceUsage' = 'new-booking-quotes'
+                  AND payload->>'effectiveFrom' ~ '^\\d{4}-\\d{2}-\\d{2}$'
+                  AND jsonb_typeof(payload->'verification') = 'object'
+                  AND payload->'verification'->>'sourcesConfirmed' = 'true'
+                  AND payload->'calculationBlockers' = '[]'::jsonb
+                )
+              )
+            )
+          )
+        );
+
+      INSERT INTO london_fee_schedule_versions (id, scheme, version, status, payload, actor_email)
+      SELECT seed.scheme || '-structured-v' || (COALESCE(latest.version, 0) + 1),
+             seed.scheme,
+             COALESCE(latest.version, 0) + 1,
+             'inactive',
+             jsonb_set(seed.payload, '{supersedesLegacyDraftVersion}', COALESCE(to_jsonb(latest.version), 'null'::jsonb)),
+             'System migration: structured road-charge schedule (inactive)'
+        FROM (VALUES
+        ('london-lez', '${JSON.stringify(roadChargeScheduleSeeds["london-lez"]).replace(/'/g, "''")}'::jsonb),
+        ('london-ulez', '${JSON.stringify(roadChargeScheduleSeeds["london-ulez"]).replace(/'/g, "''")}'::jsonb),
+        ('london-congestion-charge', '${JSON.stringify(roadChargeScheduleSeeds["london-congestion-charge"]).replace(/'/g, "''")}'::jsonb),
+        ('blackwall-silvertown-tunnels', '${JSON.stringify(roadChargeScheduleSeeds["blackwall-silvertown-tunnels"]).replace(/'/g, "''")}'::jsonb)
+        ) AS seed (scheme, payload)
+        LEFT JOIN LATERAL (
+          SELECT max(version) AS version FROM london_fee_schedule_versions WHERE scheme = seed.scheme
+        ) AS latest ON true
+      ON CONFLICT (scheme, version) DO NOTHING;
     `
   }
 ];

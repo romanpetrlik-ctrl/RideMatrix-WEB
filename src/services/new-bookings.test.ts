@@ -37,7 +37,8 @@ const reference: PricingReferenceData = {
     { id: "fee-confirm", poiId: "poi-1", poiDisplayName: "Hotel", action: "Porter", amount: "5.00", currency: "GBP", feeBasis: "", trigger: "confirmation", notes: "", createdAt: timestamp, updatedAt: timestamp },
     { id: "fee-elsewhere", poiId: "poi-2", poiDisplayName: "Other", action: "Porter", amount: "5.00", currency: "GBP", feeBasis: "", trigger: "confirmation", notes: "", createdAt: timestamp, updatedAt: timestamp }
   ],
-  operationalBase: null
+  operationalBase: null,
+  roadChargeSchedules: {}
 };
 
 const verifiedPlace = (placeId: string): OperationalPlaceVerification => ({

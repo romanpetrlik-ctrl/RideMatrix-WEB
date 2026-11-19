@@ -1,0 +1,118 @@
+<%
+  const s = view.schedule;
+  const fmt = (value) => value ? value : "Not set";
+%>
+<section class="road-charge-schedule" aria-labelledby="road-charge-schedule-title">
+  <h3 id="road-charge-schedule-title"><%= s.title %> fee schedule</h3>
+  <% if (s.active) { %>
+    <div class="notice road-charge-schedule__status road-charge-schedule__status--active" role="status">
+      <strong>Active — used for New Booking quotes</strong>
+      <span>Version <%= view.version %>, effective <%= fmt(s.effectiveFrom) %> to <%= s.effectiveUntil || "open-ended" %>. Verified on <%= s.verification.verifiedOn %> by <%= s.verification.verifiedByEmail %>.</span>
+    </div>
+  <% } else { %>
+    <div class="notice road-charge-schedule__status" role="status">
+      <strong>Inactive — not used for booking prices</strong>
+      <span>While inactive, New Booking quotes that enter this scheme show the charge as unresolved and have no confirmed total.</span>
+    </div>
+  <% } %>
+  <% if (view.saved === "saved") { %><p class="notice road-charge-schedule__saved" role="status">Changes saved as version <%= view.version %>. Edited schedules are inactive until verified and enabled again.</p><% } %>
+  <% if (view.saved === "enabled") { %><p class="notice road-charge-schedule__saved" role="status">Schedule enabled as version <%= view.version %>.</p><% } %>
+  <% if (view.saved === "disabled") { %><p class="notice road-charge-schedule__saved" role="status">Schedule disabled as version <%= view.version %>.</p><% } %>
+  <% if (view.formError) { %><div class="notice road-charge-schedule__error" role="alert"><%= view.formError %></div><% } %>
+
+  <section class="road-charge-schedule__activation" aria-labelledby="road-charge-activation-title">
+    <h4 id="road-charge-activation-title"><%= s.active ? "Disable" : "Enable for New Booking prices" %></h4>
+    <% if (view.activationErrors.length) { %>
+      <div class="notice road-charge-schedule__error" role="alert">
+        <strong>The schedule was not changed.</strong>
+        <ul><% view.activationErrors.forEach((error) => { %><li><%= error %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <% if (s.active) { %>
+      <form method="post" action="<%= view.activationAction %>">
+        <%- csrfField %>
+        <input type="hidden" name="baseVersion" value="<%= view.version %>" />
+        <input type="hidden" name="action" value="disable" />
+        <p>Disabling appends a new inactive version. Saved bookings keep the prices in their own snapshots.</p>
+        <button class="button" type="submit">Disable schedule</button>
+      </form>
+    <% } else if (view.blockers.length) { %>
+      <div class="notice road-charge-schedule__blockers" role="status">
+        <strong>Cannot be enabled yet.</strong>
+        <ul><% view.blockers.forEach((blocker) => { %><li><%= blocker %></li><% }) %></ul>
+      </div>
+    <% } else { %>
+      <form class="road-charge-schedule__enable" method="post" action="<%= view.activationAction %>">
+        <%- csrfField %>
+        <input type="hidden" name="baseVersion" value="<%= view.version %>" />
+        <input type="hidden" name="action" value="enable" />
+        <p>Before you enable this schedule, open every source below. Check that the rates, charging days and hours, effective dates, exemptions and vehicle categories match what this page shows.</p>
+        <label for="road-charge-verified-on">Date you verified the sources</label>
+        <input id="road-charge-verified-on" name="verifiedOn" type="date" required value="<%= view.submittedVerifiedOn %>" />
+        <label class="road-charge-schedule__confirm">
+          <input type="checkbox" name="confirmSources" value="yes" required />
+          I opened every cited TfL/GOV.UK source, and the rules, rates and effective dates on this page match them.
+        </label>
+        <button class="button button--primary" type="submit">Enable for New Booking prices</button>
+      </form>
+    <% } %>
+  </section>
+
+  <form class="road-charge-schedule__form" method="post" action="<%= view.formAction %>">
+    <%- csrfField %>
+    <input type="hidden" name="baseVersion" value="<%= view.version %>" />
+    <fieldset class="road-charge-schedule__dates">
+      <legend>Effective period</legend>
+      <label for="road-charge-effective-from">Effective from</label>
+      <input id="road-charge-effective-from" name="effectiveFrom" type="date" value="<%= view.effectiveFromValue %>" aria-invalid="<%= view.errors.effectiveFrom ? "true" : "false" %>" aria-describedby="road-charge-effective-from-error" />
+      <p id="road-charge-effective-from-error" class="london-fee-draft__field-error<%= view.errors.effectiveFrom ? " london-fee-draft__field-error--invalid" : "" %>"><%= view.errors.effectiveFrom || "Leave blank if unknown; a schedule with an unknown effective date cannot be enabled." %></p>
+      <label for="road-charge-effective-until">Effective until (optional)</label>
+      <input id="road-charge-effective-until" name="effectiveUntil" type="date" value="<%= view.effectiveUntilValue %>" aria-invalid="<%= view.errors.effectiveUntil ? "true" : "false" %>" aria-describedby="road-charge-effective-until-error" />
+      <p id="road-charge-effective-until-error" class="london-fee-draft__field-error<%= view.errors.effectiveUntil ? " london-fee-draft__field-error--invalid" : "" %>"><%= view.errors.effectiveUntil || "Leave blank for open-ended." %></p>
+    </fieldset>
+    <div class="london-fee-draft__rates">
+      <% view.rates.forEach((rate) => { %>
+        <fieldset class="london-fee-draft__rate">
+          <legend><%= rate.label %></legend>
+          <label for="road-charge-amount-<%= rate.key %>"><%= s.kind === "tunnel-crossing" ? "Amount (GBP per crossing)" : "Daily rate (GBP per charging day)" %></label>
+          <div class="london-fee-draft__amount">
+            <span aria-hidden="true">£</span>
+            <input id="road-charge-amount-<%= rate.key %>" name="amount_<%= rate.key %>" type="number" min="<%= rate.allowZero ? "0" : "0.01" %>" max="999999.99" step="0.01" inputmode="decimal" required value="<%= rate.value %>" aria-invalid="<%= rate.error ? "true" : "false" %>" aria-describedby="road-charge-error-<%= rate.key %>" />
+          </div>
+          <p id="road-charge-error-<%= rate.key %>" class="london-fee-draft__field-error<%= rate.error ? " london-fee-draft__field-error--invalid" : "" %>"><%= rate.error || (rate.allowZero ? "A configured £0.00 is quoted as a zero charge, not as unresolved." : "Enter a positive GBP amount with up to 2 decimal places.") %></p>
+          <p class="road-charge-schedule__applies"><%= rate.appliesTo %></p>
+        </fieldset>
+      <% }) %>
+    </div>
+    <div class="london-fee-draft__actions">
+      <button class="button button--primary" type="submit">Save as new inactive version</button>
+      <p>Saving appends a new version. The new version is inactive and unverified until it is enabled again.</p>
+    </div>
+  </form>
+
+  <section class="london-fee-draft__details" aria-labelledby="road-charge-details-title">
+    <h4 id="road-charge-details-title">Rules, sources and verification</h4>
+    <dl>
+      <div><dt>Status</dt><dd><%= s.active ? "Active" : "Inactive" %> (version <%= view.version %>)</dd></div>
+      <div><dt>Effective period</dt><dd><%= fmt(s.effectiveFrom) %> to <%= s.effectiveUntil || "open-ended" %></dd></div>
+      <div><dt>Rules researched</dt><dd><%= s.research ? `${s.research.checkedOn}. ${s.research.method}` : "Not recorded" %></dd></div>
+      <div><dt>Administrator verification</dt><dd><%= s.verification ? `Verified on ${s.verification.verifiedOn} by ${s.verification.verifiedByEmail} (recorded ${s.verification.recordedAt})` : "Not verified for this version" %></dd></div>
+      <% s.sources.forEach((source) => { %>
+        <div><dt>Source: <%= source.label %></dt><dd><a href="<%= source.url %>" rel="noreferrer"><%= source.url %></a><%= source.effectiveDate ? ` — effective ${source.effectiveDate}` : "" %></dd></div>
+      <% }) %>
+    </dl>
+    <h4>Charging rules</h4>
+    <ul><% s.operatingRules.forEach((rule) => { %><li><%= rule %></li><% }) %></ul>
+    <h4>Exemptions, discounts and vehicle eligibility</h4>
+    <ul><% s.exemptionsAndDiscounts.forEach((rule) => { %><li><%= rule %></li><% }) %></ul>
+  </section>
+
+  <section class="london-fee-draft__history" aria-labelledby="road-charge-history-title">
+    <h4 id="road-charge-history-title"><%= view.historyLabel %></h4>
+    <% if (history.href) { %><p class="configuration-history__summary">Showing the <%= history.entries.length %> most recent of <%= history.total %> versions, newest first.</p><% } %>
+    <ol>
+      <% history.entries.forEach((record) => { %><%# History entries are already HTML-escaped by safeHistoryEntries. %><li><strong>Version <%= record.version %></strong> — <%- record.actorEmail %> — <%- record.createdAt %></li><% }) %>
+    </ol>
+    <% if (history.href) { %><p class="configuration-history__more"><a href="<%= history.href %>">View all history<span class="visually-hidden"> for this fee schedule</span></a></p><% } %>
+  </section>
+</section>

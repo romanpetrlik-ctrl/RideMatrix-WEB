@@ -72,7 +72,8 @@
     }
     const warnings = [
       ...(route.tollsReported ? ["Tolls reported on route"] : []),
-      ...(route.zones || []).map((zone) => `Enters ${zone.label}`)
+      ...(route.zones || []).map((zone) => `Enters ${zone.label}`),
+      ...(route.tunnelCrossings || []).map((crossing) => `${crossing.label} (${crossing.direction})`)
     ];
     return {
       distance: `${Number(route.distanceMiles).toFixed(2)} miles`,

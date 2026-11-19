@@ -231,7 +231,7 @@ export function resolveJourneyLocationDiscount(input: {
   return matches[0] ?? { status: "no-match", precedence };
 }
 
-export type SeparatelyItemizedChargeType = "airport-fee" | "poi-fee" | "toll" | "road-charge" | "dead-mileage" | "extra";
+export type SeparatelyItemizedChargeType = "airport-fee" | "poi-fee" | "toll" | "road-charge" | "tunnel-charge" | "dead-mileage" | "extra";
 
 /** A charge priced elsewhere and itemized separately; location discounts never change it. */
 export type SeparatelyItemizedCharge = {

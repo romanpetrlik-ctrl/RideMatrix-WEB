@@ -25,12 +25,20 @@ import {
   crossingFeeScheduleDrafts,
   londonFeeScheduleDrafts
 } from "../services/london-fee-schedule-data";
-import type {
-  LondonFeeScheduleActor,
-  LondonFeeScheduleScheme,
-  LondonFeeScheduleSnapshot,
-  LondonFeeScheduleStore
+import {
+  LondonFeeScheduleVersionConflictError,
+  roadChargeScheduleRecord,
+  type LondonFeeScheduleActor,
+  type LondonFeeScheduleScheme,
+  type LondonFeeScheduleSnapshot,
+  type LondonFeeScheduleStore
 } from "../services/london-fee-schedules";
+import {
+  applyRoadChargeActivation,
+  applyRoadChargeEdit,
+  isRoadChargeSchedule,
+  roadChargeScheduleSeeds
+} from "../services/road-charge-schedules";
 import {
   EMPTY_FARE_SETTINGS,
   FareSettingsVersionConflictError,
@@ -282,27 +290,54 @@ function createMemoryFeeScheduleStore(): {
   reset: () => void;
   seedHistory: (scheme: LondonFeeScheduleScheme, count: number) => void;
   history: (scheme: LondonFeeScheduleScheme) => ConfigurationHistoryEntry[];
+  current: (scheme: LondonFeeScheduleScheme) => Omit<LondonFeeScheduleSnapshot, "historyTotal">;
 } {
+  // Mirrors the database after migration 0035: structured inactive schedules for the four road-charge schemes
+  // (version 2 on top of the legacy draft, version 1 for the Congestion Charge) and the legacy Dartford draft.
   const snapshots = new Map<LondonFeeScheduleScheme, Omit<LondonFeeScheduleSnapshot, "historyTotal">>();
   const reset = () => {
     snapshots.clear();
-    for (const scheme of [
-      "london-lez",
-      "london-ulez",
-      "dartford-crossing",
-      "blackwall-silvertown-tunnels"
-    ] as const) {
-      const schedule = scheme in londonFeeScheduleDrafts
-        ? londonFeeScheduleDrafts[scheme as keyof typeof londonFeeScheduleDrafts]
-        : crossingFeeScheduleDrafts[scheme as keyof typeof crossingFeeScheduleDrafts];
+    snapshots.set("dartford-crossing", {
+      schedule: structuredClone(crossingFeeScheduleDrafts["dartford-crossing"]),
+      status: "draft_inactive",
+      currentVersion: 1,
+      history: [{ version: 1, actorEmail: "Initial supplied draft", createdAt: "2026-11-01T00:00:00.000Z" }]
+    });
+    for (const scheme of ["london-lez", "london-ulez", "london-congestion-charge", "blackwall-silvertown-tunnels"] as const) {
+      const hasLegacy = scheme !== "london-congestion-charge";
+      const version = hasLegacy ? 2 : 1;
       snapshots.set(scheme, {
-        schedule: structuredClone(schedule),
-        currentVersion: 1,
-        history: [{ version: 1, actorEmail: "Initial supplied draft", createdAt: "2026-11-01T00:00:00.000Z" }]
+        schedule: { ...structuredClone(roadChargeScheduleSeeds[scheme]), supersedesLegacyDraftVersion: hasLegacy ? 1 : null },
+        status: "inactive",
+        currentVersion: version,
+        history: [
+          { version, actorEmail: "System migration: structured road-charge schedule (inactive)", createdAt: "2026-11-01T00:00:00.000Z" },
+          ...(hasLegacy ? [{ version: 1, actorEmail: "Initial supplied draft", createdAt: "2026-11-01T00:00:00.000Z" }] : [])
+        ]
       });
     }
   };
   reset();
+
+  const append = (scheme: LondonFeeScheduleScheme, schedule: LondonFeeScheduleSnapshot["schedule"], status: string, actor: LondonFeeScheduleActor) => {
+    const current = snapshots.get(scheme);
+    assert.ok(current);
+    snapshots.set(scheme, {
+      schedule,
+      status,
+      currentVersion: current.currentVersion + 1,
+      history: [
+        { version: current.currentVersion + 1, actorEmail: actor.email, createdAt: "2026-11-01T00:01:00.000Z" },
+        ...current.history
+      ]
+    });
+  };
+  const locked = (scheme: LondonFeeScheduleScheme, expectedVersion: number) => {
+    const current = snapshots.get(scheme);
+    assert.ok(current);
+    if (current.currentVersion !== expectedVersion) throw new LondonFeeScheduleVersionConflictError();
+    return current;
+  };
 
   return {
     reset,
@@ -312,6 +347,7 @@ function createMemoryFeeScheduleStore(): {
       snapshots.set(scheme, { ...current, currentVersion: count, history: seededHistory(count) });
     },
     history: (scheme) => structuredClone(snapshots.get(scheme)?.history ?? []),
+    current: (scheme) => structuredClone(snapshots.get(scheme)!),
     store: {
       async load(scheme) {
         const snapshot = snapshots.get(scheme);
@@ -323,10 +359,16 @@ function createMemoryFeeScheduleStore(): {
         assert.ok(snapshot);
         return historyPage(snapshot.history, page, perPage);
       },
-      async save(scheme, expectedVersion, amounts, actor: LondonFeeScheduleActor) {
-        const current = snapshots.get(scheme);
-        assert.ok(current);
-        assert.equal(current.currentVersion, expectedVersion);
+      async save(scheme, expectedVersion, amounts, actor: LondonFeeScheduleActor, effectiveDates) {
+        const current = locked(scheme, expectedVersion);
+        if (isRoadChargeSchedule(current.schedule)) {
+          append(scheme, applyRoadChargeEdit(current.schedule, {
+            amounts,
+            effectiveFrom: effectiveDates ? effectiveDates.effectiveFrom : current.schedule.effectiveFrom,
+            effectiveUntil: effectiveDates ? effectiveDates.effectiveUntil : current.schedule.effectiveUntil
+          }), "inactive", actor);
+          return;
+        }
         const schedule = current.schedule.kind === "crossing"
           ? {
             ...current.schedule,
@@ -336,14 +378,19 @@ function createMemoryFeeScheduleStore(): {
             ...current.schedule,
             rates: current.schedule.rates.map((rate) => ({ ...rate, amount: Number(amounts[rate.key]) }))
           };
-        snapshots.set(scheme, {
-          schedule,
-          currentVersion: current.currentVersion + 1,
-          history: [
-            { version: current.currentVersion + 1, actorEmail: actor.email, createdAt: "2026-11-01T00:01:00.000Z" },
-            ...current.history
-          ]
-        });
+        append(scheme, schedule, "draft_inactive", actor);
+      },
+      async setActivation(scheme, expectedVersion, request, actor, now) {
+        const current = locked(scheme, expectedVersion);
+        assert.ok(isRoadChargeSchedule(current.schedule), "legacy drafts cannot be activated");
+        const next = applyRoadChargeActivation(current.schedule, request, actor, now);
+        append(scheme, next, next.status, actor);
+      },
+      async loadPricingSchedules() {
+        return Object.fromEntries([...snapshots.entries()].flatMap(([scheme, snapshot]) => {
+          const record = roadChargeScheduleRecord(scheme, snapshot.currentVersion, snapshot.status, snapshot.schedule);
+          return record ? [[scheme, record]] : [];
+        }));
       }
     }
   };
@@ -511,8 +558,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(categoryResponse.status, 200);
     const categoryBody = await categoryResponse.text();
     assert.match(categoryBody, /<h1>Toll & Fees<\/h1>/);
-    assert.match(categoryBody, /Draft schedules only/);
-    assert.match(categoryBody, /not calculated or charged/i);
+    assert.match(categoryBody, /Fee schedules are inactive unless enabled/);
+    assert.match(categoryBody, /The Dartford schedule remains an inactive draft/);
     assert.match(categoryBody, /aria-label="Toll & Fees categories"/);
     assert.equal((categoryBody.match(/class="toll-fees-card"/g) ?? []).length, tollFeeCategories.length);
     assert.doesNotMatch(categoryBody, /class="toll-fees-subnav__item"/);
@@ -598,26 +645,15 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.match(destinationBody, /Verification<\/dt><dd>Unverified/);
           assert.match(destinationBody, /Map preview unavailable/);
           assert.doesNotMatch(destinationBody, /Not configured yet/);
-        } else if (scheme.title === "London ULEZ" && destination.path === "fee-settings") {
-          assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
-          assert.match(destinationBody, /value="12\.50"/);
-          assert.match(destinationBody, /Euro 6 \(NOx and PM\)/);
-          assert.match(destinationBody, /Unknown \/ unverified; not supplied/);
-          assert.match(destinationBody, /Source: Cars/);
-          assert.match(destinationBody, /cars\?intcmp=52215/);
-          assert.doesNotMatch(destinationBody, /data-london-ulez-map|DATE_CREAT|boundary\.json/);
-        } else if (scheme.title === "London LEZ" && destination.path === "fee-settings") {
-          assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
-          assert.match(destinationBody, /value="100\.00"/);
-          assert.match(destinationBody, /value="300\.00"/);
-          assert.match(destinationBody, /Euro 3/);
-          assert.match(destinationBody, /Euro IV \(PM\)/);
-          assert.match(destinationBody, /source URL was not supplied/);
-          assert.match(destinationBody, /Unknown \/ unverified; not supplied/);
         } else if (
-          (scheme.title === "Dartford Crossing" || scheme.title === "Blackwall & Silvertown tunnels")
+          ["London LEZ", "London ULEZ", "London Congestion Charge", "Blackwall & Silvertown tunnels"].includes(scheme.title)
           && destination.path === "fee-settings"
         ) {
+          assert.match(destinationBody, /Inactive — not used for booking prices/);
+          assert.match(destinationBody, /While inactive, New Booking quotes that enter this scheme show the charge as unresolved/);
+          assert.match(destinationBody, /Rules, sources and verification/);
+          assert.doesNotMatch(destinationBody, /data-london-ulez-map|DATE_CREAT|boundary\.json/);
+        } else if (scheme.title === "Dartford Crossing" && destination.path === "fee-settings") {
           assert.match(destinationBody, /Draft \/ Inactive — not used for booking prices/);
         } else {
           assert.match(destinationBody, /Not configured yet/);
@@ -625,7 +661,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
         const selectedSubnav = destinationBody.match(/<a class="toll-fees-subnav__item"[^>]*aria-current="page"[^>]*>/g) ?? [];
         assert.equal(selectedSubnav.length, 1, "exactly one subpage should be marked as selected");
         assert.ok(selectedSubnav[0].includes(`${scheme.path}/${destination.path}`), "the selected subpage should match the current destination");
-        assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
+        if (destinationBody.includes("road-charge-schedule-title")) {
+          assert.doesNotMatch(destinationBody, /Active — used for New Booking quotes/, "seeded schedules are not live");
+        } else {
+          assert.match(destinationBody, /does not (display maps, )?calculate fees, or charge customers|does not calculate fees or charge customers/);
+        }
       }
     }
   });
@@ -1049,110 +1089,200 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     }
   });
 
-  test("London LEZ and ULEZ drafts are distinct, inactive, editable, and retain append-only form history", async () => {
+  const roadChargeForm = (scheme: keyof typeof roadChargeScheduleSeeds, token: string, baseVersion: number, overrides: Record<string, string> = {}) => {
+    const seed = roadChargeScheduleSeeds[scheme];
+    const form = new URLSearchParams({ _csrf: token, baseVersion: String(baseVersion), effectiveFrom: seed.effectiveFrom ?? "", effectiveUntil: seed.effectiveUntil ?? "" });
+    for (const rate of seed.rates) form.set(`amount_${rate.key}`, rate.amount);
+    for (const [key, value] of Object.entries(overrides)) form.set(key, value);
+    return form;
+  };
+
+  const csrfSession = async (path: string, cookie: string, roles: string[], email = "bookings@romanairporttransfers.co.uk") => {
+    const response = await fetch(`${baseUrl}${path}`, { headers: withSession(cookie, roles) });
+    const body = await response.text();
+    const csrfCookie = response.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
+    const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(csrfCookie);
+    assert.ok(token);
+    const postCookie = `${cookie}; ${csrfCookie}`;
+    sessionsByCookie.set(postCookie, {
+      authenticated: true,
+      user: { id: "u-1", email, roles, active_role: roles[0] }
+    });
+    return { body, token, postCookie };
+  };
+
+  const postForm = (path: string, cookie: string, form: URLSearchParams) => fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: form,
+    redirect: "manual"
+  });
+
+  test("London LEZ, ULEZ and Congestion Charge schedules show status, sources and blockers, and edits append inactive versions", async () => {
     feeSchedules.reset();
     const headers = withSession("sid=fee-schedules", ["superuser"]);
     const londonBase = "/settings/toll-fees/london-lez-ulez-congestion-charge";
-    const lezResponse = await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers });
-    const lezBody = await lezResponse.text();
-    assert.equal(lezResponse.status, 200);
-    assert.match(lezBody, /value="100\.00"/);
-    assert.match(lezBody, /value="300\.00"/);
-    assert.match(lezBody, /Cars and motorcycles\/L-category vehicles/);
-    assert.match(lezBody, /Small vans up to and including 1\.205 tonnes unladen/);
-    assert.match(lezBody, /Draft \/ Inactive — not used for booking prices/);
-    for (const rate of londonFeeScheduleDrafts["london-lez"].rates) {
-      const rateCard = lezBody.match(new RegExp(`<fieldset class="london-fee-draft__rate">[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?</fieldset>`))?.[0];
-      assert.ok(rateCard, `rate card should include ${rate.key}`);
-      assert.ok(rateCard.includes(`<legend>${rate.label}</legend>`));
-      assert.ok(rateCard.includes(`<label for="london-fee-amount-${rate.key}">Daily rate (GBP per charging day)</label>`));
-      assert.ok(rateCard.includes(rate.applicability));
-      assert.ok(rateCard.includes(rate.emissionsThresholds));
-    }
 
-    const ulezResponse = await fetch(`${baseUrl}${londonBase}/london-ulez/fee-settings`, { headers });
-    const ulezBody = await ulezResponse.text();
-    assert.equal(ulezResponse.status, 200);
+    const lezBody = await (await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers })).text();
+    assert.match(lezBody, /London LEZ fee schedule/);
+    assert.match(lezBody, /Inactive — not used for booking prices/);
+    assert.doesNotMatch(lezBody, /Active — used for New Booking quotes/);
+    assert.match(lezBody, /id="road-charge-amount-lez-vans-specialist-minibuses"[\s\S]*?value="100\.00"/);
+    assert.match(lezBody, /id="road-charge-amount-lez-heavy-below-euro-iv-pm"[\s\S]*?value="300\.00"/);
+    assert.match(lezBody, /name="effectiveFrom" type="date" value="2021-03-01"/);
+    assert.match(lezBody, /https:\/\/tfl\.gov\.uk\/modes\/driving\/low-emission-zone\/lorries-vans-buses-and-coaches<\/a> — effective 2021-03-01/);
+    assert.match(lezBody, /Rules researched<\/dt><dd>2026-11-19/);
+    assert.match(lezBody, /Not verified for this version/);
+    assert.match(lezBody, /name="action" value="enable"/, "LEZ has no blockers, so it can be enabled");
+    assert.match(lezBody, /Version history/);
+    assert.match(lezBody, /<li><strong>Version 2<\/strong> — System migration/);
+
+    const ulezBody = await (await fetch(`${baseUrl}${londonBase}/london-ulez/fee-settings`, { headers })).text();
     assert.match(ulezBody, /value="12\.50"/);
-    assert.match(ulezBody, /Petrol: Euro 4 \(NOx\)\. Diesel: Euro 6 \(NOx and PM\)/);
-    assert.match(ulezBody, /Euro 3 \(NOx\)/);
-    assert.match(ulezBody, /24 hours a day every day except Christmas Day/);
-    assert.match(ulezBody, /does not include the M25/);
-    assert.match(ulezBody, /TfL registration is an operational requirement/);
-    assert.match(ulezBody, /ULEZ enforcement penalties are not fee rates/);
-    assert.match(ulezBody, /cars\?intcmp=52215/);
-    assert.match(ulezBody, /vans-minibuses-and-more\?intcmp=52212/);
-    assert.match(ulezBody, /motorcycles-mopeds-and-more\?intcmp=52209/);
-    assert.match(ulezBody, /larger-vehicles\?intcmp=52206/);
-    assert.match(ulezBody, /Unknown \/ unverified; not supplied/);
-    assert.match(ulezBody, /complete rules were not supplied/);
+    assert.match(ulezBody, /Inactive — not used for booking prices/);
+    assert.match(ulezBody, /Cannot be enabled yet/);
+    assert.match(ulezBody, /ULEZ route exposure uses a boundary dataset/);
+    assert.doesNotMatch(ulezBody, /name="action" value="enable"/);
     assert.doesNotMatch(ulezBody, /£180|£90/);
 
-    const ulezCookie = ulezResponse.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
-    const token = ulezBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
-    assert.ok(ulezCookie);
-    assert.ok(token);
-    sessionsByCookie.set(`sid=fee-schedules; ${ulezCookie}`, {
-      authenticated: true,
-      user: { id: "u-1", email: "bookings@romanairporttransfers.co.uk", roles: ["superuser"], active_role: "superuser" }
-    });
+    const ccBody = await (await fetch(`${baseUrl}${londonBase}/london-congestion-charge/fee-settings`, { headers })).text();
+    for (const amount of ["18.00", "13.50", "9.00", "0.00"]) assert.ok(ccBody.includes(`value="${amount}"`), `CC shows ${amount}`);
+    assert.match(ccBody, /A configured £0\.00 is quoted as a zero charge, not as unresolved/);
+    assert.match(ccBody, /Congestion Charge route exposure uses a boundary dataset/);
+    assert.match(ccBody, /name="effectiveUntil" type="date" value="2030-03-03"/);
+    assert.doesNotMatch(ccBody, /name="action" value="enable"/);
+
     const updatePath = `${londonBase}/london-ulez/fee-settings`;
-    const invalidForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
-    for (const rate of londonFeeScheduleDrafts["london-ulez"].rates) {
-      invalidForm.set(`amount_${rate.key}`, rate.key === "ulez-cars" ? "12.345" : rate.amount.toFixed(2));
-    }
-    const invalidResponse = await fetch(`${baseUrl}${updatePath}`, {
-      method: "POST",
-      headers: { cookie: `sid=fee-schedules; ${ulezCookie}`, "content-type": "application/x-www-form-urlencoded" },
-      body: invalidForm,
-      redirect: "manual"
-    });
-    assert.equal(invalidResponse.status, 400);
-    assert.match(await invalidResponse.text(), /no more than 2 decimal places/);
+    const { token, postCookie } = await csrfSession(updatePath, "sid=fee-schedules-post", ["superuser"]);
+    const invalidAmount = await postForm(updatePath, postCookie, roadChargeForm("london-ulez", token, 2, { "amount_ulez-cars": "12.345" }));
+    assert.equal(invalidAmount.status, 400);
+    assert.match(await invalidAmount.text(), /no more than 2 decimal places/);
+    const invalidDate = await postForm(updatePath, postCookie, roadChargeForm("london-ulez", token, 2, { effectiveFrom: "2023-02-30" }));
+    assert.equal(invalidDate.status, 400);
+    assert.match(await invalidDate.text(), /Enter a valid effective-from date/);
+    assert.equal(feeSchedules.current("london-ulez").currentVersion, 2, "invalid edits are not saved");
 
-    const validForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
-    for (const rate of londonFeeScheduleDrafts["london-ulez"].rates) {
-      validForm.set(`amount_${rate.key}`, rate.key === "ulez-cars" ? "13.25" : rate.amount.toFixed(2));
-    }
-    const savedResponse = await fetch(`${baseUrl}${updatePath}`, {
-      method: "POST",
-      headers: { cookie: `sid=fee-schedules; ${ulezCookie}`, "content-type": "application/x-www-form-urlencoded" },
-      body: validForm,
-      redirect: "manual"
-    });
-    assert.equal(savedResponse.status, 303);
-    assert.equal(savedResponse.headers.get("location"), `${updatePath}?saved=1`);
-
+    const saved = await postForm(updatePath, postCookie, roadChargeForm("london-ulez", token, 2, { "amount_ulez-cars": "13.25" }));
+    assert.equal(saved.status, 303);
+    assert.equal(saved.headers.get("location"), `${updatePath}?saved=1`);
     const savedPage = await (await fetch(`${baseUrl}${updatePath}?saved=1`, { headers })).text();
-    assert.match(savedPage, /Draft changes saved as version 2/);
+    assert.match(savedPage, /Changes saved as version 3/);
     assert.match(savedPage, /value="13\.25"/);
-    assert.match(savedPage, /<li><strong>Version 2<\/strong> — bookings@romanairporttransfers\.co\.uk/);
-    assert.match(savedPage, /Changes do not affect estimates, bookings, invoices, notifications, or customer charges/);
-    assert.doesNotMatch(savedPage, /active rate|customer charge total/i);
+    assert.match(savedPage, /<li><strong>Version 3<\/strong> — bookings@romanairporttransfers\.co\.uk/);
+    assert.equal(feeSchedules.current("london-ulez").status, "inactive");
 
-    const lezPage = await (await fetch(`${baseUrl}${londonBase}/london-lez/fee-settings`, { headers })).text();
-    assert.match(lezPage, /id="london-fee-amount-lez-vans-specialist-minibuses"[\s\S]*?value="100\.00"/);
-    assert.match(lezPage, /name="baseVersion" value="1"/);
+    const stale = await postForm(updatePath, postCookie, roadChargeForm("london-ulez", token, 2));
+    assert.equal(stale.status, 409);
 
-    const deniedCookie = `sid=fee-schedules-denied; ${ulezCookie}`;
-    sessionsByCookie.set(deniedCookie, {
-      authenticated: true,
-      user: { id: "u-2", email: "admin@example.com", roles: ["admin"], active_role: "admin" }
-    });
-    const deniedForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
-    for (const rate of londonFeeScheduleDrafts["london-ulez"].rates) {
-      deniedForm.set(`amount_${rate.key}`, rate.amount.toFixed(2));
-    }
-    const deniedSave = await fetch(`${baseUrl}${updatePath}`, {
-      method: "POST",
-      headers: { cookie: deniedCookie, "content-type": "application/x-www-form-urlencoded" },
-      body: deniedForm,
-      redirect: "manual"
-    });
+    const deniedCookie = `sid=fee-schedules-denied; ${postCookie.split("; ")[1]}`;
+    sessionsByCookie.set(deniedCookie, { authenticated: true, user: { id: "u-2", email: "admin@example.com", roles: ["admin"], active_role: "admin" } });
+    const deniedSave = await postForm(updatePath, deniedCookie, roadChargeForm("london-ulez", token, 3));
     assert.equal(deniedSave.status, 403);
+    assert.equal(feeSchedules.current("london-ulez").currentVersion, 3);
   });
 
-  test("Dartford and shared Blackwall/Silvertown schedules keep supplied crossing rates and inactive versioned forms", async () => {
+  test("road-charge schedules are enabled only with verification, are actor-attributed, and edits or disabling deactivate them", async () => {
+    feeSchedules.reset();
+    const lezPath = "/settings/toll-fees/london-lez-ulez-congestion-charge/london-lez/fee-settings";
+    const activationPath = `${lezPath}/activation`;
+    const { token, postCookie } = await csrfSession(lezPath, "sid=fee-activation", ["superuser"]);
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const enable = (overrides: Record<string, string> = {}, cookie = postCookie) => postForm(activationPath, cookie, new URLSearchParams({
+      _csrf: token, baseVersion: "2", action: "enable", verifiedOn: yesterday, confirmSources: "yes", ...overrides
+    }));
+
+    const noCsrf = await fetch(`${baseUrl}${activationPath}`, {
+      method: "POST",
+      headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ baseVersion: "2", action: "enable", verifiedOn: yesterday, confirmSources: "yes" }),
+      redirect: "manual"
+    });
+    assert.equal(noCsrf.status, 403);
+
+    const deniedCookie = `sid=fee-activation-denied; ${postCookie.split("; ")[1]}`;
+    sessionsByCookie.set(deniedCookie, { authenticated: true, user: { id: "u-2", email: "admin@example.com", roles: ["admin"], active_role: "admin" } });
+    assert.equal((await enable({}, deniedCookie)).status, 403);
+
+    const unconfirmed = await enable({ confirmSources: "" });
+    assert.equal(unconfirmed.status, 400);
+    assert.match(await unconfirmed.text(), /Confirm that you opened every cited source/);
+    const future = await enable({ verifiedOn: "2999-01-01" });
+    assert.equal(future.status, 400);
+    assert.match(await future.text(), /cannot be in the future/);
+    const missingDate = await enable({ verifiedOn: "" });
+    assert.equal(missingDate.status, 400);
+    assert.match(await missingDate.text(), /Enter the date you verified/);
+    assert.equal(feeSchedules.current("london-lez").currentVersion, 2, "rejected activations append nothing");
+
+    const enabled = await enable();
+    assert.equal(enabled.status, 303);
+    assert.equal(enabled.headers.get("location"), `${lezPath}?enabled=1`);
+    const lez = feeSchedules.current("london-lez");
+    assert.equal(lez.status, "active");
+    assert.equal(lez.currentVersion, 3);
+    const schedule = lez.schedule as { verification: { verifiedOn: string; verifiedByEmail: string } | null };
+    assert.equal(schedule.verification?.verifiedOn, yesterday);
+    assert.equal(schedule.verification?.verifiedByEmail, "bookings@romanairporttransfers.co.uk");
+    const pricing = await feeSchedules.store.loadPricingSchedules();
+    assert.equal(pricing["london-lez"]?.status, "active");
+    assert.equal(pricing["london-lez"]?.version, 3);
+    assert.equal(pricing["london-ulez"]?.status, "inactive");
+
+    const activePage = await (await fetch(`${baseUrl}${lezPath}?enabled=1`, { headers: withSession("sid=fee-activation", ["superuser"]) })).text();
+    assert.match(activePage, /Active — used for New Booking quotes/);
+    assert.match(activePage, /Schedule enabled as version 3/);
+    assert.match(activePage, new RegExp(`Verified on ${yesterday} by bookings@romanairporttransfers\\.co\\.uk`));
+    assert.match(activePage, /<li><strong>Version 3<\/strong> — bookings@romanairporttransfers\.co\.uk/);
+    assert.match(activePage, /name="action" value="disable"/);
+
+    assert.equal((await enable()).status, 409, "a stale version cannot be enabled");
+
+    // Editing an active schedule appends an inactive, unverified version.
+    const edited = await postForm(lezPath, postCookie, roadChargeForm("london-lez", token, 3, { "amount_lez-vans-specialist-minibuses": "101.00" }));
+    assert.equal(edited.status, 303);
+    assert.equal(feeSchedules.current("london-lez").status, "inactive");
+    assert.equal((feeSchedules.current("london-lez").schedule as { verification: unknown }).verification, null);
+
+    // Removing the effective date makes the schedule impossible to enable.
+    const noDate = await postForm(lezPath, postCookie, roadChargeForm("london-lez", token, 4, { effectiveFrom: "" }));
+    assert.equal(noDate.status, 303);
+    const blocked = await postForm(activationPath, postCookie, new URLSearchParams({ _csrf: token, baseVersion: "5", action: "enable", verifiedOn: yesterday, confirmSources: "yes" }));
+    assert.equal(blocked.status, 400);
+    assert.match(await blocked.text(), /The effective-from date is unknown/);
+    assert.equal(feeSchedules.current("london-lez").status, "inactive");
+
+    const restored = await postForm(lezPath, postCookie, roadChargeForm("london-lez", token, 5));
+    assert.equal(restored.status, 303);
+    assert.equal((await postForm(activationPath, postCookie, new URLSearchParams({ _csrf: token, baseVersion: "6", action: "enable", verifiedOn: yesterday, confirmSources: "yes" }))).status, 303);
+    const disabled = await postForm(activationPath, postCookie, new URLSearchParams({ _csrf: token, baseVersion: "7", action: "disable" }));
+    assert.equal(disabled.status, 303);
+    assert.equal(disabled.headers.get("location"), `${lezPath}?disabled=1`);
+    assert.equal(feeSchedules.current("london-lez").status, "inactive");
+    assert.deepEqual(feeSchedules.history("london-lez").map((entry) => entry.version), [8, 7, 6, 5, 4, 3, 2, 1]);
+
+    // Schemes whose route exposure is not verified cannot be enabled even with confirmation.
+    for (const [scheme, path, pattern] of [
+      ["london-ulez", "/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/fee-settings", /ULEZ route exposure uses a boundary dataset/],
+      ["london-congestion-charge", "/settings/toll-fees/london-lez-ulez-congestion-charge/london-congestion-charge/fee-settings", /Congestion Charge route exposure uses a boundary dataset/],
+      ["blackwall-silvertown-tunnels", "/settings/toll-fees/blackwall-silvertown-tunnels/fee-settings", /unverified reference geometry/]
+    ] as const) {
+      const version = feeSchedules.current(scheme).currentVersion;
+      const response = await postForm(`${path}/activation`, postCookie, new URLSearchParams({ _csrf: token, baseVersion: String(version), action: "enable", verifiedOn: yesterday, confirmSources: "yes" }));
+      assert.equal(response.status, 400, `${scheme} must not be enabled`);
+      assert.match(await response.text(), pattern);
+      assert.equal(feeSchedules.current(scheme).status, "inactive");
+      assert.equal(feeSchedules.current(scheme).currentVersion, version);
+    }
+
+    // Dartford has no activation route and remains a legacy inactive draft.
+    const dartford = await postForm("/settings/toll-fees/dartford-crossing/fee-settings/activation", postCookie, new URLSearchParams({ _csrf: token, baseVersion: "1", action: "enable", verifiedOn: yesterday, confirmSources: "yes" }));
+    assert.equal(dartford.status, 404);
+    assert.equal(feeSchedules.current("dartford-crossing").status, "draft_inactive");
+    feeSchedules.reset();
+  });
+
+  test("Dartford and shared Blackwall/Silvertown schedules keep their rates; Dartford stays a draft and the tunnel schedule is structured and inactive", async () => {
     feeSchedules.reset();
     const cookie = "sid=crossing-fees";
     const headers = withSession(cookie, ["superuser"]);
@@ -1200,57 +1330,19 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const tunnelResponse = await fetch(`${baseUrl}${tunnelPath}`, { headers });
     const tunnelBody = await tunnelResponse.text();
     assert.equal(tunnelResponse.status, 200);
-    const tunnels = crossingFeeScheduleDrafts["blackwall-silvertown-tunnels"];
-    assert.equal(tunnels.status, "draft_inactive");
-    assert.equal(tunnels.active, false);
-    assert.equal(tunnels.bookingPriceUsage, "never");
-    assert.deepEqual(tunnels.rates.map((rate) => [rate.vehicleClass, rate.paymentMethod, rate.amount]), [
-      ["Motorcycles, mopeds, motor tricycles", "Auto Pay off-peak", "1.55"],
-      ["Motorcycles, mopeds, motor tricycles", "Auto Pay peak", "2.60"],
-      ["Motorcycles, mopeds, motor tricycles", "Phone/online", "2.60"],
-      ["Cars and small vans", "Auto Pay off-peak", "1.55"],
-      ["Cars and small vans", "Auto Pay peak", "4.20"],
-      ["Cars and small vans", "Phone/online", "4.20"],
-      ["Large vans", "Auto Pay off-peak", "2.60"],
-      ["Large vans", "Auto Pay peak", "6.80"],
-      ["Large vans", "Phone/online", "6.80"],
-      ["Heavy goods vehicles", "Auto Pay off-peak", "5.25"],
-      ["Heavy goods vehicles", "Auto Pay peak", "10.50"],
-      ["Heavy goods vehicles", "Phone/online", "10.50"]
-    ]);
-    assert.match(tunnelBody, /Blackwall and Silvertown tunnels draft schedule/);
-    assert.match(tunnelBody, /Draft \/ Inactive — not used for booking prices/);
-    assert.match(tunnelBody, /Changes do not affect estimates, bookings, invoices, notifications, or customer charges/);
-    assert.match(tunnelBody, /One shared charging schedule covers Blackwall and Silvertown tunnels/);
-    assert.match(tunnelBody, /each crossing must retain its actual tunnel identity \(Blackwall or Silvertown\)/);
-    assert.match(tunnelBody, /per crossing, in either direction/);
-    assert.match(tunnelBody, /06:00–22:00 UK local time every day except Christmas Day \(25 December\)/);
-    assert.match(tunnelBody, /Weekdays: northbound 06:00–10:00; southbound 16:00–19:00/);
-    assert.match(tunnelBody, /Off-peak applies at other chargeable times and throughout weekends/);
-    assert.match(tunnelBody, /Off-peak rates are available only with Auto Pay/);
-    assert.match(tunnelBody, /Without Auto Pay, the peak\/phone-or-online rate applies at all chargeable times/);
-    assert.match(tunnelBody, /Monday–Friday bank holidays is unresolved and is not assumed/);
-    assert.match(tunnelBody, /Vehicle-category mapping is unresolved and is not inferred/);
-    assert.match(tunnelBody, /No source URL, licence, verification date, or effective date was supplied/);
-    assert.match(tunnelBody, /source URL not provided/);
-    assert.match(tunnelBody, /URL not provided; unknown/);
-    assert.match(tunnelBody, /small vans/);
-    assert.match(tunnelBody, /large vans/);
-    assert.match(tunnelBody, /Eligible residents on certain benefits, sole traders, small businesses and charities may qualify/);
-    assert.match(tunnelBody, /some vehicles may be exempt or receive 100% discount/);
-    assert.doesNotMatch(tunnelBody, /£180|£90|PCN|penalt/i);
+    const tunnels = roadChargeScheduleSeeds["blackwall-silvertown-tunnels"];
+    assert.match(tunnelBody, /Blackwall and Silvertown tunnels fee schedule/);
+    assert.match(tunnelBody, /Inactive — not used for booking prices/);
+    assert.match(tunnelBody, /Cannot be enabled yet/);
+    assert.match(tunnelBody, /unverified reference geometry/);
+    assert.match(tunnelBody, /name="effectiveFrom" type="date" value="2026-09-21"/);
+    assert.match(tunnelBody, /silvertown-tunnel-charging-statement-effective-september-2026\.pdf<\/a> — effective 2026-09-21/);
     for (const rate of tunnels.rates) {
-      const rateCard = tunnelBody.match(new RegExp(`<fieldset class="london-fee-draft__rate">[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?</fieldset>`))?.[0];
-      assert.ok(rateCard, `rate card should include ${rate.key}`);
-      assert.ok(rateCard.includes(`<legend>${rate.vehicleClass} — ${rate.paymentMethod}</legend>`));
-      assert.match(rateCard, new RegExp(`<label for="london-fee-amount-${rate.key}">Amount \\(GBP per crossing\\)<\\/label>`));
-      assert.match(rateCard, new RegExp(`id="london-fee-amount-${rate.key}"[\\s\\S]*?name="amount_${rate.key}"[\\s\\S]*?value="${rate.amount}"`));
-      assert.match(rateCard, /<summary>Rate conditions<\/summary>/);
-      assert.ok(rateCard.includes(rate.chargingPeriod));
-      assert.ok(rateCard.includes(rate.applicability));
-      assert.ok(rateCard.includes(rate.crossingBasis));
+      assert.match(tunnelBody, new RegExp(`<label for="road-charge-amount-${rate.key}">Amount \\(GBP per crossing\\)</label>[\\s\\S]*?value="${rate.amount.replace(".", "\\.")}"`));
     }
-    for (const rate of [...dartford.rates, ...tunnels.rates]) {
+    assert.deepEqual(tunnels.rates.map((rate) => rate.amount), ["1.55", "2.60", "2.60", "1.55", "4.20", "4.20", "2.60", "6.80", "6.80", "5.25", "10.50", "10.50"]);
+    assert.doesNotMatch(tunnelBody, /£180|£90|PCN|penalt/i);
+    for (const rate of dartford.rates) {
       assert.equal(rate.currency, "GBP");
       assert.equal(rate.crossingBasis.includes("Per individual crossing"), true);
     }
@@ -1259,7 +1351,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.ok(crossingMigration);
     assert.match(crossingMigration.sql, /'dartford-crossing', 'blackwall-silvertown-tunnels'/);
     assert.ok(crossingMigration.sql.includes(JSON.stringify(dartford)));
-    assert.ok(crossingMigration.sql.includes(JSON.stringify(tunnels)));
+    assert.ok(crossingMigration.sql.includes(JSON.stringify(crossingFeeScheduleDrafts["blackwall-silvertown-tunnels"])), "the historical tunnel draft is preserved");
 
     const dartfordCsrfCookie = dartfordResponse.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
     const token = dartfordBody.match(/name="_csrf" value="([^"]+)"/)?.[1];
@@ -1303,20 +1395,13 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(savedDartfordPage, /<li><strong>Version 2<\/strong> — bookings@romanairporttransfers\.co\.uk/);
 
     const tunnelRateToEdit = tunnels.rates[0];
-    const tunnelForm = new URLSearchParams({ _csrf: token, baseVersion: "1" });
-    for (const rate of tunnels.rates) {
-      tunnelForm.set(`amount_${rate.key}`, rate.key === tunnelRateToEdit.key ? "1.56" : rate.amount);
-    }
-    const savedTunnel = await fetch(`${baseUrl}${tunnelPath}`, {
-      method: "POST",
-      headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
-      body: tunnelForm,
-      redirect: "manual"
-    });
+    const tunnelForm = roadChargeForm("blackwall-silvertown-tunnels", token, 2, { [`amount_${tunnelRateToEdit.key}`]: "1.56" });
+    const savedTunnel = await postForm(tunnelPath, postCookie, tunnelForm);
     assert.equal(savedTunnel.status, 303);
     const savedTunnelPage = await (await fetch(`${baseUrl}${tunnelPath}?saved=1`, { headers })).text();
-    assert.match(savedTunnelPage, /Draft changes saved as version 2/);
+    assert.match(savedTunnelPage, /Changes saved as version 3/);
     assert.match(savedTunnelPage, /value="1\.56"/);
+    assert.equal(feeSchedules.current("dartford-crossing").currentVersion, 2, "the tunnel edit leaves Dartford unchanged");
   });
 
   test("London LEZ boundary metadata, map configuration and data endpoint are protected", async () => {
@@ -1453,8 +1538,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(referenceBody, /Both supplied Polygon features/);
     assert.match(referenceBody, /Unknown \(not provided\)/);
     assert.match(referenceBody, /does not calculate fees or charge customers/);
-    assert.match(feesBody, /No fee schedule is configured/);
-    assert.match(feesBody, /does not calculate fees or charge customers/);
+    assert.match(feesBody, /London Congestion Charge fee schedule/);
+    assert.match(feesBody, /Inactive — not used for booking prices/);
     assert.doesNotMatch(feesBody, /boundary\.json|CLoCCS|SHAPE_AREA/);
 
     const dataResponse = await fetch(`${baseUrl}${basePath}/reference-data/boundary.json`, { headers });
@@ -2908,7 +2993,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     for (const leaf of feeScheduleHistoryLeaves) {
       feeSchedules.reset();
       const initial = await (await fetch(`${baseUrl}${leaf.path}`, { headers })).text();
-      assert.deepEqual(listedVersions(initial), [1]);
+      // Migration 0035 appended a structured version 2 on top of each legacy draft except Dartford.
+      assert.deepEqual(listedVersions(initial), leaf.scheme === "dartford-crossing" ? [1] : [2, 1]);
       assert.doesNotMatch(initial, /View all history/, `${leaf.scheme} has no full-history link with one version`);
 
       feeSchedules.seedHistory(leaf.scheme, 23);
@@ -2919,7 +3005,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       const firstPage = await fetch(`${baseUrl}${leaf.path}/history`, { headers });
       const firstBody = await firstPage.text();
       assert.equal(firstPage.status, 200);
-      assert.match(firstBody, /Draft version history/);
+      assert.match(firstBody, leaf.scheme === "dartford-crossing" ? /Draft version history/ : /Version history/);
       assert.deepEqual(listedVersions(firstBody), Array.from({ length: 20 }, (_, index) => 23 - index));
       assert.match(firstBody, /Page 1 of 2/);
       assert.ok(firstBody.includes(`href="${leaf.path}/history?page=2" rel="next"`));
@@ -2944,8 +3030,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.ok(csrfCookie);
     assert.ok(token);
     sessionsByCookie.set(`sid=fee-history; ${csrfCookie}`, sessionsByCookie.get("sid=fee-history"));
-    const form = new URLSearchParams({ _csrf: token, baseVersion: "23" });
-    for (const rate of londonFeeScheduleDrafts["london-lez"].rates) form.set(`amount_${rate.key}`, rate.amount.toFixed(2));
+    const form = roadChargeForm("london-lez", token, 23);
     const saved = await fetch(`${baseUrl}${lezPath}`, {
       method: "POST",
       headers: { cookie: `sid=fee-history; ${csrfCookie}`, "content-type": "application/x-www-form-urlencoded" },

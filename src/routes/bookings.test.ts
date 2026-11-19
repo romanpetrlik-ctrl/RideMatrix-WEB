@@ -36,14 +36,15 @@ function reference(slabRate = "2.00"): PricingReferenceData {
     airports: [airport],
     pois: [],
     poiFees: [],
-    operationalBase: null
+    operationalBase: null,
+    roadChargeSchedules: {}
   };
 }
 
 const resolvedRoute: BookingRoute = {
   status: "resolved", provider: "google-routes", distanceMeters: 16093, distanceMiles: "10.000000", durationSeconds: 1500,
   trafficModel: "traffic-aware", path: [{ latitude: 51.471, longitude: -0.451 }, { latitude: 51.5, longitude: -0.12 }],
-  tollsReported: false, zones: [], computedAt: timestamp
+  tollsReported: false, zones: [], tunnelCrossings: [], computedAt: timestamp
 };
 
 type Saved = Parameters<NonNullable<BookingsRouterOptions["createBooking"]>>;

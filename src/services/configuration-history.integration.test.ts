@@ -51,12 +51,14 @@ test("fare settings history is limited and paginated in SQL without changing sto
 
 test("fee schedule history pages are scheme-scoped and deterministic when timestamps tie", async () => {
   const seeded = await londonFeeScheduleStore.load("london-lez");
-  assert.equal(seeded.historyTotal, 1);
+  // Version 1 is the legacy draft; migration 0035 appended the structured inactive version 2.
+  assert.equal(seeded.currentVersion, 2);
+  assert.equal(seeded.historyTotal, 2);
   // Append-only rows written with one shared timestamp: ordering must still follow version.
   await query(
     `INSERT INTO london_fee_schedule_versions (id, scheme, version, status, payload, actor_account_id, actor_email, created_at)
      SELECT 'history-test-' || n, scheme, n, status, payload, $2, $3, '2026-11-01T00:00:00Z'
-       FROM london_fee_schedule_versions, generate_series(2, 25) AS n
+       FROM london_fee_schedule_versions, generate_series(3, 25) AS n
       WHERE scheme = 'london-lez' AND version = $1`,
     [seeded.currentVersion, actor.accountId, actor.email]
   );
@@ -73,10 +75,10 @@ test("fee schedule history pages are scheme-scoped and deterministic when timest
   assert.deepEqual(second.entries.map((entry) => entry.version), [5, 4, 3, 2, 1]);
 
   const other = await londonFeeScheduleStore.loadHistoryPage("london-ulez", 1);
-  assert.deepEqual(other.entries.map((entry) => entry.version), [1], "other schemes are unaffected");
+  assert.deepEqual(other.entries.map((entry) => entry.version), [2, 1], "other schemes are unaffected");
 
   const amounts = Object.fromEntries(snapshot.schedule.rates.map((rate) => [rate.key, Number(rate.amount).toFixed(2)]));
-  await londonFeeScheduleStore.save("london-lez", 25, amounts, actor);
+  await londonFeeScheduleStore.save("london-lez", 25, amounts, actor, { effectiveFrom: "2021-03-01", effectiveUntil: null });
   const afterSave = await londonFeeScheduleStore.load("london-lez");
   assert.equal(afterSave.currentVersion, 26);
   assert.deepEqual(afterSave.history.map((entry) => entry.version), [26, 25, 24]);

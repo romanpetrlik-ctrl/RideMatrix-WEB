@@ -20,6 +20,13 @@ import {
   type LondonFeeScheduleStore,
   validateLondonFeeRateAmounts
 } from "../services/london-fee-schedules";
+import {
+  activationBlockers,
+  isRoadChargeSchedule,
+  RoadChargeActivationError,
+  validateRoadChargeScheduleEdit,
+  type RoadChargeSchedule
+} from "../services/road-charge-schedules";
 import { getLondonLezBoundary, londonLezBoundaryMetadata } from "../services/london-lez-boundary";
 import { getLondonUlezBoundary, londonUlezBoundaryMetadata } from "../services/london-ulez-boundary";
 import {
@@ -87,6 +94,9 @@ type TollFeesRenderOptions = {
   feeScheduleErrors?: Record<string, string>;
   feeScheduleFormError?: string;
   submittedAmounts?: Record<string, string>;
+  submittedEffectiveDates?: { effectiveFrom: string; effectiveUntil: string };
+  activationErrors?: string[];
+  submittedVerifiedOn?: string;
   airportFeeRecords?: AirportFeeRecord[];
   airportFeeForm?: AirportFeeFormValues;
   airportFeeErrors?: Record<string, string>;
@@ -400,6 +410,38 @@ type FareSettingsPage = {
   subpageTitle?: string;
 };
 
+type RoadChargeViewState = {
+  saved: "saved" | "enabled" | "disabled" | null;
+  errors: Record<string, string>;
+  formError: string | null;
+  submittedAmounts: Record<string, string>;
+  submittedEffectiveDates: { effectiveFrom: string; effectiveUntil: string } | null;
+  activationErrors: string[];
+  submittedVerifiedOn: string;
+};
+
+/** Plain view model for the structured schedule partial (the partial escapes every value). */
+function roadChargeScheduleView(schedule: RoadChargeSchedule, version: number, formAction: string, state: RoadChargeViewState) {
+  const blockers = schedule.active ? [] : activationBlockers(schedule);
+  return {
+    ...state,
+    schedule,
+    version,
+    formAction,
+    activationAction: `${formAction}/activation`,
+    historyLabel: "Version history",
+    blockers,
+    canEnable: !schedule.active && blockers.length === 0,
+    effectiveFromValue: state.submittedEffectiveDates?.effectiveFrom ?? schedule.effectiveFrom ?? "",
+    effectiveUntilValue: state.submittedEffectiveDates?.effectiveUntil ?? schedule.effectiveUntil ?? "",
+    rates: schedule.rates.map((rate) => ({
+      ...rate,
+      value: Object.prototype.hasOwnProperty.call(state.submittedAmounts, rate.key) ? state.submittedAmounts[rate.key] : rate.amount,
+      error: state.errors[rate.key] ?? null
+    }))
+  };
+}
+
 async function renderTollFeesPage(
   req: Request,
   res: Response,
@@ -431,6 +473,8 @@ async function renderTollFeesPage(
         ? "london-lez"
         : page.area?.slug === "london-ulez" || page.category?.slug === "london-ulez"
           ? "london-ulez"
+          : page.area?.slug === "london-congestion-charge"
+            ? "london-congestion-charge"
           : page.category?.slug === "dartford-crossing" || page.area?.slug === "dartford-crossing"
             ? "dartford-crossing"
             : page.category?.slug === "blackwall-silvertown-tunnels" || page.area?.slug === "blackwall-silvertown-tunnels"
@@ -481,6 +525,17 @@ async function renderTollFeesPage(
       referenceDataDescription,
       feeSettingsDescription,
       feeScheduleSnapshot,
+      roadChargeView: feeScheduleSnapshot && isRoadChargeSchedule(feeScheduleSnapshot.schedule)
+        ? roadChargeScheduleView(feeScheduleSnapshot.schedule, feeScheduleSnapshot.currentVersion, `${leafPathFor(page)}/fee-settings`, {
+          saved: req.query.saved === "1" ? "saved" : req.query.enabled === "1" ? "enabled" : req.query.disabled === "1" ? "disabled" : null,
+          errors: renderOptions.feeScheduleErrors ?? {},
+          formError: renderOptions.feeScheduleFormError ?? null,
+          submittedAmounts: renderOptions.submittedAmounts ?? {},
+          submittedEffectiveDates: renderOptions.submittedEffectiveDates ?? null,
+          activationErrors: renderOptions.activationErrors ?? [],
+          submittedVerifiedOn: renderOptions.submittedVerifiedOn ?? ""
+        })
+        : undefined,
       airportFeeRecords,
       airportFeeForm,
       airportFeeTimingSetupIncomplete: Boolean(
@@ -1695,7 +1750,14 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         }
 
         const snapshot = await feeScheduleStore.load(scheme);
-        const { amounts, errors } = validateLondonFeeRateAmounts(snapshot.schedule, req.body);
+        const structured = isRoadChargeSchedule(snapshot.schedule) ? snapshot.schedule : null;
+        const structuredEdit = structured ? validateRoadChargeScheduleEdit(structured, req.body) : null;
+        const { amounts, errors } = structuredEdit
+          ?? validateLondonFeeRateAmounts(snapshot.schedule as Exclude<typeof snapshot.schedule, RoadChargeSchedule>, req.body);
+        const submittedEffectiveDates = structured ? {
+          effectiveFrom: typeof req.body?.effectiveFrom === "string" ? req.body.effectiveFrom.slice(0, 20) : "",
+          effectiveUntil: typeof req.body?.effectiveUntil === "string" ? req.body.effectiveUntil.slice(0, 20) : ""
+        } : undefined;
         const rawVersion = req.body?.baseVersion;
         const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
           ? Number(rawVersion)
@@ -1712,6 +1774,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
             feeScheduleErrors: errors,
             feeScheduleFormError: "The draft version is missing or invalid. Reload this page before saving.",
             submittedAmounts,
+            submittedEffectiveDates,
             statusCode: 400
           });
         }
@@ -1719,7 +1782,9 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, airportFeesStore, {
             feeScheduleSnapshot: snapshot,
             feeScheduleErrors: errors,
+            feeScheduleFormError: structured ? "Correct the highlighted fields. Nothing was saved." : undefined,
             submittedAmounts,
+            submittedEffectiveDates,
             statusCode: 400
           });
         }
@@ -1728,7 +1793,7 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           await feeScheduleStore.save(scheme, expectedVersion, amounts, {
             accountId: session.user.id,
             email: session.user.email
-          });
+          }, structuredEdit ? { effectiveFrom: structuredEdit.effectiveFrom, effectiveUntil: structuredEdit.effectiveUntil } : undefined);
         } catch (error) {
           if (!(error instanceof LondonFeeScheduleVersionConflictError)) throw error;
           const latest = await feeScheduleStore.load(scheme);
@@ -1756,8 +1821,9 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     router.get(historyPath, (req, res, next) => {
       const breadcrumbs = buildBreadcrumbs(feeSettingsPage);
       breadcrumbs[breadcrumbs.length - 1].href = feeSettingsPath;
-      breadcrumbs.push({ label: "Draft version history" });
-      const title = `${pageTitle(feeSettingsPage)}: Draft version history`;
+      const historyLabel = scheme === "dartford-crossing" ? "Draft version history" : "Version history";
+      breadcrumbs.push({ label: historyLabel });
+      const title = `${pageTitle(feeSettingsPage)}: ${historyLabel}`;
       void renderConfigurationHistoryPage(req, res, next, options.appTitle, {
         title,
         heading: title,
@@ -1767,9 +1833,69 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
         backHref: feeSettingsPath,
         backLabel: pageTitle(feeSettingsPage),
         fallbackActor: "Initial supplied draft",
-        emptyMessage: "No draft versions have been recorded yet.",
+        emptyMessage: "No versions have been recorded yet.",
         loadPage: (requestedPage) => feeScheduleStore.loadHistoryPage(scheme, requestedPage)
       });
+    });
+  };
+
+  const registerFeeScheduleActivation = (
+    feeSettingsPath: string,
+    scheme: LondonFeeScheduleScheme,
+    page: TollFeesPage
+  ) => {
+    const feeSettingsPage: TollFeesPage = { ...page, section: "fee-settings" };
+    router.post(`${feeSettingsPath}/activation`, requireCsrfToken({ appTitle: options.appTitle }), async (req, res, next) => {
+      try {
+        const session = await getSessionAccount(req.headers.cookie);
+        if (!session.authenticated || !session.user) return res.redirect("/access");
+        const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+        if (!canAccessWorkspace(roles, systemSettingsModule.key)) {
+          return renderUnavailable(res, options.appTitle, systemSettingsModule);
+        }
+
+        const snapshot = await feeScheduleStore.load(scheme);
+        const action = req.body?.action;
+        const rawVersion = req.body?.baseVersion;
+        const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion) ? Number(rawVersion) : NaN;
+        const verifiedOn = typeof req.body?.verifiedOn === "string" ? req.body.verifiedOn.trim().slice(0, 20) : "";
+        const rerender = (statusCode: number, extra: TollFeesRenderOptions) =>
+          renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, airportFeesStore, {
+            feeScheduleSnapshot: snapshot,
+            submittedVerifiedOn: verifiedOn,
+            statusCode,
+            ...extra
+          });
+        if (!isRoadChargeSchedule(snapshot.schedule)) {
+          return rerender(400, { activationErrors: ["This schedule is a legacy draft and cannot be enabled."] });
+        }
+        if ((action !== "enable" && action !== "disable") || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+          return rerender(400, { activationErrors: ["The request is missing the action or schedule version. Reload this page and try again."] });
+        }
+
+        try {
+          await feeScheduleStore.setActivation(
+            scheme,
+            expectedVersion,
+            action === "enable"
+              ? { action, verifiedOn, sourcesConfirmed: req.body?.confirmSources === "yes" }
+              : { action },
+            { accountId: session.user.id, email: session.user.email },
+            new Date()
+          );
+        } catch (error) {
+          if (error instanceof RoadChargeActivationError) return rerender(400, { activationErrors: error.blockers });
+          if (!(error instanceof LondonFeeScheduleVersionConflictError)) throw error;
+          return renderTollFeesPage(req, res, next, options.appTitle, feeSettingsPage, feeScheduleStore, airportFeesStore, {
+            feeScheduleSnapshot: await feeScheduleStore.load(scheme),
+            activationErrors: [error.message],
+            statusCode: 409
+          });
+        }
+        return res.redirect(303, `${feeSettingsPath}?${action === "enable" ? "enabled" : "disabled"}=1`);
+      } catch (error) {
+        return next(error);
+      }
     });
   };
 
@@ -1863,10 +1989,11 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           });
         }
 
-        if (area.slug === "london-lez" || area.slug === "london-ulez") {
+        if (area.slug === "london-lez" || area.slug === "london-ulez" || area.slug === "london-congestion-charge") {
           const scheme: LondonFeeScheduleScheme = area.slug;
           registerFeeSchedulePost(`${areaPath}/fee-settings`, scheme, { category, area });
           registerFeeScheduleHistory(`${areaPath}/fee-settings`, scheme, { category, area });
+          registerFeeScheduleActivation(`${areaPath}/fee-settings`, scheme, { category, area });
         }
       }
       continue;
@@ -1881,6 +2008,9 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
     if (category.slug === "dartford-crossing" || category.slug === "blackwall-silvertown-tunnels") {
       registerFeeSchedulePost(`${categoryPath}/fee-settings`, category.slug, { category });
       registerFeeScheduleHistory(`${categoryPath}/fee-settings`, category.slug, { category });
+    }
+    if (category.slug === "blackwall-silvertown-tunnels") {
+      registerFeeScheduleActivation(`${categoryPath}/fee-settings`, category.slug, { category });
     }
   }
 

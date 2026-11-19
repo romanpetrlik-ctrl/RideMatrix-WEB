@@ -11,6 +11,8 @@ import {
   type FixedFareEndpoint
 } from "./fare-settings";
 import type { PoiFeeRecord, PoiRecord } from "./poi-management";
+import { roadChargeLines, type RoadChargeScheduleSet } from "./road-charge-pricing";
+import { EMPTY_ROAD_CHARGE_PROFILE, type RoadChargeProfile } from "./road-charge-schedules";
 
 export type BookingLocationKind = "airport" | "poi" | "address";
 
@@ -40,6 +42,7 @@ export type PriceLineType =
   | "poi-fee"
   | "toll"
   | "road-charge"
+  | "tunnel-charge"
   | "parking"
   | "extra-waiting"
   | "time-surcharge"
@@ -64,6 +67,8 @@ export type BookingPricingInputs = {
   confirmedPoiFeeIds: string[];
   parkingRequired: boolean;
   extraWaitingMinutes: number;
+  /** Dispatcher-stated LEZ/ULEZ/Congestion Charge/tunnel answers; blanks leave applicable charges unresolved. */
+  roadChargeProfile?: RoadChargeProfile;
 };
 
 export type BookingPricingContext = {
@@ -74,6 +79,8 @@ export type BookingPricingContext = {
   poiFees: PoiFeeRecord[];
   operationalBase: OperationalBase | null;
   route: BookingRoute;
+  /** Latest stored LEZ/ULEZ/Congestion Charge/tunnel schedule versions; missing or inactive schedules leave charges unresolved. */
+  roadChargeSchedules?: RoadChargeScheduleSet;
 };
 
 export type BookingPrice = {
@@ -308,44 +315,6 @@ function poiLines(inputs: BookingPricingInputs, context: BookingPricingContext):
   return lines;
 }
 
-function routeChargeLines(context: BookingPricingContext): PriceLine[] {
-  const route = context.route;
-  if (route.status !== "resolved") {
-    return [
-      { type: "toll", label: "Toll charges", status: "unresolved", amount: null, basis: "Route unresolved; tolls cannot be assessed.", source: {} },
-      { type: "road-charge", label: "Road / zone charges", status: "unresolved", amount: null, basis: "Route unresolved; ULEZ and Congestion Charge exposure cannot be assessed.", source: {} }
-    ];
-  }
-  const lines: PriceLine[] = [];
-  if (route.tollsReported) {
-    lines.push({
-      type: "toll",
-      label: "Toll charges",
-      status: "unresolved",
-      amount: null,
-      basis: "The routing provider reports tolls on this route. No active toll schedule is configured for booking prices, so the amount cannot be calculated.",
-      source: { provider: route.provider }
-    });
-  } else {
-    lines.push({ type: "toll", label: "Toll charges", status: "not-applicable", amount: null, basis: "No tolls reported on this route.", source: { provider: route.provider } });
-  }
-  if (route.zones.length) {
-    for (const zone of route.zones) {
-      lines.push({
-        type: "road-charge",
-        label: `Road charge — ${zone.label}`,
-        status: "unresolved",
-        amount: null,
-        basis: "The route enters this charging zone. The London fee schedules are draft/inactive and not approved for booking prices, so the amount cannot be calculated.",
-        source: { zone: zone.zone }
-      });
-    }
-  } else {
-    lines.push({ type: "road-charge", label: "Road / zone charges", status: "not-applicable", amount: null, basis: "The route does not enter the London ULEZ or Congestion Charge boundaries.", source: {} });
-  }
-  return lines;
-}
-
 function minutesOf(time: string): number {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
@@ -444,7 +413,7 @@ export function priceBooking(inputs: BookingPricingInputs, context: BookingPrici
     discountLine(inputs, context, ride),
     ...airportLines(inputs, context),
     ...poiLines(inputs, context),
-    ...routeChargeLines(context),
+    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, inputs.roadChargeProfile ?? EMPTY_ROAD_CHARGE_PROFILE, context.route, context.roadChargeSchedules ?? {}),
     ...waitingAndParkingLines(inputs, context),
     surchargeLine(inputs, context),
     fixedFareLine(inputs, context),

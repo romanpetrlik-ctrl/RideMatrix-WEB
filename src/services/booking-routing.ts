@@ -1,12 +1,36 @@
-import { getLondonCongestionChargeBoundary } from "./london-congestion-charge-boundary";
-import { getLondonUlezBoundary } from "./london-ulez-boundary";
+import { getLondonCongestionChargeBoundary, londonCongestionChargeBoundaryMetadata } from "./london-congestion-charge-boundary";
+import { getLondonLezBoundary, londonLezBoundaryMetadata } from "./london-lez-boundary";
+import { getLondonUlezBoundary, londonUlezBoundaryMetadata } from "./london-ulez-boundary";
 import { readMapConfiguration } from "./maps";
 
 export type RoutePoint = { latitude: number; longitude: number };
 
-export type RoadChargeZoneId = "london-ulez" | "london-congestion-charge";
+export type RoadChargeZoneId = "london-lez" | "london-ulez" | "london-congestion-charge";
 
-export type RoadChargeZoneDetection = { zone: RoadChargeZoneId; label: string };
+export type RoadChargeZoneDetection = {
+  zone: RoadChargeZoneId;
+  label: string;
+  /** Where the ordered route geometry first touches the zone polygon. */
+  evidence: {
+    method: "route-polygon-intersection";
+    /** Index of the route path segment (path[i] → path[i + 1]) or vertex where contact was first found. */
+    segmentIndex: number;
+    firstContact: RoutePoint;
+    boundaryDataset: string;
+  };
+};
+
+export type TunnelId = "blackwall" | "silvertown";
+
+export type TunnelCrossing = {
+  tunnel: TunnelId;
+  label: string;
+  direction: "northbound" | "southbound";
+  segmentIndex: number;
+  point: RoutePoint;
+  /** Provenance of the reference geometry used to identify the crossing. */
+  geometry: { verified: boolean; provenance: string };
+};
 
 export type ResolvedBookingRoute = {
   status: "resolved";
@@ -21,6 +45,8 @@ export type ResolvedBookingRoute = {
   /** Whether the provider reported tolls on this route; null when the provider did not say. */
   tollsReported: boolean | null;
   zones: RoadChargeZoneDetection[];
+  /** Blackwall/Silvertown tunnel crossings identified from the route geometry, in route order. */
+  tunnelCrossings: TunnelCrossing[];
   computedAt: string;
 };
 
@@ -87,15 +113,39 @@ function pointInPolygon(point: RoutePoint, polygon: Polygon): boolean {
   return !polygon.slice(1).some((hole) => pointInRing(point.longitude, point.latitude, hole));
 }
 
-type ZoneShape = { id: RoadChargeZoneId; label: string; polygons: Polygon[]; bbox: [number, number, number, number] };
+type EdgeGrid = Map<string, number[]>;
 
-function zoneShape(id: RoadChargeZoneId, label: string, features: Array<{ geometry: { type: string; coordinates: unknown } }>): ZoneShape {
+type ZoneShape = {
+  id: RoadChargeZoneId;
+  label: string;
+  dataset: string;
+  polygons: Polygon[];
+  bbox: [number, number, number, number];
+  /** Flat [lng1, lat1, lng2, lat2, ...] polygon edges, indexed by grid cell for segment intersection tests. */
+  edges: number[];
+  grid: EdgeGrid;
+};
+
+const GRID_CELL_DEGREES = 0.01;
+
+function cellKey(x: number, y: number): string {
+  return `${x}:${y}`;
+}
+
+function zoneShape(
+  id: RoadChargeZoneId,
+  label: string,
+  dataset: string,
+  features: Array<{ geometry: { type: string; coordinates: unknown } }>
+): ZoneShape {
   const polygons: Polygon[] = [];
   for (const feature of features) {
     if (feature.geometry.type === "Polygon") polygons.push(feature.geometry.coordinates as Polygon);
     else if (feature.geometry.type === "MultiPolygon") polygons.push(...feature.geometry.coordinates as Polygon[]);
   }
   const bbox: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+  const edges: number[] = [];
+  const grid: EdgeGrid = new Map();
   for (const polygon of polygons) {
     for (const [lng, lat] of polygon[0] ?? []) {
       bbox[0] = Math.min(bbox[0], lng);
@@ -103,51 +153,197 @@ function zoneShape(id: RoadChargeZoneId, label: string, features: Array<{ geomet
       bbox[2] = Math.max(bbox[2], lng);
       bbox[3] = Math.max(bbox[3], lat);
     }
+    for (const ring of polygon) {
+      for (let i = 1; i < ring.length; i += 1) {
+        const offset = edges.length;
+        const [x1, y1] = ring[i - 1];
+        const [x2, y2] = ring[i];
+        edges.push(x1, y1, x2, y2);
+        for (let cx = Math.floor(Math.min(x1, x2) / GRID_CELL_DEGREES); cx <= Math.floor(Math.max(x1, x2) / GRID_CELL_DEGREES); cx += 1) {
+          for (let cy = Math.floor(Math.min(y1, y2) / GRID_CELL_DEGREES); cy <= Math.floor(Math.max(y1, y2) / GRID_CELL_DEGREES); cy += 1) {
+            const key = cellKey(cx, cy);
+            const bucket = grid.get(key);
+            if (bucket) bucket.push(offset);
+            else grid.set(key, [offset]);
+          }
+        }
+      }
+    }
   }
-  return { id, label, polygons, bbox };
+  return { id, label, dataset, polygons, bbox, edges, grid };
+}
+
+/** Builds a zone from GeoJSON features; exported for tests that need small synthetic zones. */
+export function createRoadChargeZone(
+  id: RoadChargeZoneId,
+  label: string,
+  features: Array<{ geometry: { type: string; coordinates: unknown } }>,
+  dataset = "test fixture"
+): ZoneShape {
+  return zoneShape(id, label, dataset, features);
 }
 
 let cachedZones: ZoneShape[] | undefined;
 
+function datasetLabel(metadata: { title: string; verificationDate: string; datasetVersion?: string }): string {
+  return `${metadata.title} (${metadata.datasetVersion ? `dataset ${metadata.datasetVersion}, ` : ""}verification: ${metadata.verificationDate})`;
+}
+
 function loadZones(): ZoneShape[] {
   cachedZones ??= [
-    zoneShape("london-ulez", "London Ultra Low Emission Zone (ULEZ)", getLondonUlezBoundary().features),
-    zoneShape("london-congestion-charge", "London Congestion Charge zone", getLondonCongestionChargeBoundary().features)
+    zoneShape("london-lez", "London Low Emission Zone (LEZ)", datasetLabel(londonLezBoundaryMetadata), getLondonLezBoundary().features),
+    zoneShape("london-ulez", "London Ultra Low Emission Zone (ULEZ)", datasetLabel(londonUlezBoundaryMetadata), getLondonUlezBoundary().features),
+    zoneShape(
+      "london-congestion-charge",
+      "London Congestion Charge zone",
+      datasetLabel(londonCongestionChargeBoundaryMetadata),
+      getLondonCongestionChargeBoundary().features
+    )
   ];
   return cachedZones;
 }
 
-/** Splits each segment so consecutive points are at most ~0.001° apart (about 100 m) before zone tests. */
-function densify(path: RoutePoint[]): RoutePoint[] {
-  const result: RoutePoint[] = [];
-  for (let i = 0; i < path.length; i += 1) {
-    const point = path[i];
-    if (i > 0) {
-      const previous = path[i - 1];
-      const steps = Math.min(500, Math.ceil(Math.max(
-        Math.abs(point.latitude - previous.latitude),
-        Math.abs(point.longitude - previous.longitude)
-      ) / 0.001));
-      for (let step = 1; step < steps; step += 1) {
-        result.push({
-          latitude: previous.latitude + (point.latitude - previous.latitude) * step / steps,
-          longitude: previous.longitude + (point.longitude - previous.longitude) * step / steps
-        });
-      }
-    }
-    result.push(point);
-  }
-  return result;
+/** Returns t (0–1 along a→b) where segment a→b meets segment c→d, or null when they do not intersect. */
+function segmentIntersection(
+  ax: number, ay: number, bx: number, by: number,
+  cx: number, cy: number, dx: number, dy: number
+): number | null {
+  const rx = bx - ax;
+  const ry = by - ay;
+  const sx = dx - cx;
+  const sy = dy - cy;
+  const denominator = rx * sy - ry * sx;
+  if (denominator === 0) return null;
+  const qx = cx - ax;
+  const qy = cy - ay;
+  const t = (qx * sy - qy * sx) / denominator;
+  const u = (qx * ry - qy * rx) / denominator;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : null;
 }
 
-/** Returns the London charging zones that any point of the route geometry enters. */
+function insideZone(point: RoutePoint, zone: ZoneShape): boolean {
+  return point.longitude >= zone.bbox[0] && point.longitude <= zone.bbox[2]
+    && point.latitude >= zone.bbox[1] && point.latitude <= zone.bbox[3]
+    && zone.polygons.some((polygon) => pointInPolygon(point, polygon));
+}
+
+/** First point along the ordered route where it is inside, or crosses the boundary of, the zone. */
+function firstZoneContact(path: RoutePoint[], zone: ZoneShape): { segmentIndex: number; point: RoutePoint } | null {
+  for (let i = 0; i < path.length; i += 1) {
+    const a = path[i];
+    if (insideZone(a, zone)) return { segmentIndex: i, point: a };
+    const b = path[i + 1];
+    if (!b) break;
+    const minX = Math.min(a.longitude, b.longitude);
+    const maxX = Math.max(a.longitude, b.longitude);
+    const minY = Math.min(a.latitude, b.latitude);
+    const maxY = Math.max(a.latitude, b.latitude);
+    if (maxX < zone.bbox[0] || minX > zone.bbox[2] || maxY < zone.bbox[1] || minY > zone.bbox[3]) continue;
+    let best: number | null = null;
+    const seen = new Set<number>();
+    for (let cx = Math.floor(minX / GRID_CELL_DEGREES); cx <= Math.floor(maxX / GRID_CELL_DEGREES); cx += 1) {
+      for (let cy = Math.floor(minY / GRID_CELL_DEGREES); cy <= Math.floor(maxY / GRID_CELL_DEGREES); cy += 1) {
+        for (const offset of zone.grid.get(cellKey(cx, cy)) ?? []) {
+          if (seen.has(offset)) continue;
+          seen.add(offset);
+          const e = zone.edges;
+          const t = segmentIntersection(a.longitude, a.latitude, b.longitude, b.latitude, e[offset], e[offset + 1], e[offset + 2], e[offset + 3]);
+          if (t !== null && (best === null || t < best)) best = t;
+        }
+      }
+    }
+    if (best !== null) {
+      return {
+        segmentIndex: i,
+        point: { latitude: a.latitude + (b.latitude - a.latitude) * best, longitude: a.longitude + (b.longitude - a.longitude) * best }
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns each London charging zone the ordered route geometry enters: a route vertex inside the polygon or any
+ * route segment intersecting the polygon boundary. Endpoints alone are never used.
+ */
 export function detectRoadChargeZones(path: RoutePoint[], zones: ZoneShape[] = loadZones()): RoadChargeZoneDetection[] {
-  const dense = densify(path);
-  return zones.filter((zone) => dense.some((point) =>
-    point.longitude >= zone.bbox[0] && point.longitude <= zone.bbox[2] &&
-    point.latitude >= zone.bbox[1] && point.latitude <= zone.bbox[3] &&
-    zone.polygons.some((polygon) => pointInPolygon(point, polygon))
-  )).map((zone) => ({ zone: zone.id, label: zone.label }));
+  const detections: RoadChargeZoneDetection[] = [];
+  for (const zone of zones) {
+    const contact = firstZoneContact(path, zone);
+    if (!contact) continue;
+    detections.push({
+      zone: zone.id,
+      label: zone.label,
+      evidence: {
+        method: "route-polygon-intersection",
+        segmentIndex: contact.segmentIndex,
+        firstContact: { latitude: Number(contact.point.latitude.toFixed(6)), longitude: Number(contact.point.longitude.toFixed(6)) },
+        boundaryDataset: zone.dataset
+      }
+    });
+  }
+  return detections;
+}
+
+export type TunnelGate = {
+  tunnel: TunnelId;
+  label: string;
+  /** Mid-river line across the tunnel alignment, ordered west → east as [longitude, latitude]. */
+  gate: [[number, number], [number, number]];
+};
+
+export type TunnelReferenceGeometry = { verified: boolean; provenance: string; gates: TunnelGate[] };
+
+/**
+ * Mid-river crossing gates for the Blackwall and Silvertown tunnels. A route segment that crosses a gate is a
+ * crossing of that tunnel; the side it leaves gives the direction. These coordinates were derived from
+ * non-authoritative public map references, not TfL-published geometry, so the tunnel schedule cannot be enabled
+ * (see road-charge-schedules.ts) until they are replaced with verified data and `verified` is set.
+ */
+export const TUNNEL_REFERENCE_GEOMETRY: TunnelReferenceGeometry = {
+  verified: false,
+  provenance: "Approximate mid-river points derived from public map/encyclopaedia coordinates (Blackwall ≈ 51.50444, -0.00306; Silvertown ≈ 51.50472, 0.00806). Not TfL-published; tunnel alignment, gate extent and bore directions are unverified.",
+  gates: [
+    { tunnel: "blackwall", label: "Blackwall Tunnel", gate: [[-0.00496, 51.50378], [-0.00116, 51.50510]] },
+    { tunnel: "silvertown", label: "Silvertown Tunnel", gate: [[0.00616, 51.50406], [0.00996, 51.50538]] }
+  ]
+};
+
+function gateSide(gate: TunnelGate["gate"], point: RoutePoint): number {
+  const [[ax, ay], [bx, by]] = gate;
+  return (bx - ax) * (point.latitude - ay) - (by - ay) * (point.longitude - ax);
+}
+
+/** Identifies each Blackwall/Silvertown crossing (and its direction) along the ordered route geometry. */
+export function detectTunnelCrossings(path: RoutePoint[], reference: TunnelReferenceGeometry = TUNNEL_REFERENCE_GEOMETRY): TunnelCrossing[] {
+  const crossings: TunnelCrossing[] = [];
+  for (let i = 0; i + 1 < path.length; i += 1) {
+    const a = path[i];
+    const b = path[i + 1];
+    for (const gate of reference.gates) {
+      const [[cx, cy], [dx, dy]] = gate.gate;
+      const t = segmentIntersection(a.longitude, a.latitude, b.longitude, b.latitude, cx, cy, dx, dy);
+      if (t === null) continue;
+      const startSide = gateSide(gate.gate, a);
+      const endSide = gateSide(gate.gate, b);
+      // A vertex lying exactly on the gate is counted once, on the segment that leaves it.
+      if (startSide === 0 ? endSide === 0 : Math.sign(startSide) === Math.sign(endSide)) continue;
+      if (startSide !== 0 && endSide === 0) continue;
+      const fromNorth = startSide !== 0 ? startSide > 0 : endSide < 0;
+      crossings.push({
+        tunnel: gate.tunnel,
+        label: gate.label,
+        direction: fromNorth ? "southbound" : "northbound",
+        segmentIndex: i,
+        point: {
+          latitude: Number((a.latitude + (b.latitude - a.latitude) * t).toFixed(6)),
+          longitude: Number((a.longitude + (b.longitude - a.longitude) * t).toFixed(6))
+        },
+        geometry: { verified: reference.verified, provenance: reference.provenance }
+      });
+    }
+  }
+  return crossings;
 }
 
 type RoutesResponse = {
@@ -173,6 +369,7 @@ export function createGoogleRoutesProvider(options: {
   timeoutMs?: number;
   now?: () => Date;
   zones?: () => ZoneShape[];
+  tunnels?: TunnelReferenceGeometry;
 } = {}): BookingRouteProvider {
   return async (stops, { departureTime } = {}) => {
     const configuration = readMapConfiguration();
@@ -237,6 +434,7 @@ export function createGoogleRoutesProvider(options: {
         path,
         tollsReported,
         zones: detectRoadChargeZones(path, options.zones?.()),
+        tunnelCrossings: detectTunnelCrossings(path, options.tunnels),
         computedAt: now.toISOString()
       };
     } catch (error) {

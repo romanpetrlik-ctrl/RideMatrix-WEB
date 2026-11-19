@@ -16,6 +16,9 @@ import { fareSettingsStore, normalizeUkPostcode, validCalendarDate, type FareSet
 import { verifyGoogleOperationalPlace, type OperationalPlaceVerification } from "./google-places";
 import { poiManagementStore, type PoiFeeRecord, type PoiRecord } from "./poi-management";
 import { updateCustomerLastBookingAt } from "./customers";
+import { londonFeeScheduleStore } from "./london-fee-schedules";
+import { roadChargeScheduleReferences, type RoadChargeScheduleSet } from "./road-charge-pricing";
+import { ROAD_CHARGE_PROFILE_FIELDS, validateRoadChargeProfile, type RoadChargeProfile } from "./road-charge-schedules";
 
 export const BOOKING_COUNT_MAX = 7;
 export const BOOKING_COUNT_FIELDS = [
@@ -68,6 +71,8 @@ export type NewBookingDraft = {
   parkingRequired: string;
   extraWaitingMinutes: string;
   confirmedPoiFeeIds: string[];
+  /** Dispatcher-stated road-charge answers; "" means not stated. */
+  roadChargeProfile: RoadChargeProfile;
   saveWithUnresolvedPrice: boolean;
   quotedTotal: string;
   quotedStatus: string;
@@ -100,6 +105,7 @@ export type PricingReferenceData = {
   pois: PoiRecord[];
   poiFees: PoiFeeRecord[];
   operationalBase: OperationalBase | null;
+  roadChargeSchedules: RoadChargeScheduleSet;
 };
 
 export type NewBookingDependencies = {
@@ -112,14 +118,15 @@ export type NewBookingDependencies = {
 export const SERVICE_TIMEZONE = "Europe/London";
 
 export async function loadPricingReferenceData(): Promise<PricingReferenceData> {
-  const [fareSettings, airports, pois, poiFees, operationalBase] = await Promise.all([
+  const [fareSettings, airports, pois, poiFees, operationalBase, roadChargeSchedules] = await Promise.all([
     fareSettingsStore.load(),
     airportFeeStore.list(),
     poiManagementStore.listPois(),
     poiManagementStore.listFees(),
-    getOperationalBase()
+    getOperationalBase(),
+    londonFeeScheduleStore.loadPricingSchedules()
   ]);
-  return { fareSettings, airports, pois, poiFees, operationalBase };
+  return { fareSettings, airports, pois, poiFees, operationalBase, roadChargeSchedules };
 }
 
 const verificationCache = new Map<string, { at: number; result: OperationalPlaceVerification }>();
@@ -183,6 +190,8 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     parkingRequired: text(source, "parkingRequired", 5),
     extraWaitingMinutes: text(source, "extraWaitingMinutes", 5),
     confirmedPoiFeeIds: list(source, "confirmedPoiFeeIds"),
+    roadChargeProfile: Object.fromEntries(Object.entries(ROAD_CHARGE_PROFILE_FIELDS)
+      .map(([key, field]) => [key, text(source, field, 80)])) as RoadChargeProfile,
     saveWithUnresolvedPrice: text(source, "saveWithUnresolvedPrice") === "yes",
     quotedTotal: text(source, "quotedTotal", 20),
     quotedStatus: text(source, "quotedStatus", 20),
@@ -389,6 +398,7 @@ export async function validateJourney(
   if (draft.confirmedPoiFeeIds.some((id) => !knownConfirmationFees.has(id))) {
     errors.push({ field: "confirmedPoiFeeIds", message: "A confirmed POI fee is no longer configured. Refresh the price." });
   }
+  errors.push(...validateRoadChargeProfile(draft.roadChargeProfile));
   if (errors.length > initialErrors || !resolved.pickup || !resolved.dropoff) return null;
   const stops: BookingStops = {
     pickup: resolved.pickup,
@@ -407,7 +417,8 @@ export async function validateJourney(
       confirmedPoiFeeIds: draft.confirmedPoiFeeIds.filter((id) =>
         reference.poiFees.some((fee) => fee.id === id && selectedPoiIds.has(fee.poiId))),
       parkingRequired: parking === true,
-      extraWaitingMinutes: extraWaiting
+      extraWaitingMinutes: extraWaiting,
+      roadChargeProfile: { ...draft.roadChargeProfile }
     }
   };
 }
@@ -474,7 +485,7 @@ export async function quoteJourney(
   journey: ValidatedJourney,
   reference: PricingReferenceData,
   computeRoute: BookingRouteProvider
-): Promise<{ route: BookingRoute; price: BookingPrice; fingerprint: string }> {
+): Promise<{ route: BookingRoute; price: BookingPrice; fingerprint: string; roadChargeSchedules: ReturnType<typeof roadChargeScheduleReferences> }> {
   const points = routeStops(journey.stops);
   const route: BookingRoute = points
     ? await computeRoute(points, { departureTime: serviceLocalToUtc(journey.serviceDate, journey.serviceTime) })
@@ -486,8 +497,10 @@ export async function quoteJourney(
     pois: reference.pois,
     poiFees: reference.poiFees,
     operationalBase: reference.operationalBase,
-    route
+    route,
+    roadChargeSchedules: reference.roadChargeSchedules
   });
+  const roadChargeSchedules = roadChargeScheduleReferences(reference.roadChargeSchedules);
   const fingerprint = createHash("sha256").update(JSON.stringify({
     pricingInputs: journey.pricingInputs,
     price: {
@@ -495,9 +508,10 @@ export async function quoteJourney(
       total: price.total,
       fareSettingsVersion: price.fareSettingsVersion,
       lines: price.lines
-    }
+    },
+    roadChargeSchedules
   })).digest("hex");
-  return { route, price, fingerprint };
+  return { route, price, fingerprint, roadChargeSchedules };
 }
 
 type ManagerRow = {
@@ -602,7 +616,7 @@ export function assertQuoteAcknowledged(
  */
 export async function createNewBooking(
   booking: ValidatedBooking,
-  quote: { route: BookingRoute; price: BookingPrice; fingerprint: string },
+  quote: { route: BookingRoute; price: BookingPrice; fingerprint: string; roadChargeSchedules?: Record<string, unknown> },
   draft: Pick<NewBookingDraft, "quotedTotal" | "quotedStatus" | "quotedFingerprint" | "saveWithUnresolvedPrice">,
   actor: BookingActor,
   now: Date
@@ -652,7 +666,7 @@ export async function createNewBooking(
       [
         snapshotId, id, price.status, price.total, price.fareSettingsVersion,
         JSON.stringify(booking.pricingInputs), JSON.stringify(routeForSnapshot(route)),
-        JSON.stringify({ unresolvedCount: price.unresolvedCount, method: "booking-pricing-v1" }),
+        JSON.stringify({ unresolvedCount: price.unresolvedCount, method: "booking-pricing-v2", roadChargeSchedules: quote.roadChargeSchedules ?? {} }),
         price.status === "incomplete", createdAt, actor.accountId, actor.email
       ]
     );
