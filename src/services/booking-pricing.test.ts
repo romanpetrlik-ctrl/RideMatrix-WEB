@@ -305,6 +305,7 @@ test("unresolved route, tolls, zones, parking and waiting make the price incompl
   assert.equal(roadCharge(charges.lines, "london-lez").status, "not-applicable", "the default standard car is not charged by LEZ");
   assert.equal(roadCharge(charges.lines, "london-ulez").status, "zero", "the default standard car is ULEZ-compliant");
   assert.equal(roadCharge(charges.lines, "london-ulez").amount, "0.00");
+  assert.equal((roadCharge(charges.lines, "london-ulez").source.vehicleInput as Record<string, unknown>).vehicleAssigned, false);
   assert.equal(roadCharge(charges.lines, "london-congestion-charge").status, "unresolved", "an inactive CC schedule cannot confirm a detected charge");
   assert.ok(charges.lines.every((line) => line.status !== "unresolved" || line.amount === null), "unresolved lines never carry invented amounts");
   assert.equal(charges.unresolvedCount, 2);

@@ -7,6 +7,7 @@ import { detectRoadChargeZones, type BookingRouteProvider } from "./booking-rout
 import { anonymizeCustomer, createCustomer, purgeCustomer } from "./customers";
 import { EMPTY_FARE_SETTINGS, fareSettingsStore } from "./fare-settings";
 import { londonFeeScheduleStore } from "./london-fee-schedules";
+import type { PriceLine } from "./booking-pricing";
 import {
   BookingPriceChangedError,
   createNewBooking,
@@ -67,15 +68,15 @@ test("a new booking persists its stops and itemized price snapshot transactional
   assert.ok(airport);
 
   const { draft, booking, reference, quote } = await priceFor(customer.id, airport.id);
-  assert.equal(quote.price.status, "complete");
-  assert.equal(quote.price.total, "27.00");
+  assert.equal(quote.price.status, "incomplete");
+  assert.equal(quote.price.total, null);
 
   // An unseen quote is rejected without writing anything.
   const countBookings = async () => Number((await query<{ count: string }>("SELECT COUNT(*)::text AS count FROM customer_bookings")).rows[0].count);
   const beforeCount = await countBookings();
   await assert.rejects(
     createNewBooking(booking, quote, {
-      ...draft, quotedStatus: "complete", quotedTotal: "26.00", quotedFingerprint: quote.fingerprint
+      ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: "unseen", saveWithUnresolvedPrice: true
     }, actor, now),
     BookingPriceChangedError
   );
@@ -95,17 +96,17 @@ test("a new booking persists its stops and itemized price snapshot transactional
   };
   const changedQuote = await quoteJourney(booking, changedReference, route);
   assert.equal(changedQuote.price.status, quote.price.status);
-  assert.equal(changedQuote.price.total, quote.price.total, "line-item changes cancel out in the total");
+  assert.equal(changedQuote.price.total, null, "unresolved road-charge exposure keeps the total unavailable");
   assert.notEqual(changedQuote.fingerprint, quote.fingerprint);
   await assert.rejects(
     createNewBooking(booking, changedQuote, {
-      ...draft, quotedStatus: "complete", quotedTotal: "27.00", quotedFingerprint: quote.fingerprint
+      ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
     }, actor, now),
     BookingPriceChangedError
   );
 
   const acknowledgedDraft = {
-    ...draft, quotedStatus: "complete", quotedTotal: "27.00", quotedFingerprint: quote.fingerprint
+    ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
   };
   const saved = await createNewBooking(booking, quote, acknowledgedDraft, actor, now);
   const second = await createNewBooking(booking, quote, acknowledgedDraft, actor, now);
@@ -128,7 +129,8 @@ test("a new booking persists its stops and itemized price snapshot transactional
     ["airport-pickup-fee", "applied", "7.00"],
     ["airport-dropoff-fee", "zero", "0.00"]
   ]);
-  assert.equal(loaded.price.total, "27.00");
+  assert.equal(loaded.price.status, "incomplete");
+  assert.equal(loaded.price.total, null);
   assert.equal(loaded.price.fareSettingsVersion, 1);
 
   // Editing settings changes new quotes but never the stored snapshot.
@@ -139,10 +141,12 @@ test("a new booking persists its stops and itemized price snapshot transactional
     pickupLongitude: "-0.451", pickupFee: "11.00", pickupTimeReference: "ALT", pickupDeferredPolicy: "no", pickupDeferredMinutes: "0",
     pickupFeeCoveredMinutes: "60"
   }, actor);
-  assert.equal((await priceFor(customer.id, airport.id)).quote.price.total, "104.00");
+  const updatedQuote = (await priceFor(customer.id, airport.id)).quote.price;
+  assert.equal(updatedQuote.status, "incomplete");
+  assert.equal(updatedQuote.total, null);
   const reloaded = await getNewBooking(saved.id);
   assert.deepEqual(reloaded?.price?.lines.map((line) => [line.type, line.status, line.amount]), quotedLines);
-  assert.equal(reloaded?.price?.total, "27.00");
+  assert.equal(reloaded?.price?.total, null);
 
   // The snapshot and line items are immutable at the database level.
   await assert.rejects(query("UPDATE booking_price_snapshots SET total_amount = 1 WHERE booking_id = $1", [saved.id]), /immutable/);
@@ -224,7 +228,7 @@ test("customer anonymization redacts the new booking copies and removes its immu
   const airport = (await airportFeeStore.list())[0];
   const { draft, booking, quote } = await priceFor(customer.id, airport.id);
   const saved = await createNewBooking(booking, quote, {
-    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint
+    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
   }, actor, now);
   await query("UPDATE customers SET purge_after = '2020-01-01T00:00:00.000Z' WHERE id = $1", [customer.id]);
 
@@ -253,7 +257,7 @@ test("authorized retention purge can remove bookings and their snapshots", async
   const airport = (await airportFeeStore.list())[0];
   const { draft, booking, quote } = await priceFor(customer.id, airport.id);
   const saved = await createNewBooking(booking, quote, {
-    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint
+    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
   }, actor, now);
   await query("UPDATE customers SET purge_after = '2020-01-01T00:00:00.000Z' WHERE id = $1", [customer.id]);
 
@@ -297,11 +301,25 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
     assert.ok(booking);
     return { draft, booking, quote: await quoteJourney(booking, reference, lezRoute) };
   };
-  const lezLine = (lines: Array<{ type: string; status: string; amount: string | null; label: string }>) => lines.filter((line) => line.type === "road-charge");
+  const schemeLine = (lines: PriceLine[], scheme: string) => {
+    const line = lines.find((candidate) => candidate.type === "road-charge" && candidate.source.scheme === scheme);
+    assert.ok(line);
+    return line;
+  };
+  const assertDefaultCarCharges = (lines: PriceLine[]) => {
+    assert.deepEqual(
+      ["london-lez", "london-ulez", "london-congestion-charge"].map((scheme) => {
+        const line = schemeLine(lines, scheme);
+        return [line.status, line.amount];
+      }),
+      [["not-applicable", null], ["zero", "0.00"], ["not-applicable", null]]
+    );
+  };
 
-  // No vehicle is assigned at quote time, so zone charges stay unresolved while the schedule is inactive or active.
+  // The standard-car default resolves zone charges while tunnel exposure remains unresolved.
   const inactive = await quoteWith();
-  assert.deepEqual(lezLine(inactive.quote.price.lines).map((line) => line.status), ["unresolved"]);
+  assertDefaultCarCharges(inactive.quote.price.lines);
+  assert.equal(inactive.quote.price.status, "incomplete");
   assert.equal(inactive.quote.price.total, null);
 
   const lez = await londonFeeScheduleStore.load("london-lez");
@@ -309,7 +327,7 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
   const enabledVersion = lez.currentVersion + 1;
 
   const { draft, booking, quote } = await quoteWith();
-  assert.deepEqual(lezLine(quote.price.lines).map((line) => [line.status, line.amount]), [["unresolved", null]]);
+  assertDefaultCarCharges(quote.price.lines);
   assert.equal(quote.price.status, "incomplete");
   assert.equal(quote.price.total, null);
   const saved = await createNewBooking(booking, quote, { ...draft, quotedStatus: "incomplete", quotedTotal: "", quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true }, actor, now);
@@ -318,10 +336,10 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
   const amounts = Object.fromEntries(roadChargeScheduleSeeds["london-lez"].rates.map((rate) => [rate.key, rate.amount]));
   await londonFeeScheduleStore.save("london-lez", enabledVersion, { ...amounts, "lez-vans-specialist-minibuses": "150.00" }, actor, { effectiveFrom: "2021-03-01", effectiveUntil: null });
   await londonFeeScheduleStore.setActivation("london-lez", enabledVersion + 1, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, new Date("2026-11-20T00:00:00Z"));
-  assert.deepEqual(lezLine((await quoteWith()).quote.price.lines).map((line) => line.status), ["unresolved"]);
+  assertDefaultCarCharges((await quoteWith()).quote.price.lines);
 
   const reloaded = await getNewBooking(saved.id);
-  assert.deepEqual(lezLine(reloaded!.price!.lines).map((line) => [line.status, line.amount]), [["unresolved", null]]);
+  assertDefaultCarCharges(reloaded!.price!.lines);
   assert.equal(reloaded?.price?.total, null);
   const stored = await query<{ calculation: Record<string, any> }>(
     `SELECT s.calculation FROM booking_price_snapshots s WHERE s.booking_id = $1`,
