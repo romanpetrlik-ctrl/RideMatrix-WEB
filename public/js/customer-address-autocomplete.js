@@ -235,6 +235,7 @@
       }
 
       var autocompleteElement = new PlaceAutocompleteElement();
+      autocompleteElement.includedRegionCodes = ["gb"];
       autocompleteElement.className = "private-customer-form__autocomplete-element";
       if (typeof autocompleteElement.setAttribute === "function") {
         autocompleteElement.setAttribute("aria-label", "Search address");
