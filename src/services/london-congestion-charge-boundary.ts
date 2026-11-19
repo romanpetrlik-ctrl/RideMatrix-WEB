@@ -25,7 +25,8 @@ export const londonCongestionChargeBoundaryMetadata = {
   sourceArchive: "Not provided",
   licence: "Not provided",
   effectiveDate: "Unknown (not provided)",
-  verificationDate: "Unverified"
+  verificationDate: "2026-11-19",
+  verificationBasis: "Project owner confirmed that the supplied Polygon features are correct (2026-11-19). No source URL, archive or licence exists in the repository history or import records."
 } as const;
 
 const boundaryPath = path.join(__dirname, "../reference-data/toll-fees/london-congestion-charge/boundary.geojson");

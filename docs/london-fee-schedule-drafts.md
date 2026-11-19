@@ -23,7 +23,7 @@ Each enable or disable appends a version with the actor and verification record.
 | --- | --- | --- | --- |
 | LEZ | inactive | Yes | – |
 | ULEZ | inactive | No | `src/services/london-ulez-boundary.ts` has no source, licence or verification. Route exposure cannot be trusted. |
-| Congestion Charge | inactive | No | `src/services/london-congestion-charge-boundary.ts` has no source, licence or verification. Migration `0036_congestion_charge_default_21_inactive_version` appends an inactive £21 version (the approved conservative default; £18 is not used). |
+| Congestion Charge | inactive | No | Geometry is owner-confirmed (polygon in `src/reference-data/toll-fees/london-congestion-charge/boundary.geojson`, verified 2026-11-19; source URL and licence not provided). Not an activation blocker by itself. The schedule still has no verification record, and the admin must open and confirm each cited TfL source before enabling. The £21 rate is the approved conservative default, not a rate stated by a cited page as the standard charge. Bank-holiday calendar covers service dates to 2027-12-24. Migration `0036_congestion_charge_default_21_inactive_version` appends an inactive £21 version (£18 is not used). |
 | Blackwall/Silvertown | inactive | No | `TUNNEL_REFERENCE_GEOMETRY` in `src/services/booking-routing.ts` is approximate and unverified. Weekday bank-holiday Auto Pay peak treatment is not stated by TfL; affected crossings stay unresolved. |
 | Dartford Crossing | draft_inactive | No (out of scope) | – |
 

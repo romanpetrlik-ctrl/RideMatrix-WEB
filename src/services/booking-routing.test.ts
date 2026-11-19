@@ -36,6 +36,13 @@ test("detects London charging zones only when the route geometry enters them", (
   assert.deepEqual(rural, []);
 });
 
+test("a route inside the stored Congestion Charge polygon is CC exposure; a route outside it is not", () => {
+  const inside = detectRoadChargeZones([{ latitude: 51.508, longitude: -0.1281 }, { latitude: 51.509, longitude: -0.125 }]);
+  assert.ok(inside.some((zone) => zone.zone === "london-congestion-charge"));
+  const outside = detectRoadChargeZones([{ latitude: 51.539, longitude: -0.1426 }, { latitude: 51.556, longitude: -0.178 }]);
+  assert.equal(outside.some((zone) => zone.zone === "london-congestion-charge"), false);
+});
+
 test("routes all ordered stops (including vias) and reports tolls and zones", async () => {
   let request: { url: string; body: Record<string, unknown>; headers: Record<string, string> } | null = null;
   const provider = createGoogleRoutesProvider({

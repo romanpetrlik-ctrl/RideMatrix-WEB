@@ -326,9 +326,9 @@ export function codeCalculationBlockers(scheme: RoadChargeScheme): string[] {
         ? [`ULEZ route exposure uses a boundary dataset whose source, licence and effective date are “${londonUlezBoundaryMetadata.sourceUrl}” and whose verification is “${londonUlezBoundaryMetadata.verificationDate}” (src/services/london-ulez-boundary.ts). Replace it with a verified TfL dataset before enabling.`]
         : [];
     case "london-congestion-charge":
-      return londonCongestionChargeBoundaryMetadata.verificationDate === "Unverified"
-        ? [`Congestion Charge route exposure uses a boundary dataset whose source, licence and effective date are “${londonCongestionChargeBoundaryMetadata.sourceUrl}” and whose verification is “${londonCongestionChargeBoundaryMetadata.verificationDate}” (src/services/london-congestion-charge-boundary.ts). Replace it with a verified TfL dataset before enabling.`]
-        : [];
+      return isCalendarDate(londonCongestionChargeBoundaryMetadata.verificationDate)
+        ? []
+        : ["The Congestion Charge boundary has no verification record (src/services/london-congestion-charge-boundary.ts)."];
     case "blackwall-silvertown-tunnels":
       return TUNNEL_REFERENCE_GEOMETRY.verified
         ? []

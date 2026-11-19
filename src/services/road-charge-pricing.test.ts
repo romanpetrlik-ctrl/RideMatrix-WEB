@@ -200,13 +200,15 @@ test("each zone yields one daily line however often the route enters it; LEZ, UL
   assert.deepEqual(defaultOutside.map((line) => [line.type, line.status]), [["road-charge", "not-applicable"], ["road-charge", "zero"], ["road-charge", "not-applicable"], ["tunnel-charge", "not-applicable"], ["toll", "not-applicable"]]);
 });
 
-test("production gate: ULEZ, CC and tunnel charges stay unresolved while their geometry is unverified, even if active", () => {
+test("production gate: ULEZ and tunnel charges stay unresolved while their geometry is unverified; CC is no longer blocked by geometry", () => {
   const lines = roadChargeLines("2027-03-10", "10:00", profile({ ulez: "ulez-cars", congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "yes" }),
     route({ zones: [zone("london-ulez"), zone("london-congestion-charge")], tunnelCrossings: [crossing("blackwall", "northbound")] }), ALL);
-  assert.deepEqual(lines.map((line) => line.status), ["unresolved", "unresolved", "unresolved", "unresolved", "not-applicable"]);
+  assert.deepEqual(lines.map((line) => line.status), ["unresolved", "unresolved", "applied", "unresolved", "not-applicable"]);
   assert.match(lines[1].basis, /boundary dataset/);
+  assert.equal(lines[2].amount, "21.00");
+  assert.doesNotMatch(lines[2].basis, /boundary dataset|geometry/);
   assert.match(lines[3].basis, /unverified reference geometry/);
-  assert.ok(lines.every((line) => line.amount === null));
+  assert.ok(lines.filter((line) => line.status === "unresolved").every((line) => line.amount === null));
 });
 
 test("tunnel crossings price by tunnel, direction, time band, vehicle class and Auto Pay", () => {

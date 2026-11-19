@@ -642,7 +642,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
           assert.match(destinationBody, /2 Polygon features/);
           assert.match(destinationBody, /Effective date<\/dt><dd>Unknown \(not provided\)/);
           assert.match(destinationBody, /Source URL<\/dt><dd>Not provided/);
-          assert.match(destinationBody, /Verification<\/dt><dd>Unverified/);
+          assert.match(destinationBody, /Verification<\/dt><dd>2026-11-19/);
           assert.match(destinationBody, /Map preview unavailable/);
           assert.doesNotMatch(destinationBody, /Not configured yet/);
         } else if (
@@ -1149,9 +1149,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const ccBody = await (await fetch(`${baseUrl}${londonBase}/london-congestion-charge/fee-settings`, { headers })).text();
     for (const amount of ["21.00", "13.50", "9.00", "0.00"]) assert.ok(ccBody.includes(`value="${amount}"`), `CC shows ${amount}`);
     assert.match(ccBody, /A configured £0\.00 is quoted as a zero charge, not as unresolved/);
-    assert.match(ccBody, /Congestion Charge route exposure uses a boundary dataset/);
+    assert.doesNotMatch(ccBody, /boundary dataset/);
     assert.match(ccBody, /name="effectiveUntil" type="date" value="2030-03-03"/);
-    assert.doesNotMatch(ccBody, /name="action" value="enable"/);
 
     const updatePath = `${londonBase}/london-ulez/fee-settings`;
     const { token, postCookie } = await csrfSession(updatePath, "sid=fee-schedules-post", ["superuser"]);
@@ -1264,7 +1263,6 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     // Schemes whose route exposure is not verified cannot be enabled even with confirmation.
     for (const [scheme, path, pattern] of [
       ["london-ulez", "/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/fee-settings", /ULEZ route exposure uses a boundary dataset/],
-      ["london-congestion-charge", "/settings/toll-fees/london-lez-ulez-congestion-charge/london-congestion-charge/fee-settings", /Congestion Charge route exposure uses a boundary dataset/],
       ["blackwall-silvertown-tunnels", "/settings/toll-fees/blackwall-silvertown-tunnels/fee-settings", /unverified reference geometry/]
     ] as const) {
       const version = feeSchedules.current(scheme).currentVersion;

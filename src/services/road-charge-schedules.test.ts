@@ -4,6 +4,7 @@ import {
   activationBlockers,
   applyRoadChargeActivation,
   applyRoadChargeEdit,
+  codeCalculationBlockers,
   RoadChargeActivationError,
   roadChargeScheduleSeeds,
   validateRoadChargeScheduleEdit,
@@ -23,7 +24,8 @@ test("seeded schedules are inactive; only LEZ is free of blockers", () => {
   }
   assert.deepEqual(activationBlockers(seed("london-lez")), []);
   assert.match(activationBlockers(seed("london-ulez")).join(" "), /ULEZ route exposure uses a boundary dataset/);
-  assert.match(activationBlockers(seed("london-congestion-charge")).join(" "), /Congestion Charge route exposure uses a boundary dataset/);
+  assert.deepEqual(codeCalculationBlockers("london-congestion-charge"), []);
+  assert.doesNotMatch(activationBlockers(seed("london-congestion-charge")).join(" "), /boundary|verification record/);
   assert.match(activationBlockers(seed("blackwall-silvertown-tunnels")).join(" "), /unverified reference geometry/);
 });
 

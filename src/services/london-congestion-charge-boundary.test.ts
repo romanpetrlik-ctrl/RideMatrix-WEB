@@ -61,7 +61,8 @@ test("London Congestion Charge reference data retains both supplied Polygon feat
   assert.equal(londonCongestionChargeBoundaryMetadata.sourceArchive, "Not provided");
   assert.equal(londonCongestionChargeBoundaryMetadata.licence, "Not provided");
   assert.equal(londonCongestionChargeBoundaryMetadata.effectiveDate, "Unknown (not provided)");
-  assert.equal(londonCongestionChargeBoundaryMetadata.verificationDate, "Unverified");
+  assert.equal(londonCongestionChargeBoundaryMetadata.verificationDate, "2026-11-19");
+  assert.match(londonCongestionChargeBoundaryMetadata.verificationBasis, /Project owner confirmed/);
 });
 
 test("London Congestion Charge polygon coordinates are finite, in range, and closed", () => {
