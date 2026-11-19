@@ -898,7 +898,7 @@ test("customer detail keeps New Booking unchanged and points Edit Customer to th
     assert.equal(response.status, 200);
     assert.match(
       body,
-      /href="\/customers\/cust-test-1\?returnTo=%2Fcustomers%3Fq%3Dada%26status%3DActive%26page%3D2%26perPage%3D25&amp;notice=new-booking&amp;layout=child">New Booking<\/a>/
+      /href="\/bookings\/new\?customerId=cust-test-1">New Booking<\/a>/
     );
     assert.match(
       body,

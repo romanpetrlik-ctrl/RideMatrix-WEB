@@ -892,10 +892,11 @@ export async function requestCustomerErasure(id: string, client?: Queryable): Pr
 }
 
 export async function anonymizeCustomer(id: string, client?: Queryable): Promise<boolean> {
-  const runner = client || getPool();
+  const ownedClient = client ? undefined : await getPool().connect();
+  const runner = client ?? ownedClient!;
   const now = new Date().toISOString();
-  await runner.query("BEGIN");
   try {
+    await runner.query("BEGIN");
     const eligible = await runner.query(
       `SELECT id FROM customers
        WHERE id = $1 AND deleted_at IS NULL AND anonymized_at IS NULL
@@ -922,6 +923,25 @@ export async function anonymizeCustomer(id: string, client?: Queryable): Promise
       [id]
     );
     await runner.query(
+      `UPDATE customer_bookings SET booking_manager_name = 'Anonymized Customer', booking_manager_phone = NULL,
+        booking_manager_email = NULL, passenger_name = 'Anonymized Customer', passenger_phone = NULL
+       WHERE customer_id = $1`,
+      [id]
+    );
+    await runner.query(
+      `UPDATE booking_journey_stops SET location_kind = 'address', managed_location_id = NULL,
+        provider_place_id = NULL, label = '[anonymized]', latitude = NULL, longitude = NULL, postcode = NULL,
+        coordinates_verified = FALSE
+       WHERE booking_id IN (SELECT id FROM customer_bookings WHERE customer_id = $1)`,
+      [id]
+    );
+    await runner.query("SELECT set_config('ridematrix.allow_booking_price_snapshot_delete', 'on', true)");
+    await runner.query(
+      `DELETE FROM booking_price_snapshots
+       WHERE booking_id IN (SELECT id FROM customer_bookings WHERE customer_id = $1)`,
+      [id]
+    );
+    await runner.query(
       `UPDATE imported_bookings SET customer_email = 'anonymized@invalid', customer_phone = NULL,
         customer_name_raw = 'Anonymized Customer', customer_given_name = NULL, customer_surname = NULL,
         pickup_text = '[anonymized]', dropoff_text = '[anonymized]' WHERE customer_id = $1`,
@@ -939,13 +959,16 @@ export async function anonymizeCustomer(id: string, client?: Queryable): Promise
   } catch (error) {
     await runner.query("ROLLBACK");
     throw error;
+  } finally {
+    ownedClient?.release();
   }
 }
 
 export async function purgeCustomer(id: string, client?: Queryable): Promise<boolean> {
-  const runner = client || getPool();
-  await runner.query("BEGIN");
+  const ownedClient = client ? undefined : await getPool().connect();
+  const runner = client ?? ownedClient!;
   try {
+    await runner.query("BEGIN");
     const eligible = await runner.query(
       `SELECT id FROM customers WHERE id = $1 AND deleted_at IS NULL
        AND purge_after IS NOT NULL AND purge_after <= $2
@@ -956,6 +979,7 @@ export async function purgeCustomer(id: string, client?: Queryable): Promise<boo
       await runner.query("ROLLBACK");
       return false;
     }
+    await runner.query("SELECT set_config('ridematrix.allow_booking_price_snapshot_delete', 'on', true)");
     await runner.query("DELETE FROM customer_bookings WHERE customer_id = $1", [id]);
     await runner.query("DELETE FROM imported_bookings WHERE customer_id = $1", [id]);
     await runner.query("DELETE FROM imported_customers WHERE id = $1", [id]);
@@ -965,6 +989,8 @@ export async function purgeCustomer(id: string, client?: Queryable): Promise<boo
   } catch (error) {
     await runner.query("ROLLBACK");
     throw error;
+  } finally {
+    ownedClient?.release();
   }
 }
 

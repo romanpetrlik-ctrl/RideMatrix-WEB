@@ -11,6 +11,7 @@ import { createPoiManagementRouter } from "./routes/poi-management";
 import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
+import { createBookingsRouter } from "./routes/bookings";
 import { bookingAuthorizationResponseHeaders, createBookingAuthorizationRouter } from "./routes/booking-authorization";
 import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
@@ -68,6 +69,7 @@ async function startServer() {
   app.use(createSetupRouter({ appTitle }));
   app.use(createDashboardRouter({ appTitle }));
   app.use(createCustomersRouter({ appTitle }));
+  app.use(createBookingsRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
   app.use(createDriversRouter({ appTitle }));
   app.use(createVehiclesRouter({ appTitle }));

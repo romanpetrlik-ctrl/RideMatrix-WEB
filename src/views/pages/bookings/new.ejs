@@ -1,0 +1,309 @@
+<%
+  const fieldError = (field) => {
+    const match = errors.find((error) => error.field === field);
+    return match ? match.message : "";
+  };
+  const invalid = (field) => fieldError(field) ? 'aria-invalid="true" aria-describedby="' + field + '-error"' : "";
+  const stopTitles = { pickup: "Pickup", via1: "Via 1", via2: "Via 2", dropoff: "Drop-off" };
+  const isVia = (key) => key === "via1" || key === "via2";
+  const routeSummary = quote ? quote.route : null;
+  const formatDuration = (seconds) => {
+    const minutes = Math.round(seconds / 60);
+    return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
+  };
+%>
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+
+    <main class="container rm-page-shell new-booking-page">
+      <div class="new-booking-page__title">
+        <h1>New Booking</h1>
+        <p>All times are in <strong><%= serviceTimezone %></strong> (24-hour). Prices are calculated on the server from the current Fare Settings, Airport Fees and POI fees.</p>
+      </div>
+
+      <% if (formError) { %>
+        <section class="notice notice--critical" role="alert" data-form-error><%= formError %></section>
+      <% } %>
+      <% if (errors.length) { %>
+        <section class="notice notice--critical new-booking-errors" role="alert" tabindex="-1" data-error-summary>
+          <h2>There is a problem</h2>
+          <ul>
+            <% errors.forEach((error) => { %>
+              <li><a href="#<%= error.field %>"><%= error.message %></a></li>
+            <% }) %>
+          </ul>
+        </section>
+      <% } %>
+
+      <form method="post" action="/bookings" class="new-booking-form" data-new-booking-form novalidate>
+        <%- locals.csrfField || "" %>
+        <input type="hidden" name="quotedStatus" value="<%= draft.quotedStatus %>" data-quoted-status>
+        <input type="hidden" name="quotedTotal" value="<%= draft.quotedTotal %>" data-quoted-total>
+        <input type="hidden" name="quotedFingerprint" value="<%= draft.quotedFingerprint %>" data-quote-fingerprint>
+
+        <section class="panel new-booking-block new-booking-block--reference" aria-labelledby="booking-reference-title">
+          <h2 id="booking-reference-title">1. Booking reference</h2>
+          <dl class="new-booking-reference">
+            <div><dt>Booking ID</dt><dd data-booking-id><em>Assigned on save</em></dd></div>
+            <div><dt>Created</dt><dd data-booking-created><em>Assigned on save</em></dd></div>
+            <div><dt>Created by</dt><dd data-booking-created-by><%= createdByEmail %> <em>(recorded on save)</em></dd></div>
+          </dl>
+        </section>
+
+        <section class="panel new-booking-block" aria-labelledby="booking-people-title">
+          <h2 id="booking-people-title">2. Booking manager and passenger</h2>
+          <div class="new-booking-columns">
+            <fieldset class="new-booking-fieldset">
+              <legend>Booking manager</legend>
+              <div class="form-field">
+                <label for="customerId">Customer</label>
+                <select id="customerId" name="customerId" required data-manager-select <%- invalid("customerId") %>>
+                  <option value="">Select an existing customer</option>
+                  <% managers.forEach((manager) => { %>
+                    <option value="<%= manager.customerId %>"
+                      data-manager-name="<%= manager.name %>"
+                      data-manager-phone="<%= manager.phone %>"
+                      data-manager-email="<%= manager.email %>"
+                      <%= draft.customerId === manager.customerId ? "selected" : "" %>><%= manager.name %><%= manager.company ? ` — ${manager.company}` : "" %><%= manager.email ? ` (${manager.email})` : "" %></option>
+                  <% }) %>
+                </select>
+                <% if (!managers.length) { %><p class="form-hint">No active customers are available. Create a customer first.</p><% } %>
+                <% if (fieldError("customerId")) { %><p class="field-error" id="customerId-error"><%= fieldError("customerId") %></p><% } %>
+              </div>
+              <div class="form-field">
+                <label for="managerName">Name</label>
+                <input id="managerName" name="managerName" type="text" autocomplete="off" required value="<%= draft.managerName %>" data-manager-name <%- invalid("managerName") %>>
+                <% if (fieldError("managerName")) { %><p class="field-error" id="managerName-error"><%= fieldError("managerName") %></p><% } %>
+              </div>
+              <div class="form-field">
+                <label for="managerPhone">Phone</label>
+                <input id="managerPhone" name="managerPhone" type="tel" autocomplete="off" required value="<%= draft.managerPhone %>" data-manager-phone <%- invalid("managerPhone") %>>
+                <% if (fieldError("managerPhone")) { %><p class="field-error" id="managerPhone-error"><%= fieldError("managerPhone") %></p><% } %>
+              </div>
+              <div class="form-field">
+                <label for="managerEmail">Email</label>
+                <input id="managerEmail" name="managerEmail" type="email" autocomplete="off" value="<%= draft.managerEmail %>" data-manager-email <%- invalid("managerEmail") %>>
+                <% if (fieldError("managerEmail")) { %><p class="field-error" id="managerEmail-error"><%= fieldError("managerEmail") %></p><% } %>
+              </div>
+            </fieldset>
+
+            <fieldset class="new-booking-fieldset">
+              <legend>Passenger</legend>
+              <div class="form-field form-field--checkbox">
+                <label for="passengerIsManager">
+                  <input id="passengerIsManager" name="passengerIsManager" type="checkbox" value="yes" <%= draft.passengerIsManager ? "checked" : "" %> data-passenger-is-manager>
+                  Passenger is booking manager
+                </label>
+              </div>
+              <div class="form-field">
+                <label for="passengerName">Name</label>
+                <input id="passengerName" name="passengerName" type="text" autocomplete="off" value="<%= draft.passengerIsManager ? draft.managerName : draft.passengerName %>" <%= draft.passengerIsManager ? "readonly" : "" %> data-passenger-name <%- invalid("passengerName") %>>
+                <% if (fieldError("passengerName")) { %><p class="field-error" id="passengerName-error"><%= fieldError("passengerName") %></p><% } %>
+              </div>
+              <div class="form-field">
+                <label for="passengerPhone">Phone</label>
+                <input id="passengerPhone" name="passengerPhone" type="tel" autocomplete="off" value="<%= draft.passengerIsManager ? draft.managerPhone : draft.passengerPhone %>" <%= draft.passengerIsManager ? "readonly" : "" %> data-passenger-phone <%- invalid("passengerPhone") %>>
+                <% if (fieldError("passengerPhone")) { %><p class="field-error" id="passengerPhone-error"><%= fieldError("passengerPhone") %></p><% } %>
+              </div>
+              <p class="form-hint" data-passenger-sync-hint <%= draft.passengerIsManager ? "" : "hidden" %>>Passenger details follow the booking manager and update automatically.</p>
+            </fieldset>
+          </div>
+        </section>
+
+        <section class="panel new-booking-block" aria-labelledby="booking-journey-title">
+          <h2 id="booking-journey-title">3. Journey details and map</h2>
+          <div class="new-booking-journey">
+            <div class="new-booking-journey__form" data-journey-fields>
+              <div class="new-booking-datetime">
+                <div class="form-field">
+                  <label for="serviceDate">Service date</label>
+                  <input id="serviceDate" name="serviceDate" type="date" required value="<%= draft.serviceDate %>" data-quote-input <%- invalid("serviceDate") %>>
+                  <% if (fieldError("serviceDate")) { %><p class="field-error" id="serviceDate-error"><%= fieldError("serviceDate") %></p><% } %>
+                </div>
+                <div class="form-field">
+                  <label for="serviceTime">Service time (24-hour HH:mm)</label>
+                  <select id="serviceTime" name="serviceTime" required data-quote-input <%- invalid("serviceTime") %>>
+                    <% timeOptions.forEach((option) => { %>
+                      <option value="<%= option %>" <%= draft.serviceTime === option ? "selected" : "" %>><%= option %></option>
+                    <% }) %>
+                  </select>
+                  <% if (fieldError("serviceTime")) { %><p class="field-error" id="serviceTime-error"><%= fieldError("serviceTime") %></p><% } %>
+                </div>
+              </div>
+
+              <% stopKeys.forEach((key) => { const stop = draft.stops[key]; const active = !isVia(key) || draft.viaActive[key]; %>
+                <fieldset class="new-booking-stop" data-stop="<%= key %>" data-stop-kind-value="<%= stop.kind %>" <%= active ? "" : "hidden" %>>
+                  <legend><%= stopTitles[key] %><%= isVia(key) ? " (optional)" : "" %></legend>
+                  <% if (isVia(key)) { %>
+                    <input type="hidden" name="<%= key %>Active" value="<%= active ? "yes" : "" %>" data-via-active>
+                  <% } %>
+                  <div class="form-field">
+                    <label for="<%= key %>Kind">Location type</label>
+                    <select id="<%= key %>Kind" name="<%= key %>Kind" data-stop-kind data-quote-input <%- invalid(`${key}Kind`) %>>
+                      <option value="">Select location type</option>
+                      <option value="airport" <%= stop.kind === "airport" ? "selected" : "" %>>Managed airport</option>
+                      <option value="poi" <%= stop.kind === "poi" ? "selected" : "" %>>Managed POI</option>
+                      <option value="address" <%= stop.kind === "address" ? "selected" : "" %>>Address</option>
+                    </select>
+                    <% if (fieldError(`${key}Kind`)) { %><p class="field-error" id="<%= key %>Kind-error"><%= fieldError(`${key}Kind`) %></p><% } %>
+                  </div>
+                  <div class="form-field" data-stop-panel="airport" <%= stop.kind === "airport" ? "" : "hidden" %>>
+                    <label for="<%= key %>AirportId">Airport</label>
+                    <select id="<%= key %>AirportId" name="<%= key %>AirportId" data-quote-input>
+                      <option value="">Select a managed airport</option>
+                      <% airports.forEach((airport) => { %>
+                        <option value="<%= airport.id %>" <%= stop.kind === "airport" && stop.managedId === airport.id ? "selected" : "" %>><%= airport.displayName %></option>
+                      <% }) %>
+                    </select>
+                    <% if (!airports.length) { %><p class="form-hint">No active Airport Fees records are configured.</p><% } %>
+                  </div>
+                  <div class="form-field" data-stop-panel="poi" <%= stop.kind === "poi" ? "" : "hidden" %>>
+                    <label for="<%= key %>PoiId">POI</label>
+                    <select id="<%= key %>PoiId" name="<%= key %>PoiId" data-quote-input data-poi-select>
+                      <option value="">Select a managed POI</option>
+                      <% pois.forEach((poi) => { %>
+                        <option value="<%= poi.id %>" <%= stop.kind === "poi" && stop.managedId === poi.id ? "selected" : "" %>><%= poi.displayName %> (<%= poi.category %>)</option>
+                      <% }) %>
+                    </select>
+                    <% if (!pois.length) { %><p class="form-hint">No managed POIs are configured.</p><% } %>
+                  </div>
+                  <div class="form-field" data-stop-panel="address" <%= stop.kind === "address" ? "" : "hidden" %>>
+                    <label for="<%= key %>Label">Address</label>
+                    <div data-address-autocomplete-host></div>
+                    <input id="<%= key %>Label" name="<%= key %>Label" type="text" autocomplete="off" value="<%= stop.label %>" data-address-label data-quote-input>
+                    <input type="hidden" name="<%= key %>PlaceId" value="<%= stop.placeId %>" data-address-place-id>
+                    <p class="form-hint" data-address-status><%= mapsBrowserApiKey ? "Select a Google Places suggestion so coordinates and postcode can be verified." : "Address search is unavailable (Google Maps not configured). Typed addresses are saved unverified and the route stays unresolved." %></p>
+                  </div>
+                  <% if (isVia(key)) { %>
+                    <button type="button" class="button button--secondary" data-remove-via="<%= key %>">Remove <%= stopTitles[key] %></button>
+                  <% } %>
+                </fieldset>
+                <% if (key === "pickup") { %>
+                  <div class="new-booking-via-actions" data-via-actions>
+                    <button type="button" class="button button--secondary" data-add-via <%= draft.viaActive.via1 && draft.viaActive.via2 ? "hidden" : "" %>>Add Via stop</button>
+                    <span class="form-hint">Up to two optional Via stops, visited in order.</span>
+                  </div>
+                <% } %>
+              <% }) %>
+            </div>
+
+            <div class="new-booking-journey__map">
+              <div class="new-booking-map" data-booking-map data-maps-browser-key="<%= mapsBrowserApiKey %>" data-maps-map-id="<%= mapsMapId %>">
+                <div class="new-booking-map__canvas" data-booking-map-canvas <%= mapsBrowserApiKey ? "" : "hidden" %>></div>
+                <p class="new-booking-map__unavailable" data-booking-map-unavailable <%= mapsBrowserApiKey ? "hidden" : "" %>>Map unavailable: Google Maps is not configured. The ordered stops are listed below.</p>
+                <ol class="new-booking-map__stops" data-route-stops>
+                  <% if (quote) { quote.stops.forEach((stop) => { %>
+                    <li><strong><%= stop.type === "pickup" ? "Pickup" : stop.type === "dropoff" ? "Drop-off" : "Via" %>:</strong> <%= stop.label %><%= stop.coordinatesVerified ? "" : " (unverified — no coordinates)" %></li>
+                  <% }) } %>
+                </ol>
+              </div>
+              <section class="new-booking-route-summary" aria-labelledby="route-summary-title" data-route-summary data-route-status="<%= routeSummary ? routeSummary.status : "pending" %>">
+                <h3 id="route-summary-title">Route summary</h3>
+                <dl>
+                  <div><dt>Total distance</dt><dd data-route-distance><%= routeSummary && routeSummary.status === "resolved" ? `${Number(routeSummary.distanceMiles).toFixed(2)} miles` : "Unresolved" %></dd></div>
+                  <div><dt>Estimated time on road</dt><dd data-route-duration><%= routeSummary && routeSummary.status === "resolved" ? formatDuration(routeSummary.durationSeconds) : "Unresolved" %></dd></div>
+                  <div><dt>Tolls / charges</dt><dd data-route-charges><%
+                    if (!routeSummary || routeSummary.status !== "resolved") { %>Unresolved<% }
+                    else { const warnings = [...(routeSummary.tollsReported ? ["Tolls reported on route"] : []), ...routeSummary.zones.map((zone) => `Enters ${zone.label}`)]; %><%= warnings.length ? warnings.join("; ") : "None detected" %><% } %></dd></div>
+                </dl>
+                <p class="form-hint" data-route-message><%= routeSummary && routeSummary.status !== "resolved" ? routeSummary.message : "" %></p>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel new-booking-block" aria-labelledby="booking-cargo-title">
+          <h2 id="booking-cargo-title">4. Passengers and luggage</h2>
+          <div class="new-booking-counts">
+            <% countFields.forEach(([field, label]) => { %>
+              <div class="form-field">
+                <label for="<%= field %>"><%= label %></label>
+                <select id="<%= field %>" name="<%= field %>" data-cargo-count data-cargo-label="<%= label %>" <%- invalid(field) %>>
+                  <% for (let count = 0; count <= countMax; count += 1) { %>
+                    <option value="<%= count %>" <%= String(draft.counts[field] || "0") === String(count) ? "selected" : "" %>><%= count %></option>
+                  <% } %>
+                </select>
+                <% if (fieldError(field)) { %><p class="field-error" id="<%= field %>-error"><%= fieldError(field) %></p><% } %>
+              </div>
+            <% }) %>
+            <div class="form-field">
+              <label for="childSeatRequired">Child seat required?</label>
+              <select id="childSeatRequired" name="childSeatRequired" data-cargo-flag <%- invalid("childSeatRequired") %>>
+                <option value="no" <%= draft.childSeatRequired !== "yes" ? "selected" : "" %>>No</option>
+                <option value="yes" <%= draft.childSeatRequired === "yes" ? "selected" : "" %>>Yes</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="boosterRequired">Booster required?</label>
+              <select id="boosterRequired" name="boosterRequired" data-cargo-flag <%- invalid("boosterRequired") %>>
+                <option value="no" <%= draft.boosterRequired !== "yes" ? "selected" : "" %>>No</option>
+                <option value="yes" <%= draft.boosterRequired === "yes" ? "selected" : "" %>>Yes</option>
+              </select>
+            </div>
+          </div>
+          <p class="new-booking-cargo-summary" role="status" aria-live="polite"><strong>Summary:</strong> <span data-cargo-summary><%= cargoSummaryText %></span></p>
+        </section>
+
+        <section class="panel new-booking-block" aria-labelledby="booking-fare-title">
+          <h2 id="booking-fare-title">5. Fare and itemized breakdown</h2>
+          <div class="new-booking-charge-inputs">
+            <div class="form-field">
+              <label for="parkingRequired">Parking required?</label>
+              <select id="parkingRequired" name="parkingRequired" data-quote-input <%- invalid("parkingRequired") %>>
+                <option value="no" <%= draft.parkingRequired !== "yes" ? "selected" : "" %>>No</option>
+                <option value="yes" <%= draft.parkingRequired === "yes" ? "selected" : "" %>>Yes</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="extraWaitingMinutes">Expected extra waiting (minutes)</label>
+              <input id="extraWaitingMinutes" name="extraWaitingMinutes" type="number" min="0" max="<%= maxExtraWaitingMinutes %>" step="5" value="<%= draft.extraWaitingMinutes || "0" %>" data-quote-input <%- invalid("extraWaitingMinutes") %>>
+              <% if (fieldError("extraWaitingMinutes")) { %><p class="field-error" id="extraWaitingMinutes-error"><%= fieldError("extraWaitingMinutes") %></p><% } %>
+            </div>
+            <% if (confirmationFees.length) { %>
+              <fieldset class="new-booking-fieldset" id="confirmedPoiFeeIds">
+                <legend>Optional POI services (charged only when confirmed)</legend>
+                <% confirmationFees.forEach((fee) => { %>
+                  <label class="new-booking-poi-fee" data-poi-fee-option data-poi-id="<%= fee.poiId %>">
+                    <input type="checkbox" name="confirmedPoiFeeIds" value="<%= fee.id %>" <%= draft.confirmedPoiFeeIds.includes(fee.id) ? "checked" : "" %> data-quote-input>
+                    <%= fee.poiDisplayName %>: <%= fee.action %> (£<%= fee.amount %><%= fee.feeBasis ? `, ${fee.feeBasis}` : "" %>)
+                  </label>
+                <% }) %>
+                <p class="form-hint">Only fees for POIs selected in this journey are priced.</p>
+              </fieldset>
+            <% } %>
+          </div>
+          <div data-price-container aria-live="polite">
+            <%- include("../../partials/booking-price-breakdown", { price: quote ? quote.price : null }) %>
+          </div>
+          <p class="form-hint" data-quote-status></p>
+
+          <div class="form-field form-field--checkbox new-booking-ack" data-unresolved-ack <%= quote && quote.price.status === "incomplete" ? "" : "hidden" %>>
+            <label for="saveWithUnresolvedPrice">
+              <input id="saveWithUnresolvedPrice" name="saveWithUnresolvedPrice" type="checkbox" value="yes" <%= draft.saveWithUnresolvedPrice ? "checked" : "" %> <%- invalid("saveWithUnresolvedPrice") %>>
+              Save with price unresolved (booking is stored as “price incomplete” with no total)
+            </label>
+            <% if (fieldError("saveWithUnresolvedPrice")) { %><p class="field-error" id="saveWithUnresolvedPrice-error"><%= fieldError("saveWithUnresolvedPrice") %></p><% } %>
+          </div>
+
+          <div class="new-booking-actions">
+            <button type="submit" class="button" data-save-booking>Save booking</button>
+            <a class="button button--secondary" href="/customers">Cancel</a>
+          </div>
+        </section>
+      </form>
+    </main>
+
+    <%- include("../../partials/footer") %>
+    <script src="/js/google-map-preview.js" defer></script>
+    <script src="/js/new-booking.js" defer></script>
+  </body>
+</html>

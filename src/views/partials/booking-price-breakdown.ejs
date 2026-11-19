@@ -1,0 +1,52 @@
+<%
+  const lineStatusLabels = {
+    applied: "Applied",
+    zero: "Configured £0.00",
+    "not-applicable": "Not applicable",
+    unresolved: "Unresolved"
+  };
+  const formatAmount = (amount) => {
+    if (amount === null || amount === undefined) return "—";
+    const negative = String(amount).startsWith("-");
+    return `${negative ? "−" : ""}£${negative ? String(amount).slice(1) : amount}`;
+  };
+%>
+<div class="booking-price" data-booking-price data-price-status="<%= price ? price.status : "pending" %>">
+  <% if (!price) { %>
+    <p class="booking-price__pending" data-booking-price-pending>Select pickup, drop-off and a service date/time to calculate the itemized price.</p>
+  <% } else { %>
+    <table class="booking-price__table">
+      <caption class="visually-hidden">Itemized price breakdown</caption>
+      <thead>
+        <tr><th scope="col">Item</th><th scope="col">Status</th><th scope="col">Basis</th><th scope="col" class="booking-price__amount">Amount</th></tr>
+      </thead>
+      <tbody>
+        <% price.lines.forEach((line) => { %>
+          <tr class="booking-price__line booking-price__line--<%= line.status %>" data-price-line="<%= line.type %>" data-price-line-status="<%= line.status %>">
+            <th scope="row"><%= line.label %></th>
+            <td><span class="booking-price__status booking-price__status--<%= line.status %>"><%= lineStatusLabels[line.status] || line.status %></span></td>
+            <td class="booking-price__basis"><%= line.basis %></td>
+            <td class="booking-price__amount"><%= formatAmount(line.amount) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+      <tfoot>
+        <tr class="booking-price__total" data-price-total>
+          <th scope="row" colspan="3">Total payable</th>
+          <td class="booking-price__amount">
+            <% if (price.status === "complete") { %>
+              <strong><%= formatAmount(price.total) %></strong>
+            <% } else { %>
+              <strong>Not confirmed</strong>
+            <% } %>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+    <% if (price.status !== "complete") { %>
+      <p class="notice notice--critical booking-price__incomplete" role="status">
+        <% const unresolvedLines = price.lines.filter((line) => line.status === "unresolved").length; %>Price incomplete: <%= unresolvedLines %> item<%= unresolvedLines === 1 ? "" : "s" %> unresolved. No total is payable or confirmed until every item is resolved.
+      </p>
+    <% } %>
+  <% } %>
+</div>
