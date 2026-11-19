@@ -11,7 +11,7 @@ import {
   type RadiusLocationDiscountRule
 } from "./fare-settings";
 import type { PoiFeeRecord, PoiRecord } from "./poi-management";
-import { applyRoadChargeActivation, EMPTY_ROAD_CHARGE_PROFILE, roadChargeScheduleSeeds } from "./road-charge-schedules";
+import { applyRoadChargeActivation, roadChargeScheduleSeeds } from "./road-charge-schedules";
 
 const timestamp = "2026-01-01T00:00:00.000Z";
 const slabs = [
@@ -92,8 +92,6 @@ function inputs(overrides: Partial<BookingPricingInputs> = {}): BookingPricingIn
     serviceTime: "10:00",
     stops: { pickup: addressStop(northOfBase(50), null, "Start"), vias: [], dropoff: addressStop(northOfBase(60), null, "End") },
     confirmedPoiFeeIds: [],
-    parkingRequired: false,
-    extraWaitingMinutes: 0,
     ...overrides
   };
 }
@@ -273,9 +271,11 @@ test("every component is its own line and the total equals the sum of resolved l
   );
   assert.equal(price.status, "complete");
   const types = price.lines.map((line) => line.type);
-  for (const type of ["ride-fare", "location-discount", "airport-pickup-fee", "airport-dropoff-fee", "poi-fee", "toll", "road-charge", "parking", "extra-waiting", "time-surcharge", "fixed-fare", "dead-mileage"] as const) {
+  for (const type of ["ride-fare", "location-discount", "airport-pickup-fee", "airport-dropoff-fee", "poi-fee", "toll", "road-charge", "time-surcharge", "fixed-fare", "dead-mileage"] as const) {
     assert.ok(types.includes(type), type);
   }
+  assert.ok(!types.includes("parking" as never), "parking is never a dispatcher price line");
+  assert.ok(!types.includes("extra-waiting" as never), "extra waiting is never a dispatcher price line");
   const sum = price.lines.reduce((total, line) => total + (line.amount === null ? 0 : pennies(line.amount)), 0);
   assert.equal(pennies(price.total!), sum);
   assert.equal(price.total, "34.50");
@@ -291,17 +291,14 @@ test("unresolved route, tolls, zones, parking and waiting make the price incompl
   assert.equal(one(noRoute.lines, "toll").status, "unresolved");
 
   const charges = priceBooking(
-    inputs({ parkingRequired: true, extraWaitingMinutes: 15 }),
+    inputs(),
     context({ route: route("12", { tollsReported: true, zones: [zoneHit("london-ulez", "London ULEZ"), zoneHit("london-congestion-charge", "Congestion Charge zone")] }) })
   );
   assert.equal(one(charges.lines, "ride-fare").amount, "23.00");
   assert.equal(one(charges.lines, "toll").status, "unresolved");
   assert.deepEqual(lineOf(charges.lines, "road-charge").map((line) => line.status), ["unresolved", "unresolved"]);
-  assert.equal(one(charges.lines, "parking").status, "unresolved");
-  assert.equal(one(charges.lines, "extra-waiting").status, "unresolved");
-  assert.match(one(charges.lines, "extra-waiting").label, /15 min/);
   assert.ok(charges.lines.every((line) => line.status !== "unresolved" || line.amount === null), "unresolved lines never carry invented amounts");
-  assert.equal(charges.unresolvedCount, 5);
+  assert.equal(charges.unresolvedCount, 3);
   assert.equal(charges.total, null);
 
   const noSlabs = priceBooking(inputs(), context({ configuration: { distanceSlabs: [] } }));
@@ -355,7 +352,7 @@ test("unknown postcodes keep potentially matching fixed fares unresolved", () =>
   assert.equal(one(definiteMismatch.lines, "fixed-fare").status, "not-applicable");
 });
 
-test("active road charges are separate lines that fare discounts never reduce, and unresolved ones remove the total", () => {
+test("active road charges stay unresolved without an assigned vehicle, and fare discounts never reduce them", () => {
   const schedule = applyRoadChargeActivation(roadChargeScheduleSeeds["london-lez"], { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, { accountId: "u", email: "a@example.com" }, new Date("2026-11-20T00:00:00Z"));
   const roadChargeSchedules = { "london-lez": { scheme: "london-lez" as const, version: 3, status: "active", schedule } };
   const radius: RadiusLocationDiscountRule = {
@@ -364,28 +361,17 @@ test("active road charges are separate lines that fare discounts never reduce, a
   };
   const journey = { stops: { pickup: addressStop(northOfBase(2), null), vias: [], dropoff: airportStop("rm-lhr") } };
   const lezRoute = route("12", { zones: [zoneHit("london-lez", "London Low Emission Zone (LEZ)")] });
-  const price = priceBooking(
-    inputs({ ...journey, roadChargeProfile: { ...EMPTY_ROAD_CHARGE_PROFILE, lez: "lez-vans-specialist-minibuses" } }),
-    context({ route: lezRoute, roadChargeSchedules, configuration: { radiusLocationDiscounts: [radius] } })
-  );
-  assert.equal(price.status, "complete");
+  const price = priceBooking(inputs(journey), context({ route: lezRoute, roadChargeSchedules, configuration: { radiusLocationDiscounts: [radius] } }));
   assert.equal(one(price.lines, "ride-fare").amount, "23.00");
   assert.equal(one(price.lines, "location-discount").amount, "-11.50", "the discount is calculated on the ride fare only");
   const charge = one(price.lines, "road-charge");
-  assert.equal(charge.amount, "100.00");
-  assert.equal(charge.status, "applied");
-  assert.match(charge.label, /^London LEZ daily charge — Wed, 10 Mar 2027$/);
-  assert.equal(price.total, "117.50", "23.00 - 11.50 + 6.00 airport drop-off + 100.00 LEZ");
+  assert.equal(charge.status, "unresolved", "no assigned vehicle means the LEZ charge cannot be confirmed");
+  assert.equal(charge.amount, null);
+  assert.equal(price.status, "incomplete");
+  assert.equal(price.total, null);
 
-  const unstated = priceBooking(inputs(journey), context({ route: lezRoute, roadChargeSchedules, configuration: { radiusLocationDiscounts: [radius] } }));
-  assert.equal(one(unstated.lines, "road-charge").status, "unresolved");
-  assert.equal(unstated.status, "incomplete");
-  assert.equal(unstated.total, null);
-
-  const inactive = priceBooking(
-    inputs({ ...journey, roadChargeProfile: { ...EMPTY_ROAD_CHARGE_PROFILE, lez: "lez-vans-specialist-minibuses" } }),
-    context({ route: lezRoute })
-  );
+  const inactive = priceBooking(inputs(journey), context({ route: lezRoute }));
   assert.equal(one(inactive.lines, "road-charge").status, "unresolved", "no schedule loaded means no charge can be confirmed");
   assert.equal(inactive.total, null);
 });
+

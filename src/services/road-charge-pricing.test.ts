@@ -4,7 +4,6 @@ import type { PriceLine } from "./booking-pricing";
 import type { BookingRoute, RoadChargeZoneDetection, TunnelCrossing } from "./booking-routing";
 import { journeyWindow, roadChargeLines, type RoadChargeScheduleSet } from "./road-charge-pricing";
 import {
-  EMPTY_ROAD_CHARGE_PROFILE,
   NO_CHARGE,
   roadChargeScheduleSeeds,
   type RoadChargeProfile,
@@ -13,6 +12,7 @@ import {
 
 // Route geometry provenance is enforced separately (see the "production gate" test); these tests isolate the rules.
 const verifiedGeometry = { codeCalculationBlockers: () => [] };
+const EMPTY_PROFILE: RoadChargeProfile = { lez: "", ulez: "", congestionCharge: "", tunnelVehicleClass: "", tunnelAutoPay: "" };
 
 function activeSet(...schemes: RoadChargeScheme[]): RoadChargeScheduleSet {
   return Object.fromEntries(schemes.map((scheme) => [scheme, {
@@ -63,7 +63,7 @@ function route(overrides: Partial<Extract<BookingRoute, { status: "resolved" }>>
   };
 }
 
-const profile = (overrides: Partial<RoadChargeProfile>): RoadChargeProfile => ({ ...EMPTY_ROAD_CHARGE_PROFILE, ...overrides });
+const profile = (overrides: Partial<RoadChargeProfile>): RoadChargeProfile => ({ ...EMPTY_PROFILE, ...overrides });
 
 function zoneCharge(scheme: RoadChargeZoneDetection["zone"], date: string, time: string, declared: Partial<RoadChargeProfile>, schedules = ALL, durationSeconds = 1800): PriceLine {
   const lines = roadChargeLines(date, time, profile(declared), route({ zones: [zone(scheme)], durationSeconds }), schedules, verifiedGeometry);
@@ -108,7 +108,7 @@ test("LEZ charges its daily rate every day including Christmas, and distinguishe
   assert.equal(compliant.amount, null);
   const unstated = zoneCharge("london-lez", "2027-03-10", "10:00", {});
   assert.equal(unstated.status, "unresolved");
-  assert.match(unstated.basis, /LEZ position was not stated/);
+  assert.match(unstated.basis, /LEZ position is not recorded/);
   assert.equal(unstated.amount, null);
 });
 
@@ -267,4 +267,9 @@ test("an unresolved route leaves every road-charge category unresolved", () => {
     ["tunnel-charge", "unresolved", null],
     ["toll", "unresolved", null]
   ]);
+});
+
+test("zone charges stay unresolved when no vehicle is assigned at quote time", () => {
+  const lines = roadChargeLines("2027-03-10", "10:00", null, route({ zones: [zone("london-lez"), zone("london-ulez")] }), ALL, verifiedGeometry);
+  assert.deepEqual(lines.filter((line) => line.type === "road-charge").map((line) => [line.status, line.amount]), [["unresolved", null], ["unresolved", null]]);
 });

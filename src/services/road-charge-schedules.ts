@@ -439,9 +439,9 @@ export function validateRoadChargeScheduleEdit(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Dispatcher road-charge vehicle profile. RideMatrix vehicle records hold no Euro standard, weight, registration
-// or Auto Pay data and no vehicle is assigned at quote time, so each answer is an explicit dispatcher statement.
-// "" means not stated, which leaves any applicable charge unresolved.
+// Vehicle-side road-charge facts (LEZ/ULEZ/Congestion Charge position, tunnel class, Auto Pay). They are not
+// dispatcher inputs: they must come from the assigned vehicle's persisted record. Until such a record exists,
+// quotes pass null and every vehicle-dependent charge stays unresolved.
 
 export type RoadChargeProfile = {
   lez: string;
@@ -451,10 +451,9 @@ export type RoadChargeProfile = {
   tunnelAutoPay: string;
 };
 
-export const EMPTY_ROAD_CHARGE_PROFILE: RoadChargeProfile = { lez: "", ulez: "", congestionCharge: "", tunnelVehicleClass: "", tunnelAutoPay: "" };
-
 export const NO_CHARGE = "no-charge";
 
+/** Labels for the stored vehicle-side charge attributes, used in itemized basis text. */
 export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { label: string; options: Array<{ value: string; label: string }> }> = {
   lez: {
     label: "LEZ position",
@@ -496,33 +495,6 @@ export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { labe
     ]
   }
 };
-
-export const ROAD_CHARGE_PROFILE_FIELDS: Record<keyof RoadChargeProfile, string> = {
-  lez: "roadChargeLez",
-  ulez: "roadChargeUlez",
-  congestionCharge: "roadChargeCongestion",
-  tunnelVehicleClass: "roadChargeTunnelClass",
-  tunnelAutoPay: "roadChargeTunnelAutoPay"
-};
-
-/** Validates submitted profile answers; unknown values are errors, blanks mean “not stated”. */
-export function validateRoadChargeProfile(profile: RoadChargeProfile): Array<{ field: string; message: string }> {
-  const errors: Array<{ field: string; message: string }> = [];
-  for (const key of Object.keys(ROAD_CHARGE_PROFILE_OPTIONS) as Array<keyof RoadChargeProfile>) {
-    const value = profile[key];
-    if (value && !ROAD_CHARGE_PROFILE_OPTIONS[key].options.some((option) => option.value === value)) {
-      errors.push({ field: ROAD_CHARGE_PROFILE_FIELDS[key], message: `Select a valid ${ROAD_CHARGE_PROFILE_OPTIONS[key].label}.` });
-    }
-  }
-  const heavyLez = profile.lez === "lez-heavy-euro-iv-pm" || profile.lez === "lez-heavy-below-euro-iv-pm";
-  if (heavyLez && profile.ulez && profile.ulez !== NO_CHARGE) {
-    errors.push({ field: ROAD_CHARGE_PROFILE_FIELDS.ulez, message: "A vehicle over 3.5 t (bus/coach over 5 t) is not charged ULEZ; correct the ULEZ or LEZ position." });
-  }
-  if (profile.lez === "lez-vans-specialist-minibuses" && (profile.ulez === "ulez-cars" || profile.ulez === "ulez-motorcycles-and-l-category")) {
-    errors.push({ field: ROAD_CHARGE_PROFILE_FIELDS.ulez, message: "The ULEZ vehicle category does not match the LEZ van/minibus category." });
-  }
-  return errors;
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Version transitions. Every change appends a new version; editing always produces an inactive, unverified

@@ -256,34 +256,6 @@
         <section class="panel new-booking-block" aria-labelledby="booking-fare-title">
           <h2 id="booking-fare-title">5. Fare and itemized breakdown</h2>
           <div class="new-booking-charge-inputs">
-            <div class="form-field">
-              <label for="parkingRequired">Parking required?</label>
-              <select id="parkingRequired" name="parkingRequired" data-quote-input <%- invalid("parkingRequired") %>>
-                <option value="no" <%= draft.parkingRequired !== "yes" ? "selected" : "" %>>No</option>
-                <option value="yes" <%= draft.parkingRequired === "yes" ? "selected" : "" %>>Yes</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="extraWaitingMinutes">Expected extra waiting (minutes)</label>
-              <input id="extraWaitingMinutes" name="extraWaitingMinutes" type="number" min="0" max="<%= maxExtraWaitingMinutes %>" step="5" value="<%= draft.extraWaitingMinutes || "0" %>" data-quote-input <%- invalid("extraWaitingMinutes") %>>
-              <% if (fieldError("extraWaitingMinutes")) { %><p class="field-error" id="extraWaitingMinutes-error"><%= fieldError("extraWaitingMinutes") %></p><% } %>
-            </div>
-            <fieldset class="new-booking-fieldset new-booking-road-charges">
-              <legend>Road charges — vehicle details</legend>
-              <p class="form-hint">RideMatrix vehicle records do not include emissions standard, weight, TfL discount registration or Auto Pay status. Select these details for the vehicle that will do the job. If a detail is not selected, any charge that depends on it stays unresolved and the quote has no confirmed total.</p>
-              <% (locals.roadChargeFields || []).forEach((field) => { %>
-                <div class="form-field">
-                  <label for="<%= field.name %>"><%= field.label %></label>
-                  <select id="<%= field.name %>" name="<%= field.name %>" data-quote-input <%- invalid(field.name) %>>
-                    <option value="">Not specified (charge unresolved)</option>
-                    <% field.options.forEach((option) => { %>
-                      <option value="<%= option.value %>" <%= draft.roadChargeProfile[field.key] === option.value ? "selected" : "" %>><%= option.label %></option>
-                    <% }) %>
-                  </select>
-                  <% if (fieldError(field.name)) { %><p class="field-error" id="<%= field.name %>-error"><%= fieldError(field.name) %></p><% } %>
-                </div>
-              <% }) %>
-            </fieldset>
             <% if (confirmationFees.length) { %>
               <fieldset class="new-booking-fieldset" id="confirmedPoiFeeIds">
                 <legend>Optional POI services (charged only when confirmed)</legend>

@@ -6,12 +6,10 @@ import type { BookingRoute } from "../services/booking-routing";
 import type { BookingPrice, BookingStops } from "../services/booking-pricing";
 import { buildCustomerQuote } from "../services/customer-quote";
 import { readMapConfiguration } from "../services/maps";
-import { EMPTY_ROAD_CHARGE_PROFILE, ROAD_CHARGE_PROFILE_FIELDS, ROAD_CHARGE_PROFILE_OPTIONS } from "../services/road-charge-schedules";
 import {
   BOOKING_COUNT_FIELDS,
   BOOKING_COUNT_MAX,
   BookingPriceChangedError,
-  MAX_EXTRA_WAITING_MINUTES,
   SERVICE_TIMEZONE,
   STOP_KEYS,
   UnresolvedPriceNotAcknowledgedError,
@@ -77,10 +75,7 @@ function emptyDraft(now: Date): NewBookingDraft {
     counts: Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, "0"])) as NewBookingDraft["counts"],
     childSeatRequired: "no",
     boosterRequired: "no",
-    parkingRequired: "no",
-    extraWaitingMinutes: "0",
     confirmedPoiFeeIds: [],
-    roadChargeProfile: { ...EMPTY_ROAD_CHARGE_PROFILE },
     saveWithUnresolvedPrice: false,
     quotedTotal: "",
     quotedStatus: "",
@@ -185,13 +180,6 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       countFields: BOOKING_COUNT_FIELDS,
       countMax: BOOKING_COUNT_MAX,
       timeOptions: serviceTimeOptions(),
-      maxExtraWaitingMinutes: MAX_EXTRA_WAITING_MINUTES,
-      roadChargeFields: (Object.keys(ROAD_CHARGE_PROFILE_FIELDS) as Array<keyof typeof ROAD_CHARGE_PROFILE_FIELDS>).map((key) => ({
-        key,
-        name: ROAD_CHARGE_PROFILE_FIELDS[key],
-        label: ROAD_CHARGE_PROFILE_OPTIONS[key].label,
-        options: ROAD_CHARGE_PROFILE_OPTIONS[key].options
-      })),
       serviceTimezone: SERVICE_TIMEZONE,
       cargoSummaryText: cargoSummary(counts, draft.childSeatRequired === "yes", draft.boosterRequired === "yes"),
       createdByEmail: actor.email,

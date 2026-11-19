@@ -18,7 +18,6 @@ import { poiManagementStore, type PoiFeeRecord, type PoiRecord } from "./poi-man
 import { updateCustomerLastBookingAt } from "./customers";
 import { londonFeeScheduleStore } from "./london-fee-schedules";
 import { roadChargeScheduleReferences, type RoadChargeScheduleSet } from "./road-charge-pricing";
-import { ROAD_CHARGE_PROFILE_FIELDS, validateRoadChargeProfile, type RoadChargeProfile } from "./road-charge-schedules";
 
 export const BOOKING_COUNT_MAX = 7;
 export const BOOKING_COUNT_FIELDS = [
@@ -33,7 +32,6 @@ export const BOOKING_COUNT_FIELDS = [
 export type BookingCountField = (typeof BOOKING_COUNT_FIELDS)[number][0];
 export const STOP_KEYS = ["pickup", "via1", "via2", "dropoff"] as const;
 export type StopKey = (typeof STOP_KEYS)[number];
-export const MAX_EXTRA_WAITING_MINUTES = 240;
 
 export type BookingFieldError = { field: string; message: string };
 
@@ -68,11 +66,7 @@ export type NewBookingDraft = {
   counts: Record<BookingCountField, string>;
   childSeatRequired: string;
   boosterRequired: string;
-  parkingRequired: string;
-  extraWaitingMinutes: string;
   confirmedPoiFeeIds: string[];
-  /** Dispatcher-stated road-charge answers; "" means not stated. */
-  roadChargeProfile: RoadChargeProfile;
   saveWithUnresolvedPrice: boolean;
   quotedTotal: string;
   quotedStatus: string;
@@ -187,11 +181,7 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     counts,
     childSeatRequired: text(source, "childSeatRequired", 5),
     boosterRequired: text(source, "boosterRequired", 5),
-    parkingRequired: text(source, "parkingRequired", 5),
-    extraWaitingMinutes: text(source, "extraWaitingMinutes", 5),
     confirmedPoiFeeIds: list(source, "confirmedPoiFeeIds"),
-    roadChargeProfile: Object.fromEntries(Object.entries(ROAD_CHARGE_PROFILE_FIELDS)
-      .map(([key, field]) => [key, text(source, field, 80)])) as RoadChargeProfile,
     saveWithUnresolvedPrice: text(source, "saveWithUnresolvedPrice") === "yes",
     quotedTotal: text(source, "quotedTotal", 20),
     quotedStatus: text(source, "quotedStatus", 20),
@@ -388,17 +378,10 @@ export async function validateJourney(
   if (draft.viaActive.via2 && !draft.viaActive.via1) {
     errors.push({ field: "via1Kind", message: "Add Via 1 before Via 2." });
   }
-  const extraWaiting = draft.extraWaitingMinutes === "" ? 0 : Number(draft.extraWaitingMinutes);
-  if (!/^\d{0,3}$/.test(draft.extraWaitingMinutes) || !Number.isInteger(extraWaiting) || extraWaiting % 5 !== 0 || extraWaiting > MAX_EXTRA_WAITING_MINUTES) {
-    errors.push({ field: "extraWaitingMinutes", message: `Extra waiting must be 0–${MAX_EXTRA_WAITING_MINUTES} minutes in five-minute steps.` });
-  }
-  const parking = yesNo(draft.parkingRequired);
-  if (parking === null) errors.push({ field: "parkingRequired", message: "Select whether parking is required." });
   const knownConfirmationFees = new Set(reference.poiFees.filter((fee) => fee.trigger === "confirmation").map((fee) => fee.id));
   if (draft.confirmedPoiFeeIds.some((id) => !knownConfirmationFees.has(id))) {
     errors.push({ field: "confirmedPoiFeeIds", message: "A confirmed POI fee is no longer configured. Refresh the price." });
   }
-  errors.push(...validateRoadChargeProfile(draft.roadChargeProfile));
   if (errors.length > initialErrors || !resolved.pickup || !resolved.dropoff) return null;
   const stops: BookingStops = {
     pickup: resolved.pickup,
@@ -415,10 +398,7 @@ export async function validateJourney(
       serviceTime: draft.serviceTime,
       stops,
       confirmedPoiFeeIds: draft.confirmedPoiFeeIds.filter((id) =>
-        reference.poiFees.some((fee) => fee.id === id && selectedPoiIds.has(fee.poiId))),
-      parkingRequired: parking === true,
-      extraWaitingMinutes: extraWaiting,
-      roadChargeProfile: { ...draft.roadChargeProfile }
+        reference.poiFees.some((fee) => fee.id === id && selectedPoiIds.has(fee.poiId)))
     }
   };
 }

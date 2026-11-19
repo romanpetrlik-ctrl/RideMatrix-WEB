@@ -18,10 +18,9 @@ Each line is separate and fees are never folded into the ride fare.
 - **Location discount** – `resolveJourneyLocationDiscount`: an active operational-base radius rule for the endpoint's managed ID takes exclusive precedence (inside the radius only the radius discount, outside it no discount and no postcode fallback); otherwise postcode rules apply. One discount at most, applied to the ride fare only.
 - **Airport pick-up fee / Airport drop-off fee** – from the exact selected Airport Fees record when it is the pickup or drop-off. A saved `0.00` is shown as **Configured £0.00**.
 - **POI fees** – only fees configured for the exact selected POI ID. Automatic triggers apply when the POI is the pickup or drop-off; confirmation-triggered fees apply only when the dispatcher ticks them.
-- **Road charges (LEZ, ULEZ, Congestion Charge, Blackwall/Silvertown)** – priced only from an **active** schedule (see `docs/london-fee-schedule-drafts.md`), using the service date/time in `Europe/London`, the route geometry, and the dispatcher's explicit **Road charges — vehicle details** inputs (LEZ/ULEZ/CC position, tunnel vehicle class, Auto Pay). One daily line per zone per charging day and one line per tunnel crossing. A missing schedule, route, input or rule makes the line unresolved. After deployment no schedule is active, so any exposure is unresolved.
+- **Road charges (LEZ, ULEZ, Congestion Charge, Blackwall/Silvertown)** – priced only from an **active** schedule (see `docs/london-fee-schedule-drafts.md`), using the service date/time in `Europe/London`, the route geometry, and vehicle/payment facts from the assigned vehicle's persisted record. Dispatchers never enter these per booking. No vehicle is assigned at quote time and no persisted emissions, weight, CC exemption, tunnel class or Auto Pay data exists yet, so vehicle-dependent lines are unresolved. One daily line per zone per charging day and one line per tunnel crossing. A missing schedule, route, vehicle fact or rule makes the line unresolved. No schedule is active, so any exposure is unresolved.
 - **Unresolved charge types** – the application has no reliable rate source for these, so they are never estimated:
   - tolls reported by the route that are not an identified tunnel crossing (no toll schedule; Dartford is not priced);
-  - parking and extra waiting time when requested (no rate configuration);
   - daily/bank-holiday surcharges and fixed fares that match the journey (their booking basis is not defined);
   - dead mileage (assessed on the booking assignment page).
   If one of these applies, or the route or required configuration is missing, the price is **incomplete**.
@@ -37,7 +36,7 @@ Migration `0033_new_booking_price_snapshots` adds booking-manager, passenger, se
 The booking detail page (`GET /bookings/:id`, `admin` only) shows **6. Customer quote preview** below the dispatcher breakdown. It is built only from the saved price snapshot — never recalculated from current settings — so later Fare Settings, Airport Fee or POI fee edits do not change it.
 
 - Shows each payable line separately: ride fare, location discount (negative, own line), airport pick-up/drop-off fees, POI fees ("Location fee — …"), tolls, road/zone charges and time-based surcharges, followed by **Total payable**.
-- Omits not-applicable lines; shows a configured £0.00 for the ride fare, airport and POI fees. Parking, extra waiting, dead mileage and fixed-fare lines are never shown.
+- Omits not-applicable lines; shows a configured £0.00 for the ride fare, airport and POI fees. Dead mileage and fixed-fare lines are never shown.
 - Never shows line statuses, calculation basis, rule names or IDs, source records or Fare Settings versions.
 - **Total payable** is shown only when the snapshot is complete, no line is unresolved and the saved total equals the sum of the displayed lines. Otherwise the preview is marked **Quote not yet confirmed**, shows no total and must not be sent.
 

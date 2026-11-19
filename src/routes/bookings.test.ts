@@ -97,7 +97,7 @@ function form(fields: Record<string, string | string[]> = {}) {
     customerId: "cust-b", managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test",
     passengerIsManager: "yes", serviceDate: "2027-03-10", serviceTime: "14:30",
     pickupKind: "airport", pickupAirportId: "airport-x", dropoffKind: "airport", dropoffAirportId: "airport-x",
-    adults: "2", children: "0", xlBaggage: "1", childSeatRequired: "no", boosterRequired: "no", parkingRequired: "no", extraWaitingMinutes: "0",
+    adults: "2", children: "0", xlBaggage: "1", childSeatRequired: "no", boosterRequired: "no",
     ...fields
   };
   for (const [key, value] of Object.entries(all)) for (const entry of [value].flat()) params.append(key, entry);
@@ -305,7 +305,6 @@ const detailedSnapshotBooking: SavedNewBooking = {
       { type: "airport-dropoff-fee", label: "Airport drop-off fee", status: "not-applicable", amount: null, basis: "The drop-off is not a managed airport.", source: {} },
       { type: "poi-fee", label: "POI fee — Stadium: drop-off", status: "zero", amount: "0.00", basis: "Configured POI fee", source: { poiFeeId: "poi-fee-uuid" } },
       { type: "toll", label: "Toll charges", status: "not-applicable", amount: null, basis: "No tolls reported on this route.", source: {} },
-      { type: "parking", label: "Parking", status: "not-applicable", amount: null, basis: "Not requested.", source: {} },
       { type: "dead-mileage", label: "Dead mileage", status: "not-applicable", amount: null, basis: "Recorded on assignment.", source: {} }
     ]
   }

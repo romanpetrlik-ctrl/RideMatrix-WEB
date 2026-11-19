@@ -12,7 +12,6 @@ import {
 } from "./fare-settings";
 import type { PoiFeeRecord, PoiRecord } from "./poi-management";
 import { roadChargeLines, type RoadChargeScheduleSet } from "./road-charge-pricing";
-import { EMPTY_ROAD_CHARGE_PROFILE, type RoadChargeProfile } from "./road-charge-schedules";
 
 export type BookingLocationKind = "airport" | "poi" | "address";
 
@@ -43,8 +42,6 @@ export type PriceLineType =
   | "toll"
   | "road-charge"
   | "tunnel-charge"
-  | "parking"
-  | "extra-waiting"
   | "time-surcharge"
   | "fixed-fare"
   | "dead-mileage";
@@ -65,10 +62,6 @@ export type BookingPricingInputs = {
   stops: BookingStops;
   /** POI fee IDs (trigger "confirmation") the dispatcher explicitly confirmed. */
   confirmedPoiFeeIds: string[];
-  parkingRequired: boolean;
-  extraWaitingMinutes: number;
-  /** Dispatcher-stated LEZ/ULEZ/Congestion Charge/tunnel answers; blanks leave applicable charges unresolved. */
-  roadChargeProfile?: RoadChargeProfile;
 };
 
 export type BookingPricingContext = {
@@ -384,23 +377,6 @@ function fixedFareLine(inputs: BookingPricingInputs, context: BookingPricingCont
   };
 }
 
-function waitingAndParkingLines(inputs: BookingPricingInputs, context: BookingPricingContext): PriceLine[] {
-  const airport = inputs.stops.pickup.kind === "airport"
-    ? context.airports.find((record) => record.id === inputs.stops.pickup.managedId)
-    : undefined;
-  const covered = airport?.pickupFeeCoveredMinutes
-    ? ` The airport pick-up fee covers ${airport.pickupFeeCoveredMinutes} minutes of waiting/parking.`
-    : "";
-  return [
-    inputs.parkingRequired
-      ? { type: "parking", label: "Parking", status: "unresolved", amount: null, basis: `Parking was requested, but no parking charge is configured in RideMatrix.${covered}`, source: { requested: true } }
-      : { type: "parking", label: "Parking", status: "not-applicable", amount: null, basis: `Not requested.${covered}`, source: { requested: false } },
-    inputs.extraWaitingMinutes > 0
-      ? { type: "extra-waiting", label: `Extra waiting time (${inputs.extraWaitingMinutes} min)`, status: "unresolved", amount: null, basis: `Extra waiting was requested, but no waiting-time rate is configured in RideMatrix.${covered}`, source: { minutes: inputs.extraWaitingMinutes } }
-      : { type: "extra-waiting", label: "Extra waiting time", status: "not-applicable", amount: null, basis: `None requested.${covered}`, source: { minutes: 0 } }
-  ];
-}
-
 /**
  * Prices a booking as separately itemized lines. The ride fare is the standard Distance Slabs fare raised to any
  * minimum fare rule for the exact pickup/drop-off airport ID; at most one location discount is applied to the
@@ -413,8 +389,7 @@ export function priceBooking(inputs: BookingPricingInputs, context: BookingPrici
     discountLine(inputs, context, ride),
     ...airportLines(inputs, context),
     ...poiLines(inputs, context),
-    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, inputs.roadChargeProfile ?? EMPTY_ROAD_CHARGE_PROFILE, context.route, context.roadChargeSchedules ?? {}),
-    ...waitingAndParkingLines(inputs, context),
+    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, null, context.route, context.roadChargeSchedules ?? {}),
     surchargeLine(inputs, context),
     fixedFareLine(inputs, context),
     {
