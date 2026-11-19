@@ -5091,6 +5091,26 @@ button:visited,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 0 1rem;
+  align-items: start;
+}
+
+.new-booking-page .new-booking-counts .form-field {
+  min-width: 0;
+  margin-bottom: 0.75rem;
+}
+
+.new-booking-page .new-booking-counts .form-field label {
+  display: flex;
+  align-items: flex-end;
+  min-height: 2.5em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.new-booking-page .new-booking-counts .form-field select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .new-booking-page .new-booking-cargo-summary {

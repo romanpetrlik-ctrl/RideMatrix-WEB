@@ -23,11 +23,11 @@ export const BOOKING_COUNT_MAX = 7;
 export const BOOKING_COUNT_FIELDS = [
   ["adults", "Adults"],
   ["children", "Children"],
-  ["sportsEquipment", "Sports equipment (e.g. golf bags)"],
-  ["xlBaggage", "XL baggage"],
-  ["lBaggage", "L baggage"],
-  ["cabinHandBags", "Cabin/Hand Bag (CB/HB)"],
-  ["backpacks", "Backpack (BP)"]
+  ["sportsEquipment", "Sports items"],
+  ["xlBaggage", "XL bags"],
+  ["lBaggage", "L bags"],
+  ["cabinHandBags", "Cabin bags"],
+  ["backpacks", "Backpacks"]
 ] as const;
 export type BookingCountField = (typeof BOOKING_COUNT_FIELDS)[number][0];
 export const STOP_KEYS = ["pickup", "via1", "via2", "dropoff"] as const;
@@ -772,10 +772,16 @@ export async function getNewBooking(id: string): Promise<SavedNewBooking | null>
 /** Plain-language cargo/passenger summary shared by the server view and client script. */
 export function cargoSummary(counts: Record<BookingCountField, number>, childSeat: boolean, booster: boolean): string {
   const passengers = counts.adults + counts.children;
-  const bags = counts.xlBaggage + counts.lBaggage + counts.cabinHandBags + counts.backpacks;
+  const bagTypes: [string, number][] = [
+    ["XL", counts.xlBaggage],
+    ["L", counts.lBaggage],
+    ["Cabin", counts.cabinHandBags],
+    ["Backpack", counts.backpacks]
+  ];
+  const bags = bagTypes.reduce((sum, [, count]) => sum + count, 0);
   const parts = [
     `${passengers} passenger${passengers === 1 ? "" : "s"} (${counts.adults} adult${counts.adults === 1 ? "" : "s"}, ${counts.children} child${counts.children === 1 ? "" : "ren"})`,
-    `${bags} bag${bags === 1 ? "" : "s"} (XL ${counts.xlBaggage}, L ${counts.lBaggage}, CB/HB ${counts.cabinHandBags}, BP ${counts.backpacks})`,
+    ...(bags ? [`${bags} bag${bags === 1 ? "" : "s"} (${bagTypes.filter(([, count]) => count > 0).map(([label, count]) => `${label} ${count}`).join(", ")})`] : []),
     `${counts.sportsEquipment} sports item${counts.sportsEquipment === 1 ? "" : "s"}`
   ];
   const seats = [childSeat ? "child seat" : "", booster ? "booster" : ""].filter(Boolean);

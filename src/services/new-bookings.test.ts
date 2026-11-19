@@ -139,8 +139,17 @@ test("cargo summary is identical on the server and in the browser", () => {
   }
   assert.equal(
     cargoSummary(cases[1][0], true, true),
-    "3 passengers (2 adults, 1 child) · 7 bags (XL 2, L 1, CB/HB 3, BP 1) · 1 sports item · Requires child seat and booster"
+    "3 passengers (2 adults, 1 child) · 7 bags (XL 2, L 1, Cabin 3, Backpack 1) · 1 sports item · Requires child seat and booster"
   );
+});
+
+test("cargo summary lists only non-zero bag types and omits the bag part when there are none", () => {
+  const none = { adults: 1, children: 0, sportsEquipment: 0, xlBaggage: 0, lBaggage: 0, cabinHandBags: 0, backpacks: 0 };
+  const mixed = { ...none, xlBaggage: 0, lBaggage: 2, cabinHandBags: 2, backpacks: 0 };
+  assert.equal(cargoSummary(none, false, false), "1 passenger (1 adult, 0 children) · 0 sports items · No child seat or booster");
+  assert.equal(cargoSummary(mixed, false, false), "1 passenger (1 adult, 0 children) · 4 bags (L 2, Cabin 2) · 0 sports items · No child seat or booster");
+  assert.equal(newBookingClient.cargoSummary({ ...mixed }, false, false), cargoSummary({ ...mixed }, false, false));
+  assert.equal(newBookingClient.cargoSummary({ ...none }, false, false), cargoSummary({ ...none }, false, false));
 });
 
 test("journey keeps structured stop IDs, ordered vias and rejects invalid date/time or via order", async () => {

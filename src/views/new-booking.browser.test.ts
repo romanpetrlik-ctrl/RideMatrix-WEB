@@ -156,6 +156,13 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
       await page.locator("[data-cargo-summary]").textContent(),
       cargoSummary({ adults: 2, children: 0, sportsEquipment: 3, xlBaggage: 1, lBaggage: 0, cabinHandBags: 0, backpacks: 0 }, true, false)
     );
+    await page.selectOption("#lBaggage", "2");
+    await page.selectOption("#cabinHandBags", "2");
+    assert.match(await page.locator("[data-cargo-summary]").textContent() ?? "", /5 bags \(XL 1, L 2, Cabin 2\)/);
+    await page.selectOption("#xlBaggage", "0");
+    await page.selectOption("#lBaggage", "0");
+    await page.selectOption("#cabinHandBags", "0");
+    assert.doesNotMatch(await page.locator("[data-cargo-summary]").textContent() ?? "", /bags?\b/, "zero bags are not summarised");
 
     // Vias are hidden until added; at most two.
     assert.equal(await page.locator('[data-stop="via1"]').isVisible(), false);
