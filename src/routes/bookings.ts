@@ -5,6 +5,7 @@ import { getSessionAccount, type SessionAccount } from "../services/api";
 import type { BookingRoute } from "../services/booking-routing";
 import type { BookingPrice, BookingStops } from "../services/booking-pricing";
 import { readMapConfiguration } from "../services/maps";
+import { EMPTY_ROAD_CHARGE_PROFILE, ROAD_CHARGE_PROFILE_FIELDS, ROAD_CHARGE_PROFILE_OPTIONS } from "../services/road-charge-schedules";
 import {
   BOOKING_COUNT_FIELDS,
   BOOKING_COUNT_MAX,
@@ -78,6 +79,7 @@ function emptyDraft(now: Date): NewBookingDraft {
     parkingRequired: "no",
     extraWaitingMinutes: "0",
     confirmedPoiFeeIds: [],
+    roadChargeProfile: { ...EMPTY_ROAD_CHARGE_PROFILE },
     saveWithUnresolvedPrice: false,
     quotedTotal: "",
     quotedStatus: "",
@@ -110,7 +112,8 @@ function serializeRoute(route: BookingRoute) {
     durationSeconds: route.durationSeconds,
     trafficModel: route.trafficModel,
     tollsReported: route.tollsReported,
-    zones: route.zones,
+    zones: route.zones.map((zone) => ({ zone: zone.zone, label: zone.label })),
+    tunnelCrossings: route.tunnelCrossings.map((crossing) => ({ tunnel: crossing.tunnel, label: crossing.label, direction: crossing.direction })),
     path: route.path.map((point) => [point.latitude, point.longitude])
   };
 }
@@ -182,6 +185,12 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       countMax: BOOKING_COUNT_MAX,
       timeOptions: serviceTimeOptions(),
       maxExtraWaitingMinutes: MAX_EXTRA_WAITING_MINUTES,
+      roadChargeFields: (Object.keys(ROAD_CHARGE_PROFILE_FIELDS) as Array<keyof typeof ROAD_CHARGE_PROFILE_FIELDS>).map((key) => ({
+        key,
+        name: ROAD_CHARGE_PROFILE_FIELDS[key],
+        label: ROAD_CHARGE_PROFILE_OPTIONS[key].label,
+        options: ROAD_CHARGE_PROFILE_OPTIONS[key].options
+      })),
       serviceTimezone: SERVICE_TIMEZONE,
       cargoSummaryText: cargoSummary(counts, draft.childSeatRequired === "yes", draft.boosterRequired === "yes"),
       createdByEmail: actor.email,

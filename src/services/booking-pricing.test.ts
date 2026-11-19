@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AirportFeeRecord } from "./airport-fees";
 import { priceBooking, type BookingPricingContext, type BookingPricingInputs, type BookingStop, type PriceLine } from "./booking-pricing";
-import type { BookingRoute } from "./booking-routing";
+import type { BookingRoute, RoadChargeZoneDetection } from "./booking-routing";
 import { EARTH_RADIUS_MILES, type OperationalBase } from "./dead-mileage";
 import {
   EMPTY_FARE_SETTINGS,
@@ -11,6 +11,7 @@ import {
   type RadiusLocationDiscountRule
 } from "./fare-settings";
 import type { PoiFeeRecord, PoiRecord } from "./poi-management";
+import { applyRoadChargeActivation, EMPTY_ROAD_CHARGE_PROFILE, roadChargeScheduleSeeds } from "./road-charge-schedules";
 
 const timestamp = "2026-01-01T00:00:00.000Z";
 const slabs = [
@@ -75,9 +76,14 @@ function route(distanceMiles: string, overrides: Partial<Extract<BookingRoute, {
     path: [{ latitude: 51, longitude: -1 }, { latitude: 51.1, longitude: -1.1 }],
     tollsReported: false,
     zones: [],
+    tunnelCrossings: [],
     computedAt: timestamp,
     ...overrides
   };
+}
+
+function zoneHit(zone: RoadChargeZoneDetection["zone"], label: string): RoadChargeZoneDetection {
+  return { zone, label, evidence: { method: "route-polygon-intersection", segmentIndex: 0, firstContact: { latitude: 51.5, longitude: -0.12 }, boundaryDataset: "test" } };
 }
 
 function inputs(overrides: Partial<BookingPricingInputs> = {}): BookingPricingInputs {
@@ -286,7 +292,7 @@ test("unresolved route, tolls, zones, parking and waiting make the price incompl
 
   const charges = priceBooking(
     inputs({ parkingRequired: true, extraWaitingMinutes: 15 }),
-    context({ route: route("12", { tollsReported: true, zones: [{ zone: "london-ulez", label: "London ULEZ" }, { zone: "london-congestion-charge", label: "Congestion Charge zone" }] }) })
+    context({ route: route("12", { tollsReported: true, zones: [zoneHit("london-ulez", "London ULEZ"), zoneHit("london-congestion-charge", "Congestion Charge zone")] }) })
   );
   assert.equal(one(charges.lines, "ride-fare").amount, "23.00");
   assert.equal(one(charges.lines, "toll").status, "unresolved");
@@ -347,4 +353,39 @@ test("unknown postcodes keep potentially matching fixed fares unresolved", () =>
     }
   }), context({ configuration: { fixedFares } }));
   assert.equal(one(definiteMismatch.lines, "fixed-fare").status, "not-applicable");
+});
+
+test("active road charges are separate lines that fare discounts never reduce, and unresolved ones remove the total", () => {
+  const schedule = applyRoadChargeActivation(roadChargeScheduleSeeds["london-lez"], { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, { accountId: "u", email: "a@example.com" }, new Date("2026-11-20T00:00:00Z"));
+  const roadChargeSchedules = { "london-lez": { scheme: "london-lez" as const, version: 3, status: "active", schedule } };
+  const radius: RadiusLocationDiscountRule = {
+    id: "radius-lhr", name: "Local radius", location: { type: "airport", id: "rm-lhr" }, radiusMiles: "10", discountPercentage: "50",
+    startDate: "", endDate: "", enabled: true, radiusCentre: "operational-base", discountBasis: "standard-distance-slabs-base-fare"
+  };
+  const journey = { stops: { pickup: addressStop(northOfBase(2), null), vias: [], dropoff: airportStop("rm-lhr") } };
+  const lezRoute = route("12", { zones: [zoneHit("london-lez", "London Low Emission Zone (LEZ)")] });
+  const price = priceBooking(
+    inputs({ ...journey, roadChargeProfile: { ...EMPTY_ROAD_CHARGE_PROFILE, lez: "lez-vans-specialist-minibuses" } }),
+    context({ route: lezRoute, roadChargeSchedules, configuration: { radiusLocationDiscounts: [radius] } })
+  );
+  assert.equal(price.status, "complete");
+  assert.equal(one(price.lines, "ride-fare").amount, "23.00");
+  assert.equal(one(price.lines, "location-discount").amount, "-11.50", "the discount is calculated on the ride fare only");
+  const charge = one(price.lines, "road-charge");
+  assert.equal(charge.amount, "100.00");
+  assert.equal(charge.status, "applied");
+  assert.match(charge.label, /^London LEZ daily charge — Wed, 10 Mar 2027$/);
+  assert.equal(price.total, "117.50", "23.00 - 11.50 + 6.00 airport drop-off + 100.00 LEZ");
+
+  const unstated = priceBooking(inputs(journey), context({ route: lezRoute, roadChargeSchedules, configuration: { radiusLocationDiscounts: [radius] } }));
+  assert.equal(one(unstated.lines, "road-charge").status, "unresolved");
+  assert.equal(unstated.status, "incomplete");
+  assert.equal(unstated.total, null);
+
+  const inactive = priceBooking(
+    inputs({ ...journey, roadChargeProfile: { ...EMPTY_ROAD_CHARGE_PROFILE, lez: "lez-vans-specialist-minibuses" } }),
+    context({ route: lezRoute })
+  );
+  assert.equal(one(inactive.lines, "road-charge").status, "unresolved", "no schedule loaded means no charge can be confirmed");
+  assert.equal(inactive.total, null);
 });

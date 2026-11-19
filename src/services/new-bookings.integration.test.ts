@@ -3,9 +3,10 @@ import test, { after, before } from "node:test";
 import { initializeDatabase, query } from "../database/connection";
 import { createTestDatabaseContext, safeCleanupTestDatabase, type TestDatabaseContext } from "../database/test-helper";
 import { airportFeeStore } from "./airport-fees";
-import type { BookingRouteProvider } from "./booking-routing";
+import { detectRoadChargeZones, type BookingRouteProvider } from "./booking-routing";
 import { anonymizeCustomer, createCustomer, purgeCustomer } from "./customers";
 import { EMPTY_FARE_SETTINGS, fareSettingsStore } from "./fare-settings";
+import { londonFeeScheduleStore } from "./london-fee-schedules";
 import {
   BookingPriceChangedError,
   createNewBooking,
@@ -17,6 +18,7 @@ import {
   readNewBookingDraft,
   validateNewBooking
 } from "./new-bookings";
+import { roadChargeScheduleSeeds } from "./road-charge-schedules";
 
 let context: TestDatabaseContext | undefined;
 
@@ -32,7 +34,7 @@ const actor = { accountId: "dispatcher-1", email: "dispatcher@example.test" };
 const now = new Date("2027-03-10T09:00:00Z");
 const route: BookingRouteProvider = async () => ({
   status: "resolved", provider: "google-routes", distanceMeters: 16093.44, distanceMiles: "10.000000", durationSeconds: 1500,
-  trafficModel: "traffic-aware", path: [], tollsReported: false, zones: [], computedAt: now.toISOString()
+  trafficModel: "traffic-aware", path: [], tollsReported: false, zones: [], tunnelCrossings: [], computedAt: now.toISOString()
 });
 const dependencies = { now: () => now, verifyPlace: async () => ({ status: "unverified" as const }) };
 
@@ -220,4 +222,96 @@ test("authorized retention purge can remove bookings and their snapshots", async
   assert.equal(await purgeCustomer(customer.id), true);
   assert.equal((await query("SELECT id FROM customer_bookings WHERE id = $1", [saved.id])).rowCount, 0);
   assert.equal((await query("SELECT id FROM booking_price_snapshots WHERE booking_id = $1", [saved.id])).rowCount, 0);
+});
+
+test("road charges are quoted from the active schedule and the saved snapshot keeps them after schedule edits", async () => {
+  const customer = await createCustomer({ givenName: "Riley", surname: "Road", email: "riley@example.test", phone: "+44 7911 123457" } as Parameters<typeof createCustomer>[0]);
+  const fare = await fareSettingsStore.load();
+  await fareSettingsStore.save(fare.currentVersion, { ...EMPTY_FARE_SETTINGS, distanceSlabs: [{ startMiles: "0", endMiles: "", ratePerMile: "2.00" }] }, actor);
+  const airport = await airportFeeStore.save(null, {
+    id: "", displayName: "Road Charge Airport", dropoffPlaceId: "rc-drop", dropoffLocationLabel: "Departures", dropoffLatitude: "51.47",
+    dropoffLongitude: "-0.45", dropoffFee: "0.00", pickupPlaceId: "rc-pick", pickupLocationLabel: "Arrivals", pickupLatitude: "51.471",
+    pickupLongitude: "-0.451", pickupFee: "0.00", pickupTimeReference: "ALT", pickupDeferredPolicy: "no", pickupDeferredMinutes: "0",
+    pickupFeeCoveredMinutes: "60"
+  }, actor);
+  assert.ok(airport);
+
+  // A real route segment across the LEZ boundary (outer west London), detected by polygon intersection.
+  const lezRoute: BookingRouteProvider = async () => {
+    const path = [{ latitude: 51.47, longitude: -0.6 }, { latitude: 51.47, longitude: -0.44 }];
+    return {
+      status: "resolved", provider: "google-routes", distanceMeters: 16093.44, distanceMiles: "10.000000", durationSeconds: 1500,
+      trafficModel: "traffic-aware", path, tollsReported: false, zones: detectRoadChargeZones(path).filter((zone) => zone.zone === "london-lez"),
+      tunnelCrossings: [], computedAt: now.toISOString()
+    };
+  };
+  const quoteWith = async (extra: Record<string, unknown>) => {
+    const manager = await getBookingManagerCandidate(customer.id);
+    assert.ok(manager);
+    const draft = readNewBookingDraft({
+      customerId: customer.id, managerName: manager.name, managerPhone: manager.phone, managerEmail: manager.email, passengerIsManager: "yes",
+      serviceDate: "2027-03-10", serviceTime: "12:05", pickupKind: "airport", pickupAirportId: airport.id,
+      dropoffKind: "airport", dropoffAirportId: airport.id, adults: "1", parkingRequired: "no", extraWaitingMinutes: "0", ...extra
+    });
+    const reference = await loadPricingReferenceData();
+    const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getBookingManagerCandidate);
+    assert.deepEqual(errors, []);
+    assert.ok(booking);
+    return { draft, booking, quote: await quoteJourney(booking, reference, lezRoute) };
+  };
+  const lezLine = (lines: Array<{ type: string; status: string; amount: string | null; label: string }>) => lines.filter((line) => line.type === "road-charge");
+
+  // Seeded schedules are inactive, so the LEZ charge is unresolved and the quote has no total.
+  const inactive = await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" });
+  assert.deepEqual(lezLine(inactive.quote.price.lines).map((line) => line.status), ["unresolved"]);
+  assert.equal(inactive.quote.price.total, null);
+
+  const invalid = readNewBookingDraft({ roadChargeLez: "made-up" });
+  const reference = await loadPricingReferenceData();
+  const invalidResult = await validateNewBooking({ ...inactive.draft, roadChargeProfile: invalid.roadChargeProfile }, reference, dependencies, getBookingManagerCandidate);
+  assert.ok(invalidResult.errors.some((error) => error.field === "roadChargeLez"));
+
+  const lez = await londonFeeScheduleStore.load("london-lez");
+  await londonFeeScheduleStore.setActivation("london-lez", lez.currentVersion, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, new Date("2026-11-20T00:00:00Z"));
+  const enabledVersion = lez.currentVersion + 1;
+
+  const unstated = await quoteWith({});
+  assert.equal(lezLine(unstated.quote.price.lines)[0].status, "unresolved", "an active schedule still needs the vehicle's LEZ position");
+  assert.equal(unstated.quote.price.total, null);
+
+  const { draft, booking, quote } = await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" });
+  assert.equal(quote.price.status, "complete");
+  assert.deepEqual(lezLine(quote.price.lines).map((line) => [line.status, line.amount, line.label]), [["applied", "100.00", "London LEZ daily charge — Wed, 10 Mar 2027"]]);
+  assert.equal(quote.price.total, "120.00", "20.00 ride fare + 100.00 LEZ");
+  const saved = await createNewBooking(booking, quote, { ...draft, quotedStatus: "complete", quotedTotal: "120.00", quotedFingerprint: quote.fingerprint }, actor, now);
+
+  // Editing the schedule (and re-enabling it) changes new quotes but never the saved snapshot.
+  const amounts = Object.fromEntries(roadChargeScheduleSeeds["london-lez"].rates.map((rate) => [rate.key, rate.amount]));
+  await londonFeeScheduleStore.save("london-lez", enabledVersion, { ...amounts, "lez-vans-specialist-minibuses": "150.00" }, actor, { effectiveFrom: "2021-03-01", effectiveUntil: null });
+  const requoted = await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" });
+  assert.equal(lezLine(requoted.quote.price.lines)[0].status, "unresolved", "an edited schedule is inactive until re-enabled");
+  await assert.rejects(
+    createNewBooking(requoted.booking, requoted.quote, { ...draft, quotedStatus: "complete", quotedTotal: "120.00", quotedFingerprint: quote.fingerprint }, actor, now),
+    BookingPriceChangedError,
+    "saving revalidates the quote against the current schedule"
+  );
+  await londonFeeScheduleStore.setActivation("london-lez", enabledVersion + 1, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, new Date("2026-11-20T00:00:00Z"));
+  assert.equal(lezLine((await quoteWith({ roadChargeLez: "lez-vans-specialist-minibuses" })).quote.price.lines)[0].amount, "150.00");
+
+  const reloaded = await getNewBooking(saved.id);
+  assert.deepEqual(lezLine(reloaded!.price!.lines).map((line) => [line.status, line.amount]), [["applied", "100.00"]]);
+  assert.equal(reloaded?.price?.total, "120.00");
+  const stored = await query<{ source: Record<string, any>; calculation: Record<string, any> }>(
+    `SELECT li.source, s.calculation FROM booking_price_line_items li JOIN booking_price_snapshots s ON s.id = li.snapshot_id
+      WHERE s.booking_id = $1 AND li.line_type = 'road-charge'`,
+    [saved.id]
+  );
+  assert.equal(stored.rows[0].source.schedule.version, enabledVersion);
+  assert.equal(stored.rows[0].source.schedule.verifiedOn, "2026-11-19");
+  assert.equal(stored.rows[0].source.rate.amount, "100.00");
+  assert.equal(stored.rows[0].source.matchingBasis.method, "route-polygon-intersection");
+  assert.equal(stored.rows[0].source.vehicleInput.value, "lez-vans-specialist-minibuses");
+  assert.equal(stored.rows[0].calculation.roadChargeSchedules["london-lez"].version, enabledVersion);
+
+  await londonFeeScheduleStore.setActivation("london-lez", enabledVersion + 2, { action: "disable" }, actor, new Date("2026-11-20T00:00:00Z"));
 });
