@@ -315,6 +315,25 @@ test("unresolved route, tolls, zones, parking and waiting make the price incompl
   assert.match(one(noSlabs.lines, "ride-fare").basis, /No valid Distance Slabs/);
 });
 
+test("the default standard-car profile is not recorded as an assigned vehicle", () => {
+  const price = priceBooking(
+    inputs(),
+    context({
+      route: route("12", {
+        zones: [zoneHit("london-lez", "London Low Emission Zone (LEZ)")],
+        tunnelCrossings: [{
+          tunnel: "blackwall", label: "Blackwall Tunnel", direction: "northbound", segmentIndex: 0,
+          point: { latitude: 51.504, longitude: -0.003 }, geometry: { verified: true, provenance: "fixture" }
+        }]
+      })
+    })
+  );
+  const zone = roadCharge(price.lines, "london-lez");
+  assert.equal((zone.source.vehicleInput as Record<string, unknown>).vehicleAssigned, false);
+  const tunnel = one(price.lines, "tunnel-charge");
+  assert.equal((tunnel.source.vehicleInput as Record<string, unknown>).vehicleAssigned, false);
+});
+
 test("enabled surcharges and matching fixed fares are surfaced as unresolved rather than ignored", () => {
   const price = priceBooking(
     inputs({ serviceTime: "23:30", stops: { pickup: poiStop("poi-a"), vias: [], dropoff: poiStop("poi-b") } }),
@@ -383,4 +402,3 @@ test("an active LEZ does not charge the default standard car, and fare discounts
   assert.equal(roadCharge(inactive.lines, "london-lez").status, "not-applicable", "the default car exemption does not need a loaded schedule");
   assert.equal(inactive.total, "29.00", "without the radius discount: 23.00 ride fare plus the £6.00 airport drop-off fee");
 });
-

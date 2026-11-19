@@ -38,7 +38,7 @@ const route: BookingRouteProvider = async () => ({
 });
 const dependencies = { now: () => now, verifyPlace: async () => ({ status: "unverified" as const }) };
 
-async function priceFor(customerId: string, airportId: string, extra: Record<string, unknown> = {}) {
+async function priceFor(customerId: string, airportId: string, extra: Record<string, unknown> = {}, routeProvider = route) {
   const manager = await getBookingManagerCandidate(customerId);
   assert.ok(manager);
   const draft = readNewBookingDraft({
@@ -50,7 +50,7 @@ async function priceFor(customerId: string, airportId: string, extra: Record<str
   const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getBookingManagerCandidate);
   assert.deepEqual(errors, []);
   assert.ok(booking);
-  return { draft, booking, reference, quote: await quoteJourney(booking, reference, route) };
+  return { draft, booking, reference, quote: await quoteJourney(booking, reference, routeProvider) };
 }
 
 test("a new booking persists its stops and itemized price snapshot transactionally and keeps it after settings edits", async () => {
@@ -149,6 +149,43 @@ test("a new booking persists its stops and itemized price snapshot transactional
   await assert.rejects(query("UPDATE booking_price_line_items SET amount = 1 WHERE line_type = 'ride-fare'"), /immutable/);
   await assert.rejects(query("DELETE FROM booking_price_line_items WHERE snapshot_id = (SELECT id FROM booking_price_snapshots WHERE booking_id = $1)", [saved.id]), /authorized retention cleanup/);
   await assert.rejects(query("DELETE FROM booking_price_snapshots WHERE booking_id = $1", [saved.id]), /authorized retention cleanup/);
+});
+
+test("the default vehicle profile remains unassigned in saved zone and tunnel line sources", async () => {
+  const customer = await createCustomer({ givenName: "Taylor", surname: "Road", email: "taylor.road@example.test", phone: "+44 7911 123460" } as Parameters<typeof createCustomer>[0]);
+  const airport = await airportFeeStore.save(null, {
+    id: "", displayName: "Provenance Airport", dropoffPlaceId: "prov-drop", dropoffLocationLabel: "Departures", dropoffLatitude: "51.47",
+    dropoffLongitude: "-0.45", dropoffFee: "0.00", pickupPlaceId: "prov-pick", pickupLocationLabel: "Arrivals", pickupLatitude: "51.471",
+    pickupLongitude: "-0.451", pickupFee: "0.00", pickupTimeReference: "ALT", pickupDeferredPolicy: "no", pickupDeferredMinutes: "0",
+    pickupFeeCoveredMinutes: "60"
+  }, actor);
+  assert.ok(airport);
+
+  const provenanceRoute: BookingRouteProvider = async () => ({
+    status: "resolved", provider: "google-routes", distanceMeters: 16093.44, distanceMiles: "10.000000", durationSeconds: 1500,
+    trafficModel: "traffic-aware", path: [], tollsReported: false, zones: [{
+      zone: "london-lez", label: "London Low Emission Zone (LEZ)",
+      evidence: { method: "route-polygon-intersection", segmentIndex: 0, firstContact: { latitude: 51.47, longitude: -0.5 }, boundaryDataset: "fixture" }
+    }],
+    tunnelCrossings: [{
+      tunnel: "blackwall", label: "Blackwall Tunnel", direction: "northbound", segmentIndex: 0,
+      point: { latitude: 51.504, longitude: -0.003 }, geometry: { verified: true, provenance: "fixture" }
+    }], computedAt: now.toISOString()
+  });
+  const { draft, booking, quote } = await priceFor(customer.id, airport.id, {}, provenanceRoute);
+  const saved = await createNewBooking(booking, quote, {
+    ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "",
+    quotedFingerprint: quote.fingerprint, saveWithUnresolvedPrice: true
+  }, actor, now);
+  const storedLines = await query<{ line_type: string; source: Record<string, any> }>(
+    `SELECT line_type, source FROM booking_price_line_items
+     WHERE snapshot_id = (SELECT id FROM booking_price_snapshots WHERE booking_id = $1)`,
+    [saved.id]
+  );
+  const storedZone = storedLines.rows.find((line) => line.line_type === "road-charge" && line.source.scheme === "london-lez");
+  const storedTunnel = storedLines.rows.find((line) => line.line_type === "tunnel-charge" && line.source.tunnel === "blackwall");
+  assert.equal(storedZone?.source.vehicleInput.vehicleAssigned, false);
+  assert.equal(storedTunnel?.source.vehicleInput.vehicleAssigned, false);
 });
 
 test("an unresolved price is stored as incomplete without a total only when acknowledged", async () => {

@@ -36,6 +36,8 @@ export type RoadChargeScheduleSet = Partial<Record<RoadChargeScheme, RoadChargeS
 export type RoadChargeLineOptions = {
   /** Test seam only; production always uses codeCalculationBlockers so unverified geometry blocks pricing. */
   codeCalculationBlockers?: (scheme: RoadChargeScheme) => string[];
+  /** Whether the profile belongs to an assigned vehicle; quote defaults are assumptions, not assignments. */
+  vehicleAssigned?: boolean;
 };
 
 type LocalInstant = { date: string; minute: number };
@@ -228,6 +230,7 @@ function zoneLine(
   scheme: DailyZoneScheme,
   detection: RoadChargeZoneDetection | null,
   profile: RoadChargeProfile | null,
+  vehicleAssigned: boolean,
   record: RoadChargeScheduleRecord | undefined,
   window: JourneyWindow,
   options: RoadChargeLineOptions
@@ -242,7 +245,7 @@ function zoneLine(
     schedule: scheduleSource(record),
     matchingBasis: detection ? detection.evidence : { method: "route-polygon-intersection", detected: false, boundaryBlockers: geometryBlockers },
     journeyWindow: windowSource(window),
-    vehicleInput: { field: profileKey, value: declared || null, vehicleAssigned: profile !== null }
+    vehicleInput: { field: profileKey, value: declared || null, vehicleAssigned }
   };
   const entry = detection ? `The route enters the ${detection.label}.` : `The route was not detected inside the ${title} boundary.`;
   const unresolved = (basis: string): PriceLine => ({ type: "road-charge", label, status: "unresolved", amount: null, basis: `${entry} ${basis}`, source });
@@ -344,6 +347,7 @@ function tunnelLine(
   crossing: TunnelCrossing,
   ordinal: number,
   profile: RoadChargeProfile | null,
+  vehicleAssigned: boolean,
   record: RoadChargeScheduleRecord | undefined,
   window: JourneyWindow,
   options: RoadChargeLineOptions
@@ -357,7 +361,7 @@ function tunnelLine(
     schedule: scheduleSource(record),
     matchingBasis: { method: "route-gate-crossing", segmentIndex: crossing.segmentIndex, point: crossing.point, geometry: crossing.geometry },
     journeyWindow: windowSource(window),
-    vehicleInput: { tunnelVehicleClass: profile?.tunnelVehicleClass || null, tunnelAutoPay: profile?.tunnelAutoPay || null, vehicleAssigned: profile !== null }
+    vehicleInput: { tunnelVehicleClass: profile?.tunnelVehicleClass || null, tunnelAutoPay: profile?.tunnelAutoPay || null, vehicleAssigned }
   };
   const unresolved = (basis: string): PriceLine => ({ type: "tunnel-charge", label, status: "unresolved", amount: null, basis: `The route crosses the ${crossing.label} ${crossing.direction}. ${basis}`, source });
   const unavailable = scheduleUnavailable(record, "Blackwall and Silvertown tunnels", options);
@@ -430,13 +434,14 @@ export function roadChargeLines(
     ];
   }
   const window = journeyWindow(serviceDate, serviceTime, route.durationSeconds);
+  const vehicleAssigned = profile !== null && (options.vehicleAssigned ?? true);
   const lines: PriceLine[] = zoneSchemes.map((scheme) => {
     // A route is listed once per zone however often it enters it, so a charging day is never charged twice.
     const detection = route.zones.find((zone) => zone.zone === scheme) ?? null;
-    return zoneLine(scheme, detection, profile, schedules[scheme], window, options);
+    return zoneLine(scheme, detection, profile, vehicleAssigned, schedules[scheme], window, options);
   });
   route.tunnelCrossings.forEach((crossing, index) => {
-    lines.push(tunnelLine(crossing, index + 1, profile, schedules["blackwall-silvertown-tunnels"], window, options));
+    lines.push(tunnelLine(crossing, index + 1, profile, vehicleAssigned, schedules["blackwall-silvertown-tunnels"], window, options));
   });
   if (!route.tunnelCrossings.length) {
     const tunnelBlockers = (options.codeCalculationBlockers ?? codeCalculationBlockers)("blackwall-silvertown-tunnels");

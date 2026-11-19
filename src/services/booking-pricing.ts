@@ -392,7 +392,10 @@ export function priceBooking(inputs: BookingPricingInputs, context: BookingPrici
     discountLine(inputs, context, ride),
     ...airportLines(inputs, context),
     ...poiLines(inputs, context),
-    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, DEFAULT_STANDARD_CAR_PROFILE, context.route, context.roadChargeSchedules ?? {}, context.roadChargeOptions),
+    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, DEFAULT_STANDARD_CAR_PROFILE, context.route, context.roadChargeSchedules ?? {}, {
+      ...context.roadChargeOptions,
+      vehicleAssigned: false
+    }),
     surchargeLine(inputs, context),
     fixedFareLine(inputs, context),
     {
