@@ -22,10 +22,16 @@
   function cargoSummary(counts, childSeat, booster) {
     const value = (key) => Number(counts[key]) || 0;
     const passengers = value("adults") + value("children");
-    const bags = value("xlBaggage") + value("lBaggage") + value("cabinHandBags") + value("backpacks");
+    const bagTypes = [
+      ["XL", value("xlBaggage")],
+      ["L", value("lBaggage")],
+      ["Cabin", value("cabinHandBags")],
+      ["Backpack", value("backpacks")]
+    ];
+    const bags = bagTypes.reduce((sum, [, count]) => sum + count, 0);
     const parts = [
       `${plural(passengers, "passenger", "passengers")} (${plural(value("adults"), "adult", "adults")}, ${plural(value("children"), "child", "children")})`,
-      `${plural(bags, "bag", "bags")} (XL ${value("xlBaggage")}, L ${value("lBaggage")}, CB/HB ${value("cabinHandBags")}, BP ${value("backpacks")})`,
+      ...(bags ? [`${plural(bags, "bag", "bags")} (${bagTypes.filter(([, count]) => count > 0).map(([label, count]) => `${label} ${count}`).join(", ")})`] : []),
       plural(value("sportsEquipment"), "sports item", "sports items")
     ];
     const seats = [childSeat ? "child seat" : "", booster ? "booster" : ""].filter(Boolean);

@@ -11,7 +11,8 @@ import {
   type FixedFareEndpoint
 } from "./fare-settings";
 import type { PoiFeeRecord, PoiRecord } from "./poi-management";
-import { roadChargeLines, type RoadChargeScheduleSet } from "./road-charge-pricing";
+import { roadChargeLines, type RoadChargeLineOptions, type RoadChargeScheduleSet } from "./road-charge-pricing";
+import { DEFAULT_STANDARD_CAR_PROFILE } from "./road-charge-schedules";
 
 export type BookingLocationKind = "airport" | "poi" | "address";
 
@@ -74,6 +75,8 @@ export type BookingPricingContext = {
   route: BookingRoute;
   /** Latest stored LEZ/ULEZ/Congestion Charge/tunnel schedule versions; missing or inactive schedules leave charges unresolved. */
   roadChargeSchedules?: RoadChargeScheduleSet;
+  /** Test seam only; production leaves this unset so unverified CC/tunnel geometry keeps those charges unresolved. */
+  roadChargeOptions?: RoadChargeLineOptions;
 };
 
 export type BookingPrice = {
@@ -389,7 +392,7 @@ export function priceBooking(inputs: BookingPricingInputs, context: BookingPrici
     discountLine(inputs, context, ride),
     ...airportLines(inputs, context),
     ...poiLines(inputs, context),
-    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, null, context.route, context.roadChargeSchedules ?? {}),
+    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, DEFAULT_STANDARD_CAR_PROFILE, context.route, context.roadChargeSchedules ?? {}, context.roadChargeOptions),
     surchargeLine(inputs, context),
     fixedFareLine(inputs, context),
     {

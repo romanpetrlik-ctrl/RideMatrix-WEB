@@ -6,9 +6,14 @@ retains the two supplied Polygon features, their IDs, source properties, and
 coordinates without simplification or transformation.
 
 The supplied filename contains `2027`, but no effective date is stated or
-inferred from that filename. The source URL, archive, licence, and verification
-date were not provided; the application marks them as not provided or
-unverified. The dataset is versioned in the repository and served only through
+inferred from that filename. The source URL, archive and licence were not
+provided and are not present in the repository history or import records, so
+they remain “Not provided”; nothing has been inferred. The project owner
+confirmed on **2026-11-19** that the two supplied Polygon features are correct.
+That confirmation is recorded as the verification date
+(`londonCongestionChargeBoundaryMetadata.verificationDate`), so the geometry no
+longer blocks Congestion Charge route exposure. This confirmation does not
+activate any fee schedule. The dataset is versioned in the repository and served only through
 the authenticated System Settings reference-data route. It is not downloaded
 at runtime.
 

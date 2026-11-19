@@ -4,8 +4,10 @@ import type { PriceLine } from "./booking-pricing";
 import type { BookingRoute, RoadChargeZoneDetection, TunnelCrossing } from "./booking-routing";
 import { journeyWindow, roadChargeLines, type RoadChargeScheduleSet } from "./road-charge-pricing";
 import {
+  DEFAULT_STANDARD_CAR_PROFILE,
   NO_CHARGE,
   roadChargeScheduleSeeds,
+  ULEZ_COMPLIANT,
   type RoadChargeProfile,
   type RoadChargeScheme
 } from "./road-charge-schedules";
@@ -65,11 +67,15 @@ function route(overrides: Partial<Extract<BookingRoute, { status: "resolved" }>>
 
 const profile = (overrides: Partial<RoadChargeProfile>): RoadChargeProfile => ({ ...EMPTY_PROFILE, ...overrides });
 
+function zoneLineOf(lines: PriceLine[], scheme: RoadChargeZoneDetection["zone"]): PriceLine {
+  const matching = lines.filter((line) => line.type === "road-charge" && (line.source as Record<string, unknown>).scheme === scheme);
+  assert.equal(matching.length, 1, `exactly one ${scheme} line`);
+  return matching[0];
+}
+
 function zoneCharge(scheme: RoadChargeZoneDetection["zone"], date: string, time: string, declared: Partial<RoadChargeProfile>, schedules = ALL, durationSeconds = 1800): PriceLine {
   const lines = roadChargeLines(date, time, profile(declared), route({ zones: [zone(scheme)], durationSeconds }), schedules, verifiedGeometry);
-  const matching = lines.filter((line) => line.type === "road-charge");
-  assert.equal(matching.length, 1);
-  return matching[0];
+  return zoneLineOf(lines, scheme);
 }
 
 function tunnelCharges(date: string, time: string, declared: Partial<RoadChargeProfile>, crossings: TunnelCrossing[], extra: Partial<Extract<BookingRoute, { status: "resolved" }>> = {}): PriceLine[] {
@@ -151,18 +157,18 @@ test("Congestion Charge applies hours, weekends, bank holidays, the Christmas cl
   const cc = (date: string, time: string, value = "cc-standard", durationSeconds = 1800) =>
     zoneCharge("london-congestion-charge", date, time, { congestionCharge: value }, ALL, durationSeconds);
 
-  assert.equal(cc("2027-03-10", "10:00").amount, "18.00");
+  assert.equal(cc("2027-03-10", "10:00").amount, "21.00", "the conservative £21 default approved for New Booking quotes");
   assert.equal(cc("2027-03-10", "10:00").status, "applied");
   assert.equal(cc("2027-03-10", "06:00").status, "not-applicable", "06:00–06:45 is before the 07:00 weekday start");
   assert.equal(cc("2027-03-10", "06:40").status, "unresolved", "the window straddles 07:00");
   assert.equal(cc("2027-03-10", "17:50").status, "unresolved", "the window straddles 18:00");
   assert.equal(cc("2027-03-10", "18:00").status, "not-applicable");
   assert.equal(cc("2027-03-13", "10:00").status, "not-applicable", "Saturday charging starts at 12:00");
-  assert.equal(cc("2027-03-13", "13:00").amount, "18.00");
+  assert.equal(cc("2027-03-13", "13:00").amount, "21.00");
   assert.equal(cc("2027-05-03", "10:00").status, "not-applicable", "the early May bank holiday uses weekend hours");
-  assert.equal(cc("2027-05-03", "13:00").amount, "18.00");
+  assert.equal(cc("2027-05-03", "13:00").amount, "21.00");
   assert.equal(cc("2026-12-29", "13:00").status, "not-applicable", "no charge between Christmas Day and New Year's Day");
-  assert.equal(cc("2025-12-29", "13:00").status, "unresolved", "before the £18 schedule's effective date");
+  assert.equal(cc("2025-12-29", "13:00").status, "unresolved", "before the schedule's effective date");
   const beyond = cc("2028-02-01", "10:00");
   assert.equal(beyond.status, "unresolved");
   assert.match(beyond.basis, /bank-holiday calendar/);
@@ -178,27 +184,31 @@ test("Congestion Charge applies hours, weekends, bank holidays, the Christmas cl
   assert.equal(cc("2027-03-10", "10:00", "").status, "unresolved");
 });
 
-test("one daily line per zone however often the route enters it; LEZ, ULEZ and CC are itemized separately", () => {
+test("each zone yields one daily line however often the route enters it; LEZ, ULEZ and CC are itemized separately", () => {
   const lines = roadChargeLines("2027-03-10", "10:00", profile({ lez: "lez-vans-specialist-minibuses", ulez: "ulez-vans-specialist-minibuses", congestionCharge: "cc-standard" }),
     route({ zones: [zone("london-lez"), zone("london-ulez"), zone("london-congestion-charge"), zone("london-congestion-charge")] }), ALL, verifiedGeometry);
-  const zoneLines = lines.filter((line) => line.type === "road-charge");
-  assert.deepEqual(zoneLines.map((line) => [line.label.split(" —")[0], line.amount]), [
-    ["London LEZ daily charge", "100.00"],
-    ["London ULEZ daily charge", "12.50"],
-    ["London Congestion Charge daily charge", "18.00"]
+  assert.deepEqual(lines.map((line) => [line.type, line.label.split(" —")[0], line.amount]), [
+    ["road-charge", "London LEZ daily charge", "100.00"],
+    ["road-charge", "London ULEZ daily charge", "12.50"],
+    ["road-charge", "London Congestion Charge daily charge", "21.00"],
+    ["tunnel-charge", "Blackwall and Silvertown tunnels", null],
+    ["toll", "Other tolls", null]
   ]);
+  assert.equal(lines[3].status, "not-applicable");
 
-  const outside = roadChargeLines("2027-03-10", "10:00", profile({}), route(), ALL, verifiedGeometry);
-  assert.deepEqual(outside.map((line) => [line.type, line.status]), [["road-charge", "not-applicable"], ["tunnel-charge", "not-applicable"], ["toll", "not-applicable"]]);
+  const defaultOutside = roadChargeLines("2027-03-10", "10:00", DEFAULT_STANDARD_CAR_PROFILE, route(), ALL, verifiedGeometry);
+  assert.deepEqual(defaultOutside.map((line) => [line.type, line.status]), [["road-charge", "not-applicable"], ["road-charge", "zero"], ["road-charge", "not-applicable"], ["tunnel-charge", "not-applicable"], ["toll", "not-applicable"]]);
 });
 
-test("production gate: ULEZ, CC and tunnel charges stay unresolved while their geometry is unverified, even if active", () => {
+test("production gate: ULEZ and tunnel charges stay unresolved while their geometry is unverified; CC is no longer blocked by geometry", () => {
   const lines = roadChargeLines("2027-03-10", "10:00", profile({ ulez: "ulez-cars", congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "yes" }),
     route({ zones: [zone("london-ulez"), zone("london-congestion-charge")], tunnelCrossings: [crossing("blackwall", "northbound")] }), ALL);
-  assert.deepEqual(lines.filter((line) => line.type !== "toll").map((line) => line.status), ["unresolved", "unresolved", "unresolved"]);
-  assert.match(lines[0].basis, /boundary dataset/);
-  assert.match(lines[2].basis, /unverified reference geometry/);
-  assert.ok(lines.every((line) => line.amount === null));
+  assert.deepEqual(lines.map((line) => line.status), ["unresolved", "unresolved", "applied", "unresolved", "not-applicable"]);
+  assert.match(lines[1].basis, /boundary dataset/);
+  assert.equal(lines[2].amount, "21.00");
+  assert.doesNotMatch(lines[2].basis, /boundary dataset|geometry/);
+  assert.match(lines[3].basis, /unverified reference geometry/);
+  assert.ok(lines.filter((line) => line.status === "unresolved").every((line) => line.amount === null));
 });
 
 test("tunnel crossings price by tunnel, direction, time band, vehicle class and Auto Pay", () => {
@@ -264,6 +274,8 @@ test("an unresolved route leaves every road-charge category unresolved", () => {
   const lines = roadChargeLines("2027-03-10", "10:00", profile({ lez: NO_CHARGE }), { status: "unresolved", reason: "provider-error", message: "down" }, ALL);
   assert.deepEqual(lines.map((line) => [line.type, line.status, line.amount]), [
     ["road-charge", "unresolved", null],
+    ["road-charge", "unresolved", null],
+    ["road-charge", "unresolved", null],
     ["tunnel-charge", "unresolved", null],
     ["toll", "unresolved", null]
   ]);
@@ -271,5 +283,42 @@ test("an unresolved route leaves every road-charge category unresolved", () => {
 
 test("zone charges stay unresolved when no vehicle is assigned at quote time", () => {
   const lines = roadChargeLines("2027-03-10", "10:00", null, route({ zones: [zone("london-lez"), zone("london-ulez")] }), ALL, verifiedGeometry);
-  assert.deepEqual(lines.filter((line) => line.type === "road-charge").map((line) => [line.status, line.amount]), [["unresolved", null], ["unresolved", null]]);
+  assert.deepEqual(lines.filter((line) => line.type === "road-charge").map((line) => [line.status, line.amount]), [["unresolved", null], ["unresolved", null], ["unresolved", null]]);
+});
+
+test("the default standard car profile gives explicit ULEZ £0, LEZ not charged, CC £21 and the standard tunnel car rate", () => {
+  const lines = roadChargeLines("2027-03-10", "11:00", DEFAULT_STANDARD_CAR_PROFILE,
+    route({ zones: [zone("london-lez"), zone("london-ulez"), zone("london-congestion-charge")], tunnelCrossings: [crossing("blackwall", "northbound")] }), ALL, verifiedGeometry);
+  assert.equal(zoneLineOf(lines, "london-lez").status, "not-applicable");
+  const ulez = zoneLineOf(lines, "london-ulez");
+  assert.equal(ulez.status, "zero");
+  assert.equal(ulez.amount, "0.00");
+  assert.equal(zoneLineOf(lines, "london-congestion-charge").amount, "21.00");
+  const tunnel = lines.find((line) => line.type === "tunnel-charge");
+  assert.equal(tunnel?.amount, "4.20", "standard car rate without Auto Pay");
+  assert.equal((tunnel?.source as Record<string, any>).rate.key, "tunnel-cars-and-small-vans-phone-online");
+});
+
+test("a vehicle with an unknown ULEZ emission class is never assumed compliant", () => {
+  const lines = roadChargeLines("2027-03-10", "11:00", profile({ lez: NO_CHARGE, ulez: "", congestionCharge: "cc-standard" }),
+    route({ zones: [zone("london-ulez")] }), ALL, verifiedGeometry);
+  const ulez = zoneLineOf(lines, "london-ulez");
+  assert.equal(ulez.status, "unresolved");
+  assert.equal(ulez.amount, null);
+  assert.match(ulez.basis, /is not recorded/);
+});
+
+test("assigning or changing a vehicle recalculates dependent charges and leaves the earlier quote unchanged", () => {
+  const quoteRoute = route({ zones: [zone("london-ulez")] });
+  const defaultQuote = roadChargeLines("2027-03-10", "11:00", DEFAULT_STANDARD_CAR_PROFILE, quoteRoute, ALL, verifiedGeometry);
+  const snapshot = structuredClone(defaultQuote);
+  assert.equal(zoneLineOf(defaultQuote, "london-ulez").amount, "0.00");
+
+  const assigned = roadChargeLines("2027-03-10", "11:00", profile({ lez: NO_CHARGE, ulez: ULEZ_COMPLIANT, congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "no" }),
+    quoteRoute, ALL, verifiedGeometry);
+  assert.equal(zoneLineOf(assigned, "london-ulez").status, "zero");
+
+  const changed = roadChargeLines("2027-03-10", "11:00", profile({ lez: NO_CHARGE, ulez: "", congestionCharge: "cc-standard" }), quoteRoute, ALL, verifiedGeometry);
+  assert.equal(zoneLineOf(changed, "london-ulez").status, "unresolved");
+  assert.deepEqual(defaultQuote, snapshot, "the earlier quote is not mutated by recalculation");
 });
