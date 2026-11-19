@@ -558,7 +558,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(categoryResponse.status, 200);
     const categoryBody = await categoryResponse.text();
     assert.match(categoryBody, /<h1>Toll & Fees<\/h1>/);
-    assert.match(categoryBody, /Fee schedules are inactive unless enabled/);
+    assert.match(categoryBody, /Fee schedules are used only when active/);
     assert.match(categoryBody, /The Dartford schedule remains an inactive draft/);
     assert.match(categoryBody, /aria-label="Toll & Fees categories"/);
     assert.equal((categoryBody.match(/class="toll-fees-card"/g) ?? []).length, tollFeeCategories.length);
@@ -1260,10 +1260,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.equal(feeSchedules.current("london-lez").status, "inactive");
     assert.deepEqual(feeSchedules.history("london-lez").map((entry) => entry.version), [8, 7, 6, 5, 4, 3, 2, 1]);
 
-    // Schemes whose route exposure is not verified cannot be enabled even with confirmation.
+    // ULEZ route exposure is not verified, so it cannot be enabled even with confirmation.
     for (const [scheme, path, pattern] of [
-      ["london-ulez", "/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/fee-settings", /ULEZ route exposure uses a boundary dataset/],
-      ["blackwall-silvertown-tunnels", "/settings/toll-fees/blackwall-silvertown-tunnels/fee-settings", /unverified reference geometry/]
+      ["london-ulez", "/settings/toll-fees/london-lez-ulez-congestion-charge/london-ulez/fee-settings", /ULEZ route exposure uses a boundary dataset/]
     ] as const) {
       const version = feeSchedules.current(scheme).currentVersion;
       const response = await postForm(`${path}/activation`, postCookie, new URLSearchParams({ _csrf: token, baseVersion: String(version), action: "enable", verifiedOn: yesterday, confirmSources: "yes" }));
@@ -1272,6 +1271,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       assert.equal(feeSchedules.current(scheme).status, "inactive");
       assert.equal(feeSchedules.current(scheme).currentVersion, version);
     }
+    const tunnelPath = "/settings/toll-fees/blackwall-silvertown-tunnels/fee-settings";
+    const tunnelVersion = feeSchedules.current("blackwall-silvertown-tunnels").currentVersion;
+    const tunnelEnabled = await postForm(`${tunnelPath}/activation`, postCookie, new URLSearchParams({ _csrf: token, baseVersion: String(tunnelVersion), action: "enable", verifiedOn: yesterday, confirmSources: "yes" }));
+    assert.equal(tunnelEnabled.status, 303, "verified tunnel geometry permits schedule activation");
+    assert.equal(feeSchedules.current("blackwall-silvertown-tunnels").status, "active");
 
     // Dartford has no activation route and remains a legacy inactive draft.
     const dartford = await postForm("/settings/toll-fees/dartford-crossing/fee-settings/activation", postCookie, new URLSearchParams({ _csrf: token, baseVersion: "1", action: "enable", verifiedOn: yesterday, confirmSources: "yes" }));
@@ -1331,8 +1335,8 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     const tunnels = roadChargeScheduleSeeds["blackwall-silvertown-tunnels"];
     assert.match(tunnelBody, /Blackwall and Silvertown tunnels fee schedule/);
     assert.match(tunnelBody, /Inactive — not used for booking prices/);
-    assert.match(tunnelBody, /Cannot be enabled yet/);
-    assert.match(tunnelBody, /unverified reference geometry/);
+    assert.match(tunnelBody, /name="action" value="enable"/);
+    assert.doesNotMatch(tunnelBody, /unverified reference geometry/);
     assert.match(tunnelBody, /name="effectiveFrom" type="date" value="2026-09-21"/);
     assert.match(tunnelBody, /silvertown-tunnel-charging-statement-effective-september-2026\.pdf<\/a> — effective 2026-09-21/);
     for (const rate of tunnels.rates) {
