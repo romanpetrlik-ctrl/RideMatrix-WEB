@@ -55,6 +55,7 @@
       }
 
       var autocomplete = new PlaceAutocompleteElement();
+      autocomplete.includedRegionCodes = ["gb"];
       autocomplete.setAttribute("aria-label", "Search Google Places for an operational POI location");
       host.appendChild(autocomplete);
       status.textContent = "Search and select a Google Places result to save its operational point.";

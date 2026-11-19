@@ -97,7 +97,7 @@ RideMatrix-WEB is the server-rendered web application layer for RideMatrix opera
 ## 4) Current known state and limitations
 
 - **Implemented:** Google Places autocomplete is technically working with the new component flow.
-- **Known limitation:** Autocomplete localization/region behavior is intentionally **not finalized**.
+- **Implemented:** Google Places autocomplete suggestions are restricted to the United Kingdom (`gb`) across customer, booking, airport, POI, and setup forms.
 - **Implemented:** Initial System Setup wizard for operator profile, both addresses, PHO licence, document upload, and one-time completion state.
 - **Implemented:** Setup bootstrap grants `superuser` only to the currently authenticated installer email and logs setup audit events.
   - The first `/setup/bootstrap-superuser` step requires **Name** and **Surname** for a new bootstrap. Each is trimmed and validated using the staff-name rules; their combined name (including the separating space) must fit the 100-character display-name limit and contain no control characters.
@@ -111,18 +111,17 @@ RideMatrix-WEB is the server-rendered web application layer for RideMatrix opera
 - **Known diagnostic note:** An unrelated `favicon` 404 must not be treated as a Google Maps root cause.
 - **Not yet implemented:** Operator setup database model/UI should not be assumed to exist.
 
-## 5) Why Google Maps localization is paused
+## 5) Google Maps region configuration
 
-- **Decision context:** Hardcoding `gb`, a specific city, fixed coordinates, or fixed radius is not correct for a product installable in multiple countries (for example UK now, Germany later).
-- **Planned source of truth:** Persisted operator installation profile, preferably the **operational** address; registered PHO address as explicit fallback only if product decisions confirm that behavior.
+- **Current configuration:** Google Places autocomplete suggestions are restricted to the United Kingdom (`gb`) throughout the application.
+- **Future multi-country support:** If the product expands to another country, make the allowed region configurable from the persisted operator installation profile rather than hardcoding one city, fixed coordinates, or a radius.
 
-**Planned conceptual configuration (not implemented yet):**
+**Future configuration considerations:**
 
 1. Derive country code from operator operational address.
 2. Apply country-level restriction via `includedRegionCodes`.
-3. Apply `locationBias` from operator operational coordinates.
-4. Keep deployment flexibility across UK, Germany, and future countries.
-5. Do **not** use admin browser/IP geolocation as primary source.
+3. Optionally apply `locationBias` from operator operational coordinates.
+4. Do **not** use admin browser/IP geolocation as the primary source.
 
 ## 6) Planned Initial System Setup roadmap
 

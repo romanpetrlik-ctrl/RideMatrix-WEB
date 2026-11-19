@@ -39,6 +39,12 @@ provider request. The adapter does not retry rate-limited or timed-out requests;
 callers receive a safe unavailable result instead. A future persistent cache
 should use the existing database migration conventions.
 
+All browser Google Places autocomplete fields are restricted to UK suggestions
+with `includedRegionCodes: ["gb"]`. This applies to customer addresses, New
+Booking stops, airport operational points, POIs, and the setup wizard. This is a
+suggestion restriction, not a server-side validation rule for arbitrary Place
+IDs or manually submitted addresses.
+
 The `customers` table stores nullable `latitude`, `longitude`, `geocoded_at`,
 and `geocode_status` fields. Provider timeouts, rate limits, malformed responses, and no-result responses
 are logged without exposing provider details and return `null`. Results are
