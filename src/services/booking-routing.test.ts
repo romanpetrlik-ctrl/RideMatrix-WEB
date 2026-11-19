@@ -157,12 +157,26 @@ test("tunnel crossings are identified per tunnel with direction, and repeated cr
 
 test("owner-supplied portal coordinates detect real tunnel route crossings", () => {
   assert.equal(TUNNEL_REFERENCE_GEOMETRY.verified, true);
-  const portals = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === "silvertown")!;
-  const crossings = detectTunnelCrossings([portals.south, portals.north]);
-  assert.equal(crossings.length, 1);
-  assert.equal(crossings[0].tunnel, "silvertown");
-  assert.equal(crossings[0].direction, "northbound");
-  assert.equal(crossings[0].geometry.verified, true);
+  const expected = {
+    blackwall: {
+      south: { latitude: 51.49893792969339, longitude: 0.0014513865548262928 },
+      north: { latitude: 51.509278165764364, longitude: -0.006665498889019285 }
+    },
+    silvertown: {
+      south: { latitude: 51.497144847933576, longitude: 0.0032492881290614325 },
+      north: { latitude: 51.50670017765821, longitude: 0.01454039191106224 }
+    }
+  };
+  for (const [tunnel, portals] of Object.entries(expected)) {
+    const configured = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === tunnel)!;
+    assert.deepEqual(configured.south, portals.south);
+    assert.deepEqual(configured.north, portals.north);
+    const crossings = detectTunnelCrossings([portals.south, portals.north]);
+    assert.equal(crossings.length, 1);
+    assert.equal(crossings[0].tunnel, tunnel);
+    assert.equal(crossings[0].direction, "northbound");
+    assert.equal(crossings[0].geometry.verified, true);
+  }
 });
 
 test("a route must pass both portal locations before the tunnel is charged", () => {

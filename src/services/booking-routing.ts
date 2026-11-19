@@ -300,19 +300,19 @@ export type TunnelReferenceGeometry = { verified: boolean; provenance: string; p
  */
 export const TUNNEL_REFERENCE_GEOMETRY: TunnelReferenceGeometry = {
   verified: true,
-  provenance: "North and south portal coordinates supplied by the project owner on 2026-11-19.",
+  provenance: "Corrected north and south portal coordinates supplied by the project owner on 2026-11-19.",
   portals: [
     {
       tunnel: "silvertown",
       label: "Silvertown Tunnel",
-      south: { latitude: 51.50079566974741, longitude: 0.009766553515729741 },
-      north: { latitude: 51.50316098491122, longitude: 0.014284310093604122 }
+      south: { latitude: 51.497144847933576, longitude: 0.0032492881290614325 },
+      north: { latitude: 51.50670017765821, longitude: 0.01454039191106224 }
     },
     {
       tunnel: "blackwall",
       label: "Blackwall Tunnel",
-      south: { latitude: 51.50289864665304, longitude: -0.0019097847807553006 },
-      north: { latitude: 51.50753081322978, longitude: -0.00495781747456819 }
+      south: { latitude: 51.49893792969339, longitude: 0.0014513865548262928 },
+      north: { latitude: 51.509278165764364, longitude: -0.006665498889019285 }
     }
   ]
 };
