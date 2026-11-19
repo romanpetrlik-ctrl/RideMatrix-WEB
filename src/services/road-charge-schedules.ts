@@ -237,7 +237,7 @@ export const roadChargeScheduleSeeds: Record<RoadChargeScheme, RoadChargeSchedul
     verification: null,
     calculationBlockers: [],
     operatingRules: [
-      "£18 per charging day when paid in advance, on the day or by Auto Pay (from 2 January 2026). The £21 late-payment amount is never quoted.",
+      "Booking prices use the conservative £21.00 daily charge approved for New Booking quotes. TfL publishes £18 when paid in advance, on the day or by Auto Pay (from 2 January 2026) and £21 when paid within 3 days after travel; the £18 rate is not used without explicit approval.",
       "Charging hours: 07:00–18:00 Monday–Friday; 12:00–18:00 Saturday, Sunday and bank holidays. No charge from Christmas Day to the New Year's Day bank holiday inclusive.",
       "One daily charge per vehicle per charging day, however many times the zone is entered.",
       "Cleaner Vehicle Discount phase 1 (2 January 2026 – 3 March 2030), Auto Pay only: electric cars 25% (£13.50); electric vans, HGVs and quadricycles 50% (£9.00). Phase 2 rates from 4 March 2030 are not configured, so this schedule ends on 3 March 2030.",
@@ -248,7 +248,7 @@ export const roadChargeScheduleSeeds: Record<RoadChargeScheme, RoadChargeSchedul
       "A registered 100% discount/exemption (for example, a TfL-registered wheelchair-accessible PHV) is quoted as a configured £0.00 charge; exempt vehicle types are declared as “no charge”."
     ],
     rates: [
-      rate("cc-standard", "Standard daily charge", "18.00", "Any chargeable vehicle without a registered discount, paid in advance, on the day or by Auto Pay."),
+      rate("cc-standard", "Standard daily charge (conservative default £21.00)", "21.00", "Any chargeable vehicle without a registered discount. Approved conservative default; see operatingRules."),
       rate("cc-cvd-electric-car-autopay", "Cleaner Vehicle Discount — electric car (incl. PHV) on Auto Pay", "13.50", "Fully electric car registered for the Cleaner Vehicle Discount and paying by Auto Pay."),
       rate("cc-cvd-electric-van-hgv-quadricycle-autopay", "Cleaner Vehicle Discount — electric van, HGV or quadricycle on Auto Pay", "9.00", "Fully electric van, HGV or quadricycle registered for the Cleaner Vehicle Discount and paying by Auto Pay."),
       rate("cc-registered-100-percent-discount", "Registered 100% discount or exemption", "0.00", "Vehicle registered with TfL for a 100% discount or exemption.", true)
@@ -453,6 +453,12 @@ export type RoadChargeProfile = {
 
 export const NO_CHARGE = "no-charge";
 
+/**
+ * ULEZ position of a vehicle that meets the ULEZ standard (£0.00). Only the standard passenger-car default and a
+ * vehicle whose emissions compliance is recorded may use it; unknown emissions must stay unresolved.
+ */
+export const ULEZ_COMPLIANT = "ulez-compliant";
+
 /** Labels for the stored vehicle-side charge attributes, used in itemized basis text. */
 export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { label: string; options: Array<{ value: string; label: string }> }> = {
   lez: {
@@ -467,7 +473,8 @@ export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { labe
   ulez: {
     label: "ULEZ position",
     options: [
-      { value: NO_CHARGE, label: "No ULEZ charge — meets ULEZ standard, exempt, or over 3.5 t (bus/coach over 5 t)" },
+      { value: ULEZ_COMPLIANT, label: "Meets the ULEZ standard — £0.00" },
+      { value: NO_CHARGE, label: "No ULEZ charge — exempt, or over 3.5 t (bus/coach over 5 t)" },
       { value: "ulez-cars", label: "Car not meeting the ULEZ standard" },
       { value: "ulez-vans-specialist-minibuses", label: "Van/specialist vehicle ≤3.5 t or minibus ≤5 t not meeting the ULEZ standard" },
       { value: "ulez-motorcycles-and-l-category", label: "Motorcycle/moped/L-category not meeting Euro 3" }
@@ -494,6 +501,20 @@ export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { labe
       { value: "no", label: "Not on Auto Pay (pays by phone/online)" }
     ]
   }
+};
+
+/**
+ * Central default vehicle profile for New Booking quotes: a standard passenger car. It is ULEZ-compliant by an
+ * approved operating assumption (ULEZ £0.00), is not charged by the LEZ, pays the standard Congestion Charge basis
+ * and the standard tunnel car rate without Auto Pay. It must not be applied to a vehicle whose emissions or
+ * class are unknown; an assigned vehicle replaces it.
+ */
+export const DEFAULT_STANDARD_CAR_PROFILE: RoadChargeProfile = {
+  lez: NO_CHARGE,
+  ulez: ULEZ_COMPLIANT,
+  congestionCharge: "cc-standard",
+  tunnelVehicleClass: "cars-and-small-vans",
+  tunnelAutoPay: "no"
 };
 
 // ---------------------------------------------------------------------------------------------------------------

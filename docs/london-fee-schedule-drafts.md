@@ -23,11 +23,11 @@ Each enable or disable appends a version with the actor and verification record.
 | --- | --- | --- | --- |
 | LEZ | inactive | Yes | – |
 | ULEZ | inactive | No | `src/services/london-ulez-boundary.ts` has no source, licence or verification. Route exposure cannot be trusted. |
-| Congestion Charge | inactive | No | `src/services/london-congestion-charge-boundary.ts` has no source, licence or verification. |
+| Congestion Charge | inactive | No | `src/services/london-congestion-charge-boundary.ts` has no source, licence or verification. Migration `0036_congestion_charge_default_21_inactive_version` appends an inactive £21 version (the approved conservative default; £18 is not used). |
 | Blackwall/Silvertown | inactive | No | `TUNNEL_REFERENCE_GEOMETRY` in `src/services/booking-routing.ts` is approximate and unverified. Weekday bank-holiday Auto Pay peak treatment is not stated by TfL; affected crossings stay unresolved. |
 | Dartford Crossing | draft_inactive | No (out of scope) | – |
 
-Sources:
+Sources (verification via search snippets, 2026-11-19; the sandbox could not open these pages directly, so the admin must re-verify each source before enabling):
 - LEZ: [TfL LEZ lorries, vans, buses and coaches](https://tfl.gov.uk/modes/driving/low-emission-zone/lorries-vans-buses-and-coaches) and [make a payment](https://tfl.gov.uk/modes/driving/low-emission-zone/make-a-payment). Standards effective 2021-03-01.
 - ULEZ: [TfL ULEZ where and when](https://tfl.gov.uk/modes/driving/ultra-low-emission-zone/ulez-where-and-when), London-wide from 2023-08-29.
 - CC: [TfL Congestion Charge](https://tfl.gov.uk/modes/driving/congestion-charge) and [changes](https://tfl.gov.uk/modes/driving/congestion-charge/congestion-charge-changes), effective 2026-01-02.
@@ -41,7 +41,9 @@ Sources:
 - **Daily charges.** Each scheme is charged once per charging day touched in a quote.
 - **Tunnels.** Crossings come from route-path intersection with the tunnel gates (`detectTunnelCrossings`), with tunnel identity and direction. Each crossing is charged by vehicle class, Auto Pay status and time band.
 - **Other tolls.** A Google `tollsReported` flag is never treated as a tunnel fee. Identified tunnel crossings are itemized separately and excluded from **Other tolls**. The provider does not name toll facilities, though, so a reported toll keeps **Other tolls** unresolved, and that quote has no confirmed total.
-- **Vehicle and payment inputs.** The dispatcher must explicitly select the vehicle's LEZ, ULEZ and CC position, plus the tunnel vehicle class and Auto Pay status, in New Booking. A missing input makes the charge unresolved. Nothing is defaulted.
+- **Default profile.** New Booking has no per-booking road-charge controls. Quotes use the central `DEFAULT_STANDARD_CAR_PROFILE` (`src/services/road-charge-schedules.ts`): a standard passenger car, treated as ULEZ-compliant (explicit £0.00 ULEZ line, an approved operating assumption), not charged by LEZ (TfL states cars are outside the LEZ), CC at the conservative £21 rate, and tunnels at the standard car rate without Auto Pay. This assumption must not be applied to a real vehicle with unknown emissions.
+- **Vehicle changes.** Vehicle emissions, class and payment facts are not yet persisted on vehicles, and vehicle assignment is not wired into quoting. Until that exists, every quote uses the default profile. A vehicle whose emission compliance is unknown must produce an unresolved ULEZ line naming the missing fact, never the default £0.00.
+- **Unresolved blockers.** A charge is unresolved while its schedule is inactive, its geometry is unverified, or a required fact is missing. Any unresolved line makes the quote `incomplete` with no total.
 - **Line items.** Each charge is its own line (`road-charge` / `tunnel-charge`). Location discounts never reduce these lines.
 - **Snapshot.** The schedule version, verification, rate, matching basis, route/tunnel evidence and vehicle inputs are stored in the immutable booking price snapshot.
 

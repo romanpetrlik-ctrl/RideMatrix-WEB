@@ -106,6 +106,7 @@ function context(overrides: Omit<Partial<BookingPricingContext>, "configuration"
     poiFees: [],
     operationalBase: base,
     route: route("12"),
+    roadChargeOptions: { codeCalculationBlockers: () => [] },
     ...rest
   };
 }
@@ -114,6 +115,11 @@ const lineOf = (lines: PriceLine[], type: PriceLine["type"]) => lines.filter((li
 const one = (lines: PriceLine[], type: PriceLine["type"]) => {
   const matches = lineOf(lines, type);
   assert.equal(matches.length, 1, `expected exactly one ${type} line`);
+  return matches[0];
+};
+const roadCharge = (lines: PriceLine[], scheme: string) => {
+  const matches = lines.filter((line) => line.type === "road-charge" && (line.source as Record<string, unknown>).scheme === scheme);
+  assert.equal(matches.length, 1, `expected exactly one ${scheme} road-charge line`);
   return matches[0];
 };
 const pennies = (amount: string) => Math.round(Number(amount) * 100);
@@ -296,9 +302,12 @@ test("unresolved route, tolls, zones, parking and waiting make the price incompl
   );
   assert.equal(one(charges.lines, "ride-fare").amount, "23.00");
   assert.equal(one(charges.lines, "toll").status, "unresolved");
-  assert.deepEqual(lineOf(charges.lines, "road-charge").map((line) => line.status), ["unresolved", "unresolved"]);
+  assert.equal(roadCharge(charges.lines, "london-lez").status, "not-applicable", "the default standard car is not charged by LEZ");
+  assert.equal(roadCharge(charges.lines, "london-ulez").status, "zero", "the default standard car is ULEZ-compliant");
+  assert.equal(roadCharge(charges.lines, "london-ulez").amount, "0.00");
+  assert.equal(roadCharge(charges.lines, "london-congestion-charge").status, "unresolved", "an inactive CC schedule cannot confirm a detected charge");
   assert.ok(charges.lines.every((line) => line.status !== "unresolved" || line.amount === null), "unresolved lines never carry invented amounts");
-  assert.equal(charges.unresolvedCount, 3);
+  assert.equal(charges.unresolvedCount, 2);
   assert.equal(charges.total, null);
 
   const noSlabs = priceBooking(inputs(), context({ configuration: { distanceSlabs: [] } }));
@@ -352,7 +361,7 @@ test("unknown postcodes keep potentially matching fixed fares unresolved", () =>
   assert.equal(one(definiteMismatch.lines, "fixed-fare").status, "not-applicable");
 });
 
-test("active road charges stay unresolved without an assigned vehicle, and fare discounts never reduce them", () => {
+test("an active LEZ does not charge the default standard car, and fare discounts never reduce road charges", () => {
   const schedule = applyRoadChargeActivation(roadChargeScheduleSeeds["london-lez"], { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, { accountId: "u", email: "a@example.com" }, new Date("2026-11-20T00:00:00Z"));
   const roadChargeSchedules = { "london-lez": { scheme: "london-lez" as const, version: 3, status: "active", schedule } };
   const radius: RadiusLocationDiscountRule = {
@@ -364,14 +373,14 @@ test("active road charges stay unresolved without an assigned vehicle, and fare 
   const price = priceBooking(inputs(journey), context({ route: lezRoute, roadChargeSchedules, configuration: { radiusLocationDiscounts: [radius] } }));
   assert.equal(one(price.lines, "ride-fare").amount, "23.00");
   assert.equal(one(price.lines, "location-discount").amount, "-11.50", "the discount is calculated on the ride fare only");
-  const charge = one(price.lines, "road-charge");
-  assert.equal(charge.status, "unresolved", "no assigned vehicle means the LEZ charge cannot be confirmed");
+  const charge = roadCharge(price.lines, "london-lez");
+  assert.equal(charge.status, "not-applicable", "the default standard car is not charged by LEZ");
   assert.equal(charge.amount, null);
-  assert.equal(price.status, "incomplete");
-  assert.equal(price.total, null);
+  assert.equal(price.status, "complete");
+  assert.equal(price.total, "17.50", "23.00 ride fare less the 50% discount, plus the £6.00 airport drop-off fee; the £0.00 ULEZ line adds nothing");
 
   const inactive = priceBooking(inputs(journey), context({ route: lezRoute }));
-  assert.equal(one(inactive.lines, "road-charge").status, "unresolved", "no schedule loaded means no charge can be confirmed");
-  assert.equal(inactive.total, null);
+  assert.equal(roadCharge(inactive.lines, "london-lez").status, "not-applicable", "the default car exemption does not need a loaded schedule");
+  assert.equal(inactive.total, "29.00", "without the radius discount: 23.00 ride fare plus the £6.00 airport drop-off fee");
 });
 

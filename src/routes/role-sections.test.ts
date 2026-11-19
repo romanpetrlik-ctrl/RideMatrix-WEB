@@ -1147,7 +1147,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.doesNotMatch(ulezBody, /£180|£90/);
 
     const ccBody = await (await fetch(`${baseUrl}${londonBase}/london-congestion-charge/fee-settings`, { headers })).text();
-    for (const amount of ["18.00", "13.50", "9.00", "0.00"]) assert.ok(ccBody.includes(`value="${amount}"`), `CC shows ${amount}`);
+    for (const amount of ["21.00", "13.50", "9.00", "0.00"]) assert.ok(ccBody.includes(`value="${amount}"`), `CC shows ${amount}`);
     assert.match(ccBody, /A configured £0\.00 is quoted as a zero charge, not as unresolved/);
     assert.match(ccBody, /Congestion Charge route exposure uses a boundary dataset/);
     assert.match(ccBody, /name="effectiveUntil" type="date" value="2030-03-03"/);

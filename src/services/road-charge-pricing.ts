@@ -5,6 +5,7 @@ import {
   NO_CHARGE,
   ROAD_CHARGE_PROFILE_OPTIONS,
   tunnelRateKey,
+  ULEZ_COMPLIANT,
   type DailyZoneSchedule,
   type DailyZoneScheme,
   type RoadChargeProfile,
@@ -224,38 +225,56 @@ function zoneChargingDay(schedule: DailyZoneSchedule, window: JourneyWindow): Zo
 const NO_VEHICLE_BASIS = "No vehicle is assigned at quote time and RideMatrix does not record this vehicle's LEZ, ULEZ, Congestion Charge, tunnel class or Auto Pay attributes, so the charge cannot be calculated.";
 
 function zoneLine(
-  detection: RoadChargeZoneDetection & { zone: DailyZoneScheme },
+  scheme: DailyZoneScheme,
+  detection: RoadChargeZoneDetection | null,
   profile: RoadChargeProfile | null,
   record: RoadChargeScheduleRecord | undefined,
   window: JourneyWindow,
   options: RoadChargeLineOptions
 ): PriceLine {
-  const scheme = detection.zone;
   const title = ZONE_TITLES[scheme];
   const profileKey = ZONE_PROFILE_KEY[scheme];
   const declared = profile?.[profileKey] ?? "";
+  const label = `${title} daily charge`;
+  const geometryBlockers = (options.codeCalculationBlockers ?? codeCalculationBlockers)(scheme);
   const source: Record<string, unknown> = {
     scheme,
     schedule: scheduleSource(record),
-    matchingBasis: detection.evidence,
+    matchingBasis: detection ? detection.evidence : { method: "route-polygon-intersection", detected: false, boundaryBlockers: geometryBlockers },
     journeyWindow: windowSource(window),
     vehicleInput: { field: profileKey, value: declared || null, vehicleAssigned: profile !== null }
   };
-  const label = `${title} daily charge`;
-  const unresolved = (basis: string): PriceLine => ({ type: "road-charge", label, status: "unresolved", amount: null, basis: `The route enters the ${detection.label}. ${basis}`, source });
+  const entry = detection ? `The route enters the ${detection.label}.` : `The route was not detected inside the ${title} boundary.`;
+  const unresolved = (basis: string): PriceLine => ({ type: "road-charge", label, status: "unresolved", amount: null, basis: `${entry} ${basis}`, source });
+  const notApplicable = (basis: string): PriceLine => ({ type: "road-charge", label, status: "not-applicable", amount: null, basis: `${entry} ${basis}`, source });
+
+  if (!profile) return unresolved(NO_VEHICLE_BASIS);
+  if (!declared) return unresolved(`The vehicle's ${ROAD_CHARGE_PROFILE_OPTIONS[profileKey].label} is not recorded, so whether and how much it is charged cannot be determined.`);
+  if (declared === ULEZ_COMPLIANT && scheme === "london-ulez") {
+    source.rate = { key: ULEZ_COMPLIANT, amount: "0.00" };
+    const compliance = "The vehicle meets the ULEZ standard (approved default for a standard passenger car, or a recorded compliance), so no daily charge applies";
+    return {
+      type: "road-charge",
+      label: `${title} daily charge — ULEZ-compliant`,
+      status: "zero",
+      amount: "0.00",
+      basis: detection ? `${entry} ${compliance}.` : `${compliance} whether or not the route enters the zone.`,
+      source
+    };
+  }
+  if (declared === NO_CHARGE) {
+    return notApplicable(`The vehicle is not charged: ${optionLabel(profileKey, declared)}.`);
+  }
+  if (!detection) {
+    if (geometryBlockers.length) return unresolved(`Whether the route enters the ${title} cannot be confirmed: ${geometryBlockers.join(" ")}`);
+    return notApplicable(`The route does not enter the ${title} boundary.`);
+  }
   const unavailable = scheduleUnavailable(record, title, options);
   if (unavailable) return unresolved(unavailable);
-  if (!profile) return unresolved(NO_VEHICLE_BASIS);
   const schedule = record!.schedule as DailyZoneSchedule;
-  if (!declared) return unresolved(`The assigned vehicle's ${ROAD_CHARGE_PROFILE_OPTIONS[profileKey].label} is not recorded, so whether and how much it is charged cannot be determined.`);
   const outcome = zoneChargingDay(schedule, window);
   if (outcome.kind === "unresolved") return unresolved(outcome.reason);
-  if (declared === NO_CHARGE) {
-    return { type: "road-charge", label, status: "not-applicable", amount: null, basis: `The route enters the ${detection.label}, but the dispatcher stated: ${optionLabel(profileKey, declared)}.`, source };
-  }
-  if (outcome.kind === "none") {
-    return { type: "road-charge", label, status: "not-applicable", amount: null, basis: `The route enters the ${detection.label}. ${outcome.reason}`, source };
-  }
+  if (outcome.kind === "none") return notApplicable(outcome.reason);
   const rate = schedule.rates.find((item) => item.key === declared);
   if (!rate || !/^\d{1,6}\.\d{2}$/.test(rate.amount) || (Number(rate.amount) === 0 && !rate.allowZero)) {
     return unresolved(`No valid ${title} rate is configured for “${optionLabel(profileKey, declared)}”.`);
@@ -387,48 +406,48 @@ function tollLine(route: ResolvedBookingRoute): PriceLine {
 }
 
 /**
- * Road-charge lines for a quote: one daily line per entered zone (LEZ, ULEZ, Congestion Charge), one line per
- * identified tunnel crossing, and one line for any remaining provider-reported tolls. Charges are never folded
- * into the ride fare and never discounted.
+ * Road-charge lines for a quote, always in the same order: one line each for LEZ, ULEZ and the Congestion Charge
+ * (whether or not the route enters the zone), one line per identified tunnel crossing (or one line when none is
+ * identified), and one line for any remaining provider-reported tolls. Charges are never folded into the ride
+ * fare, merged across schemes, or discounted.
  */
 export function roadChargeLines(
   serviceDate: string,
   serviceTime: string,
-  /** Persisted facts of the vehicle assigned to the booking; null when no vehicle is assigned at quote time. */
+  /** Vehicle-side facts used for the quote; null when no vehicle profile is available (every charge unresolved). */
   profile: RoadChargeProfile | null,
   route: BookingRoute,
   schedules: RoadChargeScheduleSet,
   options: RoadChargeLineOptions = {}
 ): PriceLine[] {
+  const zoneSchemes: DailyZoneScheme[] = ["london-lez", "london-ulez", "london-congestion-charge"];
   if (route.status !== "resolved") {
+    const reason = "Route unresolved; the road-charge exposure cannot be assessed.";
     return [
-      { type: "road-charge", label: "LEZ, ULEZ and Congestion Charge", status: "unresolved", amount: null, basis: "Route unresolved; LEZ, ULEZ and Congestion Charge exposure cannot be assessed.", source: {} },
+      ...zoneSchemes.map((scheme): PriceLine => ({ type: "road-charge", label: `${ZONE_TITLES[scheme]} daily charge`, status: "unresolved", amount: null, basis: reason, source: { scheme } })),
       { type: "tunnel-charge", label: "Blackwall and Silvertown tunnels", status: "unresolved", amount: null, basis: "Route unresolved; tunnel crossings cannot be assessed.", source: {} },
       { type: "toll", label: "Other tolls", status: "unresolved", amount: null, basis: "Route unresolved; tolls cannot be assessed.", source: {} }
     ];
   }
   const window = journeyWindow(serviceDate, serviceTime, route.durationSeconds);
-  const lines: PriceLine[] = [];
-  const zones = route.zones.filter((zone): zone is RoadChargeZoneDetection & { zone: DailyZoneScheme } => zone.zone in ZONE_TITLES);
-  // Each zone is listed once however often the route enters it, so a charging day is never charged twice.
-  const seen = new Set<string>();
-  for (const zone of zones) {
-    if (seen.has(zone.zone)) continue;
-    seen.add(zone.zone);
-    lines.push(zoneLine(zone, profile, schedules[zone.zone], window, options));
-  }
-  if (!zones.length) {
-    lines.push({ type: "road-charge", label: "LEZ, ULEZ and Congestion Charge", status: "not-applicable", amount: null, basis: "The route geometry does not enter the London LEZ, ULEZ or Congestion Charge boundaries.", source: {} });
-  }
+  const lines: PriceLine[] = zoneSchemes.map((scheme) => {
+    // A route is listed once per zone however often it enters it, so a charging day is never charged twice.
+    const detection = route.zones.find((zone) => zone.zone === scheme) ?? null;
+    return zoneLine(scheme, detection, profile, schedules[scheme], window, options);
+  });
   route.tunnelCrossings.forEach((crossing, index) => {
     lines.push(tunnelLine(crossing, index + 1, profile, schedules["blackwall-silvertown-tunnels"], window, options));
   });
   if (!route.tunnelCrossings.length) {
-    lines.push({ type: "tunnel-charge", label: "Blackwall and Silvertown tunnels", status: "not-applicable", amount: null, basis: "No Blackwall or Silvertown crossing identified on the route geometry.", source: {} });
+    const tunnelBlockers = (options.codeCalculationBlockers ?? codeCalculationBlockers)("blackwall-silvertown-tunnels");
+    lines.push(tunnelBlockers.length
+      ? { type: "tunnel-charge", label: "Blackwall and Silvertown tunnels", status: "unresolved", amount: null, basis: `No Blackwall or Silvertown crossing was identified, but crossings cannot be ruled out: ${tunnelBlockers.join(" ")}`, source: {} }
+      : { type: "tunnel-charge", label: "Blackwall and Silvertown tunnels", status: "not-applicable", amount: null, basis: "No Blackwall or Silvertown crossing identified on the route geometry.", source: {} });
   }
   lines.push(tollLine(route));
   return lines;
 }
+
 
 /** Compact schedule references stored with the booking price snapshot. */
 export function roadChargeScheduleReferences(schedules: RoadChargeScheduleSet) {

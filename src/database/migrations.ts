@@ -1803,6 +1803,25 @@ export const MIGRATIONS: Migration[] = [
         ) AS latest ON true
       ON CONFLICT (scheme, version) DO NOTHING;
     `
+  },
+  {
+    id: "0036_congestion_charge_default_21_inactive_version",
+    sql: `
+      INSERT INTO london_fee_schedule_versions (id, scheme, version, status, payload, actor_email)
+      SELECT seed.scheme || '-structured-v' || (COALESCE(latest.version, 0) + 1),
+             seed.scheme,
+             COALESCE(latest.version, 0) + 1,
+             'inactive',
+             jsonb_set(seed.payload, '{supersedesLegacyDraftVersion}', COALESCE(to_jsonb(latest.version), 'null'::jsonb)),
+             'System migration: congestion charge £21 default (inactive)'
+        FROM (VALUES
+        ('london-congestion-charge', '${JSON.stringify(roadChargeScheduleSeeds["london-congestion-charge"]).replace(/'/g, "''")}'::jsonb)
+        ) AS seed (scheme, payload)
+        LEFT JOIN LATERAL (
+          SELECT max(version) AS version FROM london_fee_schedule_versions WHERE scheme = seed.scheme
+        ) AS latest ON true
+      ON CONFLICT (scheme, version) DO NOTHING;
+    `
   }
 ];
 
