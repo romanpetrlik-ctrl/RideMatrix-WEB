@@ -250,6 +250,15 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     ]);
     assert.ok(formBox && mapBox && mapBox.x > formBox.x + formBox.width - 1);
     assert.ok(Math.abs(formBox!.width - mapBox!.width) < 4, "approximately 50:50");
+    const layout = await page.evaluate(() => ({
+      pageWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+      titleFontSize: Number.parseFloat(getComputedStyle(document.querySelector(".new-booking-page h1")!).fontSize),
+      blockHeadingFontSize: Number.parseFloat(getComputedStyle(document.querySelector(".new-booking-block > h2")!).fontSize)
+    }));
+    assert.ok(layout.pageWidth <= layout.viewportWidth + 1, "desktop form should not overflow horizontally");
+    assert.ok(layout.titleFontSize <= 28, "New Booking title should be compact");
+    assert.ok(layout.blockHeadingFontSize <= 20, "form block headings should be compact");
 
     assert.deepEqual(pageErrors, []);
   } finally {
