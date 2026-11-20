@@ -57,6 +57,7 @@ async function withApp(
     roles?: string[] | null;
     route?: BookingRoute;
     reference?: () => PricingReferenceData;
+    managerDiscount?: string;
     csrf?: boolean;
     booking?: SavedNewBooking;
     listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
@@ -84,7 +85,10 @@ async function withApp(
     loadSession: async () => session,
     dependencies,
     listManagers: async () => managers,
-    getManager: async (id) => managers.find((manager) => manager.customerId === id) ?? null,
+    getManager: async (id) => {
+      const manager = managers.find((candidate) => candidate.customerId === id);
+      return manager && options.managerDiscount ? { ...manager, customerDiscountPercentage: options.managerDiscount } : manager ?? null;
+    },
     createBooking: async (...args) => {
       assertQuoteAcknowledged(args[1].price, args[1].fingerprint, args[2]);
       saved.push(args);
@@ -287,7 +291,7 @@ test("booking archive requires CSRF and a reason, then redirects to the selected
 });
 
 test("quote returns separately itemized lines, ordered stops and route summary data", async () => {
-  await withApp({}, async (baseUrl) => {
+  await withApp({ managerDiscount: "10.00" }, async (baseUrl) => {
     const response = await post(`${baseUrl}/bookings/quote`, form());
     assert.equal(response.status, 200);
     const body = await response.json() as { ok: boolean; fingerprint: string; stops: Array<{ type: string }>; route: { status: string; path: number[][]; distanceMiles: string }; price: { status: string; total: string; lines: Array<{ type: string; amount: string | null }> } };
@@ -297,11 +301,23 @@ test("quote returns separately itemized lines, ordered stops and route summary d
     assert.deepEqual(body.route.path[0], [51.471, -0.451]);
     assert.equal(body.price.status, "complete", "the selected standard car and verified route data produce a complete quote");
     assert.deepEqual(body.price.lines.filter((line) => line.amount !== null && line.type !== "road-charge").map((line) => [line.type, line.amount]), [
-      ["ride-fare", "20.00"], ["airport-pickup-fee", "7.00"], ["airport-dropoff-fee", "6.00"]
+      ["ride-fare", "20.00"], ["location-discount", "-2.00"], ["airport-pickup-fee", "7.00"], ["airport-dropoff-fee", "6.00"]
     ]);
     assert.ok(body.price.lines.some((line) => line.type === "road-charge" && line.amount === "0.00"), "the default ULEZ-compliant car shows an explicit £0 ULEZ line");
-    assert.equal(body.price.total, "33.00");
+    assert.equal(body.price.total, "31.00");
     assert.match(body.fingerprint, /^[a-f0-9]{64}$/);
+
+    const invalidSaveOnlyFields = form({
+      paymentMethod: "",
+      passengerIsManager: "no",
+      passengerName: "",
+      passengerPhone: "invalid",
+      adults: "not-a-number",
+      childSeatRequired: "",
+      boosterRequired: ""
+    });
+    assert.equal((await post(`${baseUrl}/bookings/quote`, invalidSaveOnlyFields)).status, 200);
+    assert.equal((await post(`${baseUrl}/bookings`, invalidSaveOnlyFields)).status, 422);
 
     const newCustomerQuote = await post(`${baseUrl}/bookings/quote`, form({
       customerId: NEW_CUSTOMER_SELECTION_VALUE,

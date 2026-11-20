@@ -34,6 +34,7 @@ import {
   quoteJourney,
   readNewBookingDraft,
   serviceTimeOptions,
+  validateJourney,
   validateNewBooking,
   type BookingActor,
   type BookingFieldError,
@@ -265,13 +266,25 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
     try {
       const draft = readNewBookingDraft(req.body);
       const reference = await dependencies.loadReferenceData();
-      const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getManager);
-      if (!booking) return res.status(422).json({ ok: false, errors });
-      const quote = await quoteJourney(booking, reference, dependencies.computeRoute);
+      const errors: BookingFieldError[] = [];
+      const journey = await validateJourney(draft, reference, dependencies, errors);
+      const manager = draft.customerMode === "existing" && draft.customerId ? await getManager(draft.customerId) : null;
+      if (draft.customerMode === "existing" && !manager) {
+        errors.push({ field: "customerId", message: "Select an existing active customer as booking manager." });
+      }
+      if (!journey || errors.length) return res.status(422).json({ ok: false, errors });
+      const quote = await quoteJourney({
+        ...journey,
+        pricingInputs: {
+          ...journey.pricingInputs,
+          customerId: manager?.customerId ?? null,
+          customerDiscountPercentage: manager?.customerDiscountPercentage ?? null
+        }
+      }, reference, dependencies.computeRoute);
       return res.json({
         ok: true,
         errors: [],
-        stops: serializeStops(booking.stops),
+        stops: serializeStops(journey.stops),
         route: serializeRoute(quote.route),
         price: quote.price,
         fingerprint: quote.fingerprint
