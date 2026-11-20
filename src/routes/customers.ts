@@ -55,6 +55,7 @@ import {
   assignBookingWithLicensing,
   getBookingAssignmentPage,
   saveBookingDeadMileageFlags,
+  unassignBookingDriver,
   unassignBookingVehicle,
   VEHICLE_LICENSE_TYPES,
   type VehicleLicenseType
@@ -1382,6 +1383,16 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           });
           return res.redirect(
             `/customers/${encodeURIComponent(customerId)}/bookings/${encodeURIComponent(bookingId)}/assignment?notice=unassigned`
+          );
+        }
+        if (action === "unassign-driver") {
+          await unassignBookingDriver({
+            bookingId,
+            actorId: session.id,
+            source: "booking-dashboard"
+          });
+          return res.redirect(
+            `/customers/${encodeURIComponent(customerId)}/bookings/${encodeURIComponent(bookingId)}/assignment?notice=driver-unassigned`
           );
         }
         if (action !== "assign") {

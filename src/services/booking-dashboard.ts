@@ -40,11 +40,13 @@ export async function listBookingDashboard(
   const selectedDate = serviceDate(now);
   const normalizedSearch = search.trim().slice(0, 100).toLocaleLowerCase("en-GB");
   const dateCondition = view === "today"
-    ? "b.service_date = $2"
+    ? "b.dashboard_service_date = $2::date"
     : view === "upcoming"
-      ? "b.service_date > $2"
-      : "b.service_date < $2";
-  const order = view === "past" ? "b.service_date DESC, b.service_time DESC NULLS LAST" : "b.service_date ASC, b.service_time ASC NULLS LAST";
+      ? "b.dashboard_service_date > $2::date"
+      : "b.dashboard_service_date < $2::date";
+  const order = view === "past"
+    ? "b.dashboard_service_date DESC, b.dashboard_service_time DESC NULLS LAST"
+    : "b.dashboard_service_date ASC, b.dashboard_service_time ASC NULLS LAST";
   const result = await query<{
     id: string;
     customer_id: string;
@@ -61,13 +63,28 @@ export async function listBookingDashboard(
     vehicle_registration: string | null;
     is_test_booking: boolean;
   }>(
-    `SELECT b.id, b.customer_id, b.reference, b.service_date, b.service_time,
+    `WITH dashboard_bookings AS (
+       SELECT b.*,
+              CASE WHEN b.service_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                   THEN b.service_date::date
+                   ELSE (b.service_date::timestamptz AT TIME ZONE 'Europe/London')::date
+               END AS dashboard_service_date,
+              COALESCE(
+                b.service_time,
+                CASE WHEN b.service_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN NULL
+                     ELSE to_char(b.service_date::timestamptz AT TIME ZONE 'Europe/London', 'HH24:MI')
+                END
+              ) AS dashboard_service_time
+         FROM customer_bookings b
+     )
+     SELECT b.id, b.customer_id, b.reference, b.dashboard_service_date::text AS service_date,
+            b.dashboard_service_time AS service_time,
             COALESCE(NULLIF(btrim(b.booking_manager_name), ''),
                      NULLIF(btrim(concat_ws(' ', c.given_name, c.surname)), ''), 'Unknown customer') AS customer_name,
             b.pickup, b.dropoff, b.status, COALESCE(b.assignment_status, 'unassigned') AS assignment_status,
             b.driver_id, dp.short_name AS driver_name, v.registration AS vehicle_registration,
             COALESCE(b.is_test_booking, FALSE) AS is_test_booking
-       FROM customer_bookings b
+       FROM dashboard_bookings b
        JOIN customers c ON c.id = b.customer_id
        LEFT JOIN driver_profiles dp ON dp.driver_id = b.driver_id
        LEFT JOIN vehicles v ON v.id = b.vehicle_id

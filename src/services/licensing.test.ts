@@ -7,6 +7,7 @@ import {
   listVehicleLicenses,
   saveVehicleLicense,
   selectDeterministicAuthority,
+  unassignBookingDriver,
   unassignBookingVehicle
 } from "./licensing";
 
@@ -167,4 +168,30 @@ test("booking vehicle removal clears its current badge snapshot and writes an au
   assert.match(update.sql, /vehicle_license_badge=NULL/);
   assert.equal(update.params[0], "booking-1");
   assert.ok(calls.some(({ sql }) => sql.includes("'vehicle_unassigned'")));
+});
+
+test("booking driver removal clears the assignment and audits the previous driver and vehicle", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT operator_id, driver_id, vehicle_id")) {
+        return { rows: [{
+          operator_id: "operator-1", driver_id: "driver-1", vehicle_id: "vehicle-1",
+          licensing_authority_id: "authority-1", vehicle_license_type: "private_hire",
+          vehicle_license_badge: "PH-1"
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    }
+  };
+  await unassignBookingDriver({ bookingId: "booking-1", actorId: "admin-1" }, client);
+  const update = calls.find(({ sql }) => sql.includes("UPDATE customer_bookings"));
+  assert.ok(update);
+  assert.match(update.sql, /operator_id=NULL, driver_id=NULL, vehicle_id=NULL/);
+  assert.match(update.sql, /assignment_review_required=TRUE/);
+  assert.equal(update.params[0], "booking-1");
+  assert.ok(calls.some(({ sql, params }) =>
+    sql.includes("'driver_unassigned'") && params.includes("driver-1") && params.includes("PH-1")
+  ));
 });

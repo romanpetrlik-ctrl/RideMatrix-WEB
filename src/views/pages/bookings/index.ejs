@@ -90,7 +90,7 @@
                           <% if (booking.driverId) { %>
                             <form method="post" action="<%= assignmentHref %>">
                               <%- locals.csrfField || "" %>
-                              <input type="hidden" name="action" value="unassign">
+                              <input type="hidden" name="action" value="unassign-driver">
                               <button type="submit" class="button button--secondary">Deassign driver</button>
                             </form>
                           <% } %>

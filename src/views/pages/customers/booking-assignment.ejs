@@ -16,6 +16,8 @@
         <section class="notice notice--warning" role="status">Booking assignment saved.</section>
       <% } else if (notice === "unassigned") { %>
         <section class="notice notice--warning" role="status">Vehicle unassigned. Earlier assignment audit records are retained.</section>
+      <% } else if (notice === "driver-unassigned") { %>
+        <section class="notice notice--warning" role="status">Driver unassigned. Earlier assignment audit records are retained.</section>
       <% } else if (notice === "dead-mileage-inputs-saved") { %>
         <section class="notice notice--warning" role="status">Dead-mileage booking flags saved. No charge has been calculated: actual road-route geometry and a confirmed-price snapshot are not available in this booking workflow.</section>
       <% } %>

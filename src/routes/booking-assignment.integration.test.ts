@@ -475,6 +475,29 @@ test("admin booking assignment uses a common setup licence, snapshots badge, and
     assert.equal(finalAudit.rows[3].action, "vehicle_unassigned");
     assert.equal(finalAudit.rows[3].actor_id, ADMIN_ID);
 
+    const deassignDriver = await fetch(await assignmentPageUrl(port), {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ _csrf: token, action: "unassign-driver" }),
+      redirect: "manual"
+    });
+    assert.equal(deassignDriver.status, 302);
+    assert.match(deassignDriver.headers.get("location") || "", /notice=driver-unassigned/);
+    const clearedDriver = await query<any>(
+      "SELECT operator_id, driver_id, vehicle_id, licensing_authority_id, vehicle_license_type, vehicle_license_badge FROM customer_bookings WHERE id='assignment-main'"
+    );
+    assert.deepEqual(clearedDriver.rows[0], {
+      operator_id: null, driver_id: null, vehicle_id: null, licensing_authority_id: null,
+      vehicle_license_type: null, vehicle_license_badge: null
+    });
+    const driverAudit = await query<any>(
+      "SELECT action, actor_id, driver_id, vehicle_license_badge FROM booking_assignment_audit WHERE booking_id='assignment-main' ORDER BY assigned_at, id"
+    );
+    assert.equal(driverAudit.rows.length, 5);
+    assert.deepEqual(driverAudit.rows[4], {
+      action: "driver_unassigned", actor_id: ADMIN_ID, driver_id: DRIVER_A_ID, vehicle_license_badge: null
+    });
+
     const importedPost = await fetch(await assignmentPageUrl(port, "imp-book-assignment-history"), {
       method: "POST",
       headers: { cookie, "content-type": "application/x-www-form-urlencoded" },

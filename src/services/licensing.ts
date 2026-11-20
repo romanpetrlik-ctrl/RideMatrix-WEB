@@ -701,6 +701,54 @@ export async function unassignBookingVehicle(input: {
   return withTransaction(work);
 }
 
+export async function unassignBookingDriver(input: {
+  bookingId: string;
+  actorId: string;
+  source?: string;
+  reason?: string | null;
+}, client?: Queryable): Promise<void> {
+  if (!input.actorId.trim()) throw new BookingAssignmentError("Authenticated actor is required for assignment changes.");
+  const work = async (runner: Queryable) => {
+    const booking = await runner.query<{
+      operator_id: string | null;
+      driver_id: string | null;
+      vehicle_id: string | null;
+      licensing_authority_id: string | null;
+      vehicle_license_type: string | null;
+      vehicle_license_badge: string | null;
+    }>(
+      `SELECT operator_id, driver_id, vehicle_id, licensing_authority_id,
+              vehicle_license_type, vehicle_license_badge
+         FROM customer_bookings WHERE id = $1 FOR UPDATE`,
+      [input.bookingId]
+    );
+    if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
+    const unassignedAt = new Date().toISOString();
+    const reason = input.reason || "Driver removed from assignment.";
+    await runner.query(
+      `UPDATE customer_bookings
+          SET operator_id=NULL, driver_id=NULL, vehicle_id=NULL, licensing_authority_id=NULL,
+              vehicle_license_type=NULL, vehicle_license_badge=NULL, assignment_status='pending',
+              assignment_review_required=TRUE, assigned_at=$2, assigned_by=$3,
+              assignment_source=$4, assignment_reason=$5
+        WHERE id=$1`,
+      [input.bookingId, unassignedAt, input.actorId, input.source || "dispatch", reason]
+    );
+    await runner.query(
+      `INSERT INTO booking_assignment_audit
+        (id, booking_id, operator_id, driver_id, vehicle_id, licensing_authority_id,
+         assigned_at, actor_id, source, action, reason, vehicle_license_type, vehicle_license_badge)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'driver_unassigned',$10,$11,$12)`,
+      [randomUUID(), input.bookingId, booking.rows[0].operator_id, booking.rows[0].driver_id,
+        booking.rows[0].vehicle_id, booking.rows[0].licensing_authority_id, unassignedAt,
+        input.actorId, input.source || "dispatch", reason, booking.rows[0].vehicle_license_type,
+        booking.rows[0].vehicle_license_badge]
+    );
+  };
+  if (client) return work(client);
+  return withTransaction(work);
+}
+
 export async function flagBookingForLicensingReview(
   bookingId: string,
   reason: string,

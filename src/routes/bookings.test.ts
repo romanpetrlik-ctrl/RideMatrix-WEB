@@ -232,6 +232,7 @@ test("bookings dashboard filters and searches rows and exposes assignment/archiv
     assert.match(html, /Casey Driver · AB12 CDE/);
     assert.match(html, /Assign \/ view driver/);
     assert.match(html, /Deassign driver/);
+    assert.match(html, /name="action" value="unassign-driver"/);
     assert.match(html, /Archive reason/);
     assert.match(html, /name="reason"[^>]*required/);
     assert.doesNotMatch(html, /name="customerMode"/);
