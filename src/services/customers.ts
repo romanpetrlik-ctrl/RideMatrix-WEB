@@ -161,6 +161,7 @@ export type CustomerRecord = {
   longitude: number | null;
   geocodedAt: string | null;
   geocodeStatus: string | null;
+  customerDiscountPercentage: string | null;
   bookings: BookingRecord[];
 };
 
@@ -205,6 +206,7 @@ export type CustomerCreateInput = {
   longitude?: number | null;
   geocodedAt?: string | null;
   geocodeStatus?: string | null;
+  customerDiscountPercentage?: string | null;
 };
 
 export type CustomerUpdateInput = Partial<Omit<CustomerCreateInput, "id">>;
@@ -234,6 +236,7 @@ type CustomerRow = {
   longitude: number | null;
   geocoded_at: string | null;
   geocode_status: string | null;
+  customer_discount_percentage: string | number | null;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
@@ -265,6 +268,22 @@ export class InvalidCustomerStatusError extends Error {
     super(`Unsupported customer status: ${status}. Only Active and Suspended are allowed.`);
     this.name = "InvalidCustomerStatusError";
   }
+}
+
+export class InvalidCustomerDiscountError extends Error {
+  constructor() {
+    super("Customer discount must be a percentage greater than 0 and no more than 100, with up to two decimal places.");
+    this.name = "InvalidCustomerDiscountError";
+  }
+}
+
+export function normalizeCustomerDiscountPercentage(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (!/^(?:\d{1,2}(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/.test(text)) throw new InvalidCustomerDiscountError();
+  const percentage = Number(text);
+  if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) throw new InvalidCustomerDiscountError();
+  return percentage.toFixed(2);
 }
 
 const PREFERRED_CONTACT_VALUES: PreferredContact[] = ["WhatsApp", "Email", "Phone", "Unknown"];
@@ -354,6 +373,9 @@ function mapRow(row: CustomerRow, bookings: BookingRecord[]): CustomerRecord {
     longitude: typeof row.longitude === "number" ? row.longitude : null,
     geocodedAt: row.geocoded_at,
     geocodeStatus: row.geocode_status,
+    customerDiscountPercentage: row.customer_discount_percentage === null
+      ? null
+      : Number(row.customer_discount_percentage).toFixed(2),
     bookings
   };
 }
@@ -538,14 +560,14 @@ export async function createCustomer(
         house_name_number, address_line1, address_line2, address_line3,
         city_town, county, state, postcode,
         preferred_contact, notes, status, source, latitude, longitude, geocoded_at, geocode_status, created_at, updated_at,
-        last_login_at, last_booking_at, deleted_at,
+        customer_discount_percentage, last_login_at, last_booking_at, deleted_at,
         inactive_at, anonymized_at, erasure_requested_at, retention_hold_until, retention_hold_reason, purge_after
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11, $12, $13,
         $14, $15, $16, $17,
         $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+        $28, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
       )`,
       [
         id,
@@ -574,7 +596,8 @@ export async function createCustomer(
         trimOrNull(input.geocodedAt),
         trimOrNull(input.geocodeStatus),
         now,
-        now
+        now,
+        normalizeCustomerDiscountPercentage(input.customerDiscountPercentage)
       ]
     );
   } catch (error) {
@@ -609,7 +632,8 @@ const UPDATABLE_COLUMNS: Array<[keyof CustomerUpdateInput, string]> = [
   ["county", "county"],
   ["state", "state"],
   ["postcode", "postcode"],
-  ["notes", "notes"]
+  ["notes", "notes"],
+  ["customerDiscountPercentage", "customer_discount_percentage"]
 ];
 
 export async function updateCustomer(
@@ -634,11 +658,11 @@ export async function updateCustomer(
       continue;
     }
 
-    values.push(
-      inputKey === "phone"
-        ? normalizePhoneToE164(String(value || ""))
-        : trimOrNull(value as string | null)
-    );
+    values.push(inputKey === "phone"
+      ? normalizePhoneToE164(String(value || ""))
+      : inputKey === "customerDiscountPercentage"
+        ? normalizeCustomerDiscountPercentage(value as string | null)
+        : trimOrNull(value as string | null));
     assignments.push(`${column} = $${values.length}`);
   }
 

@@ -100,5 +100,14 @@
       </div>
     </div>
   </section>
+  <section class="private-customer-form__column" aria-labelledby="customer-discount-heading">
+    <h2 id="customer-discount-heading">Customer discount</h2>
+    <div class="form-field">
+      <label for="customerDiscountPercentage">Standing customer discount (%)</label>
+      <input type="number" id="customerDiscountPercentage" name="customerDiscountPercentage" min="0.01" max="100" step="0.01" value="<%= formData.customerDiscountPercentage || '' %>" inputmode="decimal" <%- fieldInvalidAttrs("customerDiscountPercentage") %> />
+      <% if (businessFieldErrors.customerDiscountPercentage) { %><p class="form-field__error" id="customerDiscountPercentage-error"><%= businessFieldErrors.customerDiscountPercentage %></p><% } %>
+      <p class="private-customer-form__section-intro">Optional. Applies automatically to future bookings, only to the base ride fare. It takes precedence over location discounts; fees remain unchanged.</p>
+    </div>
+  </section>
   </div>
 </form>

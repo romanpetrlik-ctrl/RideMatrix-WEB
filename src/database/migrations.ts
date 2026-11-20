@@ -1928,6 +1928,21 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_booking_archive_audit_booking
         ON booking_archive_audit (booking_id, archived_at DESC);
     `
+  },
+  {
+    id: "0040_customer_profile_discount",
+    sql: `
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS customer_discount_percentage NUMERIC(5, 2);
+      ALTER TABLE customers
+        DROP CONSTRAINT IF EXISTS customers_customer_discount_percentage_check;
+      ALTER TABLE customers
+        ADD CONSTRAINT customers_customer_discount_percentage_check
+        CHECK (
+          customer_discount_percentage IS NULL
+          OR customer_discount_percentage BETWEEN 0.01 AND 100
+        );
+    `
   }
 ];
 

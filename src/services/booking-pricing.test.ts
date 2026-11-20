@@ -271,6 +271,31 @@ test("discount applies to the minimum-raised ride fare and never to fees", () =>
   assert.equal(price.total, "46.00");
 });
 
+test("customer discount replaces rather than stacks with location discounts and leaves fees unchanged", () => {
+  const radius: RadiusLocationDiscountRule = {
+    id: "radius-lhr", name: "Local radius", location: { type: "airport", id: "rm-lhr" }, radiusMiles: "10", discountPercentage: "10",
+    startDate: "", endDate: "", enabled: true, radiusCentre: "operational-base", discountBasis: "standard-distance-slabs-base-fare"
+  };
+  const price = priceBooking(
+    inputs({
+      customerId: "cust-discount",
+      customerDiscountPercentage: "15.00",
+      stops: { pickup: addressStop(northOfBase(2), "BH21 1AA"), vias: [], dropoff: airportStop("rm-lhr") }
+    }),
+    context({
+      configuration: { radiusLocationDiscounts: [radius] },
+      route: route("40")
+    })
+  );
+  const discount = one(price.lines, "location-discount");
+  assert.equal(discount.label, "Customer discount (15.00%)");
+  assert.equal(discount.amount, "-9.00", "15% of the £60.00 ride fare");
+  assert.equal(discount.source.ruleId, undefined, "the location rule is suppressed");
+  assert.equal(discount.source.precedence, "customer-discount-over-location-discount");
+  assert.equal(one(price.lines, "airport-dropoff-fee").amount, "6.00");
+  assert.equal(price.total, "57.00");
+});
+
 test("every component is its own line and the total equals the sum of resolved lines", () => {
   const price = priceBooking(
     inputs({ stops: { pickup: airportStop("rm-lhr"), vias: [poiStop("poi-a")], dropoff: addressStop(51.2, null) } }),

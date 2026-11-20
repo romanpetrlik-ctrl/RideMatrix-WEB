@@ -40,6 +40,31 @@ test("customer quote lists only applicable payable lines, keeps fees and discoun
   }
 });
 
+test("customer quote labels a profile discount without exposing its internal source", () => {
+  const quote = buildCustomerQuote({
+    status: "complete",
+    total: "36.00",
+    lines: [
+      line({ type: "ride-fare", label: "Ride fare", status: "applied", amount: "40.00" }),
+      line({
+        type: "location-discount",
+        label: "Customer discount: 10%",
+        status: "applied",
+        amount: "-4.00",
+        source: { customerId: "customer-1", customerDiscountPercentage: "10.00" }
+      })
+    ]
+  });
+  assert.deepEqual(quote, {
+    status: "confirmed",
+    total: "36.00",
+    lines: [
+      { label: "Ride fare", amount: "40.00" },
+      { label: "Customer discount", amount: "-4.00" }
+    ]
+  });
+});
+
 test("customer quote never confirms a total for incomplete snapshots or unresolved lines", () => {
   const unresolvedRoad = [...completeLines, line({ type: "road-charge", label: "Road charge — London ULEZ", status: "unresolved" })];
   const incomplete = buildCustomerQuote({ status: "incomplete", total: null, lines: unresolvedRoad });

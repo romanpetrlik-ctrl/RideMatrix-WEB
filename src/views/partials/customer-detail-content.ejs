@@ -30,6 +30,7 @@
         <div><dt>Created</dt><dd><%= customer.formattedCreatedAt %></dd></div>
         <div><dt>Last Login</dt><dd><%= customer.formattedLastLoginAt %></dd></div>
         <div><dt>Preferred Contact</dt><dd><%= customer.preferredContact %></dd></div>
+        <div><dt>Standing customer discount</dt><dd><%= customer.customerDiscountPercentage ? `${customer.customerDiscountPercentage}% of base ride fare` : "None" %></dd></div>
         <div><dt>Company</dt><dd><%= customer.company || "—" %></dd></div>
         <div class="customer-detail-list__full">
           <dt><%= customer.source === "business" ? "Registered address" : "Home address" %></dt>

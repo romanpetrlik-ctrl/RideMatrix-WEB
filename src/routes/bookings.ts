@@ -34,7 +34,6 @@ import {
   quoteJourney,
   readNewBookingDraft,
   serviceTimeOptions,
-  validateJourney,
   validateNewBooking,
   type BookingActor,
   type BookingFieldError,
@@ -266,14 +265,13 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
     try {
       const draft = readNewBookingDraft(req.body);
       const reference = await dependencies.loadReferenceData();
-      const errors: BookingFieldError[] = [];
-      const journey = await validateJourney(draft, reference, dependencies, errors);
-      if (!journey) return res.status(422).json({ ok: false, errors });
-      const quote = await quoteJourney(journey, reference, dependencies.computeRoute);
+      const { errors, booking } = await validateNewBooking(draft, reference, dependencies, getManager);
+      if (!booking) return res.status(422).json({ ok: false, errors });
+      const quote = await quoteJourney(booking, reference, dependencies.computeRoute);
       return res.json({
         ok: true,
         errors: [],
-        stops: serializeStops(journey.stops),
+        stops: serializeStops(booking.stops),
         route: serializeRoute(quote.route),
         price: quote.price,
         fingerprint: quote.fingerprint

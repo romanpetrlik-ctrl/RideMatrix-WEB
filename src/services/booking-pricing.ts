@@ -62,6 +62,8 @@ export type BookingPricingInputs = {
   serviceTime: string;
   vehicleClassKey: string;
   stops: BookingStops;
+  customerId?: string | null;
+  customerDiscountPercentage?: string | null;
   /** POI fee IDs (trigger "confirmation") the dispatcher explicitly confirmed. */
   confirmedPoiFeeIds: string[];
 };
@@ -193,6 +195,34 @@ function rideFareLine(inputs: BookingPricingInputs, context: BookingPricingConte
 }
 
 function discountLine(inputs: BookingPricingInputs, context: BookingPricingContext, ride: PriceLine): PriceLine {
+  const customerDiscount = inputs.customerDiscountPercentage;
+  if (customerDiscount) {
+    const source = {
+      source: "customer-profile",
+      customerId: inputs.customerId ?? null,
+      discountPercentage: customerDiscount,
+      precedence: "customer-discount-over-location-discount"
+    };
+    if (ride.status === "unresolved" || ride.amount === null) {
+      return {
+        type: "location-discount",
+        label: `Customer discount (${customerDiscount}%)`,
+        status: "unresolved",
+        amount: null,
+        basis: "A customer-profile discount applies, but the ride fare it applies to is unresolved.",
+        source
+      };
+    }
+    const pennies = percentageOfPennies(toPennies(ride.amount)!, customerDiscount);
+    return {
+      type: "location-discount",
+      label: `Customer discount (${customerDiscount}%)`,
+      status: pennies === 0n ? "zero" : "applied",
+      amount: formatPennies(-pennies),
+      basis: `Customer-profile discount of ${customerDiscount}% applied to the ride fare (£${ride.amount}) only; it takes precedence over location discounts, and fees are never discounted.`,
+      source
+    };
+  }
   const resolution = resolveJourneyLocationDiscount({
     postcodeRules: context.configuration.locationDiscounts ?? [],
     radiusRules: context.configuration.radiusLocationDiscounts ?? [],
