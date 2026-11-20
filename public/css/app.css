@@ -2416,12 +2416,8 @@ button:visited,
 
 }
 
-/* ---------------------------------------------------------------------------
-   Staff pages (directory + create / invite)
-   Microsoft 365-inspired surfaces: neutral backgrounds, restrained blue accent,
-   8px spacing rhythm. All rules are scoped to `.staff-page` so unrelated pages
-   keep their existing appearance.
-   --------------------------------------------------------------------------- */
+/* Staff pages (directory + create / invite). Shared visual tokens are unified
+   in the application-wide design layer at the end of this file. */
 
 .staff-page {
   --staff-blue: #0f6cbd;
@@ -5244,4 +5240,313 @@ button:visited,
 
 .new-booking-page .new-booking-road-charges select {
   max-width: 100%;
+}
+
+/* Shared application skin based on the All Customers directory. */
+:root {
+  --rm-shadow-soft: 0 2px 8px rgba(23, 43, 56, 0.06);
+  --rm-surface: #ffffff;
+  --rm-surface-muted: #fff9f2;
+  --rm-table-divider: var(--rm-light-bronze);
+}
+
+.panel,
+.customer-list-card,
+.staff-page .staff-card,
+.vehicle-page .vehicle-card {
+  border: 1px solid var(--rm-border);
+  border-radius: 0;
+  background: var(--rm-surface);
+  box-shadow: var(--rm-shadow-soft);
+}
+
+.panel {
+  border-left-width: 1px;
+  border-left-color: var(--rm-border);
+}
+
+.panel--warning {
+  border-left: 0.4rem solid var(--rm-golden-orange);
+}
+
+.panel--critical {
+  border-left: 0.4rem solid var(--rm-oxidized-iron);
+}
+
+main.rm-page-shell h1,
+main.container h1 {
+  color: #172b38;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+main.rm-page-shell h2,
+main.container h2 {
+  color: #172b38;
+  font-size: 1.2rem;
+}
+
+main.rm-page-shell h3,
+main.container h3 {
+  color: #172b38;
+  font-size: 1rem;
+}
+
+.customer-list-card {
+  overflow: hidden;
+}
+
+.staff-page {
+  --staff-blue: var(--rm-camel);
+  --staff-blue-hover: var(--rm-faded-copper);
+  --staff-blue-soft: var(--rm-admin-cta-bg-hover);
+  --staff-navy: #172b38;
+  --staff-surface: var(--rm-surface);
+  --staff-canvas: var(--rm-page-bg);
+  --staff-border: var(--rm-border);
+  --staff-border-strong: var(--rm-light-bronze);
+  --staff-text: var(--rm-text);
+  --staff-text-soft: var(--rm-text-soft);
+  --staff-radius: 0;
+  --staff-shadow: var(--rm-shadow-soft);
+}
+
+.staff-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--rm-border);
+  background: var(--rm-border);
+}
+
+.staff-stat-card {
+  min-width: 180px;
+  padding: 1rem 1.15rem;
+  border: 0;
+  border-radius: 0;
+  border-top: 0;
+  background: var(--rm-surface);
+  box-shadow: none;
+}
+
+.staff-stat-card__label {
+  color: var(--rm-text-soft);
+  font-size: 0.82rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.staff-stat-card__value {
+  color: #172b38;
+  font-size: 1.35rem;
+}
+
+.staff-page .staff-card__header {
+  border-bottom: 0;
+  background: var(--rm-surface);
+}
+
+.staff-page .staff-card__title,
+.staff-page .staff-form__section-title,
+.staff-page .staff-role-option__label {
+  color: #172b38;
+}
+
+.staff-page .staff-table th,
+.staff-page .staff-table td,
+.customers-table th,
+.customers-table td,
+.vehicle-table th,
+.vehicle-table td {
+  padding: 0.85rem 0.75rem;
+  border-bottom: 1px solid var(--rm-table-divider);
+  text-align: left;
+  vertical-align: top;
+}
+
+.staff-page .staff-table thead th,
+.customers-table thead th,
+.vehicle-table thead th {
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--rm-light-bronze);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--rm-walnut);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.staff-page .staff-table tbody tr:last-child th,
+.staff-page .staff-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.staff-page .staff-table tbody tr:hover {
+  background: var(--rm-admin-cta-bg);
+}
+
+.staff-role-badge {
+  border-color: var(--rm-border);
+  border-radius: 0;
+  background: var(--rm-admin-cta-bg);
+  color: var(--rm-menu-action-text);
+}
+
+.staff-role-badge--superuser {
+  border-color: var(--rm-golden-orange);
+  background: #fff8e8;
+  color: var(--rm-walnut);
+}
+
+.staff-notice {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.staff-page .staff-field__label,
+.vehicle-form label {
+  color: var(--rm-walnut);
+}
+
+.staff-page .staff-role-option {
+  border-radius: 0;
+}
+
+.staff-page .staff-role-option:has(.staff-role-option__input:checked) {
+  border-color: var(--rm-light-bronze);
+  background: var(--rm-admin-cta-bg);
+}
+
+.vehicle-page__header h1,
+.staff-page__title,
+.customer-list-page__header h1 {
+  color: #172b38;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-weight: 700;
+}
+
+.vehicle-toolbar__control,
+.vehicle-form input:not([type="checkbox"]):not([type="radio"]),
+.vehicle-form select,
+.vehicle-form textarea,
+.vehicle-detail-page .vehicle-card .vehicle-document-form input:not([type]),
+.vehicle-detail-page .vehicle-card .vehicle-document-form input[type="text"],
+.vehicle-detail-page .vehicle-card .vehicle-document-form input[type="date"],
+.vehicle-detail-page .vehicle-card .vehicle-document-form input[type="file"],
+.vehicle-detail-page .vehicle-card .vehicle-document-form select,
+.staff-page .staff-field__input {
+  border: 1px solid var(--rm-light-bronze);
+  border-radius: var(--rm-control-border-radius);
+  background: var(--rm-surface-muted);
+  color: var(--rm-text);
+  font: inherit;
+}
+
+.vehicle-toolbar__control,
+.vehicle-form input:not([type="checkbox"]):not([type="radio"]),
+.vehicle-form select,
+.vehicle-form textarea,
+.vehicle-detail-page .vehicle-card .vehicle-document-form input:not([type]),
+.vehicle-detail-page .vehicle-card .vehicle-document-form input[type="text"],
+.vehicle-detail-page .vehicle-card .vehicle-document-form input[type="date"],
+.vehicle-detail-page .vehicle-card .vehicle-document-form input[type="file"],
+.vehicle-detail-page .vehicle-card .vehicle-document-form select {
+  box-sizing: border-box;
+}
+
+.vehicle-toolbar__control {
+  min-height: var(--rm-cta-dynamic-height);
+  height: auto;
+  padding: 0 var(--rm-cta-dynamic-padding-inline);
+  font-size: var(--rm-cta-dynamic-font-size);
+}
+
+.vehicle-form input:not([type="checkbox"]):not([type="radio"]),
+.vehicle-form select,
+.vehicle-form textarea {
+  min-height: var(--rm-control-height);
+}
+
+.vehicle-page .vehicle-table {
+  min-width: 920px;
+}
+
+.vehicle-document-row,
+.vehicle-document-upload-workbench,
+.vehicle-document-queue {
+  border-color: var(--rm-border);
+  border-radius: 0;
+  background: var(--rm-surface);
+}
+
+.road-charge-schedule__activation,
+.road-charge-schedule__dates,
+.london-fee-draft,
+.london-fee-draft__rate,
+.fare-settings__copy-base,
+.fare-settings__category,
+.fare-settings__rule-card,
+.new-booking-page .new-booking-fieldset,
+.new-booking-page .new-booking-stop,
+.new-booking-page .new-booking-route-summary,
+.new-booking-page .new-booking-cargo-summary,
+.poi-management__section,
+.business-customer-detail__section,
+.staff-details-dialog,
+.vehicle-page dialog[aria-labelledby^="archive"],
+.help-modal,
+.document-preview-modal {
+  border-radius: 0;
+}
+
+input[type="email"],
+input[type="text"],
+input[type="tel"],
+input[type="search"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="file"],
+select,
+textarea {
+  border-radius: var(--rm-control-border-radius);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--rm-faded-copper);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: var(--rm-control-focus-outline);
+  outline-offset: var(--rm-control-focus-offset);
+  box-shadow: var(--rm-control-focus-shadow);
+}
+
+table {
+  border-collapse: collapse;
+}
+
+main table th,
+main table td {
+  padding: 0.85rem 0.75rem;
+  border-bottom: 1px solid var(--rm-table-divider);
+  text-align: left;
+  vertical-align: top;
+}
+
+main table thead th {
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--rm-walnut);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
