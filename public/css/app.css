@@ -508,7 +508,7 @@ input[type="text"],
 input[type="tel"],
 input[type="search"],
 input[type="password"],
-.business-customer-form input[type="number"],
+input[type="number"],
 .poi-management__amount input,
 select,
 textarea {

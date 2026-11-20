@@ -84,3 +84,11 @@ test("customer edit uses server-rendered customer-specific action URLs and prese
   assert.match(route, /editActionHref/);
   assert.match(route, /isChildWindowLayout\(req\.query\.layout\)/);
 });
+
+test("customer discount number input uses shared form control styling", () => {
+  const css = read("public/css/app.css");
+  const edit = read("src/views/pages/customers/edit.ejs");
+
+  assert.match(css, /input\[type="password"\],\s*input\[type="number"\],\s*\.poi-management__amount input,/);
+  assert.match(edit, /id="customerDiscountPercentage"[^>]*type="number"[^>]*step="0\.01"/);
+});
