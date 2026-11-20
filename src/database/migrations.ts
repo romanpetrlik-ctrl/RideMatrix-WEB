@@ -1919,7 +1919,7 @@ export const MIGRATIONS: Migration[] = [
 
       CREATE TABLE IF NOT EXISTS booking_archive_audit (
         id TEXT PRIMARY KEY,
-        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
         actor_user_id TEXT,
         actor_user_email TEXT NOT NULL,
         reason TEXT NOT NULL CHECK (btrim(reason) <> '' AND char_length(reason) <= 500),
