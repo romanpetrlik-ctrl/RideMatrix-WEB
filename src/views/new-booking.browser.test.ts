@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright-core";
-import { BOOKING_COUNT_FIELDS, BOOKING_COUNT_MAX, cargoSummary, serviceTimeOptions } from "../services/new-bookings";
+import { BOOKING_COUNT_FIELDS, BOOKING_COUNT_MAX, cargoSummary, NEW_CUSTOMER_SELECTION_VALUE, serviceTimeOptions } from "../services/new-bookings";
 
 const ORIGIN = "http://booking.test";
 
@@ -52,6 +52,7 @@ async function renderNewBooking(): Promise<string> {
     serviceTimezone: "Europe/London",
     cargoSummaryText: cargoSummary({ adults: 0, children: 0, sportsEquipment: 0, xlBaggage: 0, lBaggage: 0, cabinHandBags: 0, backpacks: 0 }, false, false),
     createdByEmail: "dispatcher@example.test",
+    newCustomerSelectionValue: NEW_CUSTOMER_SELECTION_VALUE,
     mapsBrowserApiKey: "",
     mapsMapId: "",
     quote: null,
@@ -160,14 +161,14 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     await page.uncheck("#passengerIsManager");
     assert.equal(await value("#passengerName"), "Pat Passenger", "unchecking restores the independently edited passenger");
 
-    await page.check("#customerMode-new");
+    await page.selectOption("#customerId", NEW_CUSTOMER_SELECTION_VALUE);
     assert.equal(await page.locator("[data-new-customer-fields]").isVisible(), true);
     await page.fill("#newCustomerGivenName", "Taylor");
     await page.fill("#newCustomerSurname", "Passenger");
     await page.fill("#newCustomerPhone", "+44 7700 900123");
     assert.equal(await value("#managerName"), "Taylor Passenger");
     assert.equal(await value("[data-passenger-name]"), "Pat Passenger", "new customer selection preserves an independently edited passenger");
-    await page.check("#customerMode-existing");
+    await page.selectOption("#customerId", "cust-a");
     assert.equal(await page.locator("[data-existing-customer-fields]").isVisible(), true);
     assert.equal(await value("#managerName"), "Alex Changed", "switching back restores the selected existing manager");
     assert.equal(await value("[data-passenger-name]"), "Pat Passenger");
