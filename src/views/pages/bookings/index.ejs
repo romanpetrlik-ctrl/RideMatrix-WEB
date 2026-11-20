@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+
+    <main class="container rm-page-shell booking-dashboard">
+      <div class="new-booking-page__title">
+        <h1>Bookings</h1>
+        <p>Review and manage scheduled bookings. Booking status is shown as currently recorded.</p>
+      </div>
+
+      <% if (notice === "archived") { %>
+        <section class="notice" role="status">Booking archived. The booking and its price history have been retained.</section>
+      <% } %>
+      <% if (error) { %>
+        <section class="notice notice--critical" role="alert"><%= error %></section>
+      <% } %>
+
+      <section class="panel rm-card booking-dashboard__filters" aria-label="Booking filters">
+        <nav class="booking-dashboard__tabs" aria-label="Booking date range">
+          <% [
+            ["today", "Today"],
+            ["upcoming", "Upcoming"],
+            ["past", "Past"]
+          ].forEach(([key, label]) => { %>
+            <a class="button <%= view === key ? "" : "button--secondary" %>" href="/bookings?view=<%= key %><%= search ? `&search=${encodeURIComponent(search)}` : "" %>" <%= view === key ? 'aria-current="page"' : "" %>><%= label %></a>
+          <% }) %>
+        </nav>
+        <form method="get" action="/bookings" class="booking-dashboard__search">
+          <input type="hidden" name="view" value="<%= view %>">
+          <div class="form-field">
+            <label for="bookingSearch">Search bookings</label>
+            <input id="bookingSearch" name="search" type="search" maxlength="100" value="<%= search %>" placeholder="Reference, customer, route, driver or status">
+          </div>
+          <button class="button button--secondary" type="submit">Search</button>
+          <% if (search) { %><a href="/bookings?view=<%= view %>">Clear search</a><% } %>
+        </form>
+      </section>
+
+      <section class="panel rm-card booking-dashboard__results" aria-labelledby="bookings-results-title">
+        <div class="booking-dashboard__results-heading">
+          <h2 id="bookings-results-title"><%= view === "today" ? "Today's bookings" : view === "upcoming" ? "Upcoming bookings" : "Past bookings" %></h2>
+          <a class="button button--secondary" href="/bookings/new">New booking</a>
+        </div>
+        <% if (bookings.length) { %>
+          <div class="customers-table-wrapper">
+            <table class="customers-table booking-dashboard__table">
+              <thead>
+                <tr>
+                  <th scope="col">Service</th>
+                  <th scope="col">Booking</th>
+                  <th scope="col">Customer</th>
+                  <th scope="col">Journey</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Assignment</th>
+                  <th scope="col" class="customers-table__actions-heading">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% bookings.forEach((booking) => { %>
+                  <% const assignmentHref = `/customers/${encodeURIComponent(booking.customerId)}/bookings/${encodeURIComponent(booking.id)}/assignment`; %>
+                  <tr>
+                    <td><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></td>
+                    <td>
+                      <a href="/bookings/<%= encodeURIComponent(booking.id) %>"><strong><%= booking.reference %></strong></a>
+                      <% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %>
+                    </td>
+                    <td><%= booking.customerName %></td>
+                    <td><%= booking.pickup %> → <%= booking.dropoff %></td>
+                    <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
+                    <td>
+                      <% if (booking.driverName) { %>
+                        <%= booking.driverName %><%= booking.vehicleRegistration ? ` · ${booking.vehicleRegistration}` : "" %>
+                      <% } else { %>
+                        <span>Unassigned</span>
+                      <% } %>
+                    </td>
+                    <td class="customers-table__actions">
+                      <details class="booking-dashboard__actions">
+                        <summary class="button button--secondary">Actions</summary>
+                        <div class="booking-dashboard__actions-menu">
+                          <a href="<%= assignmentHref %>">Assign / view driver</a>
+                          <% if (booking.driverId) { %>
+                            <form method="post" action="<%= assignmentHref %>">
+                              <%- locals.csrfField || "" %>
+                              <input type="hidden" name="action" value="unassign">
+                              <button type="submit" class="button button--secondary">Deassign driver</button>
+                            </form>
+                          <% } %>
+                          <form method="post" action="/bookings/<%= encodeURIComponent(booking.id) %>/archive" class="booking-dashboard__archive-form">
+                            <%- locals.csrfField || "" %>
+                            <input type="hidden" name="view" value="<%= view %>">
+                            <input type="hidden" name="search" value="<%= search %>">
+                            <label for="archive-reason-<%= encodeURIComponent(booking.id) %>">Archive reason</label>
+                            <input id="archive-reason-<%= encodeURIComponent(booking.id) %>" name="reason" type="text" maxlength="500" required>
+                            <button type="submit" class="button button--secondary">Archive booking</button>
+                          </form>
+                        </div>
+                      </details>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+          <% if (bookings.length === 250) { %>
+            <p class="form-hint">Showing the first 250 matching bookings. Narrow the results with search.</p>
+          <% } %>
+        <% } else { %>
+          <div class="empty-state empty-state--compact">
+            <h3>No bookings found</h3>
+            <p><%= search ? "Try a different search or clear the search field." : "There are no bookings in this date range." %></p>
+          </div>
+        <% } %>
+      </section>
+    </main>
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

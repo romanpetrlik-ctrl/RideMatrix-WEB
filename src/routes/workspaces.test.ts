@@ -114,13 +114,12 @@ test("vehicle directory actions open the real vehicle routes instead of dashboar
   assert.equal(findSelectedOperationalAction("vehicles-active"), undefined);
 });
 
-test("operational dashboard links resolve to their selected-action notices", () => {
-  assert.deepEqual(findSelectedOperationalAction("bookings-upcoming"), {
-    category: "Bookings",
-    label: "Upcoming",
-    externalMode: undefined,
-    href: "/dashboard?tile=bookings-upcoming"
-  });
+test("booking date-range shortcuts open the live booking dashboard", () => {
+  const actions = operationalMenuRows.find((row) => row.category === "Bookings")?.actions || [];
+  assert.equal(actions.find((action) => action.label === "Today")?.href, "/bookings?view=today");
+  assert.equal(actions.find((action) => action.label === "Upcoming")?.href, "/bookings?view=upcoming");
+  assert.equal(actions.find((action) => action.label === "Past")?.href, "/bookings?view=past");
+  assert.equal(findSelectedOperationalAction("bookings-upcoming"), undefined);
   assert.equal(findSelectedOperationalAction("customers"), undefined);
 });
 

@@ -1,6 +1,14 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
+import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
+import {
+  BOOKING_DASHBOARD_VIEWS,
+  archiveBooking as archiveBookingRecord,
+  listBookingDashboard,
+  type BookingDashboardRecord,
+  type BookingDashboardView
+} from "../services/booking-dashboard";
 import { getSessionAccount, type SessionAccount } from "../services/api";
 import type { BookingRoute } from "../services/booking-routing";
 import type { BookingPrice, BookingStops } from "../services/booking-pricing";
@@ -46,6 +54,9 @@ export type BookingsRouterOptions = {
   getManager?: (customerId: string) => Promise<BookingManagerCandidate | null>;
   createBooking?: typeof createNewBooking;
   getBooking?: (id: string) => Promise<SavedNewBooking | null>;
+  listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
+  archiveBooking?: typeof archiveBookingRecord;
+  now?: () => Date;
   mapConfiguration?: () => { browserApiKey?: string; mapId?: string };
 };
 
@@ -132,12 +143,16 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const getManager = options.getManager ?? getBookingManagerCandidate;
   const saveBooking = options.createBooking ?? createNewBooking;
   const loadBooking = options.getBooking ?? getNewBooking;
+  const loadDashboardBookings = options.listDashboardBookings ?? ((view, search) => listBookingDashboard(view, search, options.now?.() ?? new Date()));
+  const archiveSavedBooking = options.archiveBooking ?? archiveBookingRecord;
+  const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   const mapConfiguration = options.mapConfiguration ?? (() => {
     const configuration = readMapConfiguration();
     return configuration.enabled ? { browserApiKey: configuration.browserApiKey, mapId: configuration.mapId } : {};
   });
   const quoteRateLimit = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
   const saveRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
+  const archiveRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
 
   const requireAdminSession = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -202,6 +217,30 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         : null
     });
   }
+
+  router.get("/bookings", requireAdminSession, async (req, res, next) => {
+    try {
+      const actor = res.locals.bookingActor as BookingActor;
+      const requestedView = typeof req.query.view === "string" ? req.query.view : "";
+      const view: BookingDashboardView = BOOKING_DASHBOARD_VIEWS.includes(requestedView as BookingDashboardView)
+        ? requestedView as BookingDashboardView
+        : "today";
+      const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 100) : "";
+      const bookings = await loadDashboardBookings(view, search);
+      return res.render("pages/bookings/index", {
+        title: "Bookings",
+        appTitle: options.appTitle,
+        email: actor.email,
+        bookings,
+        view,
+        search,
+        notice: req.query.notice === "archived" ? "archived" : "",
+        error: req.query.error === "archive-reason-required" ? "Enter a reason to archive this booking." : ""
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
 
   router.get("/bookings/new", requireAdminSession, async (req, res, next) => {
     try {
@@ -276,6 +315,33 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         }
         throw error;
       }
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/bookings/:bookingId/archive", requireAdminSession, archiveRateLimit, csrfGuard, async (req, res, next) => {
+    try {
+      const actor = res.locals.bookingActor as BookingActor;
+      const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      const requestedView = typeof req.body?.view === "string" ? req.body.view : "";
+      const view: BookingDashboardView = BOOKING_DASHBOARD_VIEWS.includes(requestedView as BookingDashboardView)
+        ? requestedView as BookingDashboardView
+        : "today";
+      const search = typeof req.body?.search === "string" ? req.body.search.trim().slice(0, 100) : "";
+      const queryString = new URLSearchParams({ view, ...(search ? { search } : {}) }).toString();
+      if (!reason || reason.length > 500) {
+        return res.redirect(303, `/bookings?${queryString}&error=archive-reason-required`);
+      }
+      const result = await archiveSavedBooking({
+        bookingId,
+        reason,
+        actorId: actor.accountId,
+        actorEmail: actor.email
+      });
+      if (result === "not-found") return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      return res.redirect(303, `/bookings?${queryString}&notice=archived`);
     } catch (error) {
       return next(error);
     }

@@ -8,6 +8,7 @@ import { CSRF_COOKIE_NAME } from "../services/csrf";
 import type { SessionAccount } from "../services/api";
 import type { AirportFeeRecord } from "../services/airport-fees";
 import type { BookingRoute } from "../services/booking-routing";
+import type { BookingDashboardRecord, BookingDashboardView } from "../services/booking-dashboard";
 import { EMPTY_FARE_SETTINGS } from "../services/fare-settings";
 import {
   assertQuoteAcknowledged,
@@ -52,7 +53,15 @@ const resolvedRoute: BookingRoute = {
 type Saved = Parameters<NonNullable<BookingsRouterOptions["createBooking"]>>;
 
 async function withApp(
-  options: { roles?: string[] | null; route?: BookingRoute; reference?: () => PricingReferenceData; csrf?: boolean; booking?: SavedNewBooking } = {},
+  options: {
+    roles?: string[] | null;
+    route?: BookingRoute;
+    reference?: () => PricingReferenceData;
+    csrf?: boolean;
+    booking?: SavedNewBooking;
+    listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
+    archiveBooking?: (input: { bookingId: string; reason: string; actorId: string; actorEmail: string }) => Promise<"archived" | "not-found" | "already-archived">;
+  } = {},
   run: (baseUrl: string, saved: Saved[]) => Promise<void>
 ) {
   const saved: Saved[] = [];
@@ -82,6 +91,8 @@ async function withApp(
       return { id: "booking-uuid", reference: "RMB-000042", customerId: args[0].customerId };
     },
     getBooking: async (id) => id === "booking-uuid" ? options.booking ?? savedBooking : null,
+    ...(options.listDashboardBookings ? { listDashboardBookings: options.listDashboardBookings } : {}),
+    ...(options.archiveBooking ? { archiveBooking: options.archiveBooking } : {}),
     mapConfiguration: () => ({})
   }));
   const server = app.listen(0);
@@ -182,6 +193,96 @@ test("new booking page shows the assigned-on-save reference, five blocks and exi
 
     const unknown = await (await fetch(`${baseUrl}/bookings/new?customerId=missing`)).text();
     assert.match(unknown, /not an active booking manager/);
+  });
+});
+
+test("bookings dashboard filters and searches rows and exposes assignment/archive actions", async () => {
+  const listed: Array<[BookingDashboardView, string]> = [];
+  const row: BookingDashboardRecord = {
+    id: "booking-uuid",
+    customerId: "cust-b",
+    reference: "RMB-000042",
+    serviceDate: "2027-03-10",
+    serviceTime: "14:30",
+    customerName: "Blair Booker",
+    pickup: "Airport X",
+    dropoff: "1 High Street",
+    status: "Scheduled",
+    assignmentStatus: "assigned",
+    driverId: "driver-7",
+    driverName: "Casey Driver",
+    vehicleRegistration: "AB12 CDE",
+    isTestBooking: true
+  };
+  await withApp({
+    listDashboardBookings: async (view, search) => {
+      listed.push([view, search]);
+      return [row];
+    }
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/bookings?view=upcoming&search=RMB-000042`);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.deepEqual(listed, [["upcoming", "RMB-000042"]]);
+    assert.match(html, /Upcoming bookings/);
+    assert.match(html, /RMB-000042/);
+    assert.match(html, /Blair Booker/);
+    assert.match(html, /Scheduled/);
+    assert.match(html, /TEST/);
+    assert.match(html, /Casey Driver · AB12 CDE/);
+    assert.match(html, /Assign \/ view driver/);
+    assert.match(html, /Deassign driver/);
+    assert.match(html, /Archive reason/);
+    assert.match(html, /name="reason"[^>]*required/);
+    assert.doesNotMatch(html, /name="customerMode"/);
+  });
+});
+
+test("booking archive requires CSRF and a reason, then redirects to the selected dashboard view", async () => {
+  let archivedInput: { bookingId: string; reason: string; actorId: string; actorEmail: string } | undefined;
+  await withApp({
+    csrf: true,
+    listDashboardBookings: async () => [],
+    archiveBooking: async (input) => {
+      archivedInput = input;
+      return "archived";
+    }
+  }, async (baseUrl) => {
+    const page = await fetch(`${baseUrl}/bookings?view=today`);
+    const html = await page.text();
+    const cookie = page.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const token = /name="_csrf" value="([^"]+)"/.exec(html)?.[1] ?? "";
+    assert.ok(token);
+    assert.ok(cookie);
+
+    const params = new URLSearchParams({
+      _csrf: token,
+      view: "upcoming",
+      search: "RMB-000042",
+      reason: "Duplicate booking created during testing"
+    });
+    const response = await fetch(`${baseUrl}/bookings/booking-uuid/archive`, {
+      method: "POST",
+      body: params,
+      redirect: "manual",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" }
+    });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), "/bookings?view=upcoming&search=RMB-000042&notice=archived");
+    assert.deepEqual(archivedInput, {
+      bookingId: "booking-uuid",
+      reason: "Duplicate booking created during testing",
+      actorId: "acct-7",
+      actorEmail: "dispatcher@example.test"
+    });
+
+    const missingReason = await fetch(`${baseUrl}/bookings/booking-uuid/archive`, {
+      method: "POST",
+      body: new URLSearchParams({ _csrf: token, view: "today", reason: "" }),
+      redirect: "manual",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" }
+    });
+    assert.equal(missingReason.headers.get("location"), "/bookings?view=today&error=archive-reason-required");
   });
 });
 
