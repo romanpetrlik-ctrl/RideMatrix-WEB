@@ -7,6 +7,7 @@
     return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
   };
   const yesNo = (value) => value === true ? "Yes" : value === false ? "No" : "Not recorded";
+  const paymentMethodLabels = { "card-online": "Card / online payment", "bank-transfer": "Bank transfer", card: "Card", "payment-link": "Payment link" };
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -47,6 +48,7 @@
             <div><dt>Booking manager</dt><dd><%= booking.managerName || "—" %></dd></div>
             <div><dt>Phone</dt><dd><%= booking.managerPhone || "—" %></dd></div>
             <div><dt>Email</dt><dd><%= booking.managerEmail || "—" %></dd></div>
+            <div><dt>Booking payment method</dt><dd><%= paymentMethodLabels[booking.paymentMethod] || "Not recorded" %></dd></div>
           </dl>
           <dl class="new-booking-detail-list">
             <div><dt>Passenger</dt><dd><%= booking.passengerName || "—" %><%= booking.passengerIsManager ? " (booking manager)" : "" %></dd></div>
@@ -58,6 +60,7 @@
       <section class="panel new-booking-block" aria-labelledby="detail-journey-title">
         <h2 id="detail-journey-title">3. Journey</h2>
         <p><strong>Service:</strong> <%= booking.serviceDate %><%= booking.serviceTime ? ` ${booking.serviceTime}` : "" %> (<%= serviceTimezone %>)</p>
+        <p><strong>Vehicle category:</strong> <%= booking.vehicleClassLabel || booking.vehicleClassKey || "Not recorded" %></p>
         <ol class="new-booking-map__stops" data-route-stops>
           <% booking.stops.forEach((stop) => { %>
             <li><strong><%= stopTypeLabel(stop) %>:</strong> <%= stop.label %> <span class="form-hint">(<%= kindLabel[stop.kind] || stop.kind %><%= stop.postcode ? `, ${stop.postcode}` : "" %><%= stop.coordinatesVerified ? "" : ", unverified — no coordinates" %>)</span></li>

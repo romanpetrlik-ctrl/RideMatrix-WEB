@@ -65,6 +65,18 @@
             <fieldset class="new-booking-fieldset">
               <legend>Booking manager</legend>
               <div class="form-field">
+                <span>Customer</span>
+                <label for="customerMode-existing">
+                  <input id="customerMode-existing" type="radio" name="customerMode" value="existing" <%= draft.customerMode !== "new" ? "checked" : "" %> data-customer-mode>
+                  Existing customer
+                </label>
+                <label for="customerMode-new">
+                  <input id="customerMode-new" type="radio" name="customerMode" value="new" <%= draft.customerMode === "new" ? "checked" : "" %> data-customer-mode>
+                  Create individual customer
+                </label>
+              </div>
+              <div data-existing-customer-fields <%= draft.customerMode === "new" ? "hidden" : "" %>>
+              <div class="form-field">
                 <label for="customerId">Customer</label>
                 <select id="customerId" name="customerId" required data-manager-select <%- invalid("customerId") %>>
                   <option value="">Select an existing customer</option>
@@ -94,6 +106,31 @@
                 <input id="managerEmail" name="managerEmail" type="email" autocomplete="off" value="<%= draft.managerEmail %>" data-manager-email <%- invalid("managerEmail") %>>
                 <% if (fieldError("managerEmail")) { %><p class="field-error" id="managerEmail-error"><%= fieldError("managerEmail") %></p><% } %>
               </div>
+              </div>
+              <fieldset class="new-booking-fieldset" data-new-customer-fields <%= draft.customerMode === "new" ? "" : "hidden" %>>
+                <legend>New individual customer</legend>
+                <div class="form-field">
+                  <label for="newCustomerGivenName">First name</label>
+                  <input id="newCustomerGivenName" name="newCustomerGivenName" type="text" autocomplete="given-name" value="<%= draft.newCustomerGivenName %>" data-new-customer-input <%- invalid("newCustomerGivenName") %>>
+                  <% if (fieldError("newCustomerGivenName")) { %><p class="field-error" id="newCustomerGivenName-error"><%= fieldError("newCustomerGivenName") %></p><% } %>
+                </div>
+                <div class="form-field">
+                  <label for="newCustomerSurname">Surname</label>
+                  <input id="newCustomerSurname" name="newCustomerSurname" type="text" autocomplete="family-name" value="<%= draft.newCustomerSurname %>" data-new-customer-input <%- invalid("newCustomerSurname") %>>
+                  <% if (fieldError("newCustomerSurname")) { %><p class="field-error" id="newCustomerSurname-error"><%= fieldError("newCustomerSurname") %></p><% } %>
+                </div>
+                <div class="form-field">
+                  <label for="newCustomerPhone">Phone</label>
+                  <input id="newCustomerPhone" name="newCustomerPhone" type="tel" autocomplete="tel" value="<%= draft.newCustomerPhone %>" data-new-customer-input <%- invalid("newCustomerPhone") %>>
+                  <% if (fieldError("newCustomerPhone")) { %><p class="field-error" id="newCustomerPhone-error"><%= fieldError("newCustomerPhone") %></p><% } %>
+                </div>
+                <div class="form-field">
+                  <label for="newCustomerEmail">Email (optional)</label>
+                  <input id="newCustomerEmail" name="newCustomerEmail" type="email" autocomplete="email" value="<%= draft.newCustomerEmail %>" data-new-customer-input <%- invalid("newCustomerEmail") %>>
+                  <% if (fieldError("newCustomerEmail")) { %><p class="field-error" id="newCustomerEmail-error"><%= fieldError("newCustomerEmail") %></p><% } %>
+                </div>
+                <p class="form-hint">Creates an active individual customer together with the booking. Business customers must be registered separately.</p>
+              </fieldset>
             </fieldset>
 
             <fieldset class="new-booking-fieldset">
@@ -116,6 +153,17 @@
               </div>
               <p class="form-hint" data-passenger-sync-hint <%= draft.passengerIsManager ? "" : "hidden" %>>Passenger details follow the booking manager and update automatically.</p>
             </fieldset>
+          </div>
+          <div class="form-field">
+            <label for="paymentMethod">Booking payment method</label>
+            <select id="paymentMethod" name="paymentMethod" required <%- invalid("paymentMethod") %>>
+              <option value="">Select a payment method</option>
+              <% paymentMethods.forEach((method) => { %>
+                <option value="<%= method.value %>" <%= draft.paymentMethod === method.value ? "selected" : "" %>><%= method.label %></option>
+              <% }) %>
+            </select>
+            <% if (fieldError("paymentMethod")) { %><p class="field-error" id="paymentMethod-error"><%= fieldError("paymentMethod") %></p><% } %>
+            <p class="form-hint">This is how the customer pays for the booking; it is separate from TfL Auto Pay.</p>
           </div>
         </section>
 
@@ -198,6 +246,17 @@
                   </div>
                 <% } %>
               <% }) %>
+              <div class="form-field">
+                <label for="vehicleClassKey">Vehicle category</label>
+                <select id="vehicleClassKey" name="vehicleClassKey" required data-quote-input <%- invalid("vehicleClassKey") %>>
+                  <option value="">Select a vehicle category</option>
+                  <% vehicleClasses.forEach((vehicleClass) => { %>
+                    <option value="<%= vehicleClass.key %>" <%= draft.vehicleClassKey === vehicleClass.key ? "selected" : "" %>><%= vehicleClass.label %></option>
+                  <% }) %>
+                </select>
+                <% if (fieldError("vehicleClassKey")) { %><p class="field-error" id="vehicleClassKey-error"><%= fieldError("vehicleClassKey") %></p><% } %>
+                <p class="form-hint">The selected category is saved with the quote and determines only explicitly mapped road-charge classes.</p>
+              </div>
             </div>
 
             <div class="new-booking-journey__map">

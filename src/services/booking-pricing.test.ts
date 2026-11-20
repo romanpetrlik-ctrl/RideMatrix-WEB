@@ -90,6 +90,7 @@ function inputs(overrides: Partial<BookingPricingInputs> = {}): BookingPricingIn
   return {
     serviceDate: "2027-03-10",
     serviceTime: "10:00",
+    vehicleClassKey: "standard_sedan_hatchback",
     stops: { pickup: addressStop(northOfBase(50), null, "Start"), vias: [], dropoff: addressStop(northOfBase(60), null, "End") },
     confirmedPoiFeeIds: [],
     ...overrides
@@ -383,4 +384,3 @@ test("an active LEZ does not charge the default standard car, and fare discounts
   assert.equal(roadCharge(inactive.lines, "london-lez").status, "not-applicable", "the default car exemption does not need a loaded schedule");
   assert.equal(inactive.total, "29.00", "without the radius discount: 23.00 ride fare plus the £6.00 airport drop-off fee");
 });
-

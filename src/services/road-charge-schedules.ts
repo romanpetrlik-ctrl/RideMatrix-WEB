@@ -284,11 +284,11 @@ export const roadChargeScheduleSeeds: Record<RoadChargeScheme, RoadChargeSchedul
       "Charged per crossing, in each direction, for each tunnel (Blackwall and Silvertown), 06:00–22:00 every day except Christmas Day. Crossings 22:00–06:00 are free.",
       "Auto Pay peak: Monday–Friday, northbound 06:00–10:00 and southbound 16:00–19:00. Auto Pay off-peak applies at all other charging times, including weekends.",
       "Without Auto Pay the peak rate applies at all charging times.",
-      "Whether weekday peaks apply on Monday–Friday bank holidays is not stated, so Auto Pay crossings on those days are unresolved."
+      "New Booking quotes always use the without-Auto-Pay phone/online rate during charging hours; Auto Pay discounts and weekday bank-holiday peak behavior do not affect the estimate."
     ],
     exemptionsAndDiscounts: [
       "Resident, small-business, charity and 100% discounts are not applied.",
-      "RideMatrix does not record tunnel vehicle class or Auto Pay status; the dispatcher must state both or the tunnel line is unresolved. Small/large van thresholds are not interpreted — the TfL class is selected explicitly."
+      "Small/large van thresholds are not interpreted — the booking vehicle category must have an explicit tunnel-rate-class mapping."
     ],
     rates: TUNNEL_VEHICLE_CLASSES.flatMap((vehicleClass) => TUNNEL_BANDS.map((band, index) =>
       rate(tunnelRateKey(vehicleClass.key, band), `${vehicleClass.label} — ${BAND_LABELS[band]}`, TUNNEL_AMOUNTS[vehicleClass.key][index], `${vehicleClass.label}; per crossing.`))),
@@ -439,17 +439,18 @@ export function validateRoadChargeScheduleEdit(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Vehicle-side road-charge facts (LEZ/ULEZ/Congestion Charge position, tunnel class, Auto Pay). They are not
-// dispatcher inputs: they must come from the assigned vehicle's persisted record. Until such a record exists,
-// quotes pass null and every vehicle-dependent charge stays unresolved.
+// New Booking uses a selected service vehicle category, not an assigned registration. Only categories with an
+// explicit passenger-car mapping use the approved standard-car zone assumptions. Other categories leave zone
+// compliance unresolved and do not infer a tunnel rate class.
 
 export type RoadChargeProfile = {
   lez: string;
   ulez: string;
   congestionCharge: string;
   tunnelVehicleClass: string;
-  tunnelAutoPay: string;
+  bookingVehicleClassKey: string | null;
 };
+type RoadChargeProfileOptionKey = Exclude<keyof RoadChargeProfile, "bookingVehicleClassKey">;
 
 export const NO_CHARGE = "no-charge";
 
@@ -459,8 +460,8 @@ export const NO_CHARGE = "no-charge";
  */
 export const ULEZ_COMPLIANT = "ulez-compliant";
 
-/** Labels for the stored vehicle-side charge attributes, used in itemized basis text. */
-export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { label: string; options: Array<{ value: string; label: string }> }> = {
+/** Labels for vehicle-side charge attributes, used in itemized basis text. */
+export const ROAD_CHARGE_PROFILE_OPTIONS: Record<RoadChargeProfileOptionKey, { label: string; options: Array<{ value: string; label: string }> }> = {
   lez: {
     label: "LEZ position",
     options: [
@@ -493,13 +494,6 @@ export const ROAD_CHARGE_PROFILE_OPTIONS: Record<keyof RoadChargeProfile, { labe
   tunnelVehicleClass: {
     label: "Blackwall/Silvertown vehicle class",
     options: TUNNEL_VEHICLE_CLASSES.map((item) => ({ value: item.key, label: item.label }))
-  },
-  tunnelAutoPay: {
-    label: "Blackwall/Silvertown Auto Pay",
-    options: [
-      { value: "yes", label: "Registered for TfL Auto Pay" },
-      { value: "no", label: "Not on Auto Pay (pays by phone/online)" }
-    ]
   }
 };
 
@@ -514,8 +508,24 @@ export const DEFAULT_STANDARD_CAR_PROFILE: RoadChargeProfile = {
   ulez: ULEZ_COMPLIANT,
   congestionCharge: "cc-standard",
   tunnelVehicleClass: "cars-and-small-vans",
-  tunnelAutoPay: "no"
+  bookingVehicleClassKey: null
 };
+
+const BOOKING_CLASS_TUNNEL_CLASS: Record<string, string> = {
+  standard_sedan_hatchback: "cars-and-small-vans",
+  standard_estate: "cars-and-small-vans",
+  premium_sedan_hatchback: "cars-and-small-vans",
+  premium_estate: "cars-and-small-vans",
+  executive: "cars-and-small-vans",
+  luxury: "cars-and-small-vans"
+};
+
+/** Returns only classifications backed by an explicit booking-class mapping; unknown classes are never guessed. */
+export function roadChargeProfileForBookingClass(classKey: string): RoadChargeProfile {
+  const tunnelVehicleClass = BOOKING_CLASS_TUNNEL_CLASS[classKey] ?? "";
+  if (tunnelVehicleClass) return { ...DEFAULT_STANDARD_CAR_PROFILE, tunnelVehicleClass, bookingVehicleClassKey: classKey };
+  return { lez: "", ulez: "", congestionCharge: "cc-standard", tunnelVehicleClass: "", bookingVehicleClassKey: classKey };
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Version transitions. Every change appends a new version; editing always produces an inactive, unverified

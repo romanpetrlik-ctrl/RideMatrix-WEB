@@ -37,7 +37,8 @@ function reference(slabRate = "2.00"): PricingReferenceData {
     pois: [],
     poiFees: [],
     operationalBase: null,
-    roadChargeSchedules: {}
+    roadChargeSchedules: {},
+    vehicleClasses: [{ key: "standard_sedan_hatchback", label: "Standard Sedan / Hatchback" }]
   };
 }
 
@@ -94,8 +95,10 @@ async function withApp(
 function form(fields: Record<string, string | string[]> = {}) {
   const params = new URLSearchParams();
   const all: Record<string, string | string[]> = {
+    customerMode: "existing",
     customerId: "cust-b", managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test",
     passengerIsManager: "yes", serviceDate: "2027-03-10", serviceTime: "14:30",
+    vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
     pickupKind: "airport", pickupAirportId: "airport-x", dropoffKind: "airport", dropoffAirportId: "airport-x",
     adults: "2", children: "0", xlBaggage: "1", childSeatRequired: "no", boosterRequired: "no",
     ...fields
@@ -115,6 +118,7 @@ const savedBooking: SavedNewBooking = {
   id: "booking-uuid", customerId: "cust-b", reference: "RMB-000042", createdAt: "2027-03-10T09:00:00.000Z", createdByEmail: "dispatcher@example.test",
   serviceDate: "2027-03-10", serviceTime: "14:30", serviceTimezone: "Europe/London", status: "Scheduled",
   managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test", passengerIsManager: true,
+  vehicleClassKey: "standard_sedan_hatchback", vehicleClassLabel: "Standard Sedan / Hatchback", paymentMethod: "card-online",
   passengerName: "Blair Booker", passengerPhone: "+44 7700 900002",
   counts: { adults: 2, children: 0, sportsEquipment: 0, xlBaggage: 1, lBaggage: 0, cabinHandBags: 0, backpacks: 0 },
   childSeatRequired: false, boosterRequired: false,
@@ -188,12 +192,12 @@ test("quote returns separately itemized lines, ordered stops and route summary d
     assert.deepEqual(body.stops.map((stop) => stop.type), ["pickup", "dropoff"]);
     assert.equal(body.route.distanceMiles, "10.000000");
     assert.deepEqual(body.route.path[0], [51.471, -0.451]);
-    assert.equal(body.price.status, "incomplete", "unverified CC and tunnel modes keep the price unconfirmed");
+    assert.equal(body.price.status, "complete", "the selected standard car and verified route data produce a complete quote");
     assert.deepEqual(body.price.lines.filter((line) => line.amount !== null && line.type !== "road-charge").map((line) => [line.type, line.amount]), [
       ["ride-fare", "20.00"], ["airport-pickup-fee", "7.00"], ["airport-dropoff-fee", "6.00"]
     ]);
     assert.ok(body.price.lines.some((line) => line.type === "road-charge" && line.amount === "0.00"), "the default ULEZ-compliant car shows an explicit £0 ULEZ line");
-    assert.equal(body.price.total, null);
+    assert.equal(body.price.total, "33.00");
     assert.match(body.fingerprint, /^[a-f0-9]{64}$/);
 
     const withVias = await (await post(`${baseUrl}/bookings/quote`, form({ via1Active: "yes", via1Kind: "airport", via1AirportId: "airport-x", via2Active: "yes", via2Kind: "address", via2Label: "Typed only", via2HouseNameNumber: "2" }))).json() as { stops: Array<{ type: string; coordinatesVerified: boolean }>; route: { status: string }; price: { status: string; total: null } };
@@ -214,7 +218,7 @@ test("saving records the actor and redirects; a price the dispatcher did not see
     assert.equal(unseen.status, 409);
     const html = await unseen.text();
     assert.match(html, /The price changed/);
-    assert.match(html, /name="quotedStatus" value="incomplete"/);
+    assert.match(html, /name="quotedStatus" value="complete"/);
     assert.match(html, /data-price-line="ride-fare"/);
     assert.equal(saved.length, 0);
 
@@ -224,7 +228,7 @@ test("saving records the actor and redirects; a price the dispatcher did not see
     assert.equal(saved.length, 0);
 
     const ok = await post(`${baseUrl}/bookings`, form({
-      quotedStatus: "incomplete", quotedFingerprint: fingerprint, saveWithUnresolvedPrice: "yes",
+      quotedStatus: "complete", quotedTotal: "33.00", quotedFingerprint: fingerprint,
       passengerName: "stale", passengerPhone: "1"
     }));
     assert.equal(ok.status, 303);
@@ -235,8 +239,8 @@ test("saving records the actor and redirects; a price the dispatcher did not see
     assert.equal(booking.customerId, "cust-b");
     assert.equal(booking.passengerName, "Blair Booker");
     assert.equal(booking.counts.xlBaggage, 1);
-    assert.equal(quote.price.status, "incomplete");
-    assert.equal(quote.price.total, null);
+    assert.equal(quote.price.status, "complete");
+    assert.equal(quote.price.total, "33.00");
   });
 });
 
@@ -402,10 +406,12 @@ test("booking POSTs are CSRF protected", async () => {
     const cookie = page.headers.getSetCookie().find((entry) => entry.startsWith(`${CSRF_COOKIE_NAME}=`))!.split(";")[0];
     const token = /name="_csrf" value="([^"]+)"/.exec(await page.text())![1];
     const headers = { cookie };
-    const fingerprint = await quoteFingerprint(baseUrl, form({ _csrf: token }), headers);
+    const quoteResponse = await post(`${baseUrl}/bookings/quote`, form({ _csrf: token }), headers);
+    assert.equal(quoteResponse.status, 200);
+    const quote = await quoteResponse.json() as { fingerprint: string; price: { status: string; total: string | null } };
     const accepted = await post(
       `${baseUrl}/bookings`,
-      form({ _csrf: token, quotedStatus: "incomplete", saveWithUnresolvedPrice: "yes", quotedFingerprint: fingerprint }),
+      form({ _csrf: token, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint }),
       headers
     );
     assert.equal(accepted.status, 303);

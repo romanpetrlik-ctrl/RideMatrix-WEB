@@ -15,9 +15,10 @@ import { getOperationalBase, type OperationalBase } from "./dead-mileage";
 import { fareSettingsStore, normalizeUkPostcode, validCalendarDate, type FareSettingsSnapshot } from "./fare-settings";
 import { verifyGoogleOperationalPlace, type OperationalPlaceVerification } from "./google-places";
 import { poiManagementStore, type PoiFeeRecord, type PoiRecord } from "./poi-management";
-import { updateCustomerLastBookingAt } from "./customers";
+import { createCustomer, updateCustomerLastBookingAt, type CustomerCreateInput } from "./customers";
 import { londonFeeScheduleStore } from "./london-fee-schedules";
 import { roadChargeScheduleReferences, type RoadChargeScheduleSet } from "./road-charge-pricing";
+import { listVehicleClasses, type VehicleClass } from "./vehicles";
 
 export const BOOKING_COUNT_MAX = 7;
 export const BOOKING_COUNT_FIELDS = [
@@ -32,6 +33,13 @@ export const BOOKING_COUNT_FIELDS = [
 export type BookingCountField = (typeof BOOKING_COUNT_FIELDS)[number][0];
 export const STOP_KEYS = ["pickup", "via1", "via2", "dropoff"] as const;
 export type StopKey = (typeof STOP_KEYS)[number];
+export const BOOKING_PAYMENT_METHODS = [
+  { value: "card-online", label: "Card / online payment" },
+  { value: "bank-transfer", label: "Bank transfer" },
+  { value: "card", label: "Card" },
+  { value: "payment-link", label: "Payment link" }
+] as const;
+export type BookingPaymentMethod = (typeof BOOKING_PAYMENT_METHODS)[number]["value"];
 
 export type BookingFieldError = { field: string; message: string };
 
@@ -53,7 +61,12 @@ export type SubmittedStop = {
 };
 
 export type NewBookingDraft = {
+  customerMode: "existing" | "new";
   customerId: string;
+  newCustomerGivenName: string;
+  newCustomerSurname: string;
+  newCustomerPhone: string;
+  newCustomerEmail: string;
   managerName: string;
   managerPhone: string;
   managerEmail: string;
@@ -62,6 +75,8 @@ export type NewBookingDraft = {
   passengerPhone: string;
   serviceDate: string;
   serviceTime: string;
+  vehicleClassKey: string;
+  paymentMethod: string;
   stops: Record<StopKey, SubmittedStop>;
   viaActive: { via1: boolean; via2: boolean };
   counts: Record<BookingCountField, string>;
@@ -83,6 +98,8 @@ export type ValidatedJourney = {
 
 export type ValidatedBooking = ValidatedJourney & {
   customerId: string;
+  newCustomer: CustomerCreateInput | null;
+  paymentMethod: BookingPaymentMethod;
   managerName: string;
   managerPhone: string;
   managerEmail: string;
@@ -101,6 +118,7 @@ export type PricingReferenceData = {
   poiFees: PoiFeeRecord[];
   operationalBase: OperationalBase | null;
   roadChargeSchedules: RoadChargeScheduleSet;
+  vehicleClasses: VehicleClass[];
 };
 
 export type NewBookingDependencies = {
@@ -113,15 +131,16 @@ export type NewBookingDependencies = {
 export const SERVICE_TIMEZONE = "Europe/London";
 
 export async function loadPricingReferenceData(): Promise<PricingReferenceData> {
-  const [fareSettings, airports, pois, poiFees, operationalBase, roadChargeSchedules] = await Promise.all([
+  const [fareSettings, airports, pois, poiFees, operationalBase, roadChargeSchedules, vehicleClasses] = await Promise.all([
     fareSettingsStore.load(),
     airportFeeStore.list(),
     poiManagementStore.listPois(),
     poiManagementStore.listFees(),
     getOperationalBase(),
-    londonFeeScheduleStore.loadPricingSchedules()
+    londonFeeScheduleStore.loadPricingSchedules(),
+    listVehicleClasses()
   ]);
-  return { fareSettings, airports, pois, poiFees, operationalBase, roadChargeSchedules };
+  return { fareSettings, airports, pois, poiFees, operationalBase, roadChargeSchedules, vehicleClasses };
 }
 
 const verificationCache = new Map<string, { at: number; result: OperationalPlaceVerification }>();
@@ -169,7 +188,12 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
   };
   const counts = Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, text(source, field, 5)])) as Record<BookingCountField, string>;
   return {
+    customerMode: text(source, "customerMode", 20) === "new" ? "new" : "existing",
     customerId: text(source, "customerId", 100),
+    newCustomerGivenName: text(source, "newCustomerGivenName", 200),
+    newCustomerSurname: text(source, "newCustomerSurname", 200),
+    newCustomerPhone: text(source, "newCustomerPhone", 50),
+    newCustomerEmail: text(source, "newCustomerEmail", 254),
     managerName: text(source, "managerName", 200),
     managerPhone: text(source, "managerPhone", 50),
     managerEmail: text(source, "managerEmail", 254),
@@ -178,6 +202,8 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     passengerPhone: text(source, "passengerPhone", 50),
     serviceDate: text(source, "serviceDate", 20),
     serviceTime: text(source, "serviceTime", 10),
+    vehicleClassKey: text(source, "vehicleClassKey", 100),
+    paymentMethod: text(source, "paymentMethod", 40),
     stops: { pickup: stop("pickup"), via1: stop("via1"), via2: stop("via2"), dropoff: stop("dropoff") },
     viaActive: { via1: text(source, "via1Active") === "yes", via2: text(source, "via2Active") === "yes" },
     counts,
@@ -385,6 +411,9 @@ export async function validateJourney(
   if (!isFiveMinuteTime(draft.serviceTime)) {
     errors.push({ field: "serviceTime", message: "Select a service time in 24-hour HH:mm using five-minute steps." });
   }
+  if (!reference.vehicleClasses.some((item) => item.key === draft.vehicleClassKey)) {
+    errors.push({ field: "vehicleClassKey", message: "Select an active vehicle class." });
+  }
   if (validCalendarDate(draft.serviceDate) && isFiveMinuteTime(draft.serviceTime)) {
     const serviceInstant = serviceLocalToUtc(draft.serviceDate, draft.serviceTime);
     const roundTrip = zonedParts(serviceInstant, SERVICE_TIMEZONE);
@@ -423,6 +452,7 @@ export async function validateJourney(
     pricingInputs: {
       serviceDate: draft.serviceDate,
       serviceTime: draft.serviceTime,
+      vehicleClassKey: draft.vehicleClassKey,
       stops,
       confirmedPoiFeeIds: draft.confirmedPoiFeeIds.filter((id) =>
         reference.poiFees.some((fee) => fee.id === id && selectedPoiIds.has(fee.poiId)))
@@ -437,13 +467,37 @@ export async function validateNewBooking(
   loadManager: (customerId: string) => Promise<BookingManagerCandidate | null>
 ): Promise<{ errors: BookingFieldError[]; booking: ValidatedBooking | null }> {
   const errors: BookingFieldError[] = [];
-  const manager = draft.customerId ? await loadManager(draft.customerId) : null;
-  if (!manager) errors.push({ field: "customerId", message: "Select an existing active customer as booking manager." });
-  if (!draft.managerName) errors.push({ field: "managerName", message: "Enter the booking manager's name." });
-  if (!isValidPhone(draft.managerPhone)) errors.push({ field: "managerPhone", message: "Enter a valid booking manager phone number." });
-  if (draft.managerEmail && !isValidEmail(draft.managerEmail)) errors.push({ field: "managerEmail", message: "Enter a valid booking manager email address." });
-  const passengerName = draft.passengerIsManager ? draft.managerName : draft.passengerName;
-  const passengerPhone = draft.passengerIsManager ? draft.managerPhone : draft.passengerPhone;
+  const manager = draft.customerMode === "existing" && draft.customerId ? await loadManager(draft.customerId) : null;
+  let newCustomer: CustomerCreateInput | null = null;
+  let managerName = draft.managerName;
+  let managerPhone = draft.managerPhone;
+  let managerEmail = draft.managerEmail;
+  if (draft.customerMode === "existing") {
+    if (!manager) errors.push({ field: "customerId", message: "Select an existing active customer as booking manager." });
+    if (!managerName) errors.push({ field: "managerName", message: "Enter the booking manager's name." });
+    if (!isValidPhone(managerPhone)) errors.push({ field: "managerPhone", message: "Enter a valid booking manager phone number." });
+    if (managerEmail && !isValidEmail(managerEmail)) errors.push({ field: "managerEmail", message: "Enter a valid booking manager email address." });
+  } else {
+    if (!draft.newCustomerGivenName) errors.push({ field: "newCustomerGivenName", message: "Enter the customer's first name." });
+    if (!draft.newCustomerSurname) errors.push({ field: "newCustomerSurname", message: "Enter the customer's surname." });
+    if (!isValidPhone(draft.newCustomerPhone)) errors.push({ field: "newCustomerPhone", message: "Enter a valid customer phone number." });
+    if (draft.newCustomerEmail && !isValidEmail(draft.newCustomerEmail)) errors.push({ field: "newCustomerEmail", message: "Enter a valid customer email address." });
+    managerName = [draft.newCustomerGivenName, draft.newCustomerSurname].filter(Boolean).join(" ");
+    managerPhone = draft.newCustomerPhone;
+    managerEmail = draft.newCustomerEmail;
+    newCustomer = {
+      givenName: draft.newCustomerGivenName,
+      surname: draft.newCustomerSurname,
+      phone: draft.newCustomerPhone,
+      email: draft.newCustomerEmail || null,
+      source: "manual"
+    };
+  }
+  if (!BOOKING_PAYMENT_METHODS.some((method) => method.value === draft.paymentMethod)) {
+    errors.push({ field: "paymentMethod", message: "Select a payment method for this booking." });
+  }
+  const passengerName = draft.passengerIsManager ? managerName : draft.passengerName;
+  const passengerPhone = draft.passengerIsManager ? managerPhone : draft.passengerPhone;
   if (!draft.passengerIsManager) {
     if (!passengerName) errors.push({ field: "passengerName", message: "Enter the passenger's name." });
     if (!isValidPhone(passengerPhone)) errors.push({ field: "passengerPhone", message: "Enter a valid passenger phone number." });
@@ -462,15 +516,17 @@ export async function validateNewBooking(
   if (childSeat === null) errors.push({ field: "childSeatRequired", message: "Select whether a child seat is required." });
   if (booster === null) errors.push({ field: "boosterRequired", message: "Select whether a booster is required." });
   const journey = await validateJourney(draft, reference, dependencies, errors);
-  if (errors.length || !journey || !manager) return { errors, booking: null };
+  if (errors.length || !journey || (draft.customerMode === "existing" && !manager)) return { errors, booking: null };
   return {
     errors,
     booking: {
       ...journey,
-      customerId: manager.customerId,
-      managerName: draft.managerName,
-      managerPhone: draft.managerPhone,
-      managerEmail: draft.managerEmail,
+      customerId: manager?.customerId ?? "",
+      newCustomer,
+      paymentMethod: draft.paymentMethod as BookingPaymentMethod,
+      managerName,
+      managerPhone,
+      managerEmail,
       passengerIsManager: draft.passengerIsManager,
       passengerName,
       passengerPhone,
@@ -634,6 +690,11 @@ export async function createNewBooking(
   const snapshotId = randomUUID();
   const createdAt = now.toISOString();
   return withTransaction(async (client) => {
+    const newCustomer = booking.newCustomer
+      ? await createCustomer(booking.newCustomer, client)
+      : null;
+    const customerId = newCustomer?.id ?? booking.customerId;
+    if (!customerId) throw new Error("A booking requires a valid existing or new customer.");
     const reference = await nextBookingReference(client);
     await client.query(
       `INSERT INTO customer_bookings (
@@ -641,16 +702,17 @@ export async function createNewBooking(
          total_fare_amount, service_time, service_timezone, created_by_account_id, created_by_email,
          booking_manager_name, booking_manager_phone, booking_manager_email, passenger_is_booking_manager,
          passenger_name, passenger_phone, adults, children, sports_equipment, xl_baggage, l_baggage,
-         cabin_hand_bags, backpacks, child_seat_required, booster_required, price_status
-       ) VALUES ($1,$2,$3,$4,$5,$6,'Scheduled',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
+         cabin_hand_bags, backpacks, child_seat_required, booster_required, price_status,
+         vehicle_class_key, payment_method
+       ) VALUES ($1,$2,$3,$4,$5,$6,'Scheduled',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
       [
-        id, booking.customerId, reference, booking.serviceDate, booking.stops.pickup.label, booking.stops.dropoff.label, createdAt,
+        id, customerId, reference, booking.serviceDate, booking.stops.pickup.label, booking.stops.dropoff.label, createdAt,
         price.total, booking.serviceTime, SERVICE_TIMEZONE, actor.accountId, actor.email,
         booking.managerName, booking.managerPhone, booking.managerEmail || null, booking.passengerIsManager,
         booking.passengerName, booking.passengerPhone, booking.counts.adults, booking.counts.children,
         booking.counts.sportsEquipment, booking.counts.xlBaggage, booking.counts.lBaggage,
         booking.counts.cabinHandBags, booking.counts.backpacks, booking.childSeatRequired, booking.boosterRequired,
-        price.status
+        price.status, booking.pricingInputs.vehicleClassKey, booking.paymentMethod
       ]
     );
     const ordered: Array<["pickup" | "via" | "dropoff", BookingStop]> = [
@@ -684,8 +746,8 @@ export async function createNewBooking(
         [snapshotId, position, line.type, line.label, line.status, line.amount, line.basis, JSON.stringify(line.source)]
       );
     }
-    await updateCustomerLastBookingAt(booking.customerId, serviceLocalToUtc(booking.serviceDate, booking.serviceTime).toISOString(), client);
-    return { id, reference, customerId: booking.customerId };
+    await updateCustomerLastBookingAt(customerId, serviceLocalToUtc(booking.serviceDate, booking.serviceTime).toISOString(), client);
+    return { id, reference, customerId };
   });
 }
 
@@ -704,6 +766,9 @@ export type SavedNewBooking = {
   managerName: string | null;
   managerPhone: string | null;
   managerEmail: string | null;
+  vehicleClassKey: string | null;
+  vehicleClassLabel: string | null;
+  paymentMethod: BookingPaymentMethod | null;
   passengerIsManager: boolean | null;
   passengerName: string | null;
   passengerPhone: string | null;
@@ -727,7 +792,13 @@ function amountText(value: string | number | null): string | null {
 }
 
 export async function getNewBooking(id: string): Promise<SavedNewBooking | null> {
-  const bookingResult = await query(`SELECT * FROM customer_bookings WHERE id = $1`, [id]);
+  const bookingResult = await query(
+    `SELECT b.*, vc.label AS vehicle_class_label
+       FROM customer_bookings b
+       LEFT JOIN vehicle_classes vc ON vc.key = b.vehicle_class_key
+      WHERE b.id = $1`,
+    [id]
+  );
   const row = bookingResult.rows[0];
   if (!row) return null;
   const [stopsResult, snapshotResult] = await Promise.all([
@@ -751,6 +822,9 @@ export async function getNewBooking(id: string): Promise<SavedNewBooking | null>
     managerName: row.booking_manager_name,
     managerPhone: row.booking_manager_phone,
     managerEmail: row.booking_manager_email,
+    vehicleClassKey: row.vehicle_class_key,
+    vehicleClassLabel: row.vehicle_class_label,
+    paymentMethod: row.payment_method,
     passengerIsManager: row.passenger_is_booking_manager,
     passengerName: row.passenger_name,
     passengerPhone: row.passenger_phone,

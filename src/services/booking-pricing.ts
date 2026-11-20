@@ -12,7 +12,7 @@ import {
 } from "./fare-settings";
 import type { PoiFeeRecord, PoiRecord } from "./poi-management";
 import { roadChargeLines, type RoadChargeLineOptions, type RoadChargeScheduleSet } from "./road-charge-pricing";
-import { DEFAULT_STANDARD_CAR_PROFILE } from "./road-charge-schedules";
+import { roadChargeProfileForBookingClass } from "./road-charge-schedules";
 
 export type BookingLocationKind = "airport" | "poi" | "address";
 
@@ -60,6 +60,7 @@ export type PriceLine = {
 export type BookingPricingInputs = {
   serviceDate: string;
   serviceTime: string;
+  vehicleClassKey: string;
   stops: BookingStops;
   /** POI fee IDs (trigger "confirmation") the dispatcher explicitly confirmed. */
   confirmedPoiFeeIds: string[];
@@ -392,7 +393,7 @@ export function priceBooking(inputs: BookingPricingInputs, context: BookingPrici
     discountLine(inputs, context, ride),
     ...airportLines(inputs, context),
     ...poiLines(inputs, context),
-    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, DEFAULT_STANDARD_CAR_PROFILE, context.route, context.roadChargeSchedules ?? {}, context.roadChargeOptions),
+    ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, roadChargeProfileForBookingClass(inputs.vehicleClassKey), context.route, context.roadChargeSchedules ?? {}, context.roadChargeOptions),
     surchargeLine(inputs, context),
     fixedFareLine(inputs, context),
     {

@@ -1892,6 +1892,19 @@ export const MIGRATIONS: Migration[] = [
              = seed.payload - ARRAY['supersedesLegacyDraftVersion', 'status', 'active', 'bookingPriceUsage', 'verification']::text[]
       ON CONFLICT (scheme, version) DO NOTHING;
     `
+  },
+  {
+    id: "0038_new_booking_vehicle_class_payment_method",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS vehicle_class_key TEXT REFERENCES vehicle_classes(key),
+        ADD COLUMN IF NOT EXISTS payment_method TEXT;
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_method_check;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT customer_bookings_payment_method_check
+        CHECK (payment_method IS NULL OR payment_method IN ('card-online', 'bank-transfer', 'card', 'payment-link'));
+    `
   }
 ];
 

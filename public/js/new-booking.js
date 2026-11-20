@@ -141,6 +141,15 @@
     const passenger = { name: $("[data-passenger-name]"), phone: $("[data-passenger-phone]") };
     const passengerIsManager = $("[data-passenger-is-manager]");
     const syncHint = $("[data-passenger-sync-hint]");
+    const existingCustomerFields = $("[data-existing-customer-fields]");
+    const newCustomerFields = $("[data-new-customer-fields]");
+    const newCustomerInputs = {
+      givenName: $("#newCustomerGivenName"),
+      surname: $("#newCustomerSurname"),
+      phone: $("#newCustomerPhone"),
+      email: $("#newCustomerEmail")
+    };
+    const existingManager = { name: manager.name.value, phone: manager.phone.value, email: manager.email.value };
     // Independent passenger values are remembered so unchecking restores what the dispatcher typed.
     const ownPassenger = { name: passengerIsManager.checked ? "" : passenger.name.value, phone: passengerIsManager.checked ? "" : passenger.phone.value };
 
@@ -158,7 +167,12 @@
     };
     passenger.name.addEventListener("input", () => { if (!passengerIsManager.checked) ownPassenger.name = passenger.name.value; });
     passenger.phone.addEventListener("input", () => { if (!passengerIsManager.checked) ownPassenger.phone = passenger.phone.value; });
-    [manager.name, manager.phone].forEach((input) => input.addEventListener("input", syncPassenger));
+    [manager.name, manager.phone, manager.email].forEach((input) => input.addEventListener("input", () => {
+      existingManager.name = manager.name.value;
+      existingManager.phone = manager.phone.value;
+      existingManager.email = manager.email.value;
+      syncPassenger();
+    }));
     passengerIsManager.addEventListener("change", syncPassenger);
     managerSelect.addEventListener("change", () => {
       const option = managerSelect.selectedOptions[0];
@@ -166,8 +180,37 @@
       manager.name.value = option.dataset.managerName || "";
       manager.phone.value = option.dataset.managerPhone || "";
       manager.email.value = option.dataset.managerEmail || "";
+      existingManager.name = manager.name.value;
+      existingManager.phone = manager.phone.value;
+      existingManager.email = manager.email.value;
       syncPassenger();
     });
+    const syncNewCustomerToManager = () => {
+      manager.name.value = [newCustomerInputs.givenName.value.trim(), newCustomerInputs.surname.value.trim()].filter(Boolean).join(" ");
+      manager.phone.value = newCustomerInputs.phone.value;
+      manager.email.value = newCustomerInputs.email.value;
+      syncPassenger();
+    };
+    const syncCustomerMode = () => {
+      const createNew = Boolean($('input[name="customerMode"]:checked') && $('input[name="customerMode"]:checked').value === "new");
+      existingCustomerFields.hidden = createNew;
+      existingCustomerFields.querySelectorAll("input, select").forEach((input) => { input.disabled = createNew; });
+      newCustomerFields.hidden = !createNew;
+      newCustomerFields.querySelectorAll("input").forEach((input) => {
+        input.disabled = !createNew;
+        input.required = createNew && input.id !== "newCustomerEmail";
+      });
+      if (createNew) syncNewCustomerToManager();
+      else {
+        manager.name.value = existingManager.name;
+        manager.phone.value = existingManager.phone;
+        manager.email.value = existingManager.email;
+        syncPassenger();
+      }
+    };
+    $$('input[name="customerMode"]').forEach((input) => input.addEventListener("change", syncCustomerMode));
+    Object.values(newCustomerInputs).forEach((input) => input.addEventListener("input", syncNewCustomerToManager));
+    syncCustomerMode();
     syncPassenger();
 
     const cargoTarget = doc.querySelector("[data-cargo-summary]");
@@ -295,7 +338,7 @@
     };
 
     const journeyReady = () => ["pickup", "dropoff"].every((key) => form.elements[`${key}Kind`].value)
-      && form.elements.serviceDate.value && form.elements.serviceTime.value;
+      && form.elements.serviceDate.value && form.elements.serviceTime.value && form.elements.vehicleClassKey.value;
 
     let timer = null;
     let sequence = 0;
@@ -311,7 +354,9 @@
     }
     function requestQuote() {
       if (!journeyReady()) {
-        quoteStatus.textContent = "";
+        quoteStatus.textContent = form.elements.vehicleClassKey.value
+          ? ""
+          : "Select a vehicle category to calculate the price.";
         renderQuote(null);
         return;
       }

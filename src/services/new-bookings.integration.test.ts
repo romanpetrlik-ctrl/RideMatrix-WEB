@@ -43,7 +43,8 @@ async function priceFor(customerId: string, airportId: string, extra: Record<str
   assert.ok(manager);
   const draft = readNewBookingDraft({
     customerId, managerName: manager.name, managerPhone: manager.phone, managerEmail: manager.email, passengerIsManager: "yes",
-    serviceDate: "2027-03-10", serviceTime: "12:05", pickupKind: "airport", pickupAirportId: airportId,
+    serviceDate: "2027-03-10", serviceTime: "12:05", vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
+    pickupKind: "airport", pickupAirportId: airportId,
     dropoffKind: "airport", dropoffAirportId: airportId, adults: "2", xlBaggage: "1", ...extra
   });
   const reference = await loadPricingReferenceData();
@@ -151,6 +152,60 @@ test("a new booking persists its stops and itemized price snapshot transactional
   await assert.rejects(query("DELETE FROM booking_price_snapshots WHERE booking_id = $1", [saved.id]), /authorized retention cleanup/);
 });
 
+test("new customer, booking payment method and vehicle category persist atomically with the price snapshot", async () => {
+  const airport = (await airportFeeStore.list())[0];
+  assert.ok(airport);
+  const draft = readNewBookingDraft({
+    customerMode: "new",
+    newCustomerGivenName: "Taylor",
+    newCustomerSurname: "Passenger",
+    newCustomerPhone: "+44 7700 900123",
+    newCustomerEmail: "taylor.booking@example.test",
+    passengerIsManager: "yes",
+    serviceDate: "2027-03-10",
+    serviceTime: "12:05",
+    vehicleClassKey: "standard_sedan_hatchback",
+    paymentMethod: "bank-transfer",
+    pickupKind: "airport",
+    pickupAirportId: airport.id,
+    dropoffKind: "airport",
+    dropoffAirportId: airport.id,
+    adults: "1"
+  });
+  const reference = await loadPricingReferenceData();
+  const { errors, booking } = await validateNewBooking(draft, reference, dependencies, async () => null);
+  assert.deepEqual(errors, []);
+  assert.ok(booking);
+  const quote = await quoteJourney(booking, reference, route);
+  assert.equal(quote.price.status, "complete");
+  const saved = await createNewBooking(booking, quote, {
+    ...draft,
+    quotedStatus: quote.price.status,
+    quotedTotal: quote.price.total ?? "",
+    quotedFingerprint: quote.fingerprint
+  }, actor, now);
+  assert.match(saved.customerId, /^cust-new-/);
+  const persisted = await query<{ customer_id: string; vehicle_class_key: string; payment_method: string; given_name: string; surname: string }>(
+    `SELECT b.customer_id, b.vehicle_class_key, b.payment_method, c.given_name, c.surname
+       FROM customer_bookings b JOIN customers c ON c.id = b.customer_id
+      WHERE b.id = $1`,
+    [saved.id]
+  );
+  assert.deepEqual(persisted.rows[0], {
+    customer_id: saved.customerId,
+    vehicle_class_key: "standard_sedan_hatchback",
+    payment_method: "bank-transfer",
+    given_name: "Taylor",
+    surname: "Passenger"
+  });
+  const loaded = await getNewBooking(saved.id);
+  assert.equal(loaded?.vehicleClassKey, "standard_sedan_hatchback");
+  assert.equal(loaded?.vehicleClassLabel, "Standard Sedan / Hatchback");
+  assert.equal(loaded?.paymentMethod, "bank-transfer");
+  const snapshot = await query<{ inputs: Record<string, unknown> }>("SELECT inputs FROM booking_price_snapshots WHERE booking_id = $1", [saved.id]);
+  assert.equal(snapshot.rows[0].inputs.vehicleClassKey, "standard_sedan_hatchback");
+});
+
 test("an unresolved price is stored as incomplete without a total only when acknowledged", async () => {
   const customer = await createCustomer({ givenName: "Una", surname: "Resolved", email: "una@example.test", phone: "+44 7911 123457" } as Parameters<typeof createCustomer>[0]);
   const airport = (await airportFeeStore.list())[0];
@@ -251,7 +306,8 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
     assert.ok(manager);
     const draft = readNewBookingDraft({
       customerId: customer.id, managerName: manager.name, managerPhone: manager.phone, managerEmail: manager.email, passengerIsManager: "yes",
-      serviceDate: "2027-03-10", serviceTime: "12:05", pickupKind: "airport", pickupAirportId: airport.id,
+      serviceDate: "2027-03-10", serviceTime: "12:05", vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
+      pickupKind: "airport", pickupAirportId: airport.id,
       dropoffKind: "airport", dropoffAirportId: airport.id, adults: "1"
     });
     const reference = await loadPricingReferenceData();
@@ -262,7 +318,7 @@ test("road charges are quoted from the active schedule and the saved snapshot ke
   };
   const lezLine = (lines: Array<{ type: string; status: string; amount: string | null; label: string }>) => lines.filter((line) => line.type === "road-charge");
 
-  // No vehicle is assigned at quote time, so zone charges stay unresolved while the schedule is inactive or active.
+  // The chosen vehicle category does not supply emissions data, so LEZ charges stay unresolved.
   const inactive = await quoteWith();
   assert.deepEqual(lezLine(inactive.quote.price.lines).map((line) => line.status), ["unresolved"]);
   assert.equal(inactive.quote.price.total, null);
