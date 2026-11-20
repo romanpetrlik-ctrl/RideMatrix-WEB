@@ -32,16 +32,9 @@ export const operationalMenuRows: OperationalMenuRow[] = [
     category: "Bookings",
     actions: [
       { label: "New", href: "/bookings/new" },
-      { label: "Today", href: "/dashboard?tile=bookings-today" },
-      {
-        label: "Upcoming",
-        href: "/dashboard?tile=bookings-upcoming",
-        status: {
-          tone: "red",
-          message: "Demo status: booking conflicts need immediate review."
-        }
-      },
-      { label: "Past", href: "/dashboard?tile=bookings-past" },
+      { label: "Today", href: "/bookings?view=today" },
+      { label: "Upcoming", href: "/bookings?view=upcoming" },
+      { label: "Past", href: "/bookings?view=past" },
       { label: "Recurring", href: "/dashboard?tile=bookings-recurring" }
     ]
   },

@@ -1905,6 +1905,29 @@ export const MIGRATIONS: Migration[] = [
         ADD CONSTRAINT customer_bookings_payment_method_check
         CHECK (payment_method IS NULL OR payment_method IN ('card-online', 'bank-transfer', 'card', 'payment-link'));
     `
+  },
+  {
+    id: "0039_booking_archive",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS archived_at TEXT,
+        ADD COLUMN IF NOT EXISTS archived_by_user_id TEXT,
+        ADD COLUMN IF NOT EXISTS archive_reason TEXT;
+      CREATE INDEX IF NOT EXISTS idx_customer_bookings_active_service_date
+        ON customer_bookings (service_date, service_time)
+        WHERE archived_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS booking_archive_audit (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        actor_user_id TEXT,
+        actor_user_email TEXT NOT NULL,
+        reason TEXT NOT NULL CHECK (btrim(reason) <> '' AND char_length(reason) <= 500),
+        archived_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_archive_audit_booking
+        ON booking_archive_audit (booking_id, archived_at DESC);
+    `
   }
 ];
 
