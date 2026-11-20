@@ -65,21 +65,10 @@
             <fieldset class="new-booking-fieldset">
               <legend>Booking manager</legend>
               <div class="form-field">
-                <span>Customer</span>
-                <label for="customerMode-existing">
-                  <input id="customerMode-existing" type="radio" name="customerMode" value="existing" <%= draft.customerMode !== "new" ? "checked" : "" %> data-customer-mode>
-                  Existing customer
-                </label>
-                <label for="customerMode-new">
-                  <input id="customerMode-new" type="radio" name="customerMode" value="new" <%= draft.customerMode === "new" ? "checked" : "" %> data-customer-mode>
-                  Create individual customer
-                </label>
-              </div>
-              <div data-existing-customer-fields <%= draft.customerMode === "new" ? "hidden" : "" %>>
-              <div class="form-field">
                 <label for="customerId">Customer</label>
                 <select id="customerId" name="customerId" required data-manager-select <%- invalid("customerId") %>>
                   <option value="">Select an existing customer</option>
+                  <option value="<%= newCustomerSelectionValue %>" data-create-new-customer <%= draft.customerMode === "new" ? "selected" : "" %>>Create new customer</option>
                   <% managers.forEach((manager) => { %>
                     <option value="<%= manager.customerId %>"
                       data-manager-name="<%= manager.name %>"
@@ -88,24 +77,25 @@
                       <%= draft.customerId === manager.customerId ? "selected" : "" %>><%= manager.name %><%= manager.company ? ` — ${manager.company}` : "" %><%= manager.email ? ` (${manager.email})` : "" %></option>
                   <% }) %>
                 </select>
-                <% if (!managers.length) { %><p class="form-hint">No active customers are available. Create a customer first.</p><% } %>
+                <% if (!managers.length) { %><p class="form-hint">No active existing customers are available. Choose “Create new customer” to continue.</p><% } %>
                 <% if (fieldError("customerId")) { %><p class="field-error" id="customerId-error"><%= fieldError("customerId") %></p><% } %>
               </div>
-              <div class="form-field">
-                <label for="managerName">Name</label>
-                <input id="managerName" name="managerName" type="text" autocomplete="off" required value="<%= draft.managerName %>" data-manager-name <%- invalid("managerName") %>>
-                <% if (fieldError("managerName")) { %><p class="field-error" id="managerName-error"><%= fieldError("managerName") %></p><% } %>
-              </div>
-              <div class="form-field">
-                <label for="managerPhone">Phone</label>
-                <input id="managerPhone" name="managerPhone" type="tel" autocomplete="off" required value="<%= draft.managerPhone %>" data-manager-phone <%- invalid("managerPhone") %>>
-                <% if (fieldError("managerPhone")) { %><p class="field-error" id="managerPhone-error"><%= fieldError("managerPhone") %></p><% } %>
-              </div>
-              <div class="form-field">
-                <label for="managerEmail">Email</label>
-                <input id="managerEmail" name="managerEmail" type="email" autocomplete="off" value="<%= draft.managerEmail %>" data-manager-email <%- invalid("managerEmail") %>>
-                <% if (fieldError("managerEmail")) { %><p class="field-error" id="managerEmail-error"><%= fieldError("managerEmail") %></p><% } %>
-              </div>
+              <div data-existing-customer-fields <%= draft.customerMode === "new" ? "hidden" : "" %>>
+                <div class="form-field">
+                  <label for="managerName">Name</label>
+                  <input id="managerName" name="managerName" type="text" autocomplete="off" required value="<%= draft.managerName %>" data-manager-name <%- invalid("managerName") %>>
+                  <% if (fieldError("managerName")) { %><p class="field-error" id="managerName-error"><%= fieldError("managerName") %></p><% } %>
+                </div>
+                <div class="form-field">
+                  <label for="managerPhone">Phone</label>
+                  <input id="managerPhone" name="managerPhone" type="tel" autocomplete="off" required value="<%= draft.managerPhone %>" data-manager-phone <%- invalid("managerPhone") %>>
+                  <% if (fieldError("managerPhone")) { %><p class="field-error" id="managerPhone-error"><%= fieldError("managerPhone") %></p><% } %>
+                </div>
+                <div class="form-field">
+                  <label for="managerEmail">Email</label>
+                  <input id="managerEmail" name="managerEmail" type="email" autocomplete="off" value="<%= draft.managerEmail %>" data-manager-email <%- invalid("managerEmail") %>>
+                  <% if (fieldError("managerEmail")) { %><p class="field-error" id="managerEmail-error"><%= fieldError("managerEmail") %></p><% } %>
+                </div>
               </div>
               <fieldset class="new-booking-fieldset" data-new-customer-fields <%= draft.customerMode === "new" ? "" : "hidden" %>>
                 <legend>New individual customer</legend>
@@ -355,6 +345,6 @@
 
     <%- include("../../partials/footer") %>
     <script src="/js/google-map-preview.js" defer></script>
-    <script src="/js/new-booking.js" defer></script>
+    <script src="/js/new-booking.js?v=20261120-1" defer></script>
   </body>
 </html>

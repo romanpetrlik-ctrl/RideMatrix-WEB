@@ -6,6 +6,7 @@ import { EMPTY_FARE_SETTINGS } from "./fare-settings";
 import type { OperationalPlaceVerification } from "./google-places";
 import {
   BOOKING_COUNT_FIELDS,
+  NEW_CUSTOMER_SELECTION_VALUE,
   cargoSummary,
   defaultServiceDateTime,
   isFiveMinuteTime,
@@ -60,7 +61,6 @@ const loadManager = async (id: string) => id === manager.customerId ? manager : 
 
 function body(overrides: Record<string, unknown> = {}) {
   return {
-    customerMode: "existing",
     customerId: manager.customerId,
     managerName: manager.name,
     managerPhone: manager.phone,
@@ -130,12 +130,15 @@ test("vehicle category is required and unrecognized categories are rejected on t
 
 test("new individual customer details validate and become the booking manager without creating records during quote validation", async () => {
   const draft = readNewBookingDraft(body({
-    customerMode: "new",
+    customerId: NEW_CUSTOMER_SELECTION_VALUE,
+    customerMode: "existing",
     newCustomerGivenName: "Taylor",
     newCustomerSurname: "Passenger",
     newCustomerPhone: "+44 7700 900123",
     newCustomerEmail: "taylor@example.test"
   }));
+  assert.equal(draft.customerMode, "new");
+  assert.equal(draft.customerId, "", "the dropdown sentinel is never treated as a customer ID");
   const result = await validateNewBooking(draft, reference, dependencies, async () => null);
   assert.deepEqual(result.errors, []);
   assert.equal(result.booking?.customerId, "");
@@ -149,7 +152,7 @@ test("new individual customer details validate and become the booking manager wi
   assert.equal(result.booking?.managerName, "Taylor Passenger");
   assert.equal(result.booking?.managerPhone, "+44 7700 900123");
   const invalid = await validateNewBooking(readNewBookingDraft(body({
-    customerMode: "new",
+    customerId: NEW_CUSTOMER_SELECTION_VALUE,
     newCustomerGivenName: "",
     newCustomerSurname: "Passenger",
     newCustomerPhone: "bad",

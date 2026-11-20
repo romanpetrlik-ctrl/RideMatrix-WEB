@@ -9,6 +9,7 @@ import { EMPTY_FARE_SETTINGS, fareSettingsStore } from "./fare-settings";
 import { londonFeeScheduleStore } from "./london-fee-schedules";
 import {
   BookingPriceChangedError,
+  NEW_CUSTOMER_SELECTION_VALUE,
   createNewBooking,
   getBookingManagerCandidate,
   getNewBooking,
@@ -156,7 +157,7 @@ test("new customer, booking payment method and vehicle category persist atomical
   const airport = (await airportFeeStore.list())[0];
   assert.ok(airport);
   const draft = readNewBookingDraft({
-    customerMode: "new",
+    customerId: NEW_CUSTOMER_SELECTION_VALUE,
     newCustomerGivenName: "Taylor",
     newCustomerSurname: "Passenger",
     newCustomerPhone: "+44 7700 900123",

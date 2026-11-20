@@ -11,6 +11,7 @@ import type { BookingRoute } from "../services/booking-routing";
 import { EMPTY_FARE_SETTINGS } from "../services/fare-settings";
 import {
   assertQuoteAcknowledged,
+  NEW_CUSTOMER_SELECTION_VALUE,
   type BookingManagerCandidate,
   type NewBookingDependencies,
   type PricingReferenceData,
@@ -95,7 +96,6 @@ async function withApp(
 function form(fields: Record<string, string | string[]> = {}) {
   const params = new URLSearchParams();
   const all: Record<string, string | string[]> = {
-    customerMode: "existing",
     customerId: "cust-b", managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test",
     passengerIsManager: "yes", serviceDate: "2027-03-10", serviceTime: "14:30",
     vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
@@ -162,6 +162,8 @@ test("new booking page shows the assigned-on-save reference, five blocks and exi
     }
     assert.match(html, /<option value="cust-b"[^>]*data-manager-name="Blair Booker"[^>]*selected>/);
     assert.match(html, /<option value="cust-a"[^>]*data-manager-email="alex@example\.test"/);
+    assert.match(html, new RegExp(`<option value="${NEW_CUSTOMER_SELECTION_VALUE}" data-create-new-customer[^>]*>Create new customer</option>`));
+    assert.doesNotMatch(html, /type="radio" name="customerMode"/);
     assert.match(html, /id="managerName"[^>]*value="Blair Booker"/);
     assert.match(html, /id="passengerName"[^>]*value="Blair Booker" readonly/);
     assert.match(html, /<option value="00:00"[^>]*>00:00<\/option>\s*<option value="00:05"/);
@@ -199,6 +201,15 @@ test("quote returns separately itemized lines, ordered stops and route summary d
     assert.ok(body.price.lines.some((line) => line.type === "road-charge" && line.amount === "0.00"), "the default ULEZ-compliant car shows an explicit £0 ULEZ line");
     assert.equal(body.price.total, "33.00");
     assert.match(body.fingerprint, /^[a-f0-9]{64}$/);
+
+    const newCustomerQuote = await post(`${baseUrl}/bookings/quote`, form({
+      customerId: NEW_CUSTOMER_SELECTION_VALUE,
+      newCustomerGivenName: "Taylor",
+      newCustomerSurname: "Passenger",
+      newCustomerPhone: "+44 7700 900123",
+      newCustomerEmail: "taylor@example.test"
+    }));
+    assert.equal(newCustomerQuote.status, 200, "the customer dropdown selection derives new-customer mode on the server");
 
     const withVias = await (await post(`${baseUrl}/bookings/quote`, form({ via1Active: "yes", via1Kind: "airport", via1AirportId: "airport-x", via2Active: "yes", via2Kind: "address", via2Label: "Typed only", via2HouseNameNumber: "2" }))).json() as { stops: Array<{ type: string; coordinatesVerified: boolean }>; route: { status: string }; price: { status: string; total: null } };
     assert.deepEqual(withVias.stops.map((stop) => stop.type), ["pickup", "via", "via", "dropoff"]);

@@ -150,6 +150,7 @@
       email: $("#newCustomerEmail")
     };
     const existingManager = { name: manager.name.value, phone: manager.phone.value, email: manager.email.value };
+    let currentExistingCustomerId = managerSelect.value;
     // Independent passenger values are remembered so unchecking restores what the dispatcher typed.
     const ownPassenger = { name: passengerIsManager.checked ? "" : passenger.name.value, phone: passengerIsManager.checked ? "" : passenger.phone.value };
 
@@ -174,17 +175,6 @@
       syncPassenger();
     }));
     passengerIsManager.addEventListener("change", syncPassenger);
-    managerSelect.addEventListener("change", () => {
-      const option = managerSelect.selectedOptions[0];
-      if (!option || !option.value) return;
-      manager.name.value = option.dataset.managerName || "";
-      manager.phone.value = option.dataset.managerPhone || "";
-      manager.email.value = option.dataset.managerEmail || "";
-      existingManager.name = manager.name.value;
-      existingManager.phone = manager.phone.value;
-      existingManager.email = manager.email.value;
-      syncPassenger();
-    });
     const syncNewCustomerToManager = () => {
       manager.name.value = [newCustomerInputs.givenName.value.trim(), newCustomerInputs.surname.value.trim()].filter(Boolean).join(" ");
       manager.phone.value = newCustomerInputs.phone.value;
@@ -192,7 +182,8 @@
       syncPassenger();
     };
     const syncCustomerMode = () => {
-      const createNew = Boolean($('input[name="customerMode"]:checked') && $('input[name="customerMode"]:checked').value === "new");
+      const option = managerSelect.selectedOptions[0];
+      const createNew = Boolean(option && option.hasAttribute("data-create-new-customer"));
       existingCustomerFields.hidden = createNew;
       existingCustomerFields.querySelectorAll("input, select").forEach((input) => { input.disabled = createNew; });
       newCustomerFields.hidden = !createNew;
@@ -208,7 +199,27 @@
         syncPassenger();
       }
     };
-    $$('input[name="customerMode"]').forEach((input) => input.addEventListener("change", syncCustomerMode));
+    managerSelect.addEventListener("change", () => {
+      const option = managerSelect.selectedOptions[0];
+      if (option && !option.hasAttribute("data-create-new-customer") && option.value && option.value !== currentExistingCustomerId) {
+        manager.name.value = option.dataset.managerName || "";
+        manager.phone.value = option.dataset.managerPhone || "";
+        manager.email.value = option.dataset.managerEmail || "";
+        existingManager.name = manager.name.value;
+        existingManager.phone = manager.phone.value;
+        existingManager.email = manager.email.value;
+        currentExistingCustomerId = option.value;
+      } else if (option && !option.hasAttribute("data-create-new-customer") && !option.value) {
+        manager.name.value = "";
+        manager.phone.value = "";
+        manager.email.value = "";
+        existingManager.name = "";
+        existingManager.phone = "";
+        existingManager.email = "";
+        currentExistingCustomerId = "";
+      }
+      syncCustomerMode();
+    });
     Object.values(newCustomerInputs).forEach((input) => input.addEventListener("input", syncNewCustomerToManager));
     syncCustomerMode();
     syncPassenger();

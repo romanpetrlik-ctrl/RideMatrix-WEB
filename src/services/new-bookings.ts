@@ -21,6 +21,7 @@ import { roadChargeScheduleReferences, type RoadChargeScheduleSet } from "./road
 import { listVehicleClasses, type VehicleClass } from "./vehicles";
 
 export const BOOKING_COUNT_MAX = 7;
+export const NEW_CUSTOMER_SELECTION_VALUE = "__create_new_customer__";
 export const BOOKING_COUNT_FIELDS = [
   ["adults", "Adults"],
   ["children", "Children"],
@@ -187,9 +188,11 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     };
   };
   const counts = Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, text(source, field, 5)])) as Record<BookingCountField, string>;
+  const selectedCustomer = text(source, "customerId", 100);
+  const customerMode = selectedCustomer === NEW_CUSTOMER_SELECTION_VALUE ? "new" : "existing";
   return {
-    customerMode: text(source, "customerMode", 20) === "new" ? "new" : "existing",
-    customerId: text(source, "customerId", 100),
+    customerMode,
+    customerId: customerMode === "new" ? "" : selectedCustomer,
     newCustomerGivenName: text(source, "newCustomerGivenName", 200),
     newCustomerSurname: text(source, "newCustomerSurname", 200),
     newCustomerPhone: text(source, "newCustomerPhone", 50),
