@@ -15,7 +15,7 @@ const actor = { accountId: "u-1", email: "admin@example.com" };
 const now = new Date("2026-11-20T12:00:00Z");
 const seed = (scheme: keyof typeof roadChargeScheduleSeeds): RoadChargeSchedule => structuredClone(roadChargeScheduleSeeds[scheme]);
 
-test("seeded schedules are inactive; only LEZ is free of blockers", () => {
+test("seeded schedules are inactive; ULEZ is the only schedule with calculation blockers", () => {
   for (const schedule of Object.values(roadChargeScheduleSeeds)) {
     assert.equal(schedule.status, "inactive");
     assert.equal(schedule.active, false);
@@ -25,8 +25,8 @@ test("seeded schedules are inactive; only LEZ is free of blockers", () => {
   assert.deepEqual(activationBlockers(seed("london-lez")), []);
   assert.match(activationBlockers(seed("london-ulez")).join(" "), /ULEZ route exposure uses a boundary dataset/);
   assert.deepEqual(codeCalculationBlockers("london-congestion-charge"), []);
-  assert.doesNotMatch(activationBlockers(seed("london-congestion-charge")).join(" "), /boundary|verification record/);
-  assert.match(activationBlockers(seed("blackwall-silvertown-tunnels")).join(" "), /unverified reference geometry/);
+  assert.deepEqual(activationBlockers(seed("london-congestion-charge")), []);
+  assert.deepEqual(activationBlockers(seed("blackwall-silvertown-tunnels")), []);
 });
 
 test("incomplete or unverified schedules are rejected for activation", () => {
@@ -64,7 +64,7 @@ test("enabling requires a past verification date and confirmed sources, and reco
   assert.match(attempt({ action: "enable", verifiedOn: "2026-11-21", sourcesConfirmed: true }).join(" "), /cannot be in the future/);
   assert.match(attempt({ action: "enable", verifiedOn: "2026-02-30", sourcesConfirmed: true }).join(" "), /Enter the date you verified/);
   assert.match(attempt({ action: "enable", verifiedOn: "2026-11-20", sourcesConfirmed: false }).join(" "), /Confirm that you opened every cited source/);
-  assert.ok(attempt({ action: "enable", verifiedOn: "2026-11-20", sourcesConfirmed: true }, seed("blackwall-silvertown-tunnels")).length > 0);
+  assert.deepEqual(attempt({ action: "enable", verifiedOn: "2026-11-20", sourcesConfirmed: true }, seed("blackwall-silvertown-tunnels")), []);
 
   const enabled = applyRoadChargeActivation(seed("london-lez"), { action: "enable", verifiedOn: "2026-11-20", sourcesConfirmed: true }, actor, now);
   assert.equal(enabled.status, "active");

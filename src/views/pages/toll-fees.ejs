@@ -22,7 +22,7 @@
 
       ${!category ? `
         <p class="toll-fees-page__intro">Manage external tolls and fees. Each category keeps managed reference data separate from configurable fee schedules.</p>
-        <div class="notice toll-fees-page__placeholder" role="status"><strong>Fee schedules are inactive unless enabled.</strong> The London LEZ, ULEZ and Congestion Charge schedules and the Blackwall and Silvertown tunnel schedule are used for New Booking prices only after a System Settings user verifies and enables them on their Fee settings page. Each Fee settings page shows the schedule's status. The Dartford schedule remains an inactive draft and is not used in booking prices.</div>
+        <div class="notice toll-fees-page__placeholder" role="status"><strong>Fee schedules are used only when active.</strong> The default Blackwall and Silvertown tunnel schedule is activated during deployment; customized tunnel schedules and the London LEZ, ULEZ and Congestion Charge schedules require verification and activation on their Fee settings page. Each page shows the current status. The Dartford schedule remains an inactive draft and is not used in booking prices.</div>
         <nav class="toll-fees-cards" aria-label="Toll & Fees categories">
           ${categories.map((item) => `
             <a class="toll-fees-card" href="/settings/toll-fees/${item.slug}">

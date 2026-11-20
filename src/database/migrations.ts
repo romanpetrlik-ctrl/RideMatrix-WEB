@@ -1851,6 +1851,47 @@ export const MIGRATIONS: Migration[] = [
         ) AS base
       ON CONFLICT (scheme, version) DO NOTHING;
     `
+  },
+  {
+    // The owner approved deployment-time activation for the verified default tunnel schedule.
+    // Do not activate if the latest schedule has been customized or otherwise changed.
+    id: "0037_activate_default_tunnel_schedule",
+    sql: `
+      INSERT INTO london_fee_schedule_versions (id, scheme, version, status, payload, actor_email)
+      SELECT seed.scheme || '-owner-authorized-active-v' || (latest.version + 1),
+             seed.scheme,
+             latest.version + 1,
+             'active',
+             (latest.payload - ARRAY['supersedesLegacyDraftVersion', 'status', 'active', 'bookingPriceUsage', 'verification']::text[])
+               || jsonb_build_object(
+                 'status', 'active',
+                 'active', true,
+                 'bookingPriceUsage', 'new-booking-quotes',
+                 'verification', jsonb_build_object(
+                   'verifiedOn', '2026-11-19',
+                   'verifiedByEmail', 'System migration: owner-authorized activation',
+                   'verifiedByAccountId', NULL,
+                   'recordedAt', to_jsonb(CURRENT_TIMESTAMP),
+                   'sourcesConfirmed', true
+                 )
+               ),
+             'System migration: owner-authorized activation'
+        FROM (VALUES
+          ('blackwall-silvertown-tunnels', '${JSON.stringify(roadChargeScheduleSeeds["blackwall-silvertown-tunnels"]).replace(/'/g, "''")}'::jsonb)
+        ) AS seed (scheme, payload)
+        JOIN LATERAL (
+          SELECT version, status, payload
+            FROM london_fee_schedule_versions
+           WHERE scheme = seed.scheme
+           ORDER BY version DESC
+           LIMIT 1
+        ) AS latest ON true
+       WHERE latest.status = 'inactive'
+         AND latest.version = 2
+         AND latest.payload - ARRAY['supersedesLegacyDraftVersion', 'status', 'active', 'bookingPriceUsage', 'verification']::text[]
+             = seed.payload - ARRAY['supersedesLegacyDraftVersion', 'status', 'active', 'bookingPriceUsage', 'verification']::text[]
+      ON CONFLICT (scheme, version) DO NOTHING;
+    `
   }
 ];
 

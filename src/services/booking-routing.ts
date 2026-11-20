@@ -285,65 +285,117 @@ export function detectRoadChargeZones(path: RoutePoint[], zones: ZoneShape[] = l
   return detections;
 }
 
-export type TunnelGate = {
+export type TunnelPortals = {
   tunnel: TunnelId;
   label: string;
-  /** Mid-river line across the tunnel alignment, ordered west → east as [longitude, latitude]. */
-  gate: [[number, number], [number, number]];
+  north: RoutePoint;
+  south: RoutePoint;
 };
 
-export type TunnelReferenceGeometry = { verified: boolean; provenance: string; gates: TunnelGate[] };
+export type TunnelReferenceGeometry = { verified: boolean; provenance: string; portals: TunnelPortals[] };
 
 /**
- * Mid-river crossing gates for the Blackwall and Silvertown tunnels. A route segment that crosses a gate is a
- * crossing of that tunnel; the side it leaves gives the direction. These coordinates were derived from
- * non-authoritative public map references, not TfL-published geometry, so the tunnel schedule cannot be enabled
- * (see road-charge-schedules.ts) until they are replaced with verified data and `verified` is set.
+ * Tunnel portal coordinates supplied by the project owner on 2026-11-19. A route is charged only when its ordered
+ * geometry passes both portal locations in sequence.
  */
 export const TUNNEL_REFERENCE_GEOMETRY: TunnelReferenceGeometry = {
-  verified: false,
-  provenance: "Approximate mid-river points derived from public map/encyclopaedia coordinates (Blackwall ≈ 51.50444, -0.00306; Silvertown ≈ 51.50472, 0.00806). Not TfL-published; tunnel alignment, gate extent and bore directions are unverified.",
-  gates: [
-    { tunnel: "blackwall", label: "Blackwall Tunnel", gate: [[-0.00496, 51.50378], [-0.00116, 51.50510]] },
-    { tunnel: "silvertown", label: "Silvertown Tunnel", gate: [[0.00616, 51.50406], [0.00996, 51.50538]] }
+  verified: true,
+  provenance: "Corrected north and south portal coordinates supplied by the project owner on 2026-11-19.",
+  portals: [
+    {
+      tunnel: "silvertown",
+      label: "Silvertown Tunnel",
+      south: { latitude: 51.497144847933576, longitude: 0.0032492881290614325 },
+      north: { latitude: 51.50670017765821, longitude: 0.01454039191106224 }
+    },
+    {
+      tunnel: "blackwall",
+      label: "Blackwall Tunnel",
+      south: { latitude: 51.49893792969339, longitude: 0.0014513865548262928 },
+      north: { latitude: 51.509278165764364, longitude: -0.006665498889019285 }
+    }
   ]
 };
 
-function gateSide(gate: TunnelGate["gate"], point: RoutePoint): number {
-  const [[ax, ay], [bx, by]] = gate;
-  return (bx - ax) * (point.latitude - ay) - (by - ay) * (point.longitude - ax);
+const PORTAL_MATCH_TOLERANCE_METERS = 50;
+const MAX_TUNNEL_PORTAL_TRAVEL_METERS = 5_000;
+const PORTAL_EVENT_MERGE_METERS = 75;
+
+type PortalEvent = { side: "north" | "south"; alongRoute: number; segmentIndex: number; distance: number };
+
+function routePositionsNearPortal(path: RoutePoint[], portal: RoutePoint, side: PortalEvent["side"]): PortalEvent[] {
+  let distanceAlongRoute = 0;
+  const events: PortalEvent[] = [];
+  const metersPerDegree = 111_320;
+
+  for (let index = 0; index + 1 < path.length; index += 1) {
+    const start = path[index];
+    const end = path[index + 1];
+    const latitude = (start.latitude + end.latitude + portal.latitude) / 3;
+    const longitudeScale = Math.cos(latitude * Math.PI / 180);
+    const dx = (end.longitude - start.longitude) * metersPerDegree * longitudeScale;
+    const dy = (end.latitude - start.latitude) * metersPerDegree;
+    const px = (portal.longitude - start.longitude) * metersPerDegree * longitudeScale;
+    const py = (portal.latitude - start.latitude) * metersPerDegree;
+    const segmentLength = Math.hypot(dx, dy);
+    const projection = segmentLength === 0 ? 0 : Math.max(0, Math.min(1, (px * dx + py * dy) / (segmentLength * segmentLength)));
+    const distance = Math.hypot(px - projection * dx, py - projection * dy);
+    if (distance <= PORTAL_MATCH_TOLERANCE_METERS) {
+      const event = { side, alongRoute: distanceAlongRoute + segmentLength * projection, segmentIndex: index, distance };
+      const previous = events.at(-1);
+      if (previous && event.alongRoute - previous.alongRoute <= PORTAL_EVENT_MERGE_METERS) {
+        if (event.distance < previous.distance) events[events.length - 1] = event;
+      } else {
+        events.push(event);
+      }
+    }
+    distanceAlongRoute += segmentLength;
+  }
+
+  return events;
 }
 
 /** Identifies each Blackwall/Silvertown crossing (and its direction) along the ordered route geometry. */
 export function detectTunnelCrossings(path: RoutePoint[], reference: TunnelReferenceGeometry = TUNNEL_REFERENCE_GEOMETRY): TunnelCrossing[] {
-  const crossings: TunnelCrossing[] = [];
-  for (let i = 0; i + 1 < path.length; i += 1) {
-    const a = path[i];
-    const b = path[i + 1];
-    for (const gate of reference.gates) {
-      const [[cx, cy], [dx, dy]] = gate.gate;
-      const t = segmentIntersection(a.longitude, a.latitude, b.longitude, b.latitude, cx, cy, dx, dy);
-      if (t === null) continue;
-      const startSide = gateSide(gate.gate, a);
-      const endSide = gateSide(gate.gate, b);
-      // A vertex lying exactly on the gate is counted once, on the segment that leaves it.
-      if (startSide === 0 ? endSide === 0 : Math.sign(startSide) === Math.sign(endSide)) continue;
-      if (startSide !== 0 && endSide === 0) continue;
-      const fromNorth = startSide !== 0 ? startSide > 0 : endSide < 0;
-      crossings.push({
-        tunnel: gate.tunnel,
-        label: gate.label,
-        direction: fromNorth ? "southbound" : "northbound",
-        segmentIndex: i,
-        point: {
-          latitude: Number((a.latitude + (b.latitude - a.latitude) * t).toFixed(6)),
-          longitude: Number((a.longitude + (b.longitude - a.longitude) * t).toFixed(6))
-        },
-        geometry: { verified: reference.verified, provenance: reference.provenance }
-      });
+  if (path.length < 2) return [];
+
+  const candidates: { tunnel: TunnelPortals; first: PortalEvent; second: PortalEvent }[] = [];
+  for (const tunnel of reference.portals) {
+    const north = routePositionsNearPortal(path, tunnel.north, "north");
+    const south = routePositionsNearPortal(path, tunnel.south, "south");
+    const events = [
+      ...north,
+      ...south
+    ].sort((a, b) => a.alongRoute - b.alongRoute);
+    if (events.length < 2) continue;
+
+    for (let index = 0; index + 1 < events.length; index += 1) {
+      const first = events[index];
+      const second = events[index + 1];
+      const travelDistance = second.alongRoute - first.alongRoute;
+      if (first.side === second.side || travelDistance > MAX_TUNNEL_PORTAL_TRAVEL_METERS) continue;
+      candidates.push({ tunnel, first, second });
     }
   }
-  return crossings;
+
+  return candidates
+    .filter((candidate) => !candidates.some((other) =>
+      other.tunnel.tunnel !== candidate.tunnel.tunnel &&
+      other.first.alongRoute > candidate.first.alongRoute &&
+      other.second.alongRoute < candidate.second.alongRoute
+    ))
+    .map(({ tunnel, first, second }) => ({
+      tunnel: tunnel.tunnel,
+      label: tunnel.label,
+      direction: first.side === "south" ? "northbound" as const : "southbound" as const,
+      segmentIndex: Math.max(first.segmentIndex, second.segmentIndex),
+      point: {
+        latitude: Number(((tunnel.north.latitude + tunnel.south.latitude) / 2).toFixed(6)),
+        longitude: Number(((tunnel.north.longitude + tunnel.south.longitude) / 2).toFixed(6))
+      },
+      geometry: { verified: reference.verified, provenance: reference.provenance }
+    }))
+    .sort((a, b) => a.segmentIndex - b.segmentIndex);
 }
 
 type RoutesResponse = {

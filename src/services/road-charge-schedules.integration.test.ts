@@ -17,21 +17,35 @@ after(async () => safeCleanupTestDatabase(context));
 const actor = { accountId: "admin-1", email: "admin@example.test" };
 const now = new Date("2026-11-20T00:00:00Z");
 
-test("migration preserves legacy drafts and seeds structured schedules inactive", async () => {
+test("migrations preserve drafts and activate only the unchanged default tunnel schedule", async () => {
   const rows = await query<{ scheme: string; version: number; status: string; active: string; usage: string }>(
     `SELECT scheme, version, status, payload->>'active' AS active, payload->>'bookingPriceUsage' AS usage
        FROM london_fee_schedule_versions ORDER BY scheme, version`
   );
   const byScheme = (scheme: string) => rows.rows.filter((row) => row.scheme === scheme).map((row) => [row.version, row.status]);
   assert.deepEqual(byScheme("dartford-crossing"), [[1, "draft_inactive"]], "Dartford is untouched");
-  for (const scheme of ["london-lez", "london-ulez", "blackwall-silvertown-tunnels"]) {
+  for (const scheme of ["london-lez", "london-ulez"]) {
     assert.deepEqual(byScheme(scheme), [[1, "draft_inactive"], [2, "inactive"]], `${scheme} keeps its legacy draft`);
   }
-  assert.ok(rows.rows.every((row) => row.active === "false" && row.usage === "never"), "nothing is live after migration");
+  assert.deepEqual(byScheme("blackwall-silvertown-tunnels"), [[1, "draft_inactive"], [2, "inactive"], [3, "active"]]);
+  assert.ok(rows.rows.filter((row) => row.scheme !== "blackwall-silvertown-tunnels").every((row) => row.active === "false" && row.usage === "never"), "other schedules remain inactive");
 
   const pricing = await londonFeeScheduleStore.loadPricingSchedules();
   assert.deepEqual(Object.keys(pricing).sort(), ["blackwall-silvertown-tunnels", "london-congestion-charge", "london-lez", "london-ulez"]);
-  assert.ok(Object.values(pricing).every((record) => record?.schedule?.status === "inactive"));
+  assert.equal(pricing["blackwall-silvertown-tunnels"]?.schedule?.status, "active");
+  assert.ok(Object.entries(pricing).filter(([scheme]) => scheme !== "blackwall-silvertown-tunnels").every(([, record]) => record?.schedule?.status === "inactive"));
+  const activation = await query<{ actor_email: string; payload: Record<string, any> }>(
+    "SELECT actor_email, payload FROM london_fee_schedule_versions WHERE scheme = 'blackwall-silvertown-tunnels' ORDER BY version DESC LIMIT 1"
+  );
+  assert.equal(activation.rows[0].actor_email, "System migration: owner-authorized activation");
+  assert.deepEqual(activation.rows[0].payload.verification, {
+    verifiedOn: "2026-11-19",
+    verifiedByEmail: "System migration: owner-authorized activation",
+    verifiedByAccountId: null,
+    recordedAt: activation.rows[0].payload.verification.recordedAt,
+    sourcesConfirmed: true
+  });
+  assert.equal(typeof activation.rows[0].payload.verification.recordedAt, "string");
 });
 
 test("activation is gated, actor-attributed and append-only", async () => {
@@ -54,14 +68,17 @@ test("activation is gated, actor-attributed and append-only", async () => {
   assert.equal(latest.rows[0].status, "inactive");
   assert.equal(latest.rows[0].payload.verification, null);
 
-  for (const scheme of ["london-ulez", "london-congestion-charge", "blackwall-silvertown-tunnels"] as const) {
-    const current = await londonFeeScheduleStore.load(scheme);
-    await assert.rejects(
-      londonFeeScheduleStore.setActivation(scheme, current.currentVersion, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, now),
-      Error,
-      `${scheme} cannot be enabled while blockers remain`
-    );
-  }
+  const ulez = await londonFeeScheduleStore.load("london-ulez");
+  await assert.rejects(
+    londonFeeScheduleStore.setActivation("london-ulez", ulez.currentVersion, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, now),
+    Error,
+    "ULEZ cannot be enabled while its route geometry is unverified"
+  );
+  const cc = await londonFeeScheduleStore.load("london-congestion-charge");
+  await londonFeeScheduleStore.setActivation("london-congestion-charge", cc.currentVersion, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, now);
+  assert.equal((await londonFeeScheduleStore.load("london-congestion-charge")).status, "active", "CC activation requires administrator confirmation but has no remaining calculation blocker");
+  const tunnels = await londonFeeScheduleStore.load("blackwall-silvertown-tunnels");
+  assert.equal(tunnels.status, "active", "the deployment migration makes tunnel crossings available to quotes");
   const dartford = await londonFeeScheduleStore.load("dartford-crossing");
   await assert.rejects(londonFeeScheduleStore.setActivation("dartford-crossing", dartford.currentVersion, { action: "enable", verifiedOn: "2026-11-19", sourcesConfirmed: true }, actor, now));
 
