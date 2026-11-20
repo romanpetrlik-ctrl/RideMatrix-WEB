@@ -58,7 +58,7 @@ function customerLabel(line: PriceLine): string {
     case "ride-fare":
       return "Ride fare";
     case "location-discount":
-      return "Location discount";
+      return line.label.startsWith("Customer discount") ? "Customer discount" : "Location discount";
     case "airport-pickup-fee": {
       const airport = suffix(line.label, "Airport pick-up fee —");
       return airport ? `Airport pick-up fee — ${airport}` : "Airport pick-up fee";

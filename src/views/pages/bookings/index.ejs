@@ -47,7 +47,6 @@
       <section class="panel rm-card booking-dashboard__results" aria-labelledby="bookings-results-title">
         <div class="booking-dashboard__results-heading">
           <h2 id="bookings-results-title"><%= view === "today" ? "Today's bookings" : view === "upcoming" ? "Upcoming bookings" : "Past bookings" %></h2>
-          <a class="button button--secondary" href="/bookings/new">New booking</a>
         </div>
         <% if (bookings.length) { %>
           <div class="customers-table-wrapper">

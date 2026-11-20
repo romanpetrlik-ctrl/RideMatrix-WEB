@@ -9,22 +9,11 @@ type DashboardRouterOptions = {
 type OperationalMenuAction = {
   label: string;
   href: string;
-  externalMode?: "tab" | "window";
-  status?: {
-    tone: "amber" | "red";
-    message: string;
-  };
 };
 
 type OperationalMenuRow = {
   category: string;
   actions: OperationalMenuAction[];
-};
-
-type SelectedOperationalAction = {
-  category: string;
-  label: string;
-  externalMode?: "tab" | "window";
 };
 
 export const operationalMenuRows: OperationalMenuRow[] = [
@@ -34,15 +23,7 @@ export const operationalMenuRows: OperationalMenuRow[] = [
       { label: "New", href: "/bookings/new" },
       { label: "Today", href: "/bookings?view=today" },
       { label: "Upcoming", href: "/bookings?view=upcoming" },
-      { label: "Past", href: "/bookings?view=past" },
-      { label: "Recurring", href: "/dashboard?tile=bookings-recurring" }
-    ]
-  },
-  {
-    category: "Dispatch",
-    actions: [
-      { label: "Live board", href: "/dashboard?tile=dispatch-live-board", externalMode: "tab" },
-      { label: "Live Map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" }
+      { label: "Past", href: "/bookings?view=past" }
     ]
   },
   {
@@ -60,60 +41,14 @@ export const operationalMenuRows: OperationalMenuRow[] = [
     category: "Vehicles",
     actions: [
       { label: "Active vehicles", href: "/vehicles?status=active" },
-      { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },
-      { label: "All vehicles", href: "/vehicles" },
-      { label: "Settings", href: "/settings" }
+      { label: "All vehicles", href: "/vehicles" }
     ]
   },
   {
     category: "Staff",
     actions: [{ label: "All staff", href: "/staff" }]
-  },
-  {
-    category: "Pricing",
-    actions: [
-      { label: "Distance slabs", href: "/dashboard?tile=pricing-distance-slabs" },
-      {
-        label: "Fixed fares",
-        href: "/dashboard?tile=pricing-fixed-fares",
-        status: {
-          tone: "amber",
-          message: "Demo status: fixed fare review recommended before publishing."
-        }
-      },
-      { label: "Extras", href: "/dashboard?tile=pricing-extras" },
-      { label: "All pricing settings", href: "/dashboard?tile=pricing-settings" }
-    ]
-  },
-  {
-    category: "Settings",
-    actions: [
-      { label: "Email", href: "/dashboard?tile=settings-email" },
-      {
-        label: "WhatsApp",
-        href: "/dashboard?tile=settings-whatsapp",
-        status: {
-          tone: "amber",
-          message: "Demo status: WhatsApp integration is ready for connection testing."
-        }
-      },
-      { label: "Notifications", href: "/dashboard?tile=settings-notifications" }
-    ]
   }
 ];
-
-export function findSelectedOperationalAction(requestedTileKey: string): SelectedOperationalAction | undefined {
-  return operationalMenuRows
-    .flatMap((row) =>
-      row.actions.map((action) => ({
-        category: row.category,
-        label: action.label,
-        externalMode: action.externalMode,
-        href: action.href
-      }))
-    )
-    .find((action) => action.href === `/dashboard?tile=${requestedTileKey}`);
-}
 
 export function createDashboardRouter(options: DashboardRouterOptions): Router {
   const router = Router();
@@ -143,15 +78,11 @@ export function createDashboardRouter(options: DashboardRouterOptions): Router {
 
       if (!roles.includes("admin")) return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
 
-      const requestedTileKey = String(req.query.tile || "");
-      const selectedOperationalAction = findSelectedOperationalAction(requestedTileKey);
-
       return res.render("pages/dashboard", {
         title: "Admin Dashboard",
         appTitle: options.appTitle,
         email: session.user.email,
-        operationalMenuRows,
-        selectedOperationalAction
+        operationalMenuRows
       });
     } catch (error) {
       next(error);

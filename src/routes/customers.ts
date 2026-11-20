@@ -31,12 +31,14 @@ import {
   CustomerRecord,
   CustomerStatus,
   DuplicateActiveCustomerEmailError,
+  InvalidCustomerDiscountError,
   createCustomer,
   deleteCustomer,
   getCustomerById,
   getCustomerCount,
   listRecentBookingsForCustomer,
   listCustomers,
+  normalizeCustomerDiscountPercentage,
   updateCustomer
 } from "../services/customers";
 import {
@@ -622,7 +624,7 @@ function getRegisterMapView(): MapView | null {
   };
 }
 
-function businessEditFormData(business: BusinessCustomerInput): Record<string, string> {
+function businessEditFormData(business: BusinessCustomerInput, customerDiscountPercentage: string | null): Record<string, string> {
   const formData: Record<string, string> = {
     registeredName: business.registeredName,
     officePhone: getPhoneDisplayValue(business.officePhone) || business.officePhone,
@@ -636,7 +638,8 @@ function businessEditFormData(business: BusinessCustomerInput): Record<string, s
     accountsEmail: business.accountsEmail,
     accountsPhone: business.accountsPhone
       ? getPhoneDisplayValue(business.accountsPhone) || business.accountsPhone
-      : ""
+      : "",
+    customerDiscountPercentage: customerDiscountPercentage ?? ""
   };
   for (const prefix of ["registered", "operational"] as const) {
     const address = business[`${prefix}Address`];
@@ -1036,7 +1039,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       latitude: String(req.body.latitude || "").trim(),
       longitude: String(req.body.longitude || "").trim(),
       notes: String(req.body.notes || "").trim(),
-      preferredContact: String(req.body.preferredContact || "Unknown")
+      preferredContact: String(req.body.preferredContact || "Unknown"),
+      customerDiscountPercentage: typeof req.body.customerDiscountPercentage === "string" ? req.body.customerDiscountPercentage.trim() : ""
     };
 
     const registerErrors: string[] = [];
@@ -1052,6 +1056,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       registerErrors.push("Phone number is required.");
     } else if (!normalizedPhone) {
       registerErrors.push("Phone number is not valid.");
+    }
+    let customerDiscountPercentage: string | null = null;
+    try {
+      customerDiscountPercentage = normalizeCustomerDiscountPercentage(registerFormData.customerDiscountPercentage);
+    } catch (error) {
+      if (!(error instanceof InvalidCustomerDiscountError)) throw error;
+      registerErrors.push(error.message);
     }
 
     if (registerErrors.length > 0) {
@@ -1086,6 +1097,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         geocodedAt: addressData.geocodedAt,
         geocodeStatus: addressData.geocodeStatus,
         notes: registerFormData.notes || null,
+        customerDiscountPercentage,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(registerFormData.preferredContact)
           ? (registerFormData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
           : "Unknown"
@@ -1525,7 +1537,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           customer,
           backToCustomersHref,
           isChildWindow: isChildWindowLayout(req.query.layout),
-          formData: businessEditFormData(business)
+          formData: businessEditFormData(business, customer.customerDiscountPercentage)
         });
       }
       const recentBookings = await loadRecentBookings(customer.id, loadRecentBookingsForCustomerList);
@@ -1544,7 +1556,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         ...buildCustomerAddressFormData(customer),
         notes: customer.notes || "",
         preferredContact: customer.preferredContact,
-        status: customer.status
+        status: customer.status,
+        customerDiscountPercentage: customer.customerDiscountPercentage ?? ""
       };
 
       return res.render("pages/customers/edit", {
@@ -1683,7 +1696,8 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       longitude: String(req.body.longitude || "").trim(),
       notes: String(req.body.notes || "").trim(),
       preferredContact: String(req.body.preferredContact || "Unknown"),
-      status: String(req.body.status || "Active")
+      status: String(req.body.status || "Active"),
+      customerDiscountPercentage: typeof req.body.customerDiscountPercentage === "string" ? req.body.customerDiscountPercentage.trim() : ""
     };
 
     const errors: string[] = [];
@@ -1699,6 +1713,13 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
       errors.push("Phone number is required.");
     } else if (!normalizedPhone) {
       errors.push("Phone number is not valid.");
+    }
+    let customerDiscountPercentage: string | null = null;
+    try {
+      customerDiscountPercentage = normalizeCustomerDiscountPercentage(formData.customerDiscountPercentage);
+    } catch (error) {
+      if (!(error instanceof InvalidCustomerDiscountError)) throw error;
+      errors.push(error.message);
     }
 
     if (errors.length > 0) {
@@ -1741,6 +1762,7 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
         geocodedAt: addressData.geocodedAt,
         geocodeStatus: addressData.geocodeStatus,
         notes: formData.notes || null,
+        customerDiscountPercentage,
         preferredContact: ["WhatsApp", "Email", "Phone", "Unknown"].includes(formData.preferredContact)
           ? (formData.preferredContact as "WhatsApp" | "Email" | "Phone" | "Unknown")
           : "Unknown",

@@ -118,6 +118,19 @@ test("booking manager must be an existing active customer and contact details ar
   assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["managerEmail", "managerName", "managerPhone"]);
 });
 
+test("customer-profile discount is derived from the selected customer, not the submitted form", async () => {
+  const selectedManager = { ...manager, customerDiscountPercentage: "12.50" };
+  const result = await validateNewBooking(
+    readNewBookingDraft(body({ customerDiscountPercentage: "99" })),
+    reference,
+    dependencies,
+    async (id) => id === manager.customerId ? selectedManager : null
+  );
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.booking?.pricingInputs.customerId, manager.customerId);
+  assert.equal(result.booking?.pricingInputs.customerDiscountPercentage, "12.50");
+});
+
 test("vehicle category is required and unrecognized categories are rejected on the server", async () => {
   const missing = await validateNewBooking(readNewBookingDraft(body({ vehicleClassKey: "" })), reference, dependencies, loadManager);
   assert.ok(missing.errors.some((error) => error.field === "vehicleClassKey"));

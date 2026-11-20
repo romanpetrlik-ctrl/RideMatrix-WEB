@@ -51,6 +51,7 @@ export type BookingManagerCandidate = {
   email: string;
   company: string | null;
   isBusiness: boolean;
+  customerDiscountPercentage?: string | null;
 };
 
 export type SubmittedStop = {
@@ -520,10 +521,16 @@ export async function validateNewBooking(
   if (booster === null) errors.push({ field: "boosterRequired", message: "Select whether a booster is required." });
   const journey = await validateJourney(draft, reference, dependencies, errors);
   if (errors.length || !journey || (draft.customerMode === "existing" && !manager)) return { errors, booking: null };
+  const pricingInputs = {
+    ...journey.pricingInputs,
+    customerId: manager?.customerId ?? null,
+    customerDiscountPercentage: manager?.customerDiscountPercentage ?? null
+  };
   return {
     errors,
     booking: {
       ...journey,
+      pricingInputs,
       customerId: manager?.customerId ?? "",
       newCustomer,
       paymentMethod: draft.paymentMethod as BookingPaymentMethod,
@@ -587,6 +594,7 @@ type ManagerRow = {
   email: string | null;
   phone: string | null;
   company: string | null;
+  customer_discount_percentage: string | number | null;
   booker_full_name: string | null;
   booker_email: string | null;
   booker_phone: string | null;
@@ -601,12 +609,15 @@ function managerFromRow(row: ManagerRow): BookingManagerCandidate {
     phone: (business ? row.booker_phone : row.phone) ?? "",
     email: (business ? row.booker_email : row.email) ?? "",
     company: row.registered_name ?? row.company,
-    isBusiness: business
+    isBusiness: business,
+    customerDiscountPercentage: row.customer_discount_percentage === null
+      ? null
+      : Number(row.customer_discount_percentage).toFixed(2)
   };
 }
 
 const MANAGER_SELECT = `
-  SELECT c.id, c.given_name, c.surname, c.email, c.phone, c.company,
+  SELECT c.id, c.given_name, c.surname, c.email, c.phone, c.company, c.customer_discount_percentage,
          b.booker_full_name, b.booker_email, b.booker_phone, b.registered_name
     FROM customers c
     LEFT JOIN business_customers b ON b.customer_id = c.id
