@@ -357,9 +357,9 @@ function routePositionsNearPortal(path: RoutePoint[], portal: RoutePoint, side: 
 
 /** Identifies each Blackwall/Silvertown crossing (and its direction) along the ordered route geometry. */
 export function detectTunnelCrossings(path: RoutePoint[], reference: TunnelReferenceGeometry = TUNNEL_REFERENCE_GEOMETRY): TunnelCrossing[] {
-  const crossings: TunnelCrossing[] = [];
-  if (path.length < 2) return crossings;
+  if (path.length < 2) return [];
 
+  const candidates: { tunnel: TunnelPortals; first: PortalEvent; second: PortalEvent }[] = [];
   for (const tunnel of reference.portals) {
     const north = routePositionsNearPortal(path, tunnel.north, "north");
     const south = routePositionsNearPortal(path, tunnel.south, "south");
@@ -374,21 +374,28 @@ export function detectTunnelCrossings(path: RoutePoint[], reference: TunnelRefer
       const second = events[index + 1];
       const travelDistance = second.alongRoute - first.alongRoute;
       if (first.side === second.side || travelDistance > MAX_TUNNEL_PORTAL_TRAVEL_METERS) continue;
-      const fromSouth = first.side === "south";
-      crossings.push({
-        tunnel: tunnel.tunnel,
-        label: tunnel.label,
-        direction: fromSouth ? "northbound" : "southbound",
-        segmentIndex: Math.max(first.segmentIndex, second.segmentIndex),
-        point: {
-          latitude: Number(((tunnel.north.latitude + tunnel.south.latitude) / 2).toFixed(6)),
-          longitude: Number(((tunnel.north.longitude + tunnel.south.longitude) / 2).toFixed(6))
-        },
-        geometry: { verified: reference.verified, provenance: reference.provenance }
-      });
+      candidates.push({ tunnel, first, second });
     }
   }
-  return crossings.sort((a, b) => a.segmentIndex - b.segmentIndex);
+
+  return candidates
+    .filter((candidate) => !candidates.some((other) =>
+      other.tunnel.tunnel !== candidate.tunnel.tunnel &&
+      other.first.alongRoute > candidate.first.alongRoute &&
+      other.second.alongRoute < candidate.second.alongRoute
+    ))
+    .map(({ tunnel, first, second }) => ({
+      tunnel: tunnel.tunnel,
+      label: tunnel.label,
+      direction: first.side === "south" ? "northbound" as const : "southbound" as const,
+      segmentIndex: Math.max(first.segmentIndex, second.segmentIndex),
+      point: {
+        latitude: Number(((tunnel.north.latitude + tunnel.south.latitude) / 2).toFixed(6)),
+        longitude: Number(((tunnel.north.longitude + tunnel.south.longitude) / 2).toFixed(6))
+      },
+      geometry: { verified: reference.verified, provenance: reference.provenance }
+    }))
+    .sort((a, b) => a.segmentIndex - b.segmentIndex);
 }
 
 type RoutesResponse = {

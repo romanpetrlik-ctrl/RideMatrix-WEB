@@ -179,6 +179,22 @@ test("owner-supplied portal coordinates detect real tunnel route crossings", () 
   }
 });
 
+test("a tunnel portal pair spanning another tunnel traversal is not counted", () => {
+  const blackwall = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === "blackwall")!;
+  const silvertown = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === "silvertown")!;
+  const crossings = detectTunnelCrossings([
+    blackwall.south,
+    blackwall.north,
+    silvertown.north,
+    silvertown.south,
+    blackwall.south
+  ]);
+  assert.deepEqual(crossings.map((crossing) => `${crossing.tunnel}:${crossing.direction}`), [
+    "blackwall:northbound",
+    "silvertown:southbound"
+  ]);
+});
+
 test("a route must pass both portal locations before the tunnel is charged", () => {
   const portals = TUNNEL_REFERENCE_GEOMETRY.portals.find((item) => item.tunnel === "blackwall")!;
   const nearOnlyOnePortal = detectTunnelCrossings([portals.south, { latitude: 51.504, longitude: -0.003 }]);
