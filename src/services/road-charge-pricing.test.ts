@@ -14,7 +14,7 @@ import {
 
 // Route geometry provenance is enforced separately (see the "production gate" test); these tests isolate the rules.
 const verifiedGeometry = { codeCalculationBlockers: () => [] };
-const EMPTY_PROFILE: RoadChargeProfile = { lez: "", ulez: "", congestionCharge: "", tunnelVehicleClass: "", tunnelAutoPay: "" };
+const EMPTY_PROFILE: RoadChargeProfile = { lez: "", ulez: "", congestionCharge: "", tunnelVehicleClass: "", bookingVehicleClassKey: null };
 
 function activeSet(...schemes: RoadChargeScheme[]): RoadChargeScheduleSet {
   return Object.fromEntries(schemes.map((scheme) => [scheme, {
@@ -201,62 +201,58 @@ test("each zone yields one daily line however often the route enters it; LEZ, UL
 });
 
 test("production gate: ULEZ stays unresolved while its geometry is unverified; verified CC and tunnel data can price", () => {
-  const lines = roadChargeLines("2027-03-10", "10:00", profile({ ulez: "ulez-cars", congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "yes" }),
+  const lines = roadChargeLines("2027-03-10", "10:00", profile({ ulez: "ulez-cars", congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans" }),
     route({ zones: [zone("london-ulez"), zone("london-congestion-charge")], tunnelCrossings: [crossing("blackwall", "northbound")] }), ALL);
-  assert.deepEqual(lines.map((line) => line.status), ["unresolved", "unresolved", "applied", "applied", "not-applicable"]);
+  assert.deepEqual(lines.map((line) => line.status), ["not-applicable", "unresolved", "applied", "applied", "not-applicable"]);
   assert.match(lines[1].basis, /boundary dataset/);
   assert.equal(lines[2].amount, "21.00");
   assert.doesNotMatch(lines[2].basis, /boundary dataset|geometry/);
-  assert.equal(lines[3].amount, "1.55");
+  assert.equal(lines[3].amount, "4.20");
   assert.ok(lines.filter((line) => line.status === "unresolved").every((line) => line.amount === null));
 });
 
-test("tunnel crossings price by tunnel, direction, time band, vehicle class and Auto Pay", () => {
-  const car = { tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "yes" };
+test("tunnel crossings always use the non-Auto Pay rate by tunnel, direction and vehicle class", () => {
+  const car = { tunnelVehicleClass: "cars-and-small-vans" };
   const priced = (date: string, time: string, declared: Partial<RoadChargeProfile>, cross: TunnelCrossing) => {
     const lines = tunnelCharges(date, time, declared, [cross]).filter((line) => line.type === "tunnel-charge");
     assert.equal(lines.length, 1);
     return lines[0];
   };
-  // Wednesday 10 March 2027.
+  // The estimate always uses the higher phone/online rate throughout charging hours.
   const northPeak = priced("2027-03-10", "07:00", car, crossing("blackwall", "northbound"));
   assert.equal(northPeak.amount, "4.20");
   assert.equal(northPeak.label, "Blackwall Tunnel — northbound crossing 1");
-  assert.equal((northPeak.source as Record<string, any>).rate.key, "tunnel-cars-and-small-vans-autopay-peak");
+  assert.equal((northPeak.source as Record<string, any>).rate.key, "tunnel-cars-and-small-vans-phone-online");
   assert.equal((northPeak.source as Record<string, any>).tunnel, "blackwall");
-  assert.equal(priced("2027-03-10", "07:00", car, crossing("silvertown", "southbound")).amount, "1.55", "southbound is off-peak in the morning");
+  assert.equal(priced("2027-03-10", "07:00", car, crossing("silvertown", "southbound")).amount, "4.20", "direction does not reduce the conservative estimate");
   assert.equal(priced("2027-03-10", "07:00", car, crossing("silvertown", "southbound")).label, "Silvertown Tunnel — southbound crossing 1");
   assert.equal(priced("2027-03-10", "16:30", car, crossing("silvertown", "southbound")).amount, "4.20");
-  assert.equal(priced("2027-03-10", "16:30", car, crossing("blackwall", "northbound")).amount, "1.55");
-  assert.equal(priced("2027-03-10", "09:50", car, crossing("blackwall", "northbound")).status, "unresolved", "window straddles the 10:00 peak end");
-  assert.equal(priced("2027-03-13", "07:00", car, crossing("blackwall", "northbound")).amount, "1.55", "weekends are off-peak");
+  assert.equal(priced("2027-03-10", "16:30", car, crossing("blackwall", "northbound")).amount, "4.20");
+  assert.equal(priced("2027-03-13", "07:00", car, crossing("blackwall", "northbound")).amount, "4.20", "weekends use the same conservative rate");
+  assert.equal(priced("2027-03-10", "09:50", car, crossing("blackwall", "northbound")).amount, "4.20", "Auto Pay peak boundaries do not affect the price");
 
-  assert.equal(priced("2027-03-10", "11:00", { ...car, tunnelAutoPay: "no" }, crossing("blackwall", "southbound")).amount, "4.20", "without Auto Pay the phone/online rate applies");
-  assert.equal(priced("2027-03-10", "07:00", { tunnelVehicleClass: "heavy-goods-vehicles", tunnelAutoPay: "yes" }, crossing("blackwall", "northbound")).amount, "10.50");
-  assert.equal(priced("2027-03-10", "11:00", { tunnelVehicleClass: "large-vans", tunnelAutoPay: "yes" }, crossing("blackwall", "northbound")).amount, "2.60");
-  assert.equal(priced("2027-03-10", "11:00", { tunnelVehicleClass: "motorcycles-mopeds-motor-tricycles", tunnelAutoPay: "no" }, crossing("blackwall", "northbound")).amount, "2.60");
+  assert.equal(priced("2027-03-10", "07:00", { tunnelVehicleClass: "heavy-goods-vehicles" }, crossing("blackwall", "northbound")).amount, "10.50");
+  assert.equal(priced("2027-03-10", "11:00", { tunnelVehicleClass: "large-vans" }, crossing("blackwall", "northbound")).amount, "6.80");
+  assert.equal(priced("2027-03-10", "11:00", { tunnelVehicleClass: "motorcycles-mopeds-motor-tricycles" }, crossing("blackwall", "northbound")).amount, "2.60");
 
   assert.equal(priced("2027-03-10", "22:00", car, crossing("blackwall", "northbound")).status, "not-applicable", "free 22:00–06:00");
   assert.equal(priced("2027-03-10", "05:50", car, crossing("blackwall", "northbound")).status, "unresolved", "window straddles 06:00");
   assert.equal(priced("2027-12-25", "12:00", car, crossing("blackwall", "northbound")).status, "not-applicable", "no charge on Christmas Day");
-  const bankHoliday = priced("2027-05-03", "11:00", car, crossing("blackwall", "northbound"));
-  assert.equal(bankHoliday.status, "unresolved");
-  assert.match(bankHoliday.basis, /weekday bank holiday/);
-  assert.equal(priced("2027-05-03", "11:00", { ...car, tunnelAutoPay: "no" }, crossing("blackwall", "northbound")).amount, "4.20");
+  assert.equal(priced("2027-05-03", "11:00", car, crossing("blackwall", "northbound")).amount, "4.20", "weekday bank holidays do not require Auto Pay resolution");
   assert.equal(priced("2026-09-01", "11:00", car, crossing("blackwall", "northbound")).status, "unresolved", "before charging starts on 21 September 2026");
 
-  assert.equal(priced("2027-03-10", "11:00", { tunnelAutoPay: "yes" }, crossing("blackwall", "northbound")).status, "unresolved");
-  assert.equal(priced("2027-03-10", "11:00", { tunnelVehicleClass: "cars-and-small-vans" }, crossing("blackwall", "northbound")).status, "unresolved");
+  assert.equal(priced("2027-03-10", "11:00", {}, crossing("blackwall", "northbound")).status, "unresolved");
+  assert.equal(priced("2027-03-10", "11:00", { tunnelVehicleClass: "cars-and-small-vans" }, crossing("blackwall", "northbound")).amount, "4.20");
   assert.equal(priced("2027-03-10", "11:00", car, crossing("blackwall", "northbound", false)).status, "unresolved");
 });
 
 test("repeated tunnel crossings are each itemized and known tunnels are not double counted as unidentified tolls", () => {
-  const car = { tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "yes" };
+  const car = { tunnelVehicleClass: "cars-and-small-vans" };
   const lines = tunnelCharges("2027-03-10", "11:00", car, [crossing("blackwall", "northbound"), crossing("silvertown", "southbound")], { tollsReported: true });
   const tunnels = lines.filter((line) => line.type === "tunnel-charge");
   assert.deepEqual(tunnels.map((line) => [line.label, line.amount]), [
-    ["Blackwall Tunnel — northbound crossing 1", "1.55"],
-    ["Silvertown Tunnel — southbound crossing 2", "1.55"]
+    ["Blackwall Tunnel — northbound crossing 1", "4.20"],
+    ["Silvertown Tunnel — southbound crossing 2", "4.20"]
   ]);
   const tolls = lines.filter((line) => line.type === "toll");
   assert.equal(tolls.length, 1);
@@ -314,7 +310,7 @@ test("assigning or changing a vehicle recalculates dependent charges and leaves 
   const snapshot = structuredClone(defaultQuote);
   assert.equal(zoneLineOf(defaultQuote, "london-ulez").amount, "0.00");
 
-  const assigned = roadChargeLines("2027-03-10", "11:00", profile({ lez: NO_CHARGE, ulez: ULEZ_COMPLIANT, congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans", tunnelAutoPay: "no" }),
+  const assigned = roadChargeLines("2027-03-10", "11:00", profile({ lez: NO_CHARGE, ulez: ULEZ_COMPLIANT, congestionCharge: "cc-standard", tunnelVehicleClass: "cars-and-small-vans" }),
     quoteRoute, ALL, verifiedGeometry);
   assert.equal(zoneLineOf(assigned, "london-ulez").status, "zero");
 

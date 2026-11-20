@@ -9,6 +9,7 @@ import { readMapConfiguration } from "../services/maps";
 import {
   BOOKING_COUNT_FIELDS,
   BOOKING_COUNT_MAX,
+  BOOKING_PAYMENT_METHODS,
   BookingPriceChangedError,
   SERVICE_TIMEZONE,
   STOP_KEYS,
@@ -61,7 +62,12 @@ function emptyDraft(now: Date): NewBookingDraft {
   const service = defaultServiceDateTime(now);
   const emptyStop = { kind: "", managedId: "", placeId: "", label: "", houseNameNumber: "" };
   return {
+    customerMode: "existing",
     customerId: "",
+    newCustomerGivenName: "",
+    newCustomerSurname: "",
+    newCustomerPhone: "",
+    newCustomerEmail: "",
     managerName: "",
     managerPhone: "",
     managerEmail: "",
@@ -70,6 +76,8 @@ function emptyDraft(now: Date): NewBookingDraft {
     passengerPhone: "",
     serviceDate: service.date,
     serviceTime: service.time,
+    vehicleClassKey: "",
+    paymentMethod: "",
     stops: { pickup: { ...emptyStop }, via1: { ...emptyStop }, via2: { ...emptyStop }, dropoff: { ...emptyStop } },
     viaActive: { via1: false, via2: false },
     counts: Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, "0"])) as NewBookingDraft["counts"],
@@ -179,6 +187,8 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       stopKeys: STOP_KEYS,
       countFields: BOOKING_COUNT_FIELDS,
       countMax: BOOKING_COUNT_MAX,
+      vehicleClasses: reference.vehicleClasses,
+      paymentMethods: BOOKING_PAYMENT_METHODS,
       timeOptions: serviceTimeOptions(),
       serviceTimezone: SERVICE_TIMEZONE,
       cargoSummaryText: cargoSummary(counts, draft.childSeatRequired === "yes", draft.boosterRequired === "yes"),

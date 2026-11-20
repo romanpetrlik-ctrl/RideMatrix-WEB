@@ -38,10 +38,11 @@ const reference: PricingReferenceData = {
     { id: "fee-elsewhere", poiId: "poi-2", poiDisplayName: "Other", action: "Porter", amount: "5.00", currency: "GBP", feeBasis: "", trigger: "confirmation", notes: "", createdAt: timestamp, updatedAt: timestamp }
   ],
   operationalBase: null,
-  roadChargeSchedules: {}
+  roadChargeSchedules: {},
+  vehicleClasses: [{ key: "standard_sedan_hatchback", label: "Standard Sedan / Hatchback" }]
 };
 
-const verifiedPlace = (placeId: string): OperationalPlaceVerification => ({
+const verifiedPlace = (placeId: string): Extract<OperationalPlaceVerification, { status: "verified" }> => ({
   status: "verified",
   address: {
     formattedAddress: "1 High Street, Poole BH15 1AA, UK", houseNameNumber: "1", addressLine1: "High Street", addressLine2: null, addressLine3: null,
@@ -59,6 +60,7 @@ const loadManager = async (id: string) => id === manager.customerId ? manager : 
 
 function body(overrides: Record<string, unknown> = {}) {
   return {
+    customerMode: "existing",
     customerId: manager.customerId,
     managerName: manager.name,
     managerPhone: manager.phone,
@@ -66,6 +68,8 @@ function body(overrides: Record<string, unknown> = {}) {
     passengerIsManager: "yes",
     serviceDate: "2027-03-10",
     serviceTime: "12:05",
+    vehicleClassKey: "standard_sedan_hatchback",
+    paymentMethod: "card-online",
     pickupKind: "airport",
     pickupAirportId: "airport-1",
     dropoffKind: "address",
@@ -112,6 +116,46 @@ test("booking manager must be an existing active customer and contact details ar
   assert.ok(unknown.errors.some((error) => error.field === "customerId"));
   const invalid = await validateNewBooking(readNewBookingDraft(body({ managerName: "", managerPhone: "abc", managerEmail: "nope" })), reference, dependencies, loadManager);
   assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["managerEmail", "managerName", "managerPhone"]);
+});
+
+test("vehicle category is required and unrecognized categories are rejected on the server", async () => {
+  const missing = await validateNewBooking(readNewBookingDraft(body({ vehicleClassKey: "" })), reference, dependencies, loadManager);
+  assert.ok(missing.errors.some((error) => error.field === "vehicleClassKey"));
+  const unknown = await validateNewBooking(readNewBookingDraft(body({ vehicleClassKey: "not-active" })), reference, dependencies, loadManager);
+  assert.ok(unknown.errors.some((error) => error.field === "vehicleClassKey"));
+  const selected = await validateNewBooking(readNewBookingDraft(body()), reference, dependencies, loadManager);
+  assert.deepEqual(selected.errors, []);
+  assert.equal(selected.booking?.pricingInputs.vehicleClassKey, "standard_sedan_hatchback");
+});
+
+test("new individual customer details validate and become the booking manager without creating records during quote validation", async () => {
+  const draft = readNewBookingDraft(body({
+    customerMode: "new",
+    newCustomerGivenName: "Taylor",
+    newCustomerSurname: "Passenger",
+    newCustomerPhone: "+44 7700 900123",
+    newCustomerEmail: "taylor@example.test"
+  }));
+  const result = await validateNewBooking(draft, reference, dependencies, async () => null);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.booking?.customerId, "");
+  assert.deepEqual(result.booking?.newCustomer, {
+    givenName: "Taylor",
+    surname: "Passenger",
+    phone: "+44 7700 900123",
+    email: "taylor@example.test",
+    source: "manual"
+  });
+  assert.equal(result.booking?.managerName, "Taylor Passenger");
+  assert.equal(result.booking?.managerPhone, "+44 7700 900123");
+  const invalid = await validateNewBooking(readNewBookingDraft(body({
+    customerMode: "new",
+    newCustomerGivenName: "",
+    newCustomerSurname: "Passenger",
+    newCustomerPhone: "bad",
+    newCustomerEmail: "not-an-email"
+  })), reference, dependencies, async () => null);
+  assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["newCustomerEmail", "newCustomerGivenName", "newCustomerPhone"]);
 });
 
 test("passenger and luggage counts default to 0, accept 0–7 and reject anything else", async () => {

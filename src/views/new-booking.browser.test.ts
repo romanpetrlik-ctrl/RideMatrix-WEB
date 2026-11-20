@@ -15,8 +15,11 @@ async function renderNewBooking(): Promise<string> {
     appTitle: "RideMatrix Test",
     email: "dispatcher@example.test",
     draft: {
+      customerMode: "existing",
       customerId: "", managerName: "", managerPhone: "", managerEmail: "", passengerIsManager: true, passengerName: "", passengerPhone: "",
       serviceDate: "2027-03-10", serviceTime: "14:30",
+      vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
+      newCustomerGivenName: "", newCustomerSurname: "", newCustomerPhone: "", newCustomerEmail: "",
       stops: { pickup: { ...emptyStop }, via1: { ...emptyStop }, via2: { ...emptyStop }, dropoff: { ...emptyStop } },
       viaActive: { via1: false, via2: false },
       counts: Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, "0"])),
@@ -28,6 +31,16 @@ async function renderNewBooking(): Promise<string> {
     managers: [
       { customerId: "cust-a", name: "Alex Example", phone: "+44 7700 900001", email: "alex@example.test", company: null },
       { customerId: "cust-b", name: "Blair Booker", phone: "+44 7700 900002", email: "blair@example.test", company: "Acme" }
+    ],
+    vehicleClasses: [
+      { key: "standard_sedan_hatchback", label: "Standard Sedan / Hatchback" },
+      { key: "minibus", label: "Minibus" }
+    ],
+    paymentMethods: [
+      { value: "card-online", label: "Card / online payment" },
+      { value: "bank-transfer", label: "Bank transfer" },
+      { value: "card", label: "Card" },
+      { value: "payment-link", label: "Payment link" }
     ],
     airports: [{ id: "airport-x", displayName: "Airport X" }],
     pois: [{ id: "poi-1", displayName: "Hotel One", category: "Hotel" }],
@@ -147,6 +160,19 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     await page.uncheck("#passengerIsManager");
     assert.equal(await value("#passengerName"), "Pat Passenger", "unchecking restores the independently edited passenger");
 
+    await page.check("#customerMode-new");
+    assert.equal(await page.locator("[data-new-customer-fields]").isVisible(), true);
+    await page.fill("#newCustomerGivenName", "Taylor");
+    await page.fill("#newCustomerSurname", "Passenger");
+    await page.fill("#newCustomerPhone", "+44 7700 900123");
+    assert.equal(await value("#managerName"), "Taylor Passenger");
+    assert.equal(await value("[data-passenger-name]"), "Pat Passenger", "new customer selection preserves an independently edited passenger");
+    await page.check("#customerMode-existing");
+    assert.equal(await page.locator("[data-existing-customer-fields]").isVisible(), true);
+    assert.equal(await value("#managerName"), "Alex Changed", "switching back restores the selected existing manager");
+    assert.equal(await value("[data-passenger-name]"), "Pat Passenger");
+    await page.selectOption("#paymentMethod", "bank-transfer");
+
     // Cargo summary updates automatically and matches the server wording.
     await page.selectOption("#adults", "2");
     await page.selectOption("#xlBaggage", "1");
@@ -170,7 +196,9 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     await page.selectOption("#pickupAirportId", "airport-x");
     await page.selectOption("#dropoffKind", "airport");
     await page.selectOption("#dropoffAirportId", "airport-x");
+    await page.selectOption("#vehicleClassKey", "minibus");
     await page.waitForFunction(() => (document.querySelector("[data-quoted-status]") as HTMLInputElement).value === "complete");
+    assert.equal(quoteRequests.at(-1)?.get("vehicleClassKey"), "minibus", "vehicle category is sent with the quote");
     const beforeAddVia = quoteRequests.length;
     await page.click("[data-add-via]");
     await page.waitForTimeout(500);

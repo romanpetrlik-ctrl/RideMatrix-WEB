@@ -141,7 +141,7 @@ function formatDate(date: string): string {
     .format(new Date(`${date}T00:00:00Z`));
 }
 
-function optionLabel(key: keyof RoadChargeProfile, value: string): string {
+function optionLabel(key: Exclude<keyof RoadChargeProfile, "bookingVehicleClassKey">, value: string): string {
   return ROAD_CHARGE_PROFILE_OPTIONS[key].options.find((option) => option.value === value)?.label ?? value;
 }
 
@@ -222,7 +222,7 @@ function zoneChargingDay(schedule: DailyZoneSchedule, window: JourneyWindow): Zo
 }
 
 /** Quotes have no assigned vehicle, so vehicle-dependent charges stay unresolved rather than being guessed. */
-const NO_VEHICLE_BASIS = "No vehicle is assigned at quote time and RideMatrix does not record this vehicle's LEZ, ULEZ, Congestion Charge, tunnel class or Auto Pay attributes, so the charge cannot be calculated.";
+const NO_VEHICLE_BASIS = "No mapped vehicle category is available for this charge, so the rate cannot be calculated.";
 
 function zoneLine(
   scheme: DailyZoneScheme,
@@ -242,14 +242,18 @@ function zoneLine(
     schedule: scheduleSource(record),
     matchingBasis: detection ? detection.evidence : { method: "route-polygon-intersection", detected: false, boundaryBlockers: geometryBlockers },
     journeyWindow: windowSource(window),
-    vehicleInput: { field: profileKey, value: declared || null, vehicleAssigned: profile !== null }
+    vehicleInput: {
+      field: profileKey,
+      value: declared || null,
+      bookingVehicleClassKey: profile?.bookingVehicleClassKey ?? null,
+      vehicleCategorySelected: Boolean(profile?.bookingVehicleClassKey)
+    }
   };
   const entry = detection ? `The route enters the ${detection.label}.` : `The route was not detected inside the ${title} boundary.`;
   const unresolved = (basis: string): PriceLine => ({ type: "road-charge", label, status: "unresolved", amount: null, basis: `${entry} ${basis}`, source });
   const notApplicable = (basis: string): PriceLine => ({ type: "road-charge", label, status: "not-applicable", amount: null, basis: `${entry} ${basis}`, source });
 
   if (!profile) return unresolved(NO_VEHICLE_BASIS);
-  if (!declared) return unresolved(`The vehicle's ${ROAD_CHARGE_PROFILE_OPTIONS[profileKey].label} is not recorded, so whether and how much it is charged cannot be determined.`);
   if (declared === ULEZ_COMPLIANT && scheme === "london-ulez") {
     source.rate = { key: ULEZ_COMPLIANT, amount: "0.00" };
     const compliance = "The vehicle meets the ULEZ standard (approved default for a standard passenger car, or a recorded compliance), so no daily charge applies";
@@ -269,6 +273,7 @@ function zoneLine(
     if (geometryBlockers.length) return unresolved(`Whether the route enters the ${title} cannot be confirmed: ${geometryBlockers.join(" ")}`);
     return notApplicable(`The route does not enter the ${title} boundary.`);
   }
+  if (!declared) return unresolved(`The vehicle's ${ROAD_CHARGE_PROFILE_OPTIONS[profileKey].label} is not recorded, so whether and how much it is charged cannot be determined.`);
   const unavailable = scheduleUnavailable(record, title, options);
   if (unavailable) return unresolved(unavailable);
   const schedule = record!.schedule as DailyZoneSchedule;
@@ -293,40 +298,26 @@ function zoneLine(
 
 type BandResult = { band: TunnelBand | "free" } | { unresolved: string };
 
-function tunnelBandAt(schedule: TunnelSchedule, crossing: TunnelCrossing, autoPay: boolean, date: string, minute: number): BandResult {
+function tunnelBandAt(schedule: TunnelSchedule, date: string, minute: number): BandResult {
   const rules = schedule.rules;
   if (!inEffectivePeriod(schedule, date)) {
     return { unresolved: `${formatDate(date)} is outside the schedule's effective period (${schedule.effectiveFrom ?? "unknown"} to ${schedule.effectiveUntil ?? "open-ended"}).` };
   }
   if (rules.noChargeAnnualDates.includes(date.slice(5))) return { band: "free" };
   if (minute < minutes(rules.chargingHours.start) || minute >= minutes(rules.chargingHours.end)) return { band: "free" };
-  if (!autoPay) return { band: "phone-online" };
-  const day = weekday(date);
-  if (day === 0 || day === 6) return { band: "autopay-offpeak" };
-  if (date < rules.calendarCoverage.from || date > rules.calendarCoverage.to) {
-    return { unresolved: `Auto Pay peak/off-peak on ${formatDate(date)} depends on the bank-holiday calendar, which is only recorded for ${rules.calendarCoverage.from} to ${rules.calendarCoverage.to}.` };
-  }
-  if (rules.bankHolidays.includes(date)) {
-    return { unresolved: `${formatDate(date)} is a weekday bank holiday; TfL guidance does not state whether Auto Pay peak rates apply.` };
-  }
-  const peak = rules.autoPayPeak[crossing.direction];
-  return { band: minute >= minutes(peak.start) && minute < minutes(peak.end) ? "autopay-peak" : "autopay-offpeak" };
+  return { band: "phone-online" };
 }
 
-/** The crossing time is unknown within the window, so the band must be the same throughout it. */
-function tunnelBand(schedule: TunnelSchedule, crossing: TunnelCrossing, autoPay: boolean, window: JourneyWindow): BandResult & { date?: string } {
+/** Quotes conservatively use the non-Auto Pay rate; Auto Pay does not affect price-band boundaries. */
+function tunnelBand(schedule: TunnelSchedule, window: JourneyWindow): BandResult & { date?: string } {
   const rules = schedule.rules;
-  const breakpoints = [
-    rules.chargingHours.start, rules.chargingHours.end,
-    rules.autoPayPeak.northbound.start, rules.autoPayPeak.northbound.end,
-    rules.autoPayPeak.southbound.start, rules.autoPayPeak.southbound.end
-  ].map(minutes);
+  const breakpoints = [rules.chargingHours.start, rules.chargingHours.end].map(minutes);
   let found: TunnelBand | "free" | null = null;
   let foundDate: string | undefined;
   for (const segment of window.segments) {
     const samples = [segment.from, ...breakpoints.filter((point) => point > segment.from && point < segment.to)];
     for (const minute of samples) {
-      const result = tunnelBandAt(schedule, crossing, autoPay, segment.date, minute);
+      const result = tunnelBandAt(schedule, segment.date, minute);
       if ("unresolved" in result) return result;
       if (found !== null && found !== result.band) {
         return { unresolved: "The journey window spans a change in tunnel charging period, so the rate for this crossing cannot be determined." };
@@ -357,7 +348,10 @@ function tunnelLine(
     schedule: scheduleSource(record),
     matchingBasis: { method: "ordered-route-portal-match", segmentIndex: crossing.segmentIndex, point: crossing.point, geometry: crossing.geometry },
     journeyWindow: windowSource(window),
-    vehicleInput: { tunnelVehicleClass: profile?.tunnelVehicleClass || null, tunnelAutoPay: profile?.tunnelAutoPay || null, vehicleAssigned: profile !== null }
+    vehicleInput: {
+      tunnelVehicleClass: profile?.tunnelVehicleClass || null,
+      bookingVehicleClassKey: profile?.bookingVehicleClassKey ?? null
+    }
   };
   const unresolved = (basis: string): PriceLine => ({ type: "tunnel-charge", label, status: "unresolved", amount: null, basis: `The route crosses the ${crossing.label} ${crossing.direction}. ${basis}`, source });
   const unavailable = scheduleUnavailable(record, "Blackwall and Silvertown tunnels", options);
@@ -365,9 +359,8 @@ function tunnelLine(
   if (!crossing.geometry.verified) return unresolved("The tunnel was identified with unverified reference geometry.");
   if (!profile) return unresolved(NO_VEHICLE_BASIS);
   const schedule = record!.schedule as TunnelSchedule;
-  if (!profile.tunnelVehicleClass) return unresolved("The assigned vehicle's tunnel vehicle class is not recorded.");
-  if (profile.tunnelAutoPay !== "yes" && profile.tunnelAutoPay !== "no") return unresolved("Whether the assigned vehicle pays by Auto Pay is not recorded.");
-  const band = tunnelBand(schedule, crossing, profile.tunnelAutoPay === "yes", window);
+  if (!profile.tunnelVehicleClass) return unresolved("No tunnel rate class is explicitly mapped to the selected vehicle category.");
+  const band = tunnelBand(schedule, window);
   if ("unresolved" in band) return unresolved(band.unresolved);
   if (band.band === "free") {
     return { type: "tunnel-charge", label, status: "not-applicable", amount: null, basis: `The route crosses the ${crossing.label} ${crossing.direction} outside charging hours/days.`, source };
@@ -382,7 +375,7 @@ function tunnelLine(
     label,
     status: "applied",
     amount: rate.amount,
-    basis: `Per-crossing charge: ${rate.label} (schedule version ${record!.version}).`,
+    basis: `Conservative non-Auto Pay estimate for each crossing: ${rate.label} (schedule version ${record!.version}).`,
     source
   };
 }
