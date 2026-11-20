@@ -230,6 +230,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         title: "Bookings",
         appTitle: options.appTitle,
         email: actor.email,
+        contextBarActions: [{ label: "New booking", href: "/bookings/new", tone: "primary" }],
         bookings,
         view,
         search,

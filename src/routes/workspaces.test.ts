@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { getLandingRoute } from "./auth-callback";
-import { findSelectedOperationalAction, operationalMenuRows } from "./dashboard";
+import { operationalMenuRows } from "./dashboard";
 import { availableWorkspaceModules, canAccessWorkspace, workspaceModules } from "./role-sections";
 
 function escapeRegExp(value: string): string {
@@ -70,38 +70,32 @@ test("only a single authorized module receives a direct landing route", () => {
 test("dashboard operational menu is the canonical navigation", () => {
   assert.deepEqual(operationalMenuRows.map((row) => row.category), [
     "Bookings",
-    "Dispatch",
     "Customers",
     "Drivers",
     "Vehicles",
-    "Staff",
-    "Pricing",
-    "Settings"
+    "Staff"
   ]);
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "New")?.href, "/bookings/new");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "All customers")?.href, "/customers");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "New customer")?.href, "/customers/register");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "All staff")?.href, "/staff");
-  assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Live board")?.href, "/dashboard?tile=dispatch-live-board");
-  assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Live Map")?.href, "/dashboard?tile=dispatch-live-map");
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.label === "Help / Recovery"), undefined);
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).find((action) => action.href === "/recovery"), undefined);
+  for (const action of operationalMenuRows.flatMap((row) => row.actions)) {
+    assert.doesNotMatch(action.href, /^\/dashboard\?tile=/, `${action.label} must not target an unimplemented dashboard tile`);
+  }
 });
 
-test("drivers and vehicles operational actions use existing destinations or dashboard placeholders", () => {
+test("drivers and vehicles actions use available operational pages", () => {
   const rows = new Map(operationalMenuRows.map((row) => [row.category, row.actions]));
   assert.deepEqual(rows.get("Drivers"), [{ label: "All drivers", href: "/drivers" }]);
   assert.deepEqual(rows.get("Vehicles"), [
     { label: "Active vehicles", href: "/vehicles?status=active" },
-    { label: "Live map", href: "/dashboard?tile=dispatch-live-map", externalMode: "window" },
-    { label: "All vehicles", href: "/vehicles" },
-    { label: "Settings", href: "/settings" }
+    { label: "All vehicles", href: "/vehicles" }
   ]);
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "All drivers").length, 1);
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "Active vehicles").length, 1);
-  assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "Live map").length, 1);
   assert.equal(operationalMenuRows.flatMap((row) => row.actions).filter((action) => action.label === "All vehicles").length, 1);
-  assert.equal(rows.get("Vehicles")?.filter((action) => action.label === "Settings").length, 1);
 });
 
 test("vehicle directory actions open the real vehicle routes instead of dashboard placeholders", () => {
@@ -111,7 +105,6 @@ test("vehicle directory actions open the real vehicle routes instead of dashboar
     assert.match(href, /^\/vehicles(\?|$)/, `${label} should open the vehicle directory`);
     assert.doesNotMatch(href, /\/dashboard/);
   }
-  assert.equal(findSelectedOperationalAction("vehicles-active"), undefined);
 });
 
 test("booking date-range shortcuts open the live booking dashboard", () => {
@@ -119,19 +112,15 @@ test("booking date-range shortcuts open the live booking dashboard", () => {
   assert.equal(actions.find((action) => action.label === "Today")?.href, "/bookings?view=today");
   assert.equal(actions.find((action) => action.label === "Upcoming")?.href, "/bookings?view=upcoming");
   assert.equal(actions.find((action) => action.label === "Past")?.href, "/bookings?view=past");
-  assert.equal(findSelectedOperationalAction("bookings-upcoming"), undefined);
-  assert.equal(findSelectedOperationalAction("customers"), undefined);
 });
 
 test("dashboard template renders only the canonical operational menu", () => {
   const template = readFileSync(path.join(process.cwd(), "src/views/pages/dashboard.ejs"), "utf8");
-  assert.match(template, /Operational shortcuts/);
+  assert.match(template, /Quick links/);
   assert.doesNotMatch(template, /Help \/ Recovery|href="\/recovery"/);
   assert.doesNotMatch(template, /dashboard-layout|Management|Platform/);
-  assert.match(template, /class="operations-menu-prototype__action\$\{statusClass\}"/);
-  assert.match(template, /aria-label="\$\{action\.label\}\.\$\{externalText\}\$\{statusText\}"/);
-  assert.match(template, /class="operations-menu-prototype__status-icon operations-menu-prototype__warning-icon operations-menu-prototype__warning-icon--\$\{action\.status\.tone === "red" \? "critical" : "warning"\}"[^>]*focusable="false" aria-hidden="true"/);
-  assert.match(template, /class="operations-menu-prototype__tooltip" role="tooltip">\$\{action\.status\.message\}<\/span>/);
+  assert.match(template, /class="operations-menu-prototype__action"/);
+  assert.doesNotMatch(template, /Static visual mock data|placeholder|Demo status|selectedOperationalAction/);
 });
 
 test("dashboard keeps the admin redirect and authorization guard", () => {
