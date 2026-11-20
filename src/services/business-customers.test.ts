@@ -66,6 +66,16 @@ test("accepts full structured addresses, boundary coordinates and an optional ac
   assert.equal(result.input?.accountsPhone, "+442079460958");
 });
 
+test("validates optional standing customer discounts for business profiles", () => {
+  const valid = validateBusinessCustomer({ ...validForm(), customerDiscountPercentage: "12.5" });
+  assert.deepEqual(valid.errors, []);
+  assert.equal(valid.input?.customerDiscountPercentage, "12.50");
+
+  const invalid = validateBusinessCustomer({ ...validForm(), customerDiscountPercentage: "100.01" });
+  assert.equal(invalid.input, undefined);
+  assert.ok(invalid.fieldErrors.some((error) => error.field === "customerDiscountPercentage"));
+});
+
 test("requires all mandatory business, registered address, booker and accounts fields", () => {
   for (const field of [
     "registeredName", "registeredHouseNameNumber", "registeredAddressLine1", "registeredCityTown",

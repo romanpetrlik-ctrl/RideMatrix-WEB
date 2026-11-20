@@ -1,5 +1,11 @@
 import { getPool, withTransaction } from "../database/connection";
-import { createCustomer, type CustomerRecord, updateCustomer } from "./customers";
+import {
+  createCustomer,
+  InvalidCustomerDiscountError,
+  normalizeCustomerDiscountPercentage,
+  type CustomerRecord,
+  updateCustomer
+} from "./customers";
 import { normalizePhoneToE164 } from "./phone-numbers";
 
 export type BusinessFormData = Record<string, string>;
@@ -32,6 +38,7 @@ export type BusinessCustomerInput = {
   accountsFullName: string;
   accountsEmail: string;
   accountsPhone: string | null;
+  customerDiscountPercentage?: string | null;
 };
 
 const ADDRESS_FIELDS = [
@@ -42,7 +49,7 @@ const ADDRESS_FIELDS = [
 const CONTACT_FIELDS = [
   "registeredName", "officePhone", "officeEmail", "bookerFullName", "bookerEmail",
   "bookerPhone", "bookingAuthRequired", "bookingAuthChannel",
-  "accountsFullName", "accountsEmail", "accountsPhone"
+  "accountsFullName", "accountsEmail", "accountsPhone", "customerDiscountPercentage"
 ] as const;
 
 function addressFormKey(prefix: string, field: string): string {
@@ -197,6 +204,13 @@ export function validateBusinessCustomer(input: unknown): {
   } else if (data.bookingAuthRequired === "no") {
     data.bookingAuthChannel = "";
   }
+  let customerDiscountPercentage: string | null = null;
+  try {
+    customerDiscountPercentage = normalizeCustomerDiscountPercentage(data.customerDiscountPercentage);
+  } catch (error) {
+    if (!(error instanceof InvalidCustomerDiscountError)) throw error;
+    fail("customerDiscountPercentage", error.message);
+  }
   if (errors.length) return { data, errors, fieldErrors };
   return {
     data, errors, fieldErrors,
@@ -209,7 +223,8 @@ export function validateBusinessCustomer(input: unknown): {
       bookingAuthRequired: data.bookingAuthRequired === "yes", bookingAuthChannel,
       accountsFullName: data.accountsFullName,
       accountsEmail: normalizedEmails.accountsEmail,
-      accountsPhone: normalizedPhones.accountsPhone || null
+      accountsPhone: normalizedPhones.accountsPhone || null,
+      customerDiscountPercentage
     }
   };
 }
@@ -223,6 +238,7 @@ export async function createBusinessCustomer(input: BusinessCustomerInput): Prom
     const customer = await createCustomer({
       givenName: business.registeredName, surname: "", company: business.registeredName,
       email: business.officeEmail, phone: business.officePhone,
+      customerDiscountPercentage: business.customerDiscountPercentage,
       ...address,
       address: formatBusinessAddress(address),
       source: "business"
@@ -260,6 +276,7 @@ export async function updateBusinessCustomer(
       company: business.registeredName,
       email: business.officeEmail,
       phone: business.officePhone,
+      customerDiscountPercentage: business.customerDiscountPercentage,
       ...address,
       address: formatBusinessAddress(address)
     }, client);

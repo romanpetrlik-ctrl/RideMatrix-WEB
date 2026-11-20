@@ -43,6 +43,7 @@ function createTestCustomer(): CustomerRecord {
     longitude: -0.1276,
     geocodedAt: "2026-09-14T00:00:00.000Z",
     geocodeStatus: "exact",
+    customerDiscountPercentage: null,
     bookings: []
   };
 }
@@ -151,7 +152,8 @@ const validCustomerForm = new URLSearchParams({
   addressLine1: "Downing Street",
   cityTown: "London",
   postcode: "SW1A 2AA",
-  preferredContact: "Unknown"
+  preferredContact: "Unknown",
+  customerDiscountPercentage: "8.5"
 });
 
 const validBusinessForm = new URLSearchParams({
@@ -170,6 +172,7 @@ const validBusinessForm = new URLSearchParams({
   registeredState: "England",
   registeredLatitude: "51.5",
   registeredLongitude: "-0.12",
+  customerDiscountPercentage: "15.25",
   operationalHouseNameNumber: "Unit 2",
   operationalAddressLine1: "Depot Road",
   operationalAddressLine2: "Industrial Park",
@@ -269,10 +272,11 @@ test("business validation errors preserve the form and never call persistence", 
     const html = await response.text();
     assert.equal(response.status, 400);
     for (const [name, value] of invalid) {
-      if (name === "customerType" || name === "bookingAuthRequired" || name === "bookingAuthChannel") continue;
+      if (name === "customerType" || name === "bookingAuthRequired" || name === "bookingAuthChannel" || name === "customerDiscountPercentage") continue;
       const expected = value;
       assert.match(html, new RegExp(`id="${name}"\\s+name="${name}"\\s+value="${expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), name);
     }
+    assert.match(html, /id="customerDiscountPercentage"\s+name="customerDiscountPercentage"[^>]*value="15\.25"/);
     assert.match(html, /<option value="yes" selected>Yes<\/option>/);
     for (const prefix of ["registered", "operational"]) {
       assert.match(html, new RegExp(`id="${prefix}AddressSearchManual" value="${prefix} search address"`));
@@ -460,6 +464,7 @@ test("business edit updates the existing customer and redirects to its detail pa
     assert.equal(saved?.operationalAddress.latitude, 50.7);
     assert.equal(saved?.bookingAuthRequired, true);
     assert.equal(saved?.bookingAuthChannel, "both");
+    assert.equal(saved?.customerDiscountPercentage, "15.25");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -520,6 +525,7 @@ test("private customer edit still validates and updates through the private-cust
       assert.equal(saved?.givenName, "Ada");
       assert.equal(saved?.surname, "Lovelace");
       assert.equal(saved?.status, "Active");
+      assert.equal(saved?.customerDiscountPercentage, "8.50");
       assert.match(response.headers.get("location") || "", /notice=customer-updated/);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -681,10 +687,10 @@ test("customer register exposes structured address inputs and only the browser m
 
 test("customer registration succeeds when maps are disabled", async () => {
   await withMapEnvironment({}, async () => {
-    let created = false;
+    let saved: Record<string, unknown> | undefined;
     const server = createTestServer(adminSession, {
-      createCustomer: async () => {
-        created = true;
+      createCustomer: async (input) => {
+        saved = input;
         return createTestCustomer();
       }
     });
@@ -699,7 +705,7 @@ test("customer registration succeeds when maps are disabled", async () => {
 
       assert.equal(response.status, 302);
       assert.match(response.headers.get("location") || "", /^\/customers\/cust-test-1\?/);
-      assert.equal(created, true);
+      assert.equal(saved?.customerDiscountPercentage, "8.50");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => error ? reject(error) : resolve());
