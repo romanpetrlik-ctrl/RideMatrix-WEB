@@ -5250,10 +5250,12 @@ button:visited,
   --rm-table-divider: var(--rm-light-bronze);
 }
 
+.rm-card,
 .panel,
 .customer-list-card,
-.staff-page .staff-card,
-.vehicle-page .vehicle-card {
+.staff-card,
+.vehicle-card {
+  box-sizing: border-box;
   border: 1px solid var(--rm-border);
   border-radius: 0;
   background: var(--rm-surface);
@@ -5276,7 +5278,7 @@ button:visited,
 main.rm-page-shell h1,
 main.container h1 {
   color: #172b38;
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-size: 1.75rem;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -5295,6 +5297,14 @@ main.container h3 {
 
 .customer-list-card {
   overflow: hidden;
+}
+
+.vehicle-list-page .vehicle-card.rm-card {
+  padding: 0;
+}
+
+.new-booking-page .new-booking-block.rm-card {
+  padding: 1.25rem;
 }
 
 .staff-page {

@@ -31,7 +31,7 @@
         <section class="notice" role="status" data-booking-notice>Booking <%= booking.reference %> saved<%= booking.price && booking.price.status === "incomplete" ? " with an incomplete price. No total is confirmed." : "." %></section>
       <% } %>
 
-      <section class="panel new-booking-block" aria-labelledby="detail-reference-title">
+      <section class="panel rm-card new-booking-block" aria-labelledby="detail-reference-title">
         <h2 id="detail-reference-title">1. Booking reference</h2>
         <dl class="new-booking-reference">
           <div><dt>Booking ID</dt><dd data-booking-id><%= booking.reference %></dd></div>
@@ -41,7 +41,7 @@
         </dl>
       </section>
 
-      <section class="panel new-booking-block" aria-labelledby="detail-people-title">
+      <section class="panel rm-card new-booking-block" aria-labelledby="detail-people-title">
         <h2 id="detail-people-title">2. Booking manager and passenger</h2>
         <div class="new-booking-columns">
           <dl class="new-booking-detail-list">
@@ -57,7 +57,7 @@
         </div>
       </section>
 
-      <section class="panel new-booking-block" aria-labelledby="detail-journey-title">
+      <section class="panel rm-card new-booking-block" aria-labelledby="detail-journey-title">
         <h2 id="detail-journey-title">3. Journey</h2>
         <p><strong>Service:</strong> <%= booking.serviceDate %><%= booking.serviceTime ? ` ${booking.serviceTime}` : "" %> (<%= serviceTimezone %>)</p>
         <p><strong>Vehicle category:</strong> <%= booking.vehicleClassLabel || booking.vehicleClassKey || "Not recorded" %></p>
@@ -77,13 +77,13 @@
         </dl>
       </section>
 
-      <section class="panel new-booking-block" aria-labelledby="detail-cargo-title">
+      <section class="panel rm-card new-booking-block" aria-labelledby="detail-cargo-title">
         <h2 id="detail-cargo-title">4. Passengers and luggage</h2>
         <p data-cargo-summary><%= cargoSummaryText %></p>
         <p>Child seat required: <%= yesNo(booking.childSeatRequired) %> · Booster required: <%= yesNo(booking.boosterRequired) %></p>
       </section>
 
-      <section class="panel new-booking-block" aria-labelledby="detail-fare-title">
+      <section class="panel rm-card new-booking-block" aria-labelledby="detail-fare-title">
         <h2 id="detail-fare-title">5. Fare and itemized breakdown (saved snapshot)</h2>
         <% if (booking.price) { %>
           <p class="form-hint">Quoted <%= booking.price.createdAt ? new Date(booking.price.createdAt).toISOString() : "" %> by <%= booking.price.createdByEmail %> using Fare Settings version <%= booking.price.fareSettingsVersion ?? "unavailable" %>. Later configuration edits do not change this snapshot.</p>
@@ -93,7 +93,7 @@
         <% } %>
       </section>
 
-      <section class="panel new-booking-block" aria-labelledby="detail-customer-quote-title">
+      <section class="panel rm-card new-booking-block" aria-labelledby="detail-customer-quote-title">
         <h2 id="detail-customer-quote-title">6. Customer quote preview</h2>
         <% if (customerQuote) { %>
           <p class="form-hint">What the customer would see for the saved price snapshot: payable items and total only, without statuses, calculation basis, internal IDs or configuration versions.</p>
