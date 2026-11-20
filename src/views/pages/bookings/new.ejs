@@ -50,7 +50,7 @@
         <input type="hidden" name="quotedTotal" value="<%= draft.quotedTotal %>" data-quoted-total>
         <input type="hidden" name="quotedFingerprint" value="<%= draft.quotedFingerprint %>" data-quote-fingerprint>
 
-        <section class="panel new-booking-block new-booking-block--reference" aria-labelledby="booking-reference-title">
+        <section class="panel rm-card new-booking-block new-booking-block--reference" aria-labelledby="booking-reference-title">
           <h2 id="booking-reference-title">1. Booking reference</h2>
           <dl class="new-booking-reference">
             <div><dt>Booking ID</dt><dd data-booking-id><em>Assigned on save</em></dd></div>
@@ -59,7 +59,7 @@
           </dl>
         </section>
 
-        <section class="panel new-booking-block" aria-labelledby="booking-people-title">
+        <section class="panel rm-card new-booking-block" aria-labelledby="booking-people-title">
           <h2 id="booking-people-title">2. Booking manager and passenger</h2>
           <div class="new-booking-columns">
             <fieldset class="new-booking-fieldset">
@@ -167,7 +167,7 @@
           </div>
         </section>
 
-        <section class="panel new-booking-block" aria-labelledby="booking-journey-title">
+        <section class="panel rm-card new-booking-block" aria-labelledby="booking-journey-title">
           <h2 id="booking-journey-title">3. Journey details and map</h2>
           <div class="new-booking-journey">
             <div class="new-booking-journey__form" data-journey-fields>
@@ -284,7 +284,7 @@
           </div>
         </section>
 
-        <section class="panel new-booking-block" aria-labelledby="booking-cargo-title">
+        <section class="panel rm-card new-booking-block" aria-labelledby="booking-cargo-title">
           <h2 id="booking-cargo-title">4. Passengers and luggage</h2>
           <div class="new-booking-counts">
             <% countFields.forEach(([field, label]) => { %>
@@ -316,7 +316,7 @@
           <p class="new-booking-cargo-summary" role="status" aria-live="polite"><strong>Summary:</strong> <span data-cargo-summary><%= cargoSummaryText %></span></p>
         </section>
 
-        <section class="panel new-booking-block" aria-labelledby="booking-fare-title">
+        <section class="panel rm-card new-booking-block" aria-labelledby="booking-fare-title">
           <h2 id="booking-fare-title">5. Fare and itemized breakdown</h2>
           <div class="new-booking-charge-inputs">
             <% if (confirmationFees.length) { %>
