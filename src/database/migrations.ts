@@ -1943,6 +1943,26 @@ export const MIGRATIONS: Migration[] = [
           OR customer_discount_percentage BETWEEN 0.01 AND 100
         );
     `
+  },
+  {
+    id: "0041_booking_status_workflow",
+    sql: `
+      UPDATE customer_bookings SET status = 'New' WHERE status = 'Scheduled';
+
+      CREATE TABLE IF NOT EXISTS booking_status_audit (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        previous_status TEXT NOT NULL,
+        new_status TEXT NOT NULL CHECK (new_status IN ('New', 'Accepted', 'Cancelled')),
+        reason TEXT CHECK (reason IS NULL OR char_length(reason) <= 500),
+        actor_user_id TEXT,
+        actor_user_email TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        CHECK (new_status <> 'Cancelled' OR btrim(COALESCE(reason, '')) <> '')
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_status_audit_booking
+        ON booking_status_audit (booking_id, changed_at DESC);
+    `
   }
 ];
 

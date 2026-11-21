@@ -19,6 +19,18 @@
       <% if (notice === "archived") { %>
         <section class="notice" role="status">Booking archived. The booking and its price history have been retained.</section>
       <% } %>
+      <% if (notice === "status-updated") { %>
+        <section class="notice" role="status">Booking status updated.</section>
+      <% } %>
+      <% if (notice === "status-unchanged") { %>
+        <section class="notice" role="status">Booking already has that status.</section>
+      <% } %>
+      <% if (notice === "status-not-changed") { %>
+        <section class="notice" role="status">Cancelled, completed or archived bookings cannot change status.</section>
+      <% } %>
+      <% if (notice === "status-invalid") { %>
+        <section class="notice notice--critical" role="alert">Choose a valid booking status.</section>
+      <% } %>
       <% if (error) { %>
         <section class="notice notice--critical" role="alert"><%= error %></section>
       <% } %>
@@ -59,48 +71,85 @@
                   <th scope="col">Journey</th>
                   <th scope="col">Status</th>
                   <th scope="col">Assignment</th>
-                  <th scope="col" class="customers-table__actions-heading">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <% bookings.forEach((booking) => { %>
                   <% const assignmentHref = `/customers/${encodeURIComponent(booking.customerId)}/bookings/${encodeURIComponent(booking.id)}/assignment`; %>
-                  <tr>
-                    <td><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></td>
-                    <td>
-                      <a href="/bookings/<%= encodeURIComponent(booking.id) %>"><strong><%= booking.reference %></strong></a>
-                      <% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %>
-                    </td>
-                    <td><%= booking.customerName %></td>
-                    <td><%= booking.pickup %> → <%= booking.dropoff %></td>
-                    <td><span class="status-pill status-pill--booking"><%= booking.status %></span></td>
-                    <td>
-                      <% if (booking.driverName) { %>
-                        <%= booking.driverName %><%= booking.vehicleRegistration ? ` · ${booking.vehicleRegistration}` : "" %>
-                      <% } else { %>
-                        <span>Unassigned</span>
-                      <% } %>
-                    </td>
-                    <td class="customers-table__actions">
-                      <details class="booking-dashboard__actions">
-                        <summary class="button button--secondary">Actions</summary>
-                        <div class="booking-dashboard__actions-menu">
-                          <a href="<%= assignmentHref %>">Assign / view driver</a>
-                          <% if (booking.driverId) { %>
-                            <form method="post" action="<%= assignmentHref %>">
+                  <% const bookingPath = `/bookings/${encodeURIComponent(booking.id)}`; %>
+                  <% const terminalStatus = booking.status === "Cancelled" || booking.status === "Completed"; %>
+                  <% const bookingKey = encodeURIComponent(booking.id); %>
+                  <tr class="booking-dashboard__record">
+                    <td colspan="6">
+                      <details class="booking-dashboard__details">
+                        <summary class="booking-dashboard__summary" aria-controls="booking-actions-<%= bookingKey %>">
+                          <span class="booking-dashboard__service"><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></span>
+                          <span class="booking-dashboard__reference"><strong><%= booking.reference %></strong><% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %></span>
+                          <span class="booking-dashboard__customer"><%= booking.customerName %></span>
+                          <span class="booking-dashboard__journey"><%= booking.pickup %> → <%= booking.dropoff %></span>
+                          <span class="booking-dashboard__status"><span class="status-pill status-pill--booking"><%= booking.status %></span></span>
+                          <span class="booking-dashboard__assignment">
+                            <% if (booking.driverName) { %>
+                              <%= booking.driverName %><%= booking.vehicleRegistration ? ` · ${booking.vehicleRegistration}` : "" %>
+                            <% } else { %>
+                              Unassigned
+                            <% } %>
+                          </span>
+                        </summary>
+                        <div class="booking-dashboard__expanded" id="booking-actions-<%= bookingKey %>">
+                          <div class="booking-dashboard__expanded-heading">
+                            <strong><%= booking.reference %></strong>
+                            <a href="<%= bookingPath %>">Open booking details</a>
+                          </div>
+                          <div class="booking-dashboard__controls">
+                            <% if (!terminalStatus) { %>
+                              <div class="booking-dashboard__action-group">
+                                <span class="booking-dashboard__action-label">Driver</span>
+                                <a class="button button--secondary" href="<%= assignmentHref %>">Assign / view driver</a>
+                                <% if (booking.driverId) { %>
+                                  <form method="post" action="<%= assignmentHref %>">
+                                    <%- locals.csrfField || "" %>
+                                    <input type="hidden" name="action" value="unassign">
+                                    <button type="submit" class="button button--secondary">Deassign driver</button>
+                                  </form>
+                                <% } %>
+                              </div>
+                              <div class="booking-dashboard__action-group">
+                                <span class="booking-dashboard__action-label">Status</span>
+                                <form method="post" action="<%= bookingPath %>/status">
+                                  <%- locals.csrfField || "" %>
+                                  <input type="hidden" name="view" value="<%= view %>">
+                                  <input type="hidden" name="search" value="<%= search %>">
+                                  <input type="hidden" name="status" value="New">
+                                  <button type="submit" class="button button--secondary" <%= booking.status === "New" ? "disabled" : "" %>>Set New</button>
+                                </form>
+                                <form method="post" action="<%= bookingPath %>/status">
+                                  <%- locals.csrfField || "" %>
+                                  <input type="hidden" name="view" value="<%= view %>">
+                                  <input type="hidden" name="search" value="<%= search %>">
+                                  <input type="hidden" name="status" value="Accepted">
+                                  <button type="submit" class="button button--secondary" <%= booking.status === "Accepted" ? "disabled" : "" %>>Accept booking</button>
+                                </form>
+                              </div>
+                              <form method="post" action="<%= bookingPath %>/status" class="booking-dashboard__reason-form">
+                                <%- locals.csrfField || "" %>
+                                <input type="hidden" name="view" value="<%= view %>">
+                                <input type="hidden" name="search" value="<%= search %>">
+                                <input type="hidden" name="status" value="Cancelled">
+                                <label for="cancel-reason-<%= bookingKey %>">Cancellation reason</label>
+                                <input id="cancel-reason-<%= bookingKey %>" name="reason" type="text" maxlength="500" required>
+                                <button type="submit" class="button button--secondary">Cancel booking</button>
+                              </form>
+                            <% } %>
+                            <form method="post" action="<%= bookingPath %>/archive" class="booking-dashboard__reason-form">
                               <%- locals.csrfField || "" %>
-                              <input type="hidden" name="action" value="unassign">
-                              <button type="submit" class="button button--secondary">Deassign driver</button>
+                              <input type="hidden" name="view" value="<%= view %>">
+                              <input type="hidden" name="search" value="<%= search %>">
+                              <label for="archive-reason-<%= bookingKey %>">Archive reason</label>
+                              <input id="archive-reason-<%= bookingKey %>" name="reason" type="text" maxlength="500" required>
+                              <button type="submit" class="button button--secondary">Archive booking</button>
                             </form>
-                          <% } %>
-                          <form method="post" action="/bookings/<%= encodeURIComponent(booking.id) %>/archive" class="booking-dashboard__archive-form">
-                            <%- locals.csrfField || "" %>
-                            <input type="hidden" name="view" value="<%= view %>">
-                            <input type="hidden" name="search" value="<%= search %>">
-                            <label for="archive-reason-<%= encodeURIComponent(booking.id) %>">Archive reason</label>
-                            <input id="archive-reason-<%= encodeURIComponent(booking.id) %>" name="reason" type="text" maxlength="500" required>
-                            <button type="submit" class="button button--secondary">Archive booking</button>
-                          </form>
+                          </div>
                         </div>
                       </details>
                     </td>
