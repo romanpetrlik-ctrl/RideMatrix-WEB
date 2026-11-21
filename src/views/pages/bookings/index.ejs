@@ -14,6 +14,7 @@
       <div class="new-booking-page__title">
         <h1>Bookings</h1>
         <p>Review and manage scheduled bookings. Booking status is shown as currently recorded.</p>
+        <% if (canManageStatusColors) { %><p><a href="/bookings/status-colors">Configure status colours</a></p><% } %>
       </div>
 
       <% if (notice === "archived") { %>
@@ -26,13 +27,36 @@
         <section class="notice" role="status">Booking already has that status.</section>
       <% } %>
       <% if (notice === "status-not-changed") { %>
-        <section class="notice" role="status">Cancelled, completed, no-show or archived bookings cannot change status.</section>
+        <section class="notice" role="status">That status transition is not available for this booking.</section>
       <% } %>
       <% if (notice === "status-invalid") { %>
         <section class="notice notice--critical" role="alert">Choose a valid booking status.</section>
       <% } %>
+      <% if (notice === "alert-resolved") { %>
+        <section class="notice" role="status">Integration alert marked as reviewed.</section>
+      <% } %>
       <% if (error) { %>
         <section class="notice notice--critical" role="alert"><%= error %></section>
+      <% } %>
+
+      <% if (integrationAlerts.length) { %>
+        <section class="panel rm-card" aria-labelledby="booking-integration-alerts-title">
+          <h2 id="booking-integration-alerts-title">Booking integration alerts</h2>
+          <p>Review delivery, payment, and calendar issues. Marking an alert reviewed does not retry the integration.</p>
+          <ul>
+            <% integrationAlerts.forEach((alert) => { %>
+              <li>
+                <strong><a href="/bookings/<%= encodeURIComponent(alert.bookingId) %>"><%= alert.bookingReference %></a>:</strong>
+                <%= alert.message %>
+                <form method="post" action="/bookings/integration-alerts/<%= encodeURIComponent(alert.id) %>/resolve" class="inline-form">
+                  <%- locals.csrfField || "" %>
+                  <input type="hidden" name="view" value="<%= view %>">
+                  <button class="button button--secondary" type="submit">Mark reviewed</button>
+                </form>
+              </li>
+            <% }) %>
+          </ul>
+        </section>
       <% } %>
 
       <section class="panel rm-card booking-dashboard__filters" aria-label="Booking filters">
@@ -84,7 +108,7 @@
                   <% const bookingPath = `/bookings/${encodeURIComponent(booking.id)}`; %>
                   <% const terminalStatus = booking.status === "Cancelled" || booking.status === "Completed" || booking.status === "No Show"; %>
                   <% const bookingKey = encodeURIComponent(booking.id); %>
-                  <tr class="booking-dashboard__record">
+                  <tr class="booking-dashboard__record" style="--booking-operational-color: <%= booking.operationalColor %>; --booking-live-color: <%= booking.liveColor %>">
                     <td colspan="6">
                       <details class="booking-dashboard__details">
                         <summary class="booking-dashboard__summary" aria-controls="booking-actions-<%= bookingKey %>">
@@ -92,7 +116,7 @@
                           <span class="booking-dashboard__reference"><strong><%= booking.reference %></strong><% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %></span>
                           <span class="booking-dashboard__customer"><%= booking.customerName %></span>
                           <span class="booking-dashboard__journey"><%= booking.pickup %> → <%= booking.dropoff %></span>
-                          <span class="booking-dashboard__status"><span class="status-pill status-pill--booking"><%= booking.archivedAt ? "Archived" : booking.status %></span><% if (booking.archivedAt) { %><small>Previously: <%= booking.status %></small><% } %></span>
+                          <span class="booking-dashboard__status"><span class="status-pill status-pill--booking"><%= booking.archivedAt ? "Archived" : booking.status %></span><% if (booking.archivedAt) { %><small>Previously: <%= booking.status %></small><% } %><% if (booking.liveStatus) { %><small>Live: <%= booking.liveStatus %></small><% } else if (booking.driverOnline) { %><small>Driver online</small><% } %></span>
                           <span class="booking-dashboard__assignment">
                             <% if (booking.driverName) { %>
                               <%= booking.driverName %><%= booking.vehicleRegistration ? ` · ${booking.vehicleRegistration}` : "" %>
@@ -102,6 +126,12 @@
                           </span>
                         </summary>
                         <div class="booking-dashboard__expanded" id="booking-actions-<%= bookingKey %>">
+                          <div class="booking-dashboard__indicators" aria-label="Separate journey and payment statuses">
+                            <span class="status-pill status-pill--booking">Payment: <%= booking.paymentStatus || "scheduled" %></span>
+                            <% if (booking.paymentDueAt) { %><span>Due: <%= new Date(booking.paymentDueAt).toLocaleString("en-GB", { timeZone: "Europe/London" }) %></span><% } %>
+                            <% if (booking.liveStatus) { %><span>Live: <%= booking.liveStatus %></span><% } else if (booking.driverOnline) { %><span>Driver online</span><% } %>
+                            <% if (booking.extrasDescription) { %><span>Extras: <%= booking.extrasDescription %> (£<%= booking.extrasAmount %>)<%= booking.extrasPaidAt ? " — paid" : " — awaiting confirmation" %></span><% } %>
+                          </div>
                           <% if (booking.archivedAt) { %>
                             <p class="form-hint">Archived booking — retained for records, not permanently deleted.<% if (booking.archiveReason) { %> Reason: <%= booking.archiveReason %><% } %></p>
                           <% } %>
@@ -118,20 +148,48 @@
                                 <% } %>
                               </div>
                               <div class="booking-dashboard__action-group">
-                                <form method="post" action="<%= bookingPath %>/status">
-                                  <%- locals.csrfField || "" %>
-                                  <input type="hidden" name="view" value="<%= view %>">
-                                  <input type="hidden" name="search" value="<%= search %>">
-                                  <input type="hidden" name="status" value="New">
-                                  <button type="submit" class="button button--secondary" <%= booking.status === "New" ? "disabled" : "" %>>New</button>
-                                </form>
-                                <form method="post" action="<%= bookingPath %>/status">
-                                  <%- locals.csrfField || "" %>
-                                  <input type="hidden" name="view" value="<%= view %>">
-                                  <input type="hidden" name="search" value="<%= search %>">
-                                  <input type="hidden" name="status" value="Accepted">
-                                  <button type="submit" class="button button--secondary" <%= booking.status === "Accepted" ? "disabled" : "" %>>Accept</button>
-                                </form>
+                                <% if (booking.status === "New" || booking.status === "Under availability review") { %>
+                                  <% if (booking.status !== "New") { %>
+                                    <form method="post" action="<%= bookingPath %>/status">
+                                      <%- locals.csrfField || "" %>
+                                      <input type="hidden" name="view" value="<%= view %>">
+                                      <input type="hidden" name="search" value="<%= search %>">
+                                      <input type="hidden" name="status" value="New">
+                                      <button type="submit" class="button button--secondary">New</button>
+                                    </form>
+                                  <% } %>
+                                  <% if (booking.status !== "Under availability review") { %>
+                                    <form method="post" action="<%= bookingPath %>/status">
+                                      <%- locals.csrfField || "" %>
+                                      <input type="hidden" name="view" value="<%= view %>">
+                                      <input type="hidden" name="search" value="<%= search %>">
+                                      <input type="hidden" name="status" value="Under availability review">
+                                      <button type="submit" class="button button--secondary">Review</button>
+                                    </form>
+                                  <% } %>
+                                  <form method="post" action="<%= bookingPath %>/status">
+                                    <%- locals.csrfField || "" %>
+                                    <input type="hidden" name="view" value="<%= view %>">
+                                    <input type="hidden" name="search" value="<%= search %>">
+                                    <input type="hidden" name="status" value="Accepted">
+                                    <button type="submit" class="button button--secondary">Accept</button>
+                                  </form>
+                                <% } else if (booking.status === "Accepted") { %>
+                                  <form method="post" action="<%= bookingPath %>/status">
+                                    <%- locals.csrfField || "" %>
+                                    <input type="hidden" name="view" value="<%= view %>">
+                                    <input type="hidden" name="search" value="<%= search %>">
+                                    <input type="hidden" name="status" value="Under availability review">
+                                    <button type="submit" class="button button--secondary">Review</button>
+                                  </form>
+                                  <form method="post" action="<%= bookingPath %>/status">
+                                    <%- locals.csrfField || "" %>
+                                    <input type="hidden" name="view" value="<%= view %>">
+                                    <input type="hidden" name="search" value="<%= search %>">
+                                    <input type="hidden" name="status" value="New">
+                                    <button type="submit" class="button button--secondary">New</button>
+                                  </form>
+                                <% } %>
                                 <% if (booking.canMarkNoShow) { %>
                                   <form method="post" action="<%= bookingPath %>/status">
                                     <%- locals.csrfField || "" %>
@@ -142,6 +200,15 @@
                                   </form>
                                 <% } %>
                               </div>
+                              <% if (booking.liveStatus === "Ride finished" && (!booking.extrasAmount || booking.extrasPaidAt)) { %>
+                                <form method="post" action="<%= bookingPath %>/status">
+                                  <%- locals.csrfField || "" %>
+                                  <input type="hidden" name="view" value="<%= view %>">
+                                  <input type="hidden" name="search" value="<%= search %>">
+                                  <input type="hidden" name="status" value="Completed">
+                                  <button type="submit" class="button button--secondary">Complete booking</button>
+                                </form>
+                              <% } %>
                               <form method="post" action="<%= bookingPath %>/status" class="booking-dashboard__reason-form">
                                 <%- locals.csrfField || "" %>
                                 <input type="hidden" name="view" value="<%= view %>">

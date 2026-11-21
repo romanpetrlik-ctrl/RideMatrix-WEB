@@ -562,6 +562,11 @@ export async function assignBookingWithLicensing(input: {
       [input.bookingId]
     );
     if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
+    const archivedBooking = await runner.query<{ archived_at: string | null }>(
+      "SELECT archived_at FROM customer_bookings WHERE id = $1",
+      [input.bookingId]
+    );
+    if (archivedBooking.rows[0]?.archived_at) throw new BookingAssignmentError("Archived bookings cannot be assigned.");
     if (booking.rows[0].status === "Cancelled" || booking.rows[0].status === "Completed" || booking.rows[0].status === "No Show") {
       throw new BookingAssignmentError("Cancelled, completed or no-show bookings cannot be assigned.");
     }
@@ -638,6 +643,12 @@ export async function assignBookingWithLicensing(input: {
       vehicleLicenseReference: null
     };
     const assignedAt = new Date().toISOString();
+    const previousStatus = booking.rows[0].status;
+    const actor = await runner.query<{ email: string }>(
+      "SELECT email FROM users WHERE id::text = $1",
+      [input.actorId]
+    );
+    const actorEmail = actor.rows[0]?.email || input.actorId;
     const vehicleId = vehicleLicense.rows[0].vehicle_id;
     const vehicleLicenseBadge = vehicleLicense.rows[0].vehicle_license_badge ?? null;
     await runner.query(
@@ -645,7 +656,25 @@ export async function assignBookingWithLicensing(input: {
           SET operator_id = $2, driver_id = $3, vehicle_id = $4, licensing_authority_id = $5,
               vehicle_license_type = $6, vehicle_license_badge = $7,
               assignment_status = 'assigned', assignment_review_required = FALSE,
-              assigned_at = $8, assigned_by = $9, assignment_source = $10, assignment_reason = $11
+              assigned_at = $8, assigned_by = $9, assignment_source = $10, assignment_reason = $11,
+              status = 'Driver assigned',
+              payment_due_at = CASE
+                WHEN payment_method = 'payment-link' AND payment_status <> 'paid'
+                THEN GREATEST(
+                  CURRENT_TIMESTAMP,
+                  ((service_date::date + COALESCE(service_time, '00:00')::time)
+                    AT TIME ZONE COALESCE(service_timezone, 'Europe/London')) - INTERVAL '24 hours'
+                )
+                ELSE NULL
+              END,
+              payment_deadline_at = CASE
+                WHEN payment_method = 'payment-link' AND payment_status <> 'paid'
+                 AND ((service_date::date + COALESCE(service_time, '00:00')::time)
+                       AT TIME ZONE COALESCE(service_timezone, 'Europe/London')) - INTERVAL '3 hours' > CURRENT_TIMESTAMP
+                THEN ((service_date::date + COALESCE(service_time, '00:00')::time)
+                       AT TIME ZONE COALESCE(service_timezone, 'Europe/London')) - INTERVAL '3 hours'
+                ELSE NULL
+              END
         WHERE id = $1`,
       [input.bookingId, operatorId, input.driverId, vehicleId, selected.id,
         input.vehicleLicenseType, vehicleLicenseBadge, assignedAt, input.actorId,
@@ -660,6 +689,14 @@ export async function assignBookingWithLicensing(input: {
         selected.id, assignedAt, input.actorId, input.source || "dispatch", input.reason || null,
         input.vehicleLicenseType, vehicleLicenseBadge]
     );
+    if (previousStatus !== "Driver assigned") {
+      await runner.query(
+        `INSERT INTO booking_status_audit
+          (id, booking_id, previous_status, new_status, reason, actor_user_id, actor_user_email, changed_at)
+         VALUES ($1,$2,$3,'Driver assigned',NULL,$4,$5,$6)`,
+        [randomUUID(), input.bookingId, previousStatus, input.actorId, actorEmail, assignedAt]
+      );
+    }
     return selected;
   };
   if (client) return work(client);
@@ -680,10 +717,18 @@ export async function unassignBookingVehicle(input: {
       [input.bookingId]
     );
     if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
+    const bookingState = await runner.query<{ status: string }>(
+      "SELECT status FROM customer_bookings WHERE id = $1",
+      [input.bookingId]
+    );
+    const actor = await runner.query<{ email: string }>(
+      "SELECT email FROM users WHERE id::text = $1",
+      [input.actorId]
+    );
     const unassignedAt = new Date().toISOString();
     await runner.query(
       `UPDATE customer_bookings
-          SET vehicle_id=NULL, licensing_authority_id=NULL, vehicle_license_type=NULL,
+          SET operator_id=NULL, driver_id=NULL, vehicle_id=NULL, licensing_authority_id=NULL, vehicle_license_type=NULL,
               vehicle_license_badge=NULL, assignment_status='pending',
               assignment_review_required=$6, assigned_at=$2, assigned_by=$3,
               assignment_source=$4, assignment_reason=$5
@@ -700,6 +745,19 @@ export async function unassignBookingVehicle(input: {
         unassignedAt, input.actorId, input.source || "dispatch",
         input.reason || "Vehicle removed from assignment."]
     );
+    if (bookingState.rows[0]?.status === "Driver assigned" && !input.source?.startsWith("booking-status-")) {
+      await runner.query(
+        "UPDATE customer_bookings SET status = 'Accepted' WHERE id = $1 AND status = 'Driver assigned'",
+        [input.bookingId]
+      );
+      await runner.query(
+        `INSERT INTO booking_status_audit
+          (id, booking_id, previous_status, new_status, reason, actor_user_id, actor_user_email, changed_at)
+         VALUES ($1,$2,'Driver assigned','Accepted',$3,$4,$5,$6)`,
+        [randomUUID(), input.bookingId, input.reason?.trim() || "Driver assignment removed.",
+          input.actorId, actor.rows[0]?.email || input.actorId, unassignedAt]
+      );
+    }
   };
   if (client) return work(client);
   return withTransaction(work);

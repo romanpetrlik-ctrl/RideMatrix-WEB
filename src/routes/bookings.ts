@@ -7,7 +7,11 @@ import {
   archiveBooking as archiveBookingRecord,
   BOOKING_WORKFLOW_STATUSES,
   changeBookingStatus as changeBookingStatusRecord,
+  listBookingStatusColors,
+  saveBookingStatusColor,
+  listOpenBookingIntegrationAlerts,
   listBookingDashboard,
+  resolveBookingIntegrationAlert,
   type BookingDashboardRecord,
   type BookingDashboardView,
   type BookingWorkflowStatus
@@ -21,6 +25,7 @@ import {
   BOOKING_COUNT_FIELDS,
   BOOKING_COUNT_MAX,
   BOOKING_PAYMENT_METHODS,
+  BOOKING_PAYER_TYPES,
   BookingPriceChangedError,
   SERVICE_TIMEZONE,
   STOP_KEYS,
@@ -57,6 +62,8 @@ export type BookingsRouterOptions = {
   createBooking?: typeof createNewBooking;
   getBooking?: (id: string) => Promise<SavedNewBooking | null>;
   listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
+  listIntegrationAlerts?: typeof listOpenBookingIntegrationAlerts;
+  resolveIntegrationAlert?: typeof resolveBookingIntegrationAlert;
   archiveBooking?: typeof archiveBookingRecord;
   changeBookingStatus?: typeof changeBookingStatusRecord;
   now?: () => Date;
@@ -86,9 +93,17 @@ function emptyDraft(now: Date): NewBookingDraft {
     managerName: "",
     managerPhone: "",
     managerEmail: "",
+    notifyBookingManager: false,
+    bookingManagerWhatsappOptIn: false,
+    payerType: "booking_manager",
+    payerName: "",
+    payerEmail: "",
+    payerPhone: "",
     passengerIsManager: true,
     passengerName: "",
     passengerPhone: "",
+    passengerEmail: "",
+    passengerWhatsappOptIn: false,
     serviceDate: service.date,
     serviceTime: service.time,
     vehicleClassKey: "",
@@ -211,6 +226,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       countMax: BOOKING_COUNT_MAX,
       vehicleClasses: reference.vehicleClasses,
       paymentMethods: BOOKING_PAYMENT_METHODS,
+      payerTypes: BOOKING_PAYER_TYPES,
       timeOptions: serviceTimeOptions(),
       serviceTimezone: SERVICE_TIMEZONE,
       cargoSummaryText: cargoSummary(counts, draft.childSeatRequired === "yes", draft.boosterRequired === "yes"),
@@ -226,18 +242,24 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   router.get("/bookings", requireAdminSession, async (req, res, next) => {
     try {
       const actor = res.locals.bookingActor as BookingActor;
+      const session = await loadSession(req.headers.cookie);
       const requestedView = typeof req.query.view === "string" ? req.query.view : "";
       const view: BookingDashboardView = BOOKING_DASHBOARD_VIEWS.includes(requestedView as BookingDashboardView)
         ? requestedView as BookingDashboardView
         : "today";
       const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 100) : "";
-      const bookings = await loadDashboardBookings(view, search);
+      const [bookings, integrationAlerts] = await Promise.all([
+        loadDashboardBookings(view, search),
+        (options.listIntegrationAlerts ?? listOpenBookingIntegrationAlerts)()
+      ]);
       return res.render("pages/bookings/index", {
         title: "Bookings",
         appTitle: options.appTitle,
         email: actor.email,
+        canManageStatusColors: session.user?.roles.includes("superuser") ?? false,
         contextBarActions: [{ label: "New booking", href: "/bookings/new", tone: "primary" }],
         bookings,
+        integrationAlerts,
         view,
         search,
         notice: typeof req.query.notice === "string" ? req.query.notice : "",
@@ -249,6 +271,74 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
               ? "The cancellation reason must be no more than 500 characters."
               : ""
       });
+
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/bookings/integration-alerts/:alertId/resolve", requireAdminSession, csrfGuard, async (req, res, next) => {
+    try {
+      const actor = res.locals.bookingActor as BookingActor;
+      await (options.resolveIntegrationAlert ?? resolveBookingIntegrationAlert)({
+        alertId: String(req.params.alertId),
+        actorId: actor.accountId,
+        actorEmail: actor.email
+      });
+      const view = typeof req.body?.view === "string" && BOOKING_DASHBOARD_VIEWS.includes(req.body.view as BookingDashboardView)
+        ? req.body.view : "today";
+      return res.redirect(303, `/bookings?view=${encodeURIComponent(view)}&notice=alert-resolved`);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  const requireSuperuserForStatusColors = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const session = await loadSession(req.headers.cookie);
+      if (!session.authenticated || !session.user) return res.redirect("/access");
+      if (!session.user.roles.includes("superuser")) {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      res.locals.statusColorActor = { accountId: session.user.id, email: session.user.email };
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+
+  router.get("/bookings/status-colors", requireSuperuserForStatusColors, async (_req, res, next) => {
+    try {
+      const actor = res.locals.statusColorActor as BookingActor;
+      return res.render("pages/bookings/status-colors", {
+        title: "Booking status colours",
+        appTitle: options.appTitle,
+        email: actor.email,
+        colors: await listBookingStatusColors(),
+        notice: typeof _req.query.notice === "string" ? _req.query.notice : ""
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/bookings/status-colors", requireSuperuserForStatusColors, statusRateLimit, csrfGuard, async (req, res, next) => {
+    try {
+      const actor = res.locals.statusColorActor as BookingActor;
+      const statusType = req.body?.statusType === "live" ? "live" : req.body?.statusType === "operational" ? "operational" : null;
+      const statusKey = typeof req.body?.statusKey === "string" ? req.body.statusKey : "";
+      const colorHex = typeof req.body?.colorHex === "string" ? req.body.colorHex : "";
+      if (!statusType || !/^#[0-9A-Fa-f]{6}$/.test(colorHex)) {
+        return res.redirect(303, "/bookings/status-colors?notice=invalid");
+      }
+      const result = await saveBookingStatusColor({
+        statusType,
+        statusKey,
+        colorHex,
+        actorId: actor.accountId,
+        actorEmail: actor.email
+      });
+      return res.redirect(303, `/bookings/status-colors?notice=${result}`);
     } catch (error) {
       return next(error);
     }

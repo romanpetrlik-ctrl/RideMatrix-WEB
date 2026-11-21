@@ -4,7 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright-core";
-import { BOOKING_COUNT_FIELDS, BOOKING_COUNT_MAX, cargoSummary, NEW_CUSTOMER_SELECTION_VALUE, serviceTimeOptions } from "../services/new-bookings";
+import {
+  BOOKING_COUNT_FIELDS,
+  BOOKING_COUNT_MAX,
+  BOOKING_PAYMENT_METHODS,
+  BOOKING_PAYER_TYPES,
+  cargoSummary,
+  NEW_CUSTOMER_SELECTION_VALUE,
+  serviceTimeOptions
+} from "../services/new-bookings";
 
 const ORIGIN = "http://booking.test";
 
@@ -16,9 +24,11 @@ async function renderNewBooking(): Promise<string> {
     email: "dispatcher@example.test",
     draft: {
       customerMode: "existing",
-      customerId: "", managerName: "", managerPhone: "", managerEmail: "", passengerIsManager: true, passengerName: "", passengerPhone: "",
+      customerId: "", managerName: "", managerPhone: "", managerEmail: "", passengerIsManager: true, passengerName: "", passengerPhone: "", passengerEmail: "",
+      passengerWhatsappOptIn: false, bookingManagerWhatsappOptIn: false, payerType: "booking_manager",
+      payerName: "", payerEmail: "", payerPhone: "",
       serviceDate: "2027-03-10", serviceTime: "14:30",
-      vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
+      vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "invoice",
       newCustomerGivenName: "", newCustomerSurname: "", newCustomerPhone: "", newCustomerEmail: "",
       stops: { pickup: { ...emptyStop }, via1: { ...emptyStop }, via2: { ...emptyStop }, dropoff: { ...emptyStop } },
       viaActive: { via1: false, via2: false },
@@ -36,12 +46,8 @@ async function renderNewBooking(): Promise<string> {
       { key: "standard_sedan_hatchback", label: "Standard Sedan / Hatchback" },
       { key: "minibus", label: "Minibus" }
     ],
-    paymentMethods: [
-      { value: "card-online", label: "Card / online payment" },
-      { value: "bank-transfer", label: "Bank transfer" },
-      { value: "card", label: "Card" },
-      { value: "payment-link", label: "Payment link" }
-    ],
+    paymentMethods: BOOKING_PAYMENT_METHODS,
+    payerTypes: BOOKING_PAYER_TYPES,
     airports: [{ id: "airport-x", displayName: "Airport X" }],
     pois: [{ id: "poi-1", displayName: "Hotel One", category: "Hotel" }],
     confirmationFees: [{ id: "fee-1", poiId: "poi-1", poiDisplayName: "Hotel One", action: "Porter", amount: "5.00", feeBasis: "" }],
@@ -172,7 +178,7 @@ test("New Booking page keeps passengers in sync, orders vias and renders server 
     assert.equal(await page.locator("[data-existing-customer-fields]").isVisible(), true);
     assert.equal(await value("#managerName"), "Alex Changed", "switching back restores the selected existing manager");
     assert.equal(await value("[data-passenger-name]"), "Pat Passenger");
-    await page.selectOption("#paymentMethod", "bank-transfer");
+    await page.selectOption("#paymentMethod", "payment-link");
 
     // Cargo summary updates automatically and matches the server wording.
     await page.selectOption("#adults", "2");
