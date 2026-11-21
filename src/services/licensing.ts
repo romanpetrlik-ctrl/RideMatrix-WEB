@@ -562,8 +562,8 @@ export async function assignBookingWithLicensing(input: {
       [input.bookingId]
     );
     if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
-    if (booking.rows[0].status === "Cancelled" || booking.rows[0].status === "Completed") {
-      throw new BookingAssignmentError("Cancelled or completed bookings cannot be assigned.");
+    if (booking.rows[0].status === "Cancelled" || booking.rows[0].status === "Completed" || booking.rows[0].status === "No Show") {
+      throw new BookingAssignmentError("Cancelled, completed or no-show bookings cannot be assigned.");
     }
     const date = serviceDate(booking.rows[0].service_date);
     const setup = await runner.query<{ operator_id: string }>(
