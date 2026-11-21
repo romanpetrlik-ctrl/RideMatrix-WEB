@@ -102,41 +102,35 @@
                           </span>
                         </summary>
                         <div class="booking-dashboard__expanded" id="booking-actions-<%= bookingKey %>">
-                          <div class="booking-dashboard__expanded-heading">
-                            <strong><%= booking.reference %></strong>
-                            <a href="<%= bookingPath %>">Open booking details</a>
-                          </div>
                           <% if (booking.archivedAt) { %>
                             <p class="form-hint">Archived booking — retained for records, not permanently deleted.<% if (booking.archiveReason) { %> Reason: <%= booking.archiveReason %><% } %></p>
                           <% } %>
                           <div class="booking-dashboard__controls">
                             <% if (!booking.archivedAt && !terminalStatus) { %>
                               <div class="booking-dashboard__action-group">
-                                <span class="booking-dashboard__action-label">Driver</span>
-                                <a class="button button--secondary" href="<%= assignmentHref %>">Assign / view driver</a>
+                                <a class="button button--secondary" href="<%= assignmentHref %>">Driver</a>
                                 <% if (booking.driverId) { %>
                                   <form method="post" action="<%= assignmentHref %>">
                                     <%- locals.csrfField || "" %>
                                     <input type="hidden" name="action" value="unassign">
-                                    <button type="submit" class="button button--secondary">Deassign driver</button>
+                                    <button type="submit" class="button button--secondary">Remove driver</button>
                                   </form>
                                 <% } %>
                               </div>
                               <div class="booking-dashboard__action-group">
-                                <span class="booking-dashboard__action-label">Status</span>
                                 <form method="post" action="<%= bookingPath %>/status">
                                   <%- locals.csrfField || "" %>
                                   <input type="hidden" name="view" value="<%= view %>">
                                   <input type="hidden" name="search" value="<%= search %>">
                                   <input type="hidden" name="status" value="New">
-                                  <button type="submit" class="button button--secondary" <%= booking.status === "New" ? "disabled" : "" %>>Set New</button>
+                                  <button type="submit" class="button button--secondary" <%= booking.status === "New" ? "disabled" : "" %>>New</button>
                                 </form>
                                 <form method="post" action="<%= bookingPath %>/status">
                                   <%- locals.csrfField || "" %>
                                   <input type="hidden" name="view" value="<%= view %>">
                                   <input type="hidden" name="search" value="<%= search %>">
                                   <input type="hidden" name="status" value="Accepted">
-                                  <button type="submit" class="button button--secondary" <%= booking.status === "Accepted" ? "disabled" : "" %>>Accept booking</button>
+                                  <button type="submit" class="button button--secondary" <%= booking.status === "Accepted" ? "disabled" : "" %>>Accept</button>
                                 </form>
                                 <% if (booking.canMarkNoShow) { %>
                                   <form method="post" action="<%= bookingPath %>/status">
@@ -144,7 +138,7 @@
                                     <input type="hidden" name="view" value="<%= view %>">
                                     <input type="hidden" name="search" value="<%= search %>">
                                     <input type="hidden" name="status" value="No Show">
-                                    <button type="submit" class="button button--secondary">Mark no show</button>
+                                    <button type="submit" class="button button--secondary">No show</button>
                                   </form>
                                 <% } %>
                               </div>
@@ -153,9 +147,9 @@
                                 <input type="hidden" name="view" value="<%= view %>">
                                 <input type="hidden" name="search" value="<%= search %>">
                                 <input type="hidden" name="status" value="Cancelled">
-                                <label for="cancel-reason-<%= bookingKey %>">Cancellation reason</label>
-                                <input id="cancel-reason-<%= bookingKey %>" name="reason" type="text" maxlength="500" required>
-                                <button type="submit" class="button button--secondary">Cancel booking</button>
+                                <label class="visually-hidden" for="cancel-reason-<%= bookingKey %>">Cancellation reason</label>
+                                <input id="cancel-reason-<%= bookingKey %>" name="reason" type="text" maxlength="500" placeholder="Cancellation reason" required>
+                                <button type="submit" class="button button--secondary">Cancel</button>
                               </form>
                             <% } %>
                             <% if (!booking.archivedAt) { %>
@@ -163,11 +157,12 @@
                               <%- locals.csrfField || "" %>
                               <input type="hidden" name="view" value="<%= view %>">
                               <input type="hidden" name="search" value="<%= search %>">
-                              <label for="archive-reason-<%= bookingKey %>">Archive reason</label>
-                              <input id="archive-reason-<%= bookingKey %>" name="reason" type="text" maxlength="500" required>
-                              <button type="submit" class="button button--secondary">Archive booking</button>
+                              <label class="visually-hidden" for="archive-reason-<%= bookingKey %>">Archive reason</label>
+                              <input id="archive-reason-<%= bookingKey %>" name="reason" type="text" maxlength="500" placeholder="Archive reason" required>
+                              <button type="submit" class="button button--secondary">Archive</button>
                             </form>
                             <% } %>
+                            <a class="button button--secondary" href="<%= bookingPath %>">Details</a>
                           </div>
                         </div>
                       </details>

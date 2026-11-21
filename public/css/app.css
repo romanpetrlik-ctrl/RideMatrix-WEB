@@ -1929,45 +1929,29 @@ button:visited,
 }
 
 .booking-dashboard__expanded {
-  padding: 1rem 1.25rem 1.25rem;
+  padding: 0.55rem 0.75rem 0.65rem;
   border-top: 1px solid var(--rm-light-bronze);
   background: rgba(253, 248, 242, 0.55);
-}
-
-.booking-dashboard__expanded-heading {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
 }
 
 .booking-dashboard__controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .booking-dashboard__action-group,
 .booking-dashboard__reason-form {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  gap: 0.65rem;
-  min-width: 12rem;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0;
 }
 
-.booking-dashboard__action-label,
-.booking-dashboard__reason-form label {
-  flex-basis: 100%;
-  color: var(--rm-walnut);
-  font-weight: 700;
-}
-
 .booking-dashboard__reason-form input {
-  width: min(100%, 16rem);
+  width: min(100%, 14rem);
   max-width: 100%;
   margin: 0;
 }
