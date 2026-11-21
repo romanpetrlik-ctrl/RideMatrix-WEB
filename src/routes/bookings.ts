@@ -314,7 +314,8 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         title: "Booking status colours",
         appTitle: options.appTitle,
         email: actor.email,
-        colors: await listBookingStatusColors()
+        colors: await listBookingStatusColors(),
+        notice: typeof _req.query.notice === "string" ? _req.query.notice : ""
       });
     } catch (error) {
       return next(error);
