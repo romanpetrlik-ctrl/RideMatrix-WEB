@@ -201,6 +201,10 @@ export async function changeBookingStatus(input: {
         reason: input.status === "Cancelled" ? "Booking cancelled." : "Booking marked as no show.",
         requireReview: false
       }, client);
+      await client.query(
+        "UPDATE customer_bookings SET driver_id = NULL WHERE id = $1",
+        [input.bookingId]
+      );
     }
     await client.query(
       "UPDATE customer_bookings SET status = $2 WHERE id = $1 AND archived_at IS NULL",
