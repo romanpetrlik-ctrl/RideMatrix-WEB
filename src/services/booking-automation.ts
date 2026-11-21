@@ -225,7 +225,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
             b.driver_id, COALESCE(dp.short_name, u.email) AS driver_name,
             dp.whatsapp_phone AS driver_whatsapp_phone, COALESCE(dp.whatsapp_opt_in, FALSE) AS driver_whatsapp_opt_in
        FROM customer_bookings b
-       LEFT JOIN users u ON u.id = b.driver_id
+       LEFT JOIN users u ON u.id::text = b.driver_id
        LEFT JOIN driver_profiles dp ON dp.driver_id = b.driver_id::text
       WHERE b.archived_at IS NULL AND b.status NOT IN ('Cancelled', 'Completed', 'No Show')
         AND ((b.service_date::date + COALESCE(b.service_time, '00:00')::time)
