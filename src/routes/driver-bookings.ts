@@ -58,7 +58,7 @@ export function createDriverBookingsRouter(options: DriverBookingsRouterOptions)
         notice: req.query.notice === "updated" || req.query.notice === "online" || req.query.notice === "offline" ||
           req.query.notice === "calendar-connected" || req.query.notice === "calendar-disconnected" ||
           req.query.notice === "whatsapp-saved" ||
-          req.query.notice === "calendar-error"
+          req.query.notice === "calendar-error" || req.query.notice === "invalid" || req.query.notice === "not-changeable"
           ? req.query.notice : "",
         email: session.user.email,
         liveStatuses: BOOKING_LIVE_STATUSES
