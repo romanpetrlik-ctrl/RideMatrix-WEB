@@ -334,22 +334,30 @@ export async function updateDriverBookingStatus(input: {
           : "Live status WhatsApp skipped because explicit passenger opt-in is missing.");
       }
     }
-    if (current.notify_booking_manager && !current.passenger_is_booking_manager) {
+    if (current.notify_booking_manager) {
       const managerName = current.booking_manager_name || "Booking manager";
-      if (current.booking_manager_email) {
-        await queueStatusDelivery("booking_manager", "email", managerName, current.booking_manager_email);
-      } else {
-        await createAlert("live-status-booking-manager-email-missing", "Booking manager notifications are enabled but no email address is available.");
+      const passengerEmailQueued = earlyStatus && Boolean(current.passenger_email) &&
+        current.passenger_email === current.booking_manager_email;
+      const passengerWhatsAppQueued = earlyStatus && current.passenger_whatsapp_opt_in &&
+        Boolean(current.passenger_phone) && current.passenger_phone === current.booking_manager_phone;
+      if (!passengerEmailQueued) {
+        if (current.booking_manager_email) {
+          await queueStatusDelivery("booking_manager", "email", managerName, current.booking_manager_email);
+        } else {
+          await createAlert("live-status-booking-manager-email-missing", "Booking manager notifications are enabled but no email address is available.");
+        }
       }
-      if (current.booking_manager_whatsapp_opt_in && current.booking_manager_phone) {
-        await queueStatusDelivery("booking_manager", "whatsapp", managerName, current.booking_manager_phone);
-      } else {
-        await createAlert(current.booking_manager_whatsapp_opt_in
-          ? "live-status-booking-manager-whatsapp-phone-missing"
-          : "live-status-booking-manager-whatsapp-opt-in-missing",
-        current.booking_manager_whatsapp_opt_in
-          ? "Live status WhatsApp skipped because the booking manager has no phone number."
-          : "Live status WhatsApp skipped because explicit booking manager opt-in is missing.");
+      if (!passengerWhatsAppQueued) {
+        if (current.booking_manager_whatsapp_opt_in && current.booking_manager_phone) {
+          await queueStatusDelivery("booking_manager", "whatsapp", managerName, current.booking_manager_phone);
+        } else {
+          await createAlert(current.booking_manager_whatsapp_opt_in
+            ? "live-status-booking-manager-whatsapp-phone-missing"
+            : "live-status-booking-manager-whatsapp-opt-in-missing",
+          current.booking_manager_whatsapp_opt_in
+            ? "Live status WhatsApp skipped because the booking manager has no phone number."
+            : "Live status WhatsApp skipped because explicit booking manager opt-in is missing.");
+        }
       }
     }
     return "updated";
