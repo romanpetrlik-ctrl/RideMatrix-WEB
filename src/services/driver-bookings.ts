@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { query, withTransaction } from "../database/connection";
 import { BOOKING_LIVE_STATUSES, type BookingLiveStatus } from "./booking-dashboard";
 
@@ -125,6 +126,35 @@ export async function isDriverOnline(driverId: string): Promise<boolean> {
   return result.rows[0]?.online ?? false;
 }
 
+export async function getDriverWhatsAppSettings(driverId: string): Promise<{ phone: string; optedIn: boolean }> {
+  const result = await query<{ whatsapp_phone: string | null; whatsapp_opt_in: boolean }>(
+    "SELECT whatsapp_phone, whatsapp_opt_in FROM driver_profiles WHERE driver_id = $1",
+    [driverId]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error(`Driver profile ${driverId} is missing.`);
+  return { phone: row.whatsapp_phone ?? "", optedIn: row.whatsapp_opt_in };
+}
+
+export async function saveDriverWhatsAppSettings(input: {
+  driverId: string;
+  phone: string;
+  optedIn: boolean;
+}): Promise<void> {
+  const rawPhone = input.phone.trim();
+  const parsedPhone = rawPhone ? parsePhoneNumberFromString(rawPhone) : null;
+  if (rawPhone && !parsedPhone?.isValid()) throw new TypeError("Enter a valid international WhatsApp number.");
+  if (input.optedIn && !parsedPhone) throw new TypeError("Enter a WhatsApp number before opting in.");
+  const updatedAt = new Date().toISOString();
+  const result = await query(
+    `UPDATE driver_profiles
+        SET whatsapp_phone = $2, whatsapp_opt_in = $3, updated_at = $4
+      WHERE driver_id = $1`,
+    [input.driverId, parsedPhone?.number ?? null, input.optedIn, updatedAt]
+  );
+  if (!result.rowCount) throw new Error(`Driver profile ${input.driverId} is missing.`);
+}
+
 export async function updateDriverBookingStatus(input: {
   bookingId: string;
   driverId: string;
@@ -154,11 +184,16 @@ export async function updateDriverBookingStatus(input: {
   return withTransaction(async (client) => {
     const currentResult = await client.query<{
       live_status: string | null;
+      reference: string;
       passenger_name: string | null;
       passenger_phone: string | null;
+      passenger_email: string | null;
+      passenger_whatsapp_opt_in: boolean;
+      passenger_is_booking_manager: boolean | null;
       booking_manager_name: string | null;
       booking_manager_phone: string | null;
       booking_manager_email: string | null;
+      booking_manager_whatsapp_opt_in: boolean;
       notify_booking_manager: boolean;
       extras_amount: string | null;
       extras_paid_at: string | null;
@@ -168,9 +203,10 @@ export async function updateDriverBookingStatus(input: {
       pickup_deferred_minutes: number | null;
       pickup_fee_covered_minutes: number | null;
     }>(
-      `SELECT b.live_status, b.passenger_name, b.passenger_phone,
+      `SELECT b.live_status, b.reference, b.passenger_name, b.passenger_phone, b.passenger_email,
+              b.passenger_whatsapp_opt_in, b.passenger_is_booking_manager,
               b.booking_manager_name, b.booking_manager_phone, b.booking_manager_email,
-              b.notify_booking_manager, b.extras_amount, b.extras_paid_at,
+              b.booking_manager_whatsapp_opt_in, b.notify_booking_manager, b.extras_amount, b.extras_paid_at,
               pickup.location_kind AS pickup_location_kind, pickup.managed_location_id AS pickup_airport_id,
               airport.pickup_deferred_enabled, airport.pickup_deferred_minutes, airport.pickup_fee_covered_minutes
          FROM customer_bookings b
@@ -251,6 +287,69 @@ export async function updateDriverBookingStatus(input: {
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [randomUUID(), input.bookingId, eventId, recipient.type, recipient.name, recipient.email, recipient.phone]
       );
+    }
+
+    const payload = JSON.stringify({ reference: current.reference, status: input.status });
+    const eventKey = `${eventId}:${input.status}`;
+    const queueStatusDelivery = async (
+      recipientType: "lead_passenger" | "booking_manager",
+      channel: "email" | "whatsapp",
+      name: string,
+      contact: string
+    ) => {
+      await client.query(
+        `INSERT INTO booking_delivery_outbox (
+           id, booking_id, event_type, event_key, recipient_type, channel,
+           recipient_name, recipient_contact, payload, available_at
+         ) VALUES ($1,$2,'live_status',$3,$4,$5,$6,$7,$8::jsonb,$9)
+         ON CONFLICT (booking_id, event_type, event_key, recipient_type, channel, recipient_contact) DO NOTHING`,
+        [randomUUID(), input.bookingId, eventKey, recipientType, channel, name.slice(0, 200),
+          contact.slice(0, 254), payload, occurredAt]
+      );
+    };
+    const createAlert = async (alertType: string, message: string) => {
+      await client.query(
+        `INSERT INTO booking_integration_alerts (id, booking_id, alert_type, details)
+         VALUES ($1,$2,$3,$4::jsonb)
+         ON CONFLICT (booking_id, alert_type) DO NOTHING`,
+        [randomUUID(), input.bookingId, alertType, JSON.stringify({ message, liveStatus: input.status })]
+      );
+    };
+    if (earlyStatus) {
+      const passengerName = current.passenger_name || "Lead passenger";
+      if (current.passenger_email) {
+        await queueStatusDelivery("lead_passenger", "email", passengerName, current.passenger_email);
+      } else {
+        await createAlert("live-status-passenger-email-missing", "Live status email skipped because the lead passenger has no email address.");
+      }
+      if (current.passenger_whatsapp_opt_in && current.passenger_phone) {
+        await queueStatusDelivery("lead_passenger", "whatsapp", passengerName, current.passenger_phone);
+      } else {
+        await createAlert(current.passenger_whatsapp_opt_in
+          ? "live-status-passenger-whatsapp-phone-missing"
+          : "live-status-passenger-whatsapp-opt-in-missing",
+        current.passenger_whatsapp_opt_in
+          ? "Live status WhatsApp skipped because the lead passenger has no phone number."
+          : "Live status WhatsApp skipped because explicit passenger opt-in is missing.");
+      }
+    }
+    if (current.notify_booking_manager && !current.passenger_is_booking_manager) {
+      const managerName = current.booking_manager_name || "Booking manager";
+      if (current.booking_manager_email) {
+        await queueStatusDelivery("booking_manager", "email", managerName, current.booking_manager_email);
+      } else {
+        await createAlert("live-status-booking-manager-email-missing", "Booking manager notifications are enabled but no email address is available.");
+      }
+      if (current.booking_manager_whatsapp_opt_in && current.booking_manager_phone) {
+        await queueStatusDelivery("booking_manager", "whatsapp", managerName, current.booking_manager_phone);
+      } else {
+        await createAlert(current.booking_manager_whatsapp_opt_in
+          ? "live-status-booking-manager-whatsapp-phone-missing"
+          : "live-status-booking-manager-whatsapp-opt-in-missing",
+        current.booking_manager_whatsapp_opt_in
+          ? "Live status WhatsApp skipped because the booking manager has no phone number."
+          : "Live status WhatsApp skipped because explicit booking manager opt-in is missing.");
+      }
     }
     return "updated";
   });

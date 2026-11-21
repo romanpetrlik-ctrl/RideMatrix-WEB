@@ -2110,6 +2110,150 @@ export const MIGRATIONS: Migration[] = [
         ('live', 'Ride finished', 'Ride finished', '#16806B')
       ON CONFLICT (status_type, status_key) DO NOTHING;
     `
+  },
+  {
+    id: "0044_automated_booking_integrations",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS passenger_email TEXT,
+        ADD COLUMN IF NOT EXISTS passenger_whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS booking_manager_whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS payer_type TEXT NOT NULL DEFAULT 'booking_manager',
+        ADD COLUMN IF NOT EXISTS payer_name TEXT,
+        ADD COLUMN IF NOT EXISTS payer_email TEXT,
+        ADD COLUMN IF NOT EXISTS payer_phone TEXT,
+        ADD COLUMN IF NOT EXISTS payment_paid_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS payment_deadline_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS stripe_checkout_session_id TEXT,
+        ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT,
+        ADD COLUMN IF NOT EXISTS payment_link_sent_at TIMESTAMPTZ;
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_method_check,
+        ADD CONSTRAINT customer_bookings_payment_method_check
+          CHECK (payment_method IS NULL OR payment_method IN (
+            'invoice', 'payment-link', 'card-online', 'bank-transfer', 'card'
+          )),
+        DROP CONSTRAINT IF EXISTS customer_bookings_payer_type_check,
+        ADD CONSTRAINT customer_bookings_payer_type_check
+          CHECK (payer_type IN ('booking_manager', 'lead_passenger', 'other')),
+        DROP CONSTRAINT IF EXISTS customer_bookings_payer_details_check,
+        ADD CONSTRAINT customer_bookings_payer_details_check
+          CHECK (
+            (payer_name IS NULL OR char_length(payer_name) <= 200)
+            AND (payer_email IS NULL OR char_length(payer_email) <= 254)
+            AND (payer_phone IS NULL OR char_length(payer_phone) <= 50)
+          ),
+        DROP CONSTRAINT IF EXISTS customer_bookings_passenger_email_check,
+        ADD CONSTRAINT customer_bookings_passenger_email_check
+          CHECK (passenger_email IS NULL OR char_length(passenger_email) <= 254);
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_status_check,
+        ADD CONSTRAINT customer_bookings_payment_status_check
+          CHECK (payment_status IN ('scheduled', 'link_sent', 'paid', 'failed', 'expired', 'refunded'));
+
+      ALTER TABLE driver_profiles
+        ADD COLUMN IF NOT EXISTS whatsapp_phone TEXT,
+        ADD COLUMN IF NOT EXISTS whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE;
+
+      CREATE TABLE IF NOT EXISTS booking_integration_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        minimum_online_notice_hours INTEGER NOT NULL DEFAULT 12
+          CHECK (minimum_online_notice_hours IN (6, 12, 24)),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO booking_integration_settings (id, minimum_online_notice_hours)
+      VALUES (1, 12) ON CONFLICT (id) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS booking_delivery_outbox (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL CHECK (event_type IN (
+          'payment_link', 'payment_cancelled', 'customer_reminder_24h',
+          'driver_reminder_24h', 'live_status'
+        )),
+        event_key TEXT NOT NULL DEFAULT '',
+        recipient_type TEXT NOT NULL CHECK (recipient_type IN (
+          'payer', 'lead_passenger', 'booking_manager', 'driver'
+        )),
+        channel TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp')),
+        recipient_name TEXT NOT NULL,
+        recipient_contact TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(payload) = 'object'),
+        available_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        delivery_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (delivery_status IN ('pending', 'sending', 'sent', 'failed', 'skipped')),
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMPTZ,
+        UNIQUE (booking_id, event_type, event_key, recipient_type, channel, recipient_contact)
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_delivery_outbox_due
+        ON booking_delivery_outbox (available_at, created_at)
+        WHERE delivery_status IN ('pending', 'failed', 'sending');
+
+      CREATE TABLE IF NOT EXISTS booking_integration_alerts (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        alert_type TEXT NOT NULL,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMPTZ,
+        resolved_by_account_id TEXT,
+        resolved_by_email TEXT,
+        UNIQUE (booking_id, alert_type)
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_calendar_events (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        calendar_scope TEXT NOT NULL CHECK (calendar_scope IN ('dispatch', 'driver')),
+        driver_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        provider TEXT NOT NULL CHECK (provider IN ('microsoft', 'google')),
+        external_event_id TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (sync_status IN ('pending', 'synced', 'failed', 'deleted')),
+        last_error TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_dispatch_calendar_event
+        ON booking_calendar_events (booking_id) WHERE calendar_scope = 'dispatch';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_driver_calendar_event
+        ON booking_calendar_events (booking_id, driver_id) WHERE calendar_scope = 'driver';
+      CREATE INDEX IF NOT EXISTS idx_booking_calendar_events_sync
+        ON booking_calendar_events (sync_status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS driver_calendar_connections (
+        driver_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('microsoft', 'google')),
+        calendar_email TEXT NOT NULL,
+        encrypted_access_token TEXT NOT NULL,
+        encrypted_refresh_token TEXT NOT NULL,
+        access_token_expires_at TIMESTAMPTZ NOT NULL,
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS driver_calendar_oauth_states (
+        state_hash TEXT PRIMARY KEY,
+        driver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('microsoft', 'google')),
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_calendar_oauth_states_expiry
+        ON driver_calendar_oauth_states (expires_at);
+
+      CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+        event_id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `
   }
 ];
 

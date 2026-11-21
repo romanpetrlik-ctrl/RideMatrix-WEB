@@ -66,10 +66,17 @@ function body(overrides: Record<string, unknown> = {}) {
     managerPhone: manager.phone,
     managerEmail: manager.email,
     passengerIsManager: "yes",
+    passengerEmail: manager.email,
+    passengerWhatsappOptIn: "",
+    bookingManagerWhatsappOptIn: "",
+    payerType: "booking_manager",
+    payerName: manager.name,
+    payerEmail: manager.email,
+    payerPhone: manager.phone,
     serviceDate: "2027-03-10",
     serviceTime: "12:05",
     vehicleClassKey: "standard_sedan_hatchback",
-    paymentMethod: "card-online",
+    paymentMethod: "invoice",
     pickupKind: "airport",
     pickupAirportId: "airport-1",
     dropoffKind: "address",
@@ -115,7 +122,7 @@ test("booking manager must be an existing active customer and contact details ar
   const unknown = await validateNewBooking(readNewBookingDraft(body({ customerId: "not-a-customer" })), reference, dependencies, loadManager);
   assert.ok(unknown.errors.some((error) => error.field === "customerId"));
   const invalid = await validateNewBooking(readNewBookingDraft(body({ managerName: "", managerPhone: "abc", managerEmail: "nope" })), reference, dependencies, loadManager);
-  assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["managerEmail", "managerName", "managerPhone"]);
+  assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["managerEmail", "managerName", "managerPhone", "passengerEmail"]);
 });
 
 test("customer-profile discount is derived from the selected customer, not the submitted form", async () => {
@@ -171,7 +178,7 @@ test("new individual customer details validate and become the booking manager wi
     newCustomerPhone: "bad",
     newCustomerEmail: "not-an-email"
   })), reference, dependencies, async () => null);
-  assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["newCustomerEmail", "newCustomerGivenName", "newCustomerPhone"]);
+  assert.deepEqual(invalid.errors.map((error) => error.field).sort(), ["newCustomerEmail", "newCustomerGivenName", "newCustomerPhone", "passengerEmail"]);
 });
 
 test("passenger and luggage counts default to 0, accept 0–7 and reject anything else", async () => {
@@ -291,11 +298,18 @@ test("confirmed POI fees are kept only for POIs selected in the journey", async 
 });
 
 test("browser passenger sync, via ordering and route summary helpers", () => {
-  const managerValues = { name: "Manager", phone: "0123" };
-  const own = { name: "Pat", phone: "0456" };
-  assert.deepEqual(newBookingClient.passengerState(managerValues, own, true), { name: "Manager", phone: "0123", readOnly: true });
-  assert.deepEqual(newBookingClient.passengerState({ name: "Renamed", phone: "0999" }, own, true), { name: "Renamed", phone: "0999", readOnly: true });
-  assert.deepEqual(newBookingClient.passengerState(managerValues, own, false), { name: "Pat", phone: "0456", readOnly: false });
+  const managerValues = { name: "Manager", phone: "0123", email: "manager@example.test" };
+  const renamedManager = { name: "Renamed", phone: "0999", email: "new@example.test" };
+  const own = { name: "Pat", phone: "0456", email: "pat@example.test" };
+  assert.deepEqual(newBookingClient.passengerState(managerValues, own, true), {
+    name: "Manager", phone: "0123", email: "manager@example.test", readOnly: true
+  });
+  assert.deepEqual(newBookingClient.passengerState(renamedManager, own, true), {
+    name: "Renamed", phone: "0999", email: "new@example.test", readOnly: true
+  });
+  assert.deepEqual(newBookingClient.passengerState(managerValues, own, false), {
+    name: "Pat", phone: "0456", email: "pat@example.test", readOnly: false
+  });
 
   assert.equal(newBookingClient.nextViaToAdd({ via1: false, via2: false }), "via1");
   assert.equal(newBookingClient.nextViaToAdd({ via1: true, via2: false }), "via2");

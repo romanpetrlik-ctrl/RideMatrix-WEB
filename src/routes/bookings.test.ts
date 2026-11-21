@@ -98,6 +98,8 @@ async function withApp(
       return { id: "booking-uuid", reference: "RMB-000042", customerId: args[0].customerId };
     },
     getBooking: async (id) => id === "booking-uuid" ? options.booking ?? savedBooking : null,
+    listIntegrationAlerts: async () => [],
+    resolveIntegrationAlert: async () => true,
     ...(options.listDashboardBookings ? { listDashboardBookings: options.listDashboardBookings } : {}),
     ...(options.archiveBooking ? { archiveBooking: options.archiveBooking } : {}),
     ...(options.changeBookingStatus ? { changeBookingStatus: options.changeBookingStatus } : {}),
@@ -117,7 +119,7 @@ function form(fields: Record<string, string | string[]> = {}) {
   const all: Record<string, string | string[]> = {
     customerId: "cust-b", managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test",
     passengerIsManager: "yes", serviceDate: "2027-03-10", serviceTime: "14:30",
-    vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "card-online",
+    vehicleClassKey: "standard_sedan_hatchback", paymentMethod: "payment-link",
     pickupKind: "airport", pickupAirportId: "airport-x", dropoffKind: "airport", dropoffAirportId: "airport-x",
     adults: "2", children: "0", xlBaggage: "1", childSeatRequired: "no", boosterRequired: "no",
     ...fields
@@ -137,7 +139,7 @@ const savedBooking: SavedNewBooking = {
   id: "booking-uuid", customerId: "cust-b", reference: "RMB-000042", createdAt: "2027-03-10T09:00:00.000Z", createdByEmail: "dispatcher@example.test",
   serviceDate: "2027-03-10", serviceTime: "14:30", serviceTimezone: "Europe/London", status: "Scheduled",
   managerName: "Blair Booker", managerPhone: "+44 7700 900002", managerEmail: "blair@example.test", passengerIsManager: true,
-  vehicleClassKey: "standard_sedan_hatchback", vehicleClassLabel: "Standard Sedan / Hatchback", paymentMethod: "card-online",
+  vehicleClassKey: "standard_sedan_hatchback", vehicleClassLabel: "Standard Sedan / Hatchback", paymentMethod: "payment-link",
   passengerName: "Blair Booker", passengerPhone: "+44 7700 900002",
   counts: { adults: 2, children: 0, sportsEquipment: 0, xlBaggage: 1, lBaggage: 0, cabinHandBags: 0, backpacks: 0 },
   childSeatRequired: false, boosterRequired: false,

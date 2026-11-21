@@ -9,7 +9,9 @@ import {
   changeBookingStatus as changeBookingStatusRecord,
   listBookingStatusColors,
   saveBookingStatusColor,
+  listOpenBookingIntegrationAlerts,
   listBookingDashboard,
+  resolveBookingIntegrationAlert,
   type BookingDashboardRecord,
   type BookingDashboardView,
   type BookingWorkflowStatus
@@ -23,6 +25,7 @@ import {
   BOOKING_COUNT_FIELDS,
   BOOKING_COUNT_MAX,
   BOOKING_PAYMENT_METHODS,
+  BOOKING_PAYER_TYPES,
   BookingPriceChangedError,
   SERVICE_TIMEZONE,
   STOP_KEYS,
@@ -59,6 +62,8 @@ export type BookingsRouterOptions = {
   createBooking?: typeof createNewBooking;
   getBooking?: (id: string) => Promise<SavedNewBooking | null>;
   listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
+  listIntegrationAlerts?: typeof listOpenBookingIntegrationAlerts;
+  resolveIntegrationAlert?: typeof resolveBookingIntegrationAlert;
   archiveBooking?: typeof archiveBookingRecord;
   changeBookingStatus?: typeof changeBookingStatusRecord;
   now?: () => Date;
@@ -89,9 +94,16 @@ function emptyDraft(now: Date): NewBookingDraft {
     managerPhone: "",
     managerEmail: "",
     notifyBookingManager: false,
+    bookingManagerWhatsappOptIn: false,
+    payerType: "booking_manager",
+    payerName: "",
+    payerEmail: "",
+    payerPhone: "",
     passengerIsManager: true,
     passengerName: "",
     passengerPhone: "",
+    passengerEmail: "",
+    passengerWhatsappOptIn: false,
     serviceDate: service.date,
     serviceTime: service.time,
     vehicleClassKey: "",
@@ -214,6 +226,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       countMax: BOOKING_COUNT_MAX,
       vehicleClasses: reference.vehicleClasses,
       paymentMethods: BOOKING_PAYMENT_METHODS,
+      payerTypes: BOOKING_PAYER_TYPES,
       timeOptions: serviceTimeOptions(),
       serviceTimezone: SERVICE_TIMEZONE,
       cargoSummaryText: cargoSummary(counts, draft.childSeatRequired === "yes", draft.boosterRequired === "yes"),
@@ -235,7 +248,10 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         ? requestedView as BookingDashboardView
         : "today";
       const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 100) : "";
-      const bookings = await loadDashboardBookings(view, search);
+      const [bookings, integrationAlerts] = await Promise.all([
+        loadDashboardBookings(view, search),
+        (options.listIntegrationAlerts ?? listOpenBookingIntegrationAlerts)()
+      ]);
       return res.render("pages/bookings/index", {
         title: "Bookings",
         appTitle: options.appTitle,
@@ -243,6 +259,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         canManageStatusColors: session.user?.roles.includes("superuser") ?? false,
         contextBarActions: [{ label: "New booking", href: "/bookings/new", tone: "primary" }],
         bookings,
+        integrationAlerts,
         view,
         search,
         notice: typeof req.query.notice === "string" ? req.query.notice : "",
@@ -254,6 +271,23 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
               ? "The cancellation reason must be no more than 500 characters."
               : ""
       });
+
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/bookings/integration-alerts/:alertId/resolve", requireAdminSession, csrfGuard, async (req, res, next) => {
+    try {
+      const actor = res.locals.bookingActor as BookingActor;
+      await (options.resolveIntegrationAlert ?? resolveBookingIntegrationAlert)({
+        alertId: String(req.params.alertId),
+        actorId: actor.accountId,
+        actorEmail: actor.email
+      });
+      const view = typeof req.body?.view === "string" && BOOKING_DASHBOARD_VIEWS.includes(req.body.view as BookingDashboardView)
+        ? req.body.view : "today";
+      return res.redirect(303, `/bookings?view=${encodeURIComponent(view)}&notice=alert-resolved`);
     } catch (error) {
       return next(error);
     }

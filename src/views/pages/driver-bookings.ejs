@@ -16,7 +16,42 @@
       </header>
       <% if (notice === "updated") { %><section class="notice" role="status">Journey status updated.</section><% } %>
       <% if (notice === "online" || notice === "offline") { %><section class="notice" role="status">Driver presence updated.</section><% } %>
+      <% if (notice === "calendar-connected" || notice === "calendar-disconnected") { %><section class="notice" role="status">Calendar connection updated.</section><% } %>
+      <% if (notice === "whatsapp-saved") { %><section class="notice" role="status">WhatsApp reminder preferences saved.</section><% } %>
+      <% if (notice === "calendar-error") { %><section class="notice notice--critical" role="alert">Calendar connection could not be completed. Check the provider settings and try again.</section><% } %>
       <% if (notice === "not-changeable" || notice === "invalid") { %><section class="notice notice--critical" role="alert">That journey update is not valid for the current status. Refresh the page and try again.</section><% } %>
+      <section class="panel rm-card driver-board__presence" aria-label="Driver calendar">
+        <h2>Personal calendar</h2>
+        <% if (calendarConnection) { %>
+          <p>Connected to <%= calendarConnection.provider === "microsoft" ? "Microsoft Outlook" : "Google Calendar" %> as <%= calendarConnection.email %>.</p>
+          <form method="post" action="/driver/calendar/disconnect">
+            <%- locals.csrfField || "" %>
+            <button class="button button--secondary" type="submit">Disconnect calendar</button>
+          </form>
+        <% } else { %>
+          <p>Connect your calendar to receive assigned bookings and updates.</p>
+          <a class="button" href="/driver/calendar/connect/microsoft">Connect Microsoft / Outlook</a>
+          <a class="button button--secondary" href="/driver/calendar/connect/google">Connect Google Calendar</a>
+        <% } %>
+      </section>
+      <section class="panel rm-card driver-board__presence" aria-label="Driver WhatsApp reminders">
+        <h2>WhatsApp reminders</h2>
+        <p>Opt in to receive journey reminders by WhatsApp. Dispatch can still contact you through other configured channels.</p>
+        <form method="post" action="/driver/whatsapp">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="whatsappPhone">WhatsApp phone number (international format)</label>
+            <input id="whatsappPhone" name="whatsappPhone" type="tel" autocomplete="tel" value="<%= whatsappSettings.phone %>" maxlength="50">
+          </div>
+          <div class="form-field form-field--checkbox">
+            <label>
+              <input type="checkbox" name="whatsappOptIn" value="yes" <%= whatsappSettings.optedIn ? "checked" : "" %>>
+              I agree to receive booking reminders by WhatsApp.
+            </label>
+          </div>
+          <button class="button" type="submit">Save WhatsApp preferences</button>
+        </form>
+      </section>
       <section class="panel rm-card driver-board__presence" aria-label="Driver availability" data-driver-presence data-online="<%= driverOnline ? 'true' : 'false' %>">
         <p data-presence-message><%= driverOnline ? "You are online and visible to dispatch." : "Driver online is a separate availability indicator and expires automatically after five minutes." %></p>
         <form method="post" action="/driver/presence">

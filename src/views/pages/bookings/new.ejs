@@ -141,13 +141,59 @@
                 <input id="passengerPhone" name="passengerPhone" type="tel" autocomplete="off" value="<%= draft.passengerIsManager ? draft.managerPhone : draft.passengerPhone %>" <%= draft.passengerIsManager ? "readonly" : "" %> data-passenger-phone <%- invalid("passengerPhone") %>>
                 <% if (fieldError("passengerPhone")) { %><p class="field-error" id="passengerPhone-error"><%= fieldError("passengerPhone") %></p><% } %>
               </div>
+              <div class="form-field">
+                <label for="passengerEmail">Email for journey reminders</label>
+                <input id="passengerEmail" name="passengerEmail" type="email" autocomplete="email" value="<%= draft.passengerIsManager ? draft.managerEmail : draft.passengerEmail %>" <%= draft.passengerIsManager ? "readonly" : "" %> data-passenger-email <%- invalid("passengerEmail") %>>
+                <% if (fieldError("passengerEmail")) { %><p class="field-error" id="passengerEmail-error"><%= fieldError("passengerEmail") %></p><% } %>
+              </div>
               <p class="form-hint" data-passenger-sync-hint <%= draft.passengerIsManager ? "" : "hidden" %>>Passenger details follow the booking manager and update automatically.</p>
+              <div class="form-field form-field--checkbox">
+                <label for="passengerWhatsappOptIn">
+                  <input id="passengerWhatsappOptIn" name="passengerWhatsappOptIn" type="checkbox" value="yes" <%= draft.passengerWhatsappOptIn ? "checked" : "" %>>
+                  I have permission to send this passenger WhatsApp journey updates
+                </label>
+              </div>
             </fieldset>
           </div>
+          <fieldset class="new-booking-fieldset booking-payer-fields">
+            <legend>Who pays for this booking?</legend>
+            <div class="form-field">
+              <label for="payerType">Payer</label>
+              <select id="payerType" name="payerType" required data-payer-type>
+                <% payerTypes.forEach((payer) => { %>
+                  <option value="<%= payer.value %>" <%= draft.payerType === payer.value ? "selected" : "" %>><%= payer.label %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div class="new-booking-columns" data-payer-contact>
+              <div class="form-field">
+                <label for="payerName">Payer name</label>
+                <input id="payerName" name="payerName" type="text" maxlength="200" value="<%= draft.payerName %>" required>
+                <% if (fieldError("payerName")) { %><p class="field-error" id="payerName-error"><%= fieldError("payerName") %></p><% } %>
+              </div>
+              <div class="form-field">
+                <label for="payerEmail">Email for payment link</label>
+                <input id="payerEmail" name="payerEmail" type="email" maxlength="254" value="<%= draft.payerEmail %>" required>
+                <% if (fieldError("payerEmail")) { %><p class="field-error" id="payerEmail-error"><%= fieldError("payerEmail") %></p><% } %>
+              </div>
+              <div class="form-field">
+                <label for="payerPhone">Payer phone (optional)</label>
+                <input id="payerPhone" name="payerPhone" type="tel" maxlength="50" value="<%= draft.payerPhone %>">
+                <% if (fieldError("payerPhone")) { %><p class="field-error" id="payerPhone-error"><%= fieldError("payerPhone") %></p><% } %>
+              </div>
+            </div>
+            <p class="form-hint">The payment recipient is stored separately from passenger and booking-manager details.</p>
+          </fieldset>
           <div class="form-field form-field--checkbox">
             <label for="notifyBookingManager">
               <input id="notifyBookingManager" name="notifyBookingManager" type="checkbox" value="yes" <%= draft.notifyBookingManager ? "checked" : "" %>>
-              Include the booking manager in live journey updates
+              Include the booking manager in live journey updates and 24-hour reminders
+            </label>
+          </div>
+          <div class="form-field form-field--checkbox">
+            <label for="bookingManagerWhatsappOptIn">
+              <input id="bookingManagerWhatsappOptIn" name="bookingManagerWhatsappOptIn" type="checkbox" value="yes" <%= draft.bookingManagerWhatsappOptIn ? "checked" : "" %>>
+              I have permission to send the booking manager WhatsApp updates
             </label>
           </div>
           <div class="form-field">

@@ -658,14 +658,23 @@ export async function assignBookingWithLicensing(input: {
               assignment_status = 'assigned', assignment_review_required = FALSE,
               assigned_at = $8, assigned_by = $9, assignment_source = $10, assignment_reason = $11,
               status = 'Driver assigned',
-              payment_due_at = COALESCE(
-                payment_due_at,
-                GREATEST(
+              payment_due_at = CASE
+                WHEN payment_method = 'payment-link' AND payment_status <> 'paid'
+                THEN GREATEST(
                   CURRENT_TIMESTAMP,
                   ((service_date::date + COALESCE(service_time, '00:00')::time)
                     AT TIME ZONE COALESCE(service_timezone, 'Europe/London')) - INTERVAL '24 hours'
                 )
-              )
+                ELSE NULL
+              END,
+              payment_deadline_at = CASE
+                WHEN payment_method = 'payment-link' AND payment_status <> 'paid'
+                 AND ((service_date::date + COALESCE(service_time, '00:00')::time)
+                       AT TIME ZONE COALESCE(service_timezone, 'Europe/London')) - INTERVAL '3 hours' > CURRENT_TIMESTAMP
+                THEN ((service_date::date + COALESCE(service_time, '00:00')::time)
+                       AT TIME ZONE COALESCE(service_timezone, 'Europe/London')) - INTERVAL '3 hours'
+                ELSE NULL
+              END
         WHERE id = $1`,
       [input.bookingId, operatorId, input.driverId, vehicleId, selected.id,
         input.vehicleLicenseType, vehicleLicenseBadge, assignedAt, input.actorId,

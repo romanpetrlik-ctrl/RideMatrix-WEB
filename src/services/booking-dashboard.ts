@@ -60,6 +60,56 @@ export type BookingDashboardRecord = {
   liveColor?: string;
 };
 
+export type BookingIntegrationAlert = {
+  id: string;
+  bookingId: string;
+  bookingReference: string;
+  alertType: string;
+  message: string;
+  createdAt: string;
+};
+
+export async function listOpenBookingIntegrationAlerts(limit = 20): Promise<BookingIntegrationAlert[]> {
+  const result = await query<{
+    id: string;
+    booking_id: string;
+    reference: string;
+    alert_type: string;
+    message: string | null;
+    created_at: string;
+  }>(
+    `SELECT a.id, a.booking_id, b.reference, a.alert_type, a.details->>'message' AS message, a.created_at
+       FROM booking_integration_alerts a
+       JOIN customer_bookings b ON b.id = a.booking_id
+      WHERE a.resolved_at IS NULL
+      ORDER BY a.created_at DESC, a.id
+      LIMIT $1`,
+    [Math.max(1, Math.min(100, Math.trunc(limit)))]
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    bookingId: row.booking_id,
+    bookingReference: row.reference,
+    alertType: row.alert_type,
+    message: row.message || row.alert_type,
+    createdAt: row.created_at
+  }));
+}
+
+export async function resolveBookingIntegrationAlert(input: {
+  alertId: string;
+  actorId: string;
+  actorEmail: string;
+}): Promise<boolean> {
+  const result = await query(
+    `UPDATE booking_integration_alerts
+        SET resolved_at = CURRENT_TIMESTAMP, resolved_by_account_id = $2, resolved_by_email = $3
+      WHERE id = $1 AND resolved_at IS NULL`,
+    [input.alertId, input.actorId, input.actorEmail]
+  );
+  return Boolean(result.rowCount);
+}
+
 function serviceDate(now: Date): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/London",

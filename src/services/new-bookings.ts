@@ -35,12 +35,16 @@ export type BookingCountField = (typeof BOOKING_COUNT_FIELDS)[number][0];
 export const STOP_KEYS = ["pickup", "via1", "via2", "dropoff"] as const;
 export type StopKey = (typeof STOP_KEYS)[number];
 export const BOOKING_PAYMENT_METHODS = [
-  { value: "card-online", label: "Card / online payment" },
-  { value: "bank-transfer", label: "Bank transfer" },
-  { value: "card", label: "Card" },
+  { value: "invoice", label: "Invoice" },
   { value: "payment-link", label: "Payment link" }
 ] as const;
 export type BookingPaymentMethod = (typeof BOOKING_PAYMENT_METHODS)[number]["value"];
+export const BOOKING_PAYER_TYPES = [
+  { value: "booking_manager", label: "Booking manager" },
+  { value: "lead_passenger", label: "Lead passenger" },
+  { value: "other", label: "Someone else / company" }
+] as const;
+export type BookingPayerType = (typeof BOOKING_PAYER_TYPES)[number]["value"];
 
 export type BookingFieldError = { field: string; message: string };
 
@@ -73,9 +77,16 @@ export type NewBookingDraft = {
   managerPhone: string;
   managerEmail: string;
   notifyBookingManager?: boolean;
+  bookingManagerWhatsappOptIn: boolean;
   passengerIsManager: boolean;
   passengerName: string;
   passengerPhone: string;
+  passengerEmail: string;
+  passengerWhatsappOptIn: boolean;
+  payerType: BookingPayerType;
+  payerName: string;
+  payerEmail: string;
+  payerPhone: string;
   serviceDate: string;
   serviceTime: string;
   vehicleClassKey: string;
@@ -107,9 +118,16 @@ export type ValidatedBooking = ValidatedJourney & {
   managerPhone: string;
   managerEmail: string;
   notifyBookingManager: boolean;
+  bookingManagerWhatsappOptIn: boolean;
   passengerIsManager: boolean;
   passengerName: string;
   passengerPhone: string;
+  passengerEmail: string;
+  passengerWhatsappOptIn: boolean;
+  payerType: BookingPayerType;
+  payerName: string;
+  payerEmail: string;
+  payerPhone: string;
   counts: Record<BookingCountField, number>;
   childSeatRequired: boolean;
   boosterRequired: boolean;
@@ -204,9 +222,17 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     managerPhone: text(source, "managerPhone", 50),
     managerEmail: text(source, "managerEmail", 254),
     notifyBookingManager: text(source, "notifyBookingManager") === "yes",
+    bookingManagerWhatsappOptIn: text(source, "bookingManagerWhatsappOptIn") === "yes",
+    payerType: BOOKING_PAYER_TYPES.some(({ value }) => value === source.payerType)
+      ? source.payerType as BookingPayerType : "booking_manager",
+    payerName: text(source, "payerName", 200),
+    payerEmail: text(source, "payerEmail", 254),
+    payerPhone: text(source, "payerPhone", 50),
     passengerIsManager: text(source, "passengerIsManager") === "yes",
     passengerName: text(source, "passengerName", 200),
     passengerPhone: text(source, "passengerPhone", 50),
+    passengerEmail: text(source, "passengerEmail", 254),
+    passengerWhatsappOptIn: text(source, "passengerWhatsappOptIn") === "yes",
     serviceDate: text(source, "serviceDate", 20),
     serviceTime: text(source, "serviceTime", 10),
     vehicleClassKey: text(source, "vehicleClassKey", 100),
@@ -505,10 +531,25 @@ export async function validateNewBooking(
   }
   const passengerName = draft.passengerIsManager ? managerName : draft.passengerName;
   const passengerPhone = draft.passengerIsManager ? managerPhone : draft.passengerPhone;
+  const passengerEmail = draft.passengerIsManager ? managerEmail : draft.passengerEmail;
   if (!draft.passengerIsManager) {
     if (!passengerName) errors.push({ field: "passengerName", message: "Enter the passenger's name." });
     if (!isValidPhone(passengerPhone)) errors.push({ field: "passengerPhone", message: "Enter a valid passenger phone number." });
   }
+  if (passengerEmail && !isValidEmail(passengerEmail)) {
+    errors.push({ field: "passengerEmail", message: "Enter a valid passenger email address." });
+  }
+  const payerContact = draft.payerType === "booking_manager"
+    ? { name: managerName, email: managerEmail, phone: managerPhone }
+    : draft.payerType === "lead_passenger"
+      ? { name: passengerName, email: passengerEmail, phone: passengerPhone }
+      : { name: "", email: "", phone: "" };
+  const payerName = draft.payerName || payerContact.name;
+  const payerEmail = draft.payerEmail || payerContact.email;
+  const payerPhone = draft.payerPhone || payerContact.phone;
+  if (!payerName) errors.push({ field: "payerName", message: "Enter the payer's name." });
+  if (!isValidEmail(payerEmail)) errors.push({ field: "payerEmail", message: "Enter a valid payer email address." });
+  if (payerPhone && !isValidPhone(payerPhone)) errors.push({ field: "payerPhone", message: "Enter a valid payer phone number." });
   const counts = {} as Record<BookingCountField, number>;
   for (const [field, label] of BOOKING_COUNT_FIELDS) {
     const count = parseCount(draft.counts[field]);
@@ -541,9 +582,16 @@ export async function validateNewBooking(
       managerPhone,
       managerEmail,
       notifyBookingManager: Boolean(draft.notifyBookingManager),
+      bookingManagerWhatsappOptIn: Boolean(draft.bookingManagerWhatsappOptIn),
       passengerIsManager: draft.passengerIsManager,
       passengerName,
       passengerPhone,
+      passengerEmail,
+      passengerWhatsappOptIn: Boolean(draft.passengerWhatsappOptIn),
+      payerType: draft.payerType,
+      payerName,
+      payerEmail,
+      payerPhone,
       counts,
       childSeatRequired: childSeat === true,
       boosterRequired: booster === true
@@ -721,8 +769,10 @@ export async function createNewBooking(
          booking_manager_name, booking_manager_phone, booking_manager_email, passenger_is_booking_manager,
          passenger_name, passenger_phone, adults, children, sports_equipment, xl_baggage, l_baggage,
          cabin_hand_bags, backpacks, child_seat_required, booster_required, price_status,
-         vehicle_class_key, payment_method, notify_booking_manager
-       ) VALUES ($1,$2,$3,$4,$5,$6,'New',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
+         vehicle_class_key, payment_method, notify_booking_manager, booking_manager_whatsapp_opt_in,
+         passenger_email, passenger_whatsapp_opt_in,
+         payer_type, payer_name, payer_email, payer_phone
+       ) VALUES ($1,$2,$3,$4,$5,$6,'New',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
       [
         id, customerId, reference, booking.serviceDate, booking.stops.pickup.label, booking.stops.dropoff.label, createdAt,
         price.total, booking.serviceTime, SERVICE_TIMEZONE, actor.accountId, actor.email,
@@ -730,7 +780,9 @@ export async function createNewBooking(
         booking.passengerName, booking.passengerPhone, booking.counts.adults, booking.counts.children,
         booking.counts.sportsEquipment, booking.counts.xlBaggage, booking.counts.lBaggage,
         booking.counts.cabinHandBags, booking.counts.backpacks, booking.childSeatRequired, booking.boosterRequired,
-        price.status, booking.pricingInputs.vehicleClassKey, booking.paymentMethod, booking.notifyBookingManager
+        price.status, booking.pricingInputs.vehicleClassKey, booking.paymentMethod, booking.notifyBookingManager,
+        booking.bookingManagerWhatsappOptIn, booking.passengerEmail || null, booking.passengerWhatsappOptIn, booking.payerType,
+        booking.payerName, booking.payerEmail, booking.payerPhone || null
       ]
     );
     const ordered: Array<["pickup" | "via" | "dropoff", BookingStop]> = [

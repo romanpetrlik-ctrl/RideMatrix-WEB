@@ -32,8 +32,31 @@
       <% if (notice === "status-invalid") { %>
         <section class="notice notice--critical" role="alert">Choose a valid booking status.</section>
       <% } %>
+      <% if (notice === "alert-resolved") { %>
+        <section class="notice" role="status">Integration alert marked as reviewed.</section>
+      <% } %>
       <% if (error) { %>
         <section class="notice notice--critical" role="alert"><%= error %></section>
+      <% } %>
+
+      <% if (integrationAlerts.length) { %>
+        <section class="panel rm-card" aria-labelledby="booking-integration-alerts-title">
+          <h2 id="booking-integration-alerts-title">Booking integration alerts</h2>
+          <p>Review delivery, payment, and calendar issues. Marking an alert reviewed does not retry the integration.</p>
+          <ul>
+            <% integrationAlerts.forEach((alert) => { %>
+              <li>
+                <strong><a href="/bookings/<%= encodeURIComponent(alert.bookingId) %>"><%= alert.bookingReference %></a>:</strong>
+                <%= alert.message %>
+                <form method="post" action="/bookings/integration-alerts/<%= encodeURIComponent(alert.id) %>/resolve" class="inline-form">
+                  <%- locals.csrfField || "" %>
+                  <input type="hidden" name="view" value="<%= view %>">
+                  <button class="button button--secondary" type="submit">Mark reviewed</button>
+                </form>
+              </li>
+            <% }) %>
+          </ul>
+        </section>
       <% } %>
 
       <section class="panel rm-card booking-dashboard__filters" aria-label="Booking filters">

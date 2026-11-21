@@ -1,0 +1,75 @@
+# Automated booking integrations
+
+The application stores integration work durably in PostgreSQL. Run
+`npm run bookings:integrations` from the application directory once per minute
+with the production environment loaded. The job schedules payment links and
+24-hour reminders, reconciles payment deadlines directly against Stripe,
+synchronizes calendars, and delivers due outbox messages. It is safe to run on
+more than one worker: Stripe requests use idempotency keys, outbox records are
+unique, and message claims use PostgreSQL row locks.
+
+## Stripe payments
+
+Configure `APP_BASE_URL`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`.
+Register `POST https://<APP_BASE_URL>/webhooks/stripe` in Stripe for
+`checkout.session.completed`, `checkout.session.async_payment_succeeded`, and
+`checkout.session.expired`. Webhook signature verification uses the raw request
+body; do not proxy this endpoint through a body-transforming middleware.
+
+The payment link is generated from the saved GBP booking total after driver
+assignment, due at pickup minus 24 hours (or immediately if that time has
+passed). The payment deadline is pickup minus three hours. At the deadline the
+job retrieves the Checkout Session from Stripe and expires an unpaid open
+session before cancelling the booking. Bookings assigned less than three hours
+before pickup have no automatic cancellation deadline.
+
+## Email and WhatsApp
+
+Set `SES_SMTP_HOST`, `SES_SMTP_PORT`, `SES_SMTP_USERNAME`,
+`SES_SMTP_PASSWORD`, and `SES_FROM_EMAIL` for Amazon SES SMTP. Development can
+use Mailpit by setting the same variables to the local SMTP endpoint.
+
+Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`,
+and approved template names in the corresponding `WHATSAPP_*_TEMPLATE`
+variables. Reminder template body parameters are passed in this order:
+
+- Customer reminder: booking reference, local service date/time, pickup,
+  destination.
+- Driver reminder: booking reference, local service date/time, pickup.
+- Live status: booking reference, status.
+
+WhatsApp is only queued when the contact has explicitly opted in. Missing
+consent or contact details create a booking integration alert and do not block
+the booking or driver assignment. Email reminders go to the lead passenger and,
+when requested, the booking manager unless the manager is also the lead
+passenger.
+
+## Calendars
+
+The shared dispatch calendar uses Microsoft Graph application credentials:
+`M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`,
+`M365_CALENDAR_USER`, and `M365_CALENDAR_ID`. Grant the app the required
+calendar write permission and admin consent. It must be authorized to access the
+configured mailbox and calendar.
+
+Driver OAuth uses `M365_DRIVER_CLIENT_ID` / `M365_DRIVER_CLIENT_SECRET` and
+`GOOGLE_CALENDAR_CLIENT_ID` / `GOOGLE_CALENDAR_CLIENT_SECRET`. Register the
+callback URLs `https://<APP_BASE_URL>/driver/calendar/callback/microsoft` and
+`https://<APP_BASE_URL>/driver/calendar/callback/google` with the respective
+providers. The drivers connect or disconnect their own account from the driver
+journey board. OAuth tokens are encrypted at rest; configure
+`CALENDAR_TOKEN_ENCRYPTION_KEY` as base64 encoding of 32 random bytes (for
+example, generate one with `openssl rand -base64 32`).
+
+Calendar events are refreshed by the scheduled job. The current event window
+uses the local service time and a one-hour event duration. Assignment changes
+move the driver event; cancellation, completion, no-show, and archiving remove
+active external events.
+
+## Online booking advance notice
+
+System Settings stores a 6-, 12-, or 24-hour minimum, defaulting to 12 hours.
+The repository does not contain the public booking widget or its booking
+creation endpoint. That external endpoint must call
+`isOnlineBookingAllowed({ serviceDate, serviceTime })` before accepting an
+online booking; the setting does not restrict dispatcher-created bookings.
