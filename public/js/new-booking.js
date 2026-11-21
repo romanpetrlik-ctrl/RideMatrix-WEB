@@ -247,6 +247,9 @@
     payer.type.addEventListener("change", syncPayerFromSelectedContact);
     [manager.name, manager.phone, manager.email, passenger.name, passenger.phone, passenger.email]
       .forEach((input) => input.addEventListener("input", syncPayerFromSelectedContact));
+    managerSelect.addEventListener("change", syncPayerFromSelectedContact);
+    passengerIsManager.addEventListener("change", syncPayerFromSelectedContact);
+    Object.values(newCustomerInputs).forEach((input) => input.addEventListener("input", syncPayerFromSelectedContact));
     syncPayerFromSelectedContact();
 
     const cargoTarget = doc.querySelector("[data-cargo-summary]");
