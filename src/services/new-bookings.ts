@@ -72,6 +72,7 @@ export type NewBookingDraft = {
   managerName: string;
   managerPhone: string;
   managerEmail: string;
+  notifyBookingManager?: boolean;
   passengerIsManager: boolean;
   passengerName: string;
   passengerPhone: string;
@@ -105,6 +106,7 @@ export type ValidatedBooking = ValidatedJourney & {
   managerName: string;
   managerPhone: string;
   managerEmail: string;
+  notifyBookingManager: boolean;
   passengerIsManager: boolean;
   passengerName: string;
   passengerPhone: string;
@@ -201,6 +203,7 @@ export function readNewBookingDraft(body: unknown): NewBookingDraft {
     managerName: text(source, "managerName", 200),
     managerPhone: text(source, "managerPhone", 50),
     managerEmail: text(source, "managerEmail", 254),
+    notifyBookingManager: text(source, "notifyBookingManager") === "yes",
     passengerIsManager: text(source, "passengerIsManager") === "yes",
     passengerName: text(source, "passengerName", 200),
     passengerPhone: text(source, "passengerPhone", 50),
@@ -537,6 +540,7 @@ export async function validateNewBooking(
       managerName,
       managerPhone,
       managerEmail,
+      notifyBookingManager: Boolean(draft.notifyBookingManager),
       passengerIsManager: draft.passengerIsManager,
       passengerName,
       passengerPhone,
@@ -717,8 +721,8 @@ export async function createNewBooking(
          booking_manager_name, booking_manager_phone, booking_manager_email, passenger_is_booking_manager,
          passenger_name, passenger_phone, adults, children, sports_equipment, xl_baggage, l_baggage,
          cabin_hand_bags, backpacks, child_seat_required, booster_required, price_status,
-         vehicle_class_key, payment_method
-       ) VALUES ($1,$2,$3,$4,$5,$6,'New',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+         vehicle_class_key, payment_method, notify_booking_manager
+       ) VALUES ($1,$2,$3,$4,$5,$6,'New',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
       [
         id, customerId, reference, booking.serviceDate, booking.stops.pickup.label, booking.stops.dropoff.label, createdAt,
         price.total, booking.serviceTime, SERVICE_TIMEZONE, actor.accountId, actor.email,
@@ -726,7 +730,7 @@ export async function createNewBooking(
         booking.passengerName, booking.passengerPhone, booking.counts.adults, booking.counts.children,
         booking.counts.sportsEquipment, booking.counts.xlBaggage, booking.counts.lBaggage,
         booking.counts.cabinHandBags, booking.counts.backpacks, booking.childSeatRequired, booking.boosterRequired,
-        price.status, booking.pricingInputs.vehicleClassKey, booking.paymentMethod
+        price.status, booking.pricingInputs.vehicleClassKey, booking.paymentMethod, booking.notifyBookingManager
       ]
     );
     const ordered: Array<["pickup" | "via" | "dropoff", BookingStop]> = [

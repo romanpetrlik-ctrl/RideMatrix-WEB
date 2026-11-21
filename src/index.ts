@@ -16,6 +16,7 @@ import { bookingAuthorizationResponseHeaders, createBookingAuthorizationRouter }
 import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
 import { createDriversRouter } from "./routes/drivers";
+import { createDriverBookingsRouter } from "./routes/driver-bookings";
 import { createSetupRouter } from "./routes/setup";
 import { errorHandler } from "./middleware/error-handler";
 import { createCsrfProtection } from "./middleware/csrf";
@@ -70,6 +71,7 @@ async function startServer() {
   app.use(createDashboardRouter({ appTitle }));
   app.use(createCustomersRouter({ appTitle }));
   app.use(createBookingsRouter({ appTitle }));
+  app.use(createDriverBookingsRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
   app.use(createDriversRouter({ appTitle }));
   app.use(createVehiclesRouter({ appTitle }));

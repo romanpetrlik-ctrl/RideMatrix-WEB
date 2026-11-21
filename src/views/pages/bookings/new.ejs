@@ -144,6 +144,12 @@
               <p class="form-hint" data-passenger-sync-hint <%= draft.passengerIsManager ? "" : "hidden" %>>Passenger details follow the booking manager and update automatically.</p>
             </fieldset>
           </div>
+          <div class="form-field form-field--checkbox">
+            <label for="notifyBookingManager">
+              <input id="notifyBookingManager" name="notifyBookingManager" type="checkbox" value="yes" <%= draft.notifyBookingManager ? "checked" : "" %>>
+              Include the booking manager in live journey updates
+            </label>
+          </div>
           <div class="form-field">
             <label for="paymentMethod">Booking payment method</label>
             <select id="paymentMethod" name="paymentMethod" required <%- invalid("paymentMethod") %>>

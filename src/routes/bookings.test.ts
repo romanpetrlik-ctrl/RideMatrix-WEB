@@ -8,7 +8,7 @@ import { CSRF_COOKIE_NAME } from "../services/csrf";
 import type { SessionAccount } from "../services/api";
 import type { AirportFeeRecord } from "../services/airport-fees";
 import type { BookingRoute } from "../services/booking-routing";
-import type { BookingDashboardRecord, BookingDashboardView } from "../services/booking-dashboard";
+import type { BookingDashboardRecord, BookingDashboardView, BookingWorkflowStatus } from "../services/booking-dashboard";
 import { EMPTY_FARE_SETTINGS } from "../services/fare-settings";
 import {
   assertQuoteAcknowledged,
@@ -63,7 +63,7 @@ async function withApp(
     archiveBooking?: (input: { bookingId: string; reason: string; actorId: string; actorEmail: string }) => Promise<"archived" | "not-found" | "already-archived">;
     changeBookingStatus?: (input: {
       bookingId: string;
-      status: "New" | "Accepted" | "Cancelled" | "No Show";
+      status: BookingWorkflowStatus;
       reason?: string;
       actorId: string;
       actorEmail: string;
@@ -386,7 +386,7 @@ test("booking archive requires CSRF and a reason, then redirects to the selected
 test("booking status changes require CSRF and cancellation reason, then preserve dashboard filters", async () => {
   const changed: Array<{
     bookingId: string;
-    status: "New" | "Accepted" | "Cancelled" | "No Show";
+    status: BookingWorkflowStatus;
     reason?: string;
     actorId: string;
     actorEmail: string;
