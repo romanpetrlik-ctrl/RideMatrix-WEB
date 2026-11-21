@@ -19,6 +19,13 @@ export async function scheduleDueBookingPaymentLinks(limit = 100): Promise<numbe
       WHERE status = 'Driver assigned' AND archived_at IS NULL
         AND payment_method = 'payment-link' AND payment_status NOT IN ('paid', 'expired')
         AND payment_due_at <= CURRENT_TIMESTAMP
+        AND NOT EXISTS (
+          SELECT 1 FROM booking_delivery_outbox d
+           WHERE d.booking_id = customer_bookings.id
+             AND d.event_type = 'payment_link' AND d.event_key = ''
+             AND d.recipient_type = 'payer' AND d.channel = 'email'
+             AND d.recipient_contact = btrim(customer_bookings.payer_email)
+        )
       ORDER BY payment_due_at, id
       LIMIT $1`,
     [limit]
