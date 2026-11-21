@@ -75,6 +75,18 @@ test("airport pick-up timing migration preserves legacy incompleteness and const
   assert.doesNotMatch(migration.sql, /DEFAULT\s+'(?:ALT|AGA)'/);
 });
 
+test("booking status workflow migrates Scheduled to New and keeps cancellation reasons in an audit log", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0041_booking_status_workflow");
+  assert.ok(migration);
+  assert.match(migration.sql, /UPDATE customer_bookings SET status = 'New' WHERE status = 'Scheduled'/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS booking_status_audit/);
+  assert.match(migration.sql, /previous_status TEXT NOT NULL/);
+  assert.match(migration.sql, /new_status IN \('New', 'Accepted', 'Cancelled'\)/);
+  assert.match(migration.sql, /new_status <> 'Cancelled' OR btrim\(COALESCE\(reason, ''\)\) <> ''/);
+  assert.match(migration.sql, /actor_user_email TEXT NOT NULL/);
+  assert.match(migration.sql, /booking_id TEXT NOT NULL REFERENCES customer_bookings\(id\),/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

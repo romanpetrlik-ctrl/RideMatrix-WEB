@@ -718,7 +718,7 @@ export async function createNewBooking(
          passenger_name, passenger_phone, adults, children, sports_equipment, xl_baggage, l_baggage,
          cabin_hand_bags, backpacks, child_seat_required, booster_required, price_status,
          vehicle_class_key, payment_method
-       ) VALUES ($1,$2,$3,$4,$5,$6,'Scheduled',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+       ) VALUES ($1,$2,$3,$4,$5,$6,'New',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
       [
         id, customerId, reference, booking.serviceDate, booking.stops.pickup.label, booking.stops.dropoff.label, createdAt,
         price.total, booking.serviceTime, SERVICE_TIMEZONE, actor.accountId, actor.email,

@@ -557,11 +557,14 @@ export async function assignBookingWithLicensing(input: {
   if (!input.licensingAuthorityId.trim()) throw new BookingAssignmentError("Select a common licensing authority.");
   if (!input.actorId.trim()) throw new BookingAssignmentError("Authenticated actor is required for assignment.");
   const work = async (runner: Queryable) => {
-    const booking = await runner.query<{ service_date: string }>(
-      "SELECT service_date FROM customer_bookings WHERE id = $1 FOR UPDATE",
+    const booking = await runner.query<{ service_date: string; status: string }>(
+      "SELECT service_date, status FROM customer_bookings WHERE id = $1 FOR UPDATE",
       [input.bookingId]
     );
     if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
+    if (booking.rows[0].status === "Cancelled" || booking.rows[0].status === "Completed") {
+      throw new BookingAssignmentError("Cancelled or completed bookings cannot be assigned.");
+    }
     const date = serviceDate(booking.rows[0].service_date);
     const setup = await runner.query<{ operator_id: string }>(
       `SELECT operator_id FROM system_setup_state
@@ -668,6 +671,7 @@ export async function unassignBookingVehicle(input: {
   actorId: string;
   source?: string;
   reason?: string | null;
+  requireReview?: boolean;
 }, client?: Queryable): Promise<void> {
   if (!input.actorId.trim()) throw new BookingAssignmentError("Authenticated actor is required for assignment changes.");
   const work = async (runner: Queryable) => {
@@ -681,11 +685,11 @@ export async function unassignBookingVehicle(input: {
       `UPDATE customer_bookings
           SET vehicle_id=NULL, licensing_authority_id=NULL, vehicle_license_type=NULL,
               vehicle_license_badge=NULL, assignment_status='pending',
-              assignment_review_required=TRUE, assigned_at=$2, assigned_by=$3,
+              assignment_review_required=$6, assigned_at=$2, assigned_by=$3,
               assignment_source=$4, assignment_reason=$5
         WHERE id=$1`,
       [input.bookingId, unassignedAt, input.actorId, input.source || "dispatch",
-        input.reason || "Vehicle removed from assignment."]
+        input.reason || "Vehicle removed from assignment.", input.requireReview ?? true]
     );
     await runner.query(
       `INSERT INTO booking_assignment_audit

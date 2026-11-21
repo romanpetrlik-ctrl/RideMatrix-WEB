@@ -105,7 +105,9 @@ test("server-side assignment derives operator and service date and requires an e
   const client: any = {
     async query(sql: string, params: unknown[] = []) {
       calls.push({ sql, params });
-      if (sql.includes("SELECT service_date FROM customer_bookings")) return { rows: [{ service_date: "2026-07-01" }] };
+      if (sql.includes("SELECT service_date, status FROM customer_bookings")) {
+        return { rows: [{ service_date: "2026-07-01", status: "New" }] };
+      }
       if (sql.includes("SELECT operator_id FROM system_setup_state")) return { rows: [{ operator_id: "configured-operator" }] };
       if (sql.includes("FROM system_setup_state s") && sql.includes("operator_licence_documents")) {
         return { rows: [{ id: "operator-licence", licence_number: "OP-1", licensing_authority_id: "auth-1" }] };
@@ -151,6 +153,21 @@ test("server-side assignment derives operator and service date and requires an e
     "legacy operator licence records are not a source of truth");
 });
 
+test("cancelled bookings cannot be assigned", async () => {
+  const client: any = {
+    async query(sql: string) {
+      if (sql.includes("SELECT service_date, status FROM customer_bookings")) {
+        return { rows: [{ service_date: "2026-07-01", status: "Cancelled" }] };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+  };
+  await assert.rejects(assignBookingWithLicensing({
+    bookingId: "booking-cancelled", driverId: "driver-1", vehicleLicenseId: "lic-hc",
+    licensingAuthorityId: "auth-1", vehicleLicenseType: "hackney_carriage", actorId: "admin-1"
+  }, client), /Cancelled or completed bookings cannot be assigned/);
+});
+
 test("booking vehicle removal clears its current badge snapshot and writes an audit record", async () => {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client: any = {
@@ -167,4 +184,26 @@ test("booking vehicle removal clears its current badge snapshot and writes an au
   assert.match(update.sql, /vehicle_license_badge=NULL/);
   assert.equal(update.params[0], "booking-1");
   assert.ok(calls.some(({ sql }) => sql.includes("'vehicle_unassigned'")));
+});
+
+test("booking cancellation can release assignment without requesting licensing review", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client: any = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT operator_id, driver_id")) return { rows: [{ operator_id: "operator-1", driver_id: "driver-1" }] };
+      return { rows: [], rowCount: 1 };
+    }
+  };
+  await unassignBookingVehicle({
+    bookingId: "booking-1",
+    actorId: "admin-1",
+    source: "booking-status-cancellation",
+    reason: "Booking cancelled.",
+    requireReview: false
+  }, client);
+  const update = calls.find(({ sql }) => sql.includes("UPDATE customer_bookings"));
+  assert.ok(update);
+  assert.match(update.sql, /assignment_review_required=\$6/);
+  assert.equal(update.params[5], false);
 });

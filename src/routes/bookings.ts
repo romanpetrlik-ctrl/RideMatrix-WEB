@@ -5,9 +5,12 @@ import { noStoreProtectedResponse } from "../middleware/no-store";
 import {
   BOOKING_DASHBOARD_VIEWS,
   archiveBooking as archiveBookingRecord,
+  BOOKING_WORKFLOW_STATUSES,
+  changeBookingStatus as changeBookingStatusRecord,
   listBookingDashboard,
   type BookingDashboardRecord,
-  type BookingDashboardView
+  type BookingDashboardView,
+  type BookingWorkflowStatus
 } from "../services/booking-dashboard";
 import { getSessionAccount, type SessionAccount } from "../services/api";
 import type { BookingRoute } from "../services/booking-routing";
@@ -55,6 +58,7 @@ export type BookingsRouterOptions = {
   getBooking?: (id: string) => Promise<SavedNewBooking | null>;
   listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
   archiveBooking?: typeof archiveBookingRecord;
+  changeBookingStatus?: typeof changeBookingStatusRecord;
   now?: () => Date;
   mapConfiguration?: () => { browserApiKey?: string; mapId?: string };
 };
@@ -144,6 +148,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const loadBooking = options.getBooking ?? getNewBooking;
   const loadDashboardBookings = options.listDashboardBookings ?? ((view, search) => listBookingDashboard(view, search, options.now?.() ?? new Date()));
   const archiveSavedBooking = options.archiveBooking ?? archiveBookingRecord;
+  const changeSavedBookingStatus = options.changeBookingStatus ?? changeBookingStatusRecord;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   const mapConfiguration = options.mapConfiguration ?? (() => {
     const configuration = readMapConfiguration();
@@ -152,6 +157,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const quoteRateLimit = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
   const saveRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
   const archiveRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+  const statusRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 
   const requireAdminSession = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -234,8 +240,14 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         bookings,
         view,
         search,
-        notice: req.query.notice === "archived" ? "archived" : "",
-        error: req.query.error === "archive-reason-required" ? "Enter a reason to archive this booking." : ""
+        notice: typeof req.query.notice === "string" ? req.query.notice : "",
+        error: req.query.error === "archive-reason-required"
+          ? "Enter a reason to archive this booking."
+          : req.query.error === "cancel-reason-required"
+            ? "Enter a reason to cancel this booking."
+            : req.query.error === "cancel-reason-too-long"
+              ? "The cancellation reason must be no more than 500 characters."
+              : ""
       });
     } catch (error) {
       return next(error);
@@ -339,8 +351,46 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         actorId: actor.accountId,
         actorEmail: actor.email
       });
+
       if (result === "not-found") return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
       return res.redirect(303, `/bookings?${queryString}&notice=archived`);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/bookings/:bookingId/status", requireAdminSession, statusRateLimit, csrfGuard, async (req, res, next) => {
+    try {
+      const actor = res.locals.bookingActor as BookingActor;
+      const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
+      const requestedStatus = typeof req.body?.status === "string" ? req.body.status : "";
+      const status = BOOKING_WORKFLOW_STATUSES.includes(requestedStatus as BookingWorkflowStatus)
+        ? requestedStatus as BookingWorkflowStatus
+        : null;
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      const requestedView = typeof req.body?.view === "string" ? req.body.view : "";
+      const view: BookingDashboardView = BOOKING_DASHBOARD_VIEWS.includes(requestedView as BookingDashboardView)
+        ? requestedView as BookingDashboardView
+        : "today";
+      const search = typeof req.body?.search === "string" ? req.body.search.trim().slice(0, 100) : "";
+      const queryString = new URLSearchParams({ view, ...(search ? { search } : {}) }).toString();
+      if (!status) return res.redirect(303, `/bookings?${queryString}&notice=status-invalid`);
+      if (status === "Cancelled" && !reason) {
+        return res.redirect(303, `/bookings?${queryString}&error=cancel-reason-required`);
+      }
+      if (status === "Cancelled" && reason.length > 500) {
+        return res.redirect(303, `/bookings?${queryString}&error=cancel-reason-too-long`);
+      }
+      const result = await changeSavedBookingStatus({
+        bookingId,
+        status,
+        reason,
+        actorId: actor.accountId,
+        actorEmail: actor.email
+      });
+      if (result === "not-found") return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+      const notice = result === "updated" ? "status-updated" : result === "unchanged" ? "status-unchanged" : "status-not-changed";
+      return res.redirect(303, `/bookings?${queryString}&notice=${notice}`);
     } catch (error) {
       return next(error);
     }

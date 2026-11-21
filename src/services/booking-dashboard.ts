@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
+import { unassignBookingVehicle } from "./licensing";
 
 export const BOOKING_DASHBOARD_VIEWS = ["today", "upcoming", "past"] as const;
 export type BookingDashboardView = (typeof BOOKING_DASHBOARD_VIEWS)[number];
+export const BOOKING_WORKFLOW_STATUSES = ["New", "Accepted", "Cancelled"] as const;
+export type BookingWorkflowStatus = (typeof BOOKING_WORKFLOW_STATUSES)[number];
 
 export type BookingDashboardRecord = {
   id: string;
@@ -132,4 +136,66 @@ export async function archiveBooking(input: {
     );
     return "archived";
   });
+}
+
+export async function changeBookingStatus(input: {
+  bookingId: string;
+  status: BookingWorkflowStatus;
+  reason?: string;
+  actorId: string;
+  actorEmail: string;
+  now?: Date;
+}, transactionClient?: PoolClient): Promise<"updated" | "unchanged" | "not-found" | "not-changeable"> {
+  const reason = input.reason?.trim() ?? "";
+  if (!BOOKING_WORKFLOW_STATUSES.includes(input.status)) {
+    throw new TypeError("Choose a valid booking status.");
+  }
+  if (input.status === "Cancelled" && !reason) {
+    throw new TypeError("Enter a reason to cancel this booking.");
+  }
+  if (reason.length > 500) throw new TypeError("A status reason must be no more than 500 characters.");
+
+  const work = async (client: PoolClient) => {
+    const existing = await client.query<{
+      status: string;
+      archived_at: string | null;
+      driver_id: string | null;
+      vehicle_id: string | null;
+    }>(
+      "SELECT status, archived_at, driver_id, vehicle_id FROM customer_bookings WHERE id = $1 FOR UPDATE",
+      [input.bookingId]
+    );
+    const current = existing.rows[0];
+    if (!current) return "not-found";
+    if (current.archived_at) return "not-changeable";
+    if (current.status === input.status) return "unchanged";
+    if (current.status === "Cancelled" || current.status === "Completed") return "not-changeable";
+
+    const changedAt = (input.now ?? new Date()).toISOString();
+    if (input.status === "Cancelled" && (current.driver_id || current.vehicle_id)) {
+      await unassignBookingVehicle({
+        bookingId: input.bookingId,
+        actorId: input.actorId,
+        source: "booking-status-cancellation",
+        reason: "Booking cancelled.",
+        requireReview: false
+      }, client);
+    }
+    await client.query(
+      "UPDATE customer_bookings SET status = $2 WHERE id = $1 AND archived_at IS NULL",
+      [input.bookingId, input.status]
+    );
+    await client.query(
+      `INSERT INTO booking_status_audit (
+        id, booking_id, previous_status, new_status, reason, actor_user_id, actor_user_email, changed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        randomUUID(), input.bookingId, current.status, input.status,
+        reason || null, input.actorId, input.actorEmail, changedAt
+      ]
+    );
+    return "updated";
+  };
+  if (transactionClient) return work(transactionClient);
+  return withTransaction(work);
 }

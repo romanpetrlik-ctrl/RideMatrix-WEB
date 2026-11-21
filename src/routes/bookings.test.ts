@@ -61,6 +61,13 @@ async function withApp(
     booking?: SavedNewBooking;
     listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
     archiveBooking?: (input: { bookingId: string; reason: string; actorId: string; actorEmail: string }) => Promise<"archived" | "not-found" | "already-archived">;
+    changeBookingStatus?: (input: {
+      bookingId: string;
+      status: "New" | "Accepted" | "Cancelled";
+      reason?: string;
+      actorId: string;
+      actorEmail: string;
+    }) => Promise<"updated" | "unchanged" | "not-found" | "not-changeable">;
   } = {},
   run: (baseUrl: string, saved: Saved[]) => Promise<void>
 ) {
@@ -93,6 +100,7 @@ async function withApp(
     getBooking: async (id) => id === "booking-uuid" ? options.booking ?? savedBooking : null,
     ...(options.listDashboardBookings ? { listDashboardBookings: options.listDashboardBookings } : {}),
     ...(options.archiveBooking ? { archiveBooking: options.archiveBooking } : {}),
+    ...(options.changeBookingStatus ? { changeBookingStatus: options.changeBookingStatus } : {}),
     mapConfiguration: () => ({})
   }));
   const server = app.listen(0);
@@ -196,7 +204,7 @@ test("new booking page shows the assigned-on-save reference, five blocks and exi
   });
 });
 
-test("bookings dashboard filters and searches rows and exposes assignment/archive actions", async () => {
+test("booking rows expand to expose assignment, status, cancellation, and archive controls", async () => {
   const listed: Array<[BookingDashboardView, string]> = [];
   const row: BookingDashboardRecord = {
     id: "booking-uuid",
@@ -207,7 +215,7 @@ test("bookings dashboard filters and searches rows and exposes assignment/archiv
     customerName: "Blair Booker",
     pickup: "Airport X",
     dropoff: "1 High Street",
-    status: "Scheduled",
+    status: "New",
     assignmentStatus: "assigned",
     driverId: "driver-7",
     driverName: "Casey Driver",
@@ -231,13 +239,25 @@ test("bookings dashboard filters and searches rows and exposes assignment/archiv
     assert.doesNotMatch(html, /booking-dashboard__results-heading[\s\S]*New booking/);
     assert.match(html, /RMB-000042/);
     assert.match(html, /Blair Booker/);
-    assert.match(html, /Scheduled/);
+    assert.match(html, /New/);
     assert.match(html, /TEST/);
     assert.match(html, /Casey Driver · AB12 CDE/);
     assert.match(html, /Assign \/ view driver/);
     assert.match(html, /Deassign driver/);
+    assert.match(html, /<details class="booking-dashboard__details">/);
+    assert.match(html, /<summary class="booking-dashboard__summary"/);
+    assert.match(html, /Accept booking/);
+    assert.match(html, /name="status" value="Cancelled"/);
+    assert.match(html, /Cancellation reason/);
     assert.match(html, /Archive reason/);
-    assert.match(html, /name="reason"[^>]*required/);
+    assert.match(html, /name="reason" type="text" maxlength="500" required/);
+    assert.doesNotMatch(html, />Actions<\/summary>/);
+    const summary = html.match(/<summary[^>]*>[\s\S]*?<\/summary>/)?.[0] ?? "";
+    assert.ok(summary);
+    const summaryContent = summary.replace(/^<summary[^>]*>/, "");
+    assert.equal((summaryContent.match(/class="booking-dashboard__/g) ?? []).length, 6);
+    assert.doesNotMatch(summary, /<a /);
+    assert.match(html, /<\/details>\s*<\/td>\s*<\/tr>/);
     assert.doesNotMatch(html, /name="customerMode"/);
   });
 });
@@ -287,6 +307,77 @@ test("booking archive requires CSRF and a reason, then redirects to the selected
       headers: { cookie, "content-type": "application/x-www-form-urlencoded" }
     });
     assert.equal(missingReason.headers.get("location"), "/bookings?view=today&error=archive-reason-required");
+  });
+});
+
+test("booking status changes require CSRF and cancellation reason, then preserve dashboard filters", async () => {
+  const changed: Array<{
+    bookingId: string;
+    status: "New" | "Accepted" | "Cancelled";
+    reason?: string;
+    actorId: string;
+    actorEmail: string;
+  }> = [];
+  await withApp({
+    csrf: true,
+    listDashboardBookings: async () => [],
+    changeBookingStatus: async (input) => {
+      changed.push(input);
+      return "updated";
+    }
+  }, async (baseUrl) => {
+    const page = await fetch(`${baseUrl}/bookings?view=upcoming`);
+    const html = await page.text();
+    const cookie = page.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const token = /name="_csrf" value="([^"]+)"/.exec(html)?.[1] ?? "";
+    assert.ok(token);
+    assert.ok(cookie);
+
+    const withoutCsrf = await post(`${baseUrl}/bookings/booking-uuid/status`, new URLSearchParams({
+      status: "Accepted"
+    }));
+    assert.equal(withoutCsrf.status, 403);
+
+    const missingReason = await post(`${baseUrl}/bookings/booking-uuid/status`, new URLSearchParams({
+      _csrf: token, status: "Cancelled", view: "upcoming"
+    }), { cookie });
+    assert.equal(missingReason.status, 303);
+    assert.equal(missingReason.headers.get("location"), "/bookings?view=upcoming&error=cancel-reason-required");
+    assert.equal(changed.length, 0);
+
+    const tooLongReason = await post(`${baseUrl}/bookings/booking-uuid/status`, new URLSearchParams({
+      _csrf: token, status: "Cancelled", reason: "x".repeat(501), view: "upcoming"
+    }), { cookie });
+    assert.equal(tooLongReason.status, 303);
+    assert.equal(tooLongReason.headers.get("location"), "/bookings?view=upcoming&error=cancel-reason-too-long");
+    assert.equal(changed.length, 0);
+
+    const accepted = await post(`${baseUrl}/bookings/booking-uuid/status`, new URLSearchParams({
+      _csrf: token, status: "Accepted", view: "upcoming", search: "RMB-000042"
+    }), { cookie });
+    assert.equal(accepted.status, 303);
+    assert.equal(accepted.headers.get("location"), "/bookings?view=upcoming&search=RMB-000042&notice=status-updated");
+
+    const cancelled = await post(`${baseUrl}/bookings/booking-uuid/status`, new URLSearchParams({
+      _csrf: token, status: "Cancelled", reason: "Customer requested cancellation", view: "upcoming"
+    }), { cookie });
+    assert.equal(cancelled.status, 303);
+    assert.deepEqual(changed, [
+      {
+        bookingId: "booking-uuid",
+        status: "Accepted",
+        reason: "",
+        actorId: "acct-7",
+        actorEmail: "dispatcher@example.test"
+      },
+      {
+        bookingId: "booking-uuid",
+        status: "Cancelled",
+        reason: "Customer requested cancellation",
+        actorId: "acct-7",
+        actorEmail: "dispatcher@example.test"
+      }
+    ]);
   });
 });
 

@@ -1856,6 +1856,127 @@ button:visited,
   text-align: right;
 }
 
+.booking-dashboard__table {
+  min-width: 1080px;
+}
+
+.booking-dashboard__record > td {
+  padding: 0;
+  border-bottom: 1px solid var(--rm-light-bronze);
+}
+
+.booking-dashboard__details {
+  width: 100%;
+}
+
+.booking-dashboard__summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(6rem, 0.6fr) minmax(9rem, 1fr) minmax(20rem, 3fr) minmax(7rem, 0.7fr) minmax(9rem, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.85rem 2rem 0.85rem 0.75rem;
+  color: var(--rm-text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.booking-dashboard__summary::-webkit-details-marker {
+  display: none;
+}
+
+.booking-dashboard__summary::after {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.booking-dashboard__details[open] > .booking-dashboard__summary::after {
+  transform: translateY(-25%) rotate(225deg);
+}
+
+.booking-dashboard__summary:hover {
+  background: rgba(253, 248, 242, 0.75);
+}
+
+.booking-dashboard__summary:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: var(--rm-control-focus-outline);
+  outline-offset: -2px;
+}
+
+.booking-dashboard__reference {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.booking-dashboard__journey {
+  overflow-wrap: anywhere;
+}
+
+.booking-dashboard__expanded {
+  padding: 1rem 1.25rem 1.25rem;
+  border-top: 1px solid var(--rm-light-bronze);
+  background: rgba(253, 248, 242, 0.55);
+}
+
+.booking-dashboard__expanded-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.booking-dashboard__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.booking-dashboard__action-group,
+.booking-dashboard__reason-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.65rem;
+  min-width: 12rem;
+  margin: 0;
+}
+
+.booking-dashboard__action-label,
+.booking-dashboard__reason-form label {
+  flex-basis: 100%;
+  color: var(--rm-walnut);
+  font-weight: 700;
+}
+
+.booking-dashboard__reason-form input {
+  width: min(100%, 16rem);
+  max-width: 100%;
+  margin: 0;
+}
+
+.booking-dashboard__reason-form button,
+.booking-dashboard__action-group button,
+.booking-dashboard__action-group a {
+  flex: 0 0 auto;
+}
+
+.booking-dashboard__action-group button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 .customers-table__actions-list {
   display: flex;
   flex-wrap: wrap;
