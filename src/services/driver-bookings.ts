@@ -74,7 +74,8 @@ export async function listDriverBookings(driverId: string): Promise<DriverBookin
       WHERE b.driver_id = $1
         AND b.status = 'Driver assigned'
         AND b.archived_at IS NULL
-        AND b.service_date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/London')::date::text
+        AND (b.service_date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/London')::date::text
+             OR (b.live_status IS NOT NULL AND b.live_status <> 'Ride finished'))
       ORDER BY b.service_date, b.service_time NULLS LAST
       LIMIT 100`,
     [driverId]
