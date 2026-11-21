@@ -1882,6 +1882,8 @@ button:visited,
   align-items: start;
   gap: 0.75rem;
   padding: 0.85rem 2rem 0.85rem 0.75rem;
+  border-right: 0.4rem solid var(--booking-live-color, transparent);
+  background: color-mix(in srgb, var(--booking-operational-color, #fff) 24%, #fff);
   color: var(--rm-text);
   cursor: pointer;
   list-style: none;
@@ -1909,7 +1911,7 @@ button:visited,
 }
 
 .booking-dashboard__summary:hover {
-  background: rgba(253, 248, 242, 0.75);
+  background: color-mix(in srgb, var(--booking-operational-color, #fff) 38%, #fff);
 }
 
 .booking-dashboard__summary:focus-visible {
@@ -1932,6 +1934,108 @@ button:visited,
   padding: 0.55rem 0.75rem 0.65rem;
   border-top: 1px solid var(--rm-light-bronze);
   background: rgba(253, 248, 242, 0.55);
+}
+
+.booking-dashboard__indicators {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+  color: var(--rm-text-soft);
+  font-size: 0.88rem;
+}
+
+.booking-status-colors__group {
+  margin-top: 1rem;
+}
+
+.booking-status-colors__list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.booking-status-colors__item {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto minmax(12rem, 1.5fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem;
+  border: 1px solid var(--rm-light-bronze);
+  border-radius: 0.5rem;
+}
+
+.booking-status-colors__item input[type="color"] {
+  width: 3rem;
+  height: 2.5rem;
+  padding: 0.15rem;
+}
+
+.booking-status-colors__preview {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--rm-light-bronze);
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--booking-operational-color, #fff) 24%, #fff);
+}
+
+.booking-status-colors__preview--live {
+  border-right: 0.4rem solid var(--booking-live-color, transparent);
+}
+
+.booking-status-colors__live-label {
+  color: var(--rm-text);
+  font-weight: 700;
+}
+
+.driver-board__presence,
+.driver-board__booking {
+  margin-bottom: 1rem;
+}
+
+.driver-board__presence form,
+.driver-board__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.driver-board__presence p {
+  margin-top: 0;
+}
+
+.driver-board__details {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.driver-board__details > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.3fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.driver-board__details dt {
+  color: var(--rm-text-soft);
+  font-weight: 700;
+}
+
+.driver-board__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.driver-board__form .form-field {
+  flex: 1 1 12rem;
+}
+
+.driver-board__form button {
+  flex: 0 0 auto;
 }
 
 .booking-dashboard__controls {

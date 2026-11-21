@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "Driver journey board",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell driver-board">
+      <header class="new-booking-page__title">
+        <h1>My journeys</h1>
+        <p>Update journey progress from your phone. Only bookings assigned to your driver account are shown.</p>
+      </header>
+      <% if (notice === "updated") { %><section class="notice" role="status">Journey status updated.</section><% } %>
+      <% if (notice === "online" || notice === "offline") { %><section class="notice" role="status">Driver presence updated.</section><% } %>
+      <% if (notice === "calendar-connected" || notice === "calendar-disconnected") { %><section class="notice" role="status">Calendar connection updated.</section><% } %>
+      <% if (notice === "whatsapp-saved") { %><section class="notice" role="status">WhatsApp reminder preferences saved.</section><% } %>
+      <% if (notice === "calendar-error") { %><section class="notice notice--critical" role="alert">Calendar connection could not be completed. Check the provider settings and try again.</section><% } %>
+      <% if (notice === "not-changeable" || notice === "invalid") { %><section class="notice notice--critical" role="alert">That journey update is not valid for the current status. Refresh the page and try again.</section><% } %>
+      <section class="panel rm-card driver-board__presence" aria-label="Driver calendar">
+        <h2>Personal calendar</h2>
+        <% if (calendarConnection) { %>
+          <p>Connected to <%= calendarConnection.provider === "microsoft" ? "Microsoft Outlook" : "Google Calendar" %> as <%= calendarConnection.email %>.</p>
+          <form method="post" action="/driver/calendar/disconnect">
+            <%- locals.csrfField || "" %>
+            <button class="button button--secondary" type="submit">Disconnect calendar</button>
+          </form>
+        <% } else { %>
+          <p>Connect your calendar to receive assigned bookings and updates.</p>
+          <a class="button" href="/driver/calendar/connect/microsoft">Connect Microsoft / Outlook</a>
+          <a class="button button--secondary" href="/driver/calendar/connect/google">Connect Google Calendar</a>
+        <% } %>
+      </section>
+      <section class="panel rm-card driver-board__presence" aria-label="Driver WhatsApp reminders">
+        <h2>WhatsApp reminders</h2>
+        <p>Opt in to receive journey reminders by WhatsApp. Dispatch can still contact you through other configured channels.</p>
+        <form method="post" action="/driver/whatsapp">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="whatsappPhone">WhatsApp phone number (international format)</label>
+            <input id="whatsappPhone" name="whatsappPhone" type="tel" autocomplete="tel" value="<%= whatsappSettings.phone %>" maxlength="50">
+          </div>
+          <div class="form-field form-field--checkbox">
+            <label>
+              <input type="checkbox" name="whatsappOptIn" value="yes" <%= whatsappSettings.optedIn ? "checked" : "" %>>
+              I agree to receive booking reminders by WhatsApp.
+            </label>
+          </div>
+          <button class="button" type="submit">Save WhatsApp preferences</button>
+        </form>
+      </section>
+      <section class="panel rm-card driver-board__presence" aria-label="Driver availability" data-driver-presence data-online="<%= driverOnline ? 'true' : 'false' %>">
+        <p data-presence-message><%= driverOnline ? "You are online and visible to dispatch." : "Driver online is a separate availability indicator and expires automatically after five minutes." %></p>
+        <form method="post" action="/driver/presence">
+          <%- locals.csrfField || "" %>
+          <% if (!driverOnline) { %>
+          <button class="button" type="submit" name="action" value="online">Go online</button>
+          <% } else { %>
+          <button class="button button--secondary" type="submit" name="action" value="offline">Go offline</button>
+          <% } %>
+        </form>
+      </section>
+      <% if (bookings.length) { %>
+        <section class="driver-board__list" aria-label="Assigned bookings">
+          <% bookings.forEach((booking) => { %>
+            <article class="panel rm-card driver-board__booking">
+              <h2><%= booking.reference %></h2>
+              <p class="driver-board__status">Journey: <strong><%= booking.liveStatus || "Not started" %></strong></p>
+              <% if (booking.liveStatus === "Arrived at pickup" && booking.airportWaitAllowanceMinutes !== null) { %>
+                <p class="form-hint">Airport waiting period started <%= booking.airportWaitStartedAt %>. Configured allowance: <%= booking.airportWaitAllowanceMinutes %> minutes.</p>
+              <% } %>
+              <dl class="driver-board__details">
+                <div><dt>Pickup</dt><dd><%= booking.pickup %></dd></div>
+                <div><dt>Destination</dt><dd><%= booking.dropoff %></dd></div>
+                <div><dt>Service</dt><dd><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></dd></div>
+                <% if (booking.passengerName || booking.passengerPhone) { %>
+                  <div><dt>Passenger</dt><dd><%= booking.passengerName || "" %><%= booking.passengerPhone ? ` · ${booking.passengerPhone}` : "" %></dd></div>
+                <% } %>
+                <% if (booking.extrasDescription) { %>
+                  <div><dt>Extras</dt><dd><%= booking.extrasDescription %> — £<%= booking.extrasAmount %><%= booking.extrasPaidAt ? " (paid)" : " (payment confirmation needed)" %></dd></div>
+                <% } %>
+              </dl>
+              <form method="post" action="/driver/bookings/<%= encodeURIComponent(booking.id) %>/status" class="driver-board__form">
+                <%- locals.csrfField || "" %>
+                <div class="form-field">
+                  <label for="live-status-<%= encodeURIComponent(booking.id) %>">Journey status</label>
+                  <select id="live-status-<%= encodeURIComponent(booking.id) %>" name="status" required>
+                    <option value="">Select next status</option>
+                    <% liveStatuses.forEach((status) => { %><option value="<%= status %>"><%= status %></option><% }) %>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="extras-description-<%= encodeURIComponent(booking.id) %>">Extras description (when payable)</label>
+                  <input id="extras-description-<%= encodeURIComponent(booking.id) %>" name="extrasDescription" type="text" maxlength="500">
+                </div>
+                <div class="form-field">
+                  <label for="extras-amount-<%= encodeURIComponent(booking.id) %>">Extras amount (£)</label>
+                  <input id="extras-amount-<%= encodeURIComponent(booking.id) %>" name="extrasAmount" type="number" min="0.01" max="10000" step="0.01">
+                </div>
+                <div class="form-field">
+                  <label for="driver-notes-<%= encodeURIComponent(booking.id) %>">Driver notes (when finished)</label>
+                  <textarea id="driver-notes-<%= encodeURIComponent(booking.id) %>" name="driverNotes" maxlength="2000" rows="2"></textarea>
+                </div>
+                <button class="button" type="submit">Update journey</button>
+              </form>
+            </article>
+          <% }) %>
+        </section>
+      <% } else { %>
+        <section class="panel rm-card empty-state empty-state--compact">
+          <h2>No assigned journeys</h2>
+          <p>Bookings assigned to you for today or later will appear here.</p>
+        </section>
+      <% } %>
+    </main>
+    <%- include("../partials/footer") %>
+    <script>
+      (() => {
+        const presence = document.querySelector("[data-driver-presence][data-online='true']");
+        const token = document.querySelector("[data-driver-presence] input[name='_csrf']")?.value;
+        if (!presence || !token) return;
+        const message = presence.querySelector("[data-presence-message]");
+        const renew = async () => {
+          try {
+            const response = await fetch("/driver/presence", {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ _csrf: token, action: "online" })
+            });
+            if (!response.ok) throw new Error("Presence refresh was rejected.");
+          } catch {
+            if (message) message.textContent = "Could not renew your online status. Select Go online again.";
+            window.clearInterval(timer);
+          }
+        };
+        const timer = window.setInterval(renew, 120000);
+      })();
+    </script>
+  </body>
+</html>

@@ -92,6 +92,19 @@ test("booking status workflow migrates Scheduled to New and keeps cancellation r
   assert.match(noShowMigration.sql, /new_status IN \('New', 'Accepted', 'Cancelled', 'No Show'\)/);
 });
 
+test("automated booking integrations persist payment, notification, and calendar state", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0044_automated_booking_integrations");
+  assert.ok(migration);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS stripe_checkout_session_id TEXT/);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS payment_deadline_at TIMESTAMPTZ/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS booking_delivery_outbox/);
+  assert.match(migration.sql, /UNIQUE \(booking_id, event_type, event_key, recipient_type, channel, recipient_contact\)/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS stripe_webhook_events/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS driver_calendar_connections/);
+  assert.match(migration.sql, /encrypted_refresh_token TEXT NOT NULL/);
+  assert.match(migration.sql, /minimum_online_notice_hours INTEGER NOT NULL DEFAULT 12/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

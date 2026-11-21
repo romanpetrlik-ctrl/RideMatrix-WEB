@@ -124,6 +124,7 @@ const systemSettingsModule: WorkspaceModule = {
 
 export const workspaceModules: WorkspaceModule[] = [
   { key: "administration", title: "Administration", description: "Operations, customer management, and administration.", href: "/dashboard", allowedRoles: ["admin"] },
+  { key: "driver-journeys", title: "Driver journeys", description: "View assigned journeys and update live ride progress.", href: "/driver", allowedRoles: ["driver"] },
   systemSettingsModule,
   { key: "staff", title: "Staff", description: "View internal user accounts and their roles.", href: "/staff", allowedRoles: ["admin"] },
   { key: "technical-support", title: "Technical Support", description: "Technical diagnostics and support tools.", href: "/tech-support", allowedRoles: ["tech_support"] },

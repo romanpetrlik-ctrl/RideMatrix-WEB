@@ -1973,6 +1973,287 @@ export const MIGRATIONS: Migration[] = [
         ADD CONSTRAINT booking_status_audit_new_status_check
         CHECK (new_status IN ('New', 'Accepted', 'Cancelled', 'No Show'));
     `
+  },
+  {
+    id: "0043_booking_lifecycle_and_live_tracking",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS notify_booking_manager BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS live_status TEXT,
+        ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'scheduled',
+        ADD COLUMN IF NOT EXISTS payment_due_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS extras_description TEXT,
+        ADD COLUMN IF NOT EXISTS extras_amount NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS extras_paid_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS driver_notes TEXT;
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_status_check;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT customer_bookings_payment_status_check
+        CHECK (payment_status IN ('scheduled', 'link_sent', 'paid', 'failed', 'refunded'));
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_extras_check;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT customer_bookings_extras_check
+        CHECK (
+          (extras_description IS NULL AND extras_amount IS NULL)
+          OR (
+            extras_description IS NOT NULL AND btrim(extras_description) <> ''
+            AND char_length(extras_description) <= 500
+            AND extras_amount IS NOT NULL AND extras_amount BETWEEN 0.01 AND 10000
+          )
+        );
+
+      ALTER TABLE booking_status_audit
+        DROP CONSTRAINT IF EXISTS booking_status_audit_new_status_check;
+      ALTER TABLE booking_status_audit
+        ADD CONSTRAINT booking_status_audit_new_status_check
+        CHECK (new_status IN (
+          'New', 'Under availability review', 'Accepted', 'Driver assigned',
+          'Completed', 'Cancelled', 'No Show'
+        ));
+
+      CREATE TABLE IF NOT EXISTS driver_presence (
+        driver_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        online_until TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_live_status_audit (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        previous_status TEXT,
+        new_status TEXT NOT NULL CHECK (new_status IN (
+          'En route', 'Waiting near pickup', 'Arrived at pickup', 'Passenger on board',
+          'Journey started', 'On break', 'Resume journey', 'Arrived at destination',
+          'Extras payable', 'Extras paid', 'Ride finished'
+        )),
+        details JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
+        actor_user_id TEXT NOT NULL,
+        actor_email TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_live_status_audit_booking
+        ON booking_live_status_audit (booking_id, occurred_at DESC);
+      CREATE OR REPLACE FUNCTION rm_reject_booking_lifecycle_audit_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Booking lifecycle audit events are append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS booking_live_status_audit_append_only ON booking_live_status_audit;
+      CREATE TRIGGER booking_live_status_audit_append_only
+        BEFORE UPDATE OR DELETE ON booking_live_status_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_lifecycle_audit_mutation();
+
+      CREATE TABLE IF NOT EXISTS booking_status_notification_outbox (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        live_event_id TEXT NOT NULL REFERENCES booking_live_status_audit(id),
+        recipient_type TEXT NOT NULL CHECK (recipient_type IN ('lead_passenger', 'booking_manager')),
+        recipient_name TEXT NOT NULL,
+        recipient_email TEXT,
+        recipient_phone TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        delivery_status TEXT NOT NULL DEFAULT 'pending_provider'
+          CHECK (delivery_status IN ('pending_provider', 'sent', 'failed')),
+        CHECK (recipient_email IS NOT NULL OR recipient_phone IS NOT NULL),
+        UNIQUE (live_event_id, recipient_type)
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_status_color_settings (
+        status_type TEXT NOT NULL CHECK (status_type IN ('operational', 'live')),
+        status_key TEXT NOT NULL,
+        display_label TEXT NOT NULL,
+        color_hex TEXT NOT NULL CHECK (color_hex ~ '^#[0-9A-Fa-f]{6}$'),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (status_type, status_key)
+      );
+      CREATE TABLE IF NOT EXISTS booking_status_color_audit (
+        id TEXT PRIMARY KEY,
+        status_type TEXT NOT NULL,
+        status_key TEXT NOT NULL,
+        previous_color_hex TEXT NOT NULL,
+        new_color_hex TEXT NOT NULL,
+        actor_account_id TEXT,
+        actor_email TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      DROP TRIGGER IF EXISTS booking_status_color_audit_append_only ON booking_status_color_audit;
+      CREATE TRIGGER booking_status_color_audit_append_only
+        BEFORE UPDATE OR DELETE ON booking_status_color_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_lifecycle_audit_mutation();
+
+      INSERT INTO booking_status_color_settings (status_type, status_key, display_label, color_hex) VALUES
+        ('operational', 'New', 'New', '#DCEAF5'),
+        ('operational', 'Under availability review', 'Under availability review', '#F6E7B8'),
+        ('operational', 'Accepted', 'Accepted', '#DCEFD9'),
+        ('operational', 'Driver assigned', 'Driver assigned', '#D8E9E8'),
+        ('operational', 'Completed', 'Completed', '#DCEFD9'),
+        ('operational', 'Cancelled', 'Cancelled', '#F5DDDA'),
+        ('operational', 'No Show', 'No Show', '#F2D8D8'),
+        ('operational', 'Archived', 'Archived', '#E7E4E0'),
+        ('live', 'Driver online', 'Driver online', '#2E8B57'),
+        ('live', 'En route', 'En route', '#2677B8'),
+        ('live', 'Waiting near pickup', 'Waiting near pickup', '#D08B18'),
+        ('live', 'Arrived at pickup', 'Arrived at pickup', '#258C73'),
+        ('live', 'Passenger on board', 'Passenger on board', '#16806B'),
+        ('live', 'Journey started', 'Journey started', '#2677B8'),
+        ('live', 'On break', 'On break', '#8265A8'),
+        ('live', 'Resume journey', 'Resume journey', '#2677B8'),
+        ('live', 'Arrived at destination', 'Arrived at destination', '#258C73'),
+        ('live', 'Extras payable', 'Extras payable', '#D08B18'),
+        ('live', 'Extras paid', 'Extras paid', '#258C73'),
+        ('live', 'Ride finished', 'Ride finished', '#16806B')
+      ON CONFLICT (status_type, status_key) DO NOTHING;
+    `
+  },
+  {
+    id: "0044_automated_booking_integrations",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS passenger_email TEXT,
+        ADD COLUMN IF NOT EXISTS passenger_whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS booking_manager_whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS payer_type TEXT NOT NULL DEFAULT 'booking_manager',
+        ADD COLUMN IF NOT EXISTS payer_name TEXT,
+        ADD COLUMN IF NOT EXISTS payer_email TEXT,
+        ADD COLUMN IF NOT EXISTS payer_phone TEXT,
+        ADD COLUMN IF NOT EXISTS payment_paid_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS payment_deadline_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS stripe_checkout_session_id TEXT,
+        ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT,
+        ADD COLUMN IF NOT EXISTS payment_link_sent_at TIMESTAMPTZ;
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_method_check,
+        ADD CONSTRAINT customer_bookings_payment_method_check
+          CHECK (payment_method IS NULL OR payment_method IN (
+            'invoice', 'payment-link', 'card-online', 'bank-transfer', 'card'
+          )),
+        DROP CONSTRAINT IF EXISTS customer_bookings_payer_type_check,
+        ADD CONSTRAINT customer_bookings_payer_type_check
+          CHECK (payer_type IN ('booking_manager', 'lead_passenger', 'other')),
+        DROP CONSTRAINT IF EXISTS customer_bookings_payer_details_check,
+        ADD CONSTRAINT customer_bookings_payer_details_check
+          CHECK (
+            (payer_name IS NULL OR char_length(payer_name) <= 200)
+            AND (payer_email IS NULL OR char_length(payer_email) <= 254)
+            AND (payer_phone IS NULL OR char_length(payer_phone) <= 50)
+          ),
+        DROP CONSTRAINT IF EXISTS customer_bookings_passenger_email_check,
+        ADD CONSTRAINT customer_bookings_passenger_email_check
+          CHECK (passenger_email IS NULL OR char_length(passenger_email) <= 254);
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_status_check,
+        ADD CONSTRAINT customer_bookings_payment_status_check
+          CHECK (payment_status IN ('scheduled', 'link_sent', 'paid', 'failed', 'expired', 'refunded'));
+
+      ALTER TABLE driver_profiles
+        ADD COLUMN IF NOT EXISTS whatsapp_phone TEXT,
+        ADD COLUMN IF NOT EXISTS whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE;
+
+      CREATE TABLE IF NOT EXISTS booking_integration_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        minimum_online_notice_hours INTEGER NOT NULL DEFAULT 12
+          CHECK (minimum_online_notice_hours IN (6, 12, 24)),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO booking_integration_settings (id, minimum_online_notice_hours)
+      VALUES (1, 12) ON CONFLICT (id) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS booking_delivery_outbox (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL CHECK (event_type IN (
+          'payment_link', 'payment_cancelled', 'customer_reminder_24h',
+          'driver_reminder_24h', 'live_status'
+        )),
+        event_key TEXT NOT NULL DEFAULT '',
+        recipient_type TEXT NOT NULL CHECK (recipient_type IN (
+          'payer', 'lead_passenger', 'booking_manager', 'driver'
+        )),
+        channel TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp')),
+        recipient_name TEXT NOT NULL,
+        recipient_contact TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(payload) = 'object'),
+        available_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        delivery_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (delivery_status IN ('pending', 'sending', 'sent', 'failed', 'skipped')),
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMPTZ,
+        UNIQUE (booking_id, event_type, event_key, recipient_type, channel, recipient_contact)
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_delivery_outbox_due
+        ON booking_delivery_outbox (available_at, created_at)
+        WHERE delivery_status IN ('pending', 'failed', 'sending');
+
+      CREATE TABLE IF NOT EXISTS booking_integration_alerts (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        alert_type TEXT NOT NULL,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMPTZ,
+        resolved_by_account_id TEXT,
+        resolved_by_email TEXT,
+        UNIQUE (booking_id, alert_type)
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_calendar_events (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id) ON DELETE CASCADE,
+        calendar_scope TEXT NOT NULL CHECK (calendar_scope IN ('dispatch', 'driver')),
+        driver_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        provider TEXT NOT NULL CHECK (provider IN ('microsoft', 'google')),
+        external_event_id TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (sync_status IN ('pending', 'synced', 'failed', 'deleted')),
+        last_error TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_dispatch_calendar_event
+        ON booking_calendar_events (booking_id) WHERE calendar_scope = 'dispatch';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_driver_calendar_event
+        ON booking_calendar_events (booking_id, driver_id) WHERE calendar_scope = 'driver';
+      CREATE INDEX IF NOT EXISTS idx_booking_calendar_events_sync
+        ON booking_calendar_events (sync_status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS driver_calendar_connections (
+        driver_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('microsoft', 'google')),
+        calendar_email TEXT NOT NULL,
+        encrypted_access_token TEXT NOT NULL,
+        encrypted_refresh_token TEXT NOT NULL,
+        access_token_expires_at TIMESTAMPTZ NOT NULL,
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS driver_calendar_oauth_states (
+        state_hash TEXT PRIMARY KEY,
+        driver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('microsoft', 'google')),
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_calendar_oauth_states_expiry
+        ON driver_calendar_oauth_states (expires_at);
+
+      CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+        event_id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `
   }
 ];
 

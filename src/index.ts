@@ -16,6 +16,9 @@ import { bookingAuthorizationResponseHeaders, createBookingAuthorizationRouter }
 import { createStaffRouter } from "./routes/staff";
 import { createVehiclesRouter } from "./routes/vehicles";
 import { createDriversRouter } from "./routes/drivers";
+import { createDriverBookingsRouter } from "./routes/driver-bookings";
+import { createBookingIntegrationSettingsRouter } from "./routes/booking-integration-settings";
+import { createBookingPaymentsRouter } from "./routes/booking-payments";
 import { createSetupRouter } from "./routes/setup";
 import { errorHandler } from "./middleware/error-handler";
 import { createCsrfProtection } from "./middleware/csrf";
@@ -34,6 +37,8 @@ async function startServer() {
   // Fail fast when the database cannot be opened or migrated, instead of
   // surfacing the problem on the first customer request.
   await initializeDatabase();
+
+  app.use(createBookingPaymentsRouter());
 
   const port = Number(process.env.PORT || 5080);
   const appTitle = process.env.APP_TITLE || "RideMatrix";
@@ -70,6 +75,8 @@ async function startServer() {
   app.use(createDashboardRouter({ appTitle }));
   app.use(createCustomersRouter({ appTitle }));
   app.use(createBookingsRouter({ appTitle }));
+  app.use(createDriverBookingsRouter({ appTitle }));
+  app.use(createBookingIntegrationSettingsRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
   app.use(createDriversRouter({ appTitle }));
   app.use(createVehiclesRouter({ appTitle }));

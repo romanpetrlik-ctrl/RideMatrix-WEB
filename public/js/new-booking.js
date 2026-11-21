@@ -40,10 +40,14 @@
   }
 
   /** Passenger values while synchronized follow the manager; otherwise the passenger's own values are kept. */
+  /** @param {{name: string, phone: string, email: string}} manager
+   * @param {{name: string, phone: string, email: string}} passenger
+   * @param {boolean} passengerIsManager
+   */
   function passengerState(manager, passenger, passengerIsManager) {
     return passengerIsManager
-      ? { name: manager.name, phone: manager.phone, readOnly: true }
-      : { name: passenger.name, phone: passenger.phone, readOnly: false };
+      ? { name: manager.name, phone: manager.phone, email: manager.email, readOnly: true }
+      : { name: passenger.name, phone: passenger.phone, email: passenger.email, readOnly: false };
   }
 
   function formatDuration(seconds) {
@@ -138,7 +142,8 @@
     const $$ = (selector) => Array.prototype.slice.call(form.querySelectorAll(selector));
     const managerSelect = $("[data-manager-select]");
     const manager = { name: $("input[data-manager-name]"), phone: $("input[data-manager-phone]"), email: $("input[data-manager-email]") };
-    const passenger = { name: $("[data-passenger-name]"), phone: $("[data-passenger-phone]") };
+    const passenger = { name: $("[data-passenger-name]"), phone: $("[data-passenger-phone]"), email: $("[data-passenger-email]") };
+    const payer = { type: $("[data-payer-type]"), name: $("#payerName"), email: $("#payerEmail"), phone: $("#payerPhone") };
     const passengerIsManager = $("[data-passenger-is-manager]");
     const syncHint = $("[data-passenger-sync-hint]");
     const existingCustomerFields = $("[data-existing-customer-fields]");
@@ -152,11 +157,15 @@
     const existingManager = { name: manager.name.value, phone: manager.phone.value, email: manager.email.value };
     let currentExistingCustomerId = managerSelect.value;
     // Independent passenger values are remembered so unchecking restores what the dispatcher typed.
-    const ownPassenger = { name: passengerIsManager.checked ? "" : passenger.name.value, phone: passengerIsManager.checked ? "" : passenger.phone.value };
+    const ownPassenger = {
+      name: passengerIsManager.checked ? "" : passenger.name.value,
+      phone: passengerIsManager.checked ? "" : passenger.phone.value,
+      email: passengerIsManager.checked ? "" : passenger.email.value
+    };
 
     const syncPassenger = () => {
       const state = passengerState(
-        { name: manager.name.value, phone: manager.phone.value },
+        { name: manager.name.value, phone: manager.phone.value, email: manager.email.value },
         ownPassenger,
         passengerIsManager.checked
       );
@@ -164,10 +173,13 @@
       passenger.phone.value = state.phone;
       passenger.name.readOnly = state.readOnly;
       passenger.phone.readOnly = state.readOnly;
+      passenger.email.value = state.email;
+      passenger.email.readOnly = state.readOnly;
       if (syncHint) syncHint.hidden = !state.readOnly;
     };
     passenger.name.addEventListener("input", () => { if (!passengerIsManager.checked) ownPassenger.name = passenger.name.value; });
     passenger.phone.addEventListener("input", () => { if (!passengerIsManager.checked) ownPassenger.phone = passenger.phone.value; });
+    passenger.email.addEventListener("input", () => { if (!passengerIsManager.checked) ownPassenger.email = passenger.email.value; });
     [manager.name, manager.phone, manager.email].forEach((input) => input.addEventListener("input", () => {
       existingManager.name = manager.name.value;
       existingManager.phone = manager.phone.value;
@@ -223,6 +235,19 @@
     Object.values(newCustomerInputs).forEach((input) => input.addEventListener("input", syncNewCustomerToManager));
     syncCustomerMode();
     syncPassenger();
+    const syncPayerFromSelectedContact = () => {
+      if (payer.type.value === "other") return;
+      const source = payer.type.value === "lead_passenger"
+        ? { name: passenger.name.value, email: passenger.email.value, phone: passenger.phone.value }
+        : { name: manager.name.value, email: manager.email.value, phone: manager.phone.value };
+      payer.name.value = source.name;
+      payer.email.value = source.email;
+      payer.phone.value = source.phone;
+    };
+    payer.type.addEventListener("change", syncPayerFromSelectedContact);
+    [manager.name, manager.phone, manager.email, passenger.name, passenger.phone, passenger.email]
+      .forEach((input) => input.addEventListener("input", syncPayerFromSelectedContact));
+    syncPayerFromSelectedContact();
 
     const cargoTarget = doc.querySelector("[data-cargo-summary]");
     const updateCargo = () => {
