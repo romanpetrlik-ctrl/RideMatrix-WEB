@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell booking-status-colors">
+      <header class="new-booking-page__title">
+        <h1>Booking status colours</h1>
+        <p>Operational colours softly tint the booking row. The live journey colour appears as the vertical strip on its right edge.</p>
+        <a href="/bookings">Back to bookings</a>
+      </header>
+      <% if (notice === "updated") { %><section class="notice" role="status">Status colour saved.</section><% } %>
+      <% if (notice === "unchanged") { %><section class="notice" role="status">That status already uses this colour.</section><% } %>
+      <% if (notice === "invalid" || notice === "not-found") { %><section class="notice notice--critical" role="alert">Choose a listed status and a valid colour.</section><% } %>
+      <% ["operational", "live"].forEach((type) => { %>
+        <section class="panel rm-card booking-status-colors__group">
+          <h2><%= type === "operational" ? "Operational status (row background)" : "Live journey status (right-side strip)" %></h2>
+          <div class="booking-status-colors__list">
+            <% colors.filter((color) => color.statusType === type).forEach((color) => { %>
+              <form method="post" action="/bookings/status-colors" class="booking-status-colors__item">
+                <%- locals.csrfField || "" %>
+                <input type="hidden" name="statusType" value="<%= color.statusType %>">
+                <input type="hidden" name="statusKey" value="<%= color.statusKey %>">
+                <label for="color-<%= color.statusType %>-<%= encodeURIComponent(color.statusKey) %>"><%= color.displayLabel %></label>
+                <input id="color-<%= color.statusType %>-<%= encodeURIComponent(color.statusKey) %>" name="colorHex" type="color" value="<%= color.colorHex %>">
+                <div class="booking-status-colors__preview <%= type === "operational" ? "booking-status-colors__preview--operational" : "booking-status-colors__preview--live" %>"
+                     style="<%= type === "operational" ? `--booking-operational-color: ${color.colorHex}` : `--booking-live-color: ${color.colorHex}` %>">
+                  <span>Booking row preview</span>
+                  <% if (type === "live") { %><span class="booking-status-colors__live-label"><%= color.displayLabel %></span><% } %>
+                </div>
+                <button class="button button--secondary" type="submit">Save</button>
+              </form>
+            <% }) %>
+          </div>
+        </section>
+      <% }) %>
+    </main>
+    <%- include("../../partials/footer") %>
+  </body>
+</html>

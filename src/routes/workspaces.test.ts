@@ -39,21 +39,23 @@ function extractRuleBody(source: string, selector: string): string {
   return match[1];
 }
 
-test("workspace selector exposes only the five internal modules", () => {
+test("workspace selector exposes authorized internal modules", () => {
   assert.deepEqual(workspaceModules.map((module) => module.title), [
     "Administration",
+    "Driver journeys",
     "System settings",
     "Staff",
     "Technical Support",
     "Manage VPS"
   ]);
   assert.deepEqual(workspaceModules.map((module) => module.href), [
-    "/dashboard", "/settings", "/staff", "/tech-support", "/vps"
+    "/dashboard", "/driver", "/settings", "/staff", "/tech-support", "/vps"
   ]);
 });
 
 test("workspace authorization is explicit and never treats customer or staff as VPS access", () => {
-  assert.deepEqual(availableWorkspaceModules(["customer", "partner", "driver"]), []);
+  assert.deepEqual(availableWorkspaceModules(["customer", "partner"]), []);
+  assert.deepEqual(availableWorkspaceModules(["driver"]).map((module) => module.href), ["/driver"]);
   assert.equal(canAccessWorkspace(["admin"], "administration"), true);
   assert.equal(canAccessWorkspace(["admin"], "staff"), true);
   assert.equal(canAccessWorkspace(["tech_support"], "technical-support"), true);
@@ -63,6 +65,7 @@ test("workspace authorization is explicit and never treats customer or staff as 
 
 test("only a single authorized module receives a direct landing route", () => {
   assert.equal(getLandingRoute(["tech_support"]), "/tech-support");
+  assert.equal(getLandingRoute(["driver"]), "/driver");
   assert.equal(getLandingRoute(["admin", "superuser"]), "/choose-role");
   assert.equal(getLandingRoute(["customer"]), "/account");
 });

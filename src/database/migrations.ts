@@ -1973,6 +1973,143 @@ export const MIGRATIONS: Migration[] = [
         ADD CONSTRAINT booking_status_audit_new_status_check
         CHECK (new_status IN ('New', 'Accepted', 'Cancelled', 'No Show'));
     `
+  },
+  {
+    id: "0043_booking_lifecycle_and_live_tracking",
+    sql: `
+      ALTER TABLE customer_bookings
+        ADD COLUMN IF NOT EXISTS notify_booking_manager BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS live_status TEXT,
+        ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'scheduled',
+        ADD COLUMN IF NOT EXISTS payment_due_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS extras_description TEXT,
+        ADD COLUMN IF NOT EXISTS extras_amount NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS extras_paid_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS driver_notes TEXT;
+
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_payment_status_check;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT customer_bookings_payment_status_check
+        CHECK (payment_status IN ('scheduled', 'link_sent', 'paid', 'failed', 'refunded'));
+      ALTER TABLE customer_bookings
+        DROP CONSTRAINT IF EXISTS customer_bookings_extras_check;
+      ALTER TABLE customer_bookings
+        ADD CONSTRAINT customer_bookings_extras_check
+        CHECK (
+          (extras_description IS NULL AND extras_amount IS NULL)
+          OR (
+            extras_description IS NOT NULL AND btrim(extras_description) <> ''
+            AND char_length(extras_description) <= 500
+            AND extras_amount IS NOT NULL AND extras_amount BETWEEN 0.01 AND 10000
+          )
+        );
+
+      ALTER TABLE booking_status_audit
+        DROP CONSTRAINT IF EXISTS booking_status_audit_new_status_check;
+      ALTER TABLE booking_status_audit
+        ADD CONSTRAINT booking_status_audit_new_status_check
+        CHECK (new_status IN (
+          'New', 'Under availability review', 'Accepted', 'Driver assigned',
+          'Completed', 'Cancelled', 'No Show'
+        ));
+
+      CREATE TABLE IF NOT EXISTS driver_presence (
+        driver_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        online_until TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_live_status_audit (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        previous_status TEXT,
+        new_status TEXT NOT NULL CHECK (new_status IN (
+          'En route', 'Waiting near pickup', 'Arrived at pickup', 'Passenger on board',
+          'Journey started', 'On break', 'Resume journey', 'Arrived at destination',
+          'Extras payable', 'Extras paid', 'Ride finished'
+        )),
+        details JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
+        actor_user_id TEXT NOT NULL,
+        actor_email TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_booking_live_status_audit_booking
+        ON booking_live_status_audit (booking_id, occurred_at DESC);
+      CREATE OR REPLACE FUNCTION rm_reject_booking_lifecycle_audit_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Booking lifecycle audit events are append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS booking_live_status_audit_append_only ON booking_live_status_audit;
+      CREATE TRIGGER booking_live_status_audit_append_only
+        BEFORE UPDATE OR DELETE ON booking_live_status_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_lifecycle_audit_mutation();
+
+      CREATE TABLE IF NOT EXISTS booking_status_notification_outbox (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL REFERENCES customer_bookings(id),
+        live_event_id TEXT NOT NULL REFERENCES booking_live_status_audit(id),
+        recipient_type TEXT NOT NULL CHECK (recipient_type IN ('lead_passenger', 'booking_manager')),
+        recipient_name TEXT NOT NULL,
+        recipient_email TEXT,
+        recipient_phone TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        delivery_status TEXT NOT NULL DEFAULT 'pending_provider'
+          CHECK (delivery_status IN ('pending_provider', 'sent', 'failed')),
+        CHECK (recipient_email IS NOT NULL OR recipient_phone IS NOT NULL),
+        UNIQUE (live_event_id, recipient_type)
+      );
+
+      CREATE TABLE IF NOT EXISTS booking_status_color_settings (
+        status_type TEXT NOT NULL CHECK (status_type IN ('operational', 'live')),
+        status_key TEXT NOT NULL,
+        display_label TEXT NOT NULL,
+        color_hex TEXT NOT NULL CHECK (color_hex ~ '^#[0-9A-Fa-f]{6}$'),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (status_type, status_key)
+      );
+      CREATE TABLE IF NOT EXISTS booking_status_color_audit (
+        id TEXT PRIMARY KEY,
+        status_type TEXT NOT NULL,
+        status_key TEXT NOT NULL,
+        previous_color_hex TEXT NOT NULL,
+        new_color_hex TEXT NOT NULL,
+        actor_account_id TEXT,
+        actor_email TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      DROP TRIGGER IF EXISTS booking_status_color_audit_append_only ON booking_status_color_audit;
+      CREATE TRIGGER booking_status_color_audit_append_only
+        BEFORE UPDATE OR DELETE ON booking_status_color_audit
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_booking_lifecycle_audit_mutation();
+
+      INSERT INTO booking_status_color_settings (status_type, status_key, display_label, color_hex) VALUES
+        ('operational', 'New', 'New', '#DCEAF5'),
+        ('operational', 'Under availability review', 'Under availability review', '#F6E7B8'),
+        ('operational', 'Accepted', 'Accepted', '#DCEFD9'),
+        ('operational', 'Driver assigned', 'Driver assigned', '#D8E9E8'),
+        ('operational', 'Completed', 'Completed', '#DCEFD9'),
+        ('operational', 'Cancelled', 'Cancelled', '#F5DDDA'),
+        ('operational', 'No Show', 'No Show', '#F2D8D8'),
+        ('operational', 'Archived', 'Archived', '#E7E4E0'),
+        ('live', 'Driver online', 'Driver online', '#2E8B57'),
+        ('live', 'En route', 'En route', '#2677B8'),
+        ('live', 'Waiting near pickup', 'Waiting near pickup', '#D08B18'),
+        ('live', 'Arrived at pickup', 'Arrived at pickup', '#258C73'),
+        ('live', 'Passenger on board', 'Passenger on board', '#16806B'),
+        ('live', 'Journey started', 'Journey started', '#2677B8'),
+        ('live', 'On break', 'On break', '#8265A8'),
+        ('live', 'Resume journey', 'Resume journey', '#2677B8'),
+        ('live', 'Arrived at destination', 'Arrived at destination', '#258C73'),
+        ('live', 'Extras payable', 'Extras payable', '#D08B18'),
+        ('live', 'Extras paid', 'Extras paid', '#258C73'),
+        ('live', 'Ride finished', 'Ride finished', '#16806B')
+      ON CONFLICT (status_type, status_key) DO NOTHING;
+    `
   }
 ];
 

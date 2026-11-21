@@ -7,6 +7,8 @@ import {
   archiveBooking as archiveBookingRecord,
   BOOKING_WORKFLOW_STATUSES,
   changeBookingStatus as changeBookingStatusRecord,
+  listBookingStatusColors,
+  saveBookingStatusColor,
   listBookingDashboard,
   type BookingDashboardRecord,
   type BookingDashboardView,
@@ -86,6 +88,7 @@ function emptyDraft(now: Date): NewBookingDraft {
     managerName: "",
     managerPhone: "",
     managerEmail: "",
+    notifyBookingManager: false,
     passengerIsManager: true,
     passengerName: "",
     passengerPhone: "",
@@ -226,6 +229,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   router.get("/bookings", requireAdminSession, async (req, res, next) => {
     try {
       const actor = res.locals.bookingActor as BookingActor;
+      const session = await loadSession(req.headers.cookie);
       const requestedView = typeof req.query.view === "string" ? req.query.view : "";
       const view: BookingDashboardView = BOOKING_DASHBOARD_VIEWS.includes(requestedView as BookingDashboardView)
         ? requestedView as BookingDashboardView
@@ -236,6 +240,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         title: "Bookings",
         appTitle: options.appTitle,
         email: actor.email,
+        canManageStatusColors: session.user?.roles.includes("superuser") ?? false,
         contextBarActions: [{ label: "New booking", href: "/bookings/new", tone: "primary" }],
         bookings,
         view,
@@ -249,6 +254,56 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
               ? "The cancellation reason must be no more than 500 characters."
               : ""
       });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  const requireSuperuserForStatusColors = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const session = await loadSession(req.headers.cookie);
+      if (!session.authenticated || !session.user) return res.redirect("/access");
+      if (!session.user.roles.includes("superuser")) {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      res.locals.statusColorActor = { accountId: session.user.id, email: session.user.email };
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+
+  router.get("/bookings/status-colors", requireSuperuserForStatusColors, async (_req, res, next) => {
+    try {
+      const actor = res.locals.statusColorActor as BookingActor;
+      return res.render("pages/bookings/status-colors", {
+        title: "Booking status colours",
+        appTitle: options.appTitle,
+        email: actor.email,
+        colors: await listBookingStatusColors()
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/bookings/status-colors", requireSuperuserForStatusColors, statusRateLimit, csrfGuard, async (req, res, next) => {
+    try {
+      const actor = res.locals.statusColorActor as BookingActor;
+      const statusType = req.body?.statusType === "live" ? "live" : req.body?.statusType === "operational" ? "operational" : null;
+      const statusKey = typeof req.body?.statusKey === "string" ? req.body.statusKey : "";
+      const colorHex = typeof req.body?.colorHex === "string" ? req.body.colorHex : "";
+      if (!statusType || !/^#[0-9A-Fa-f]{6}$/.test(colorHex)) {
+        return res.redirect(303, "/bookings/status-colors?notice=invalid");
+      }
+      const result = await saveBookingStatusColor({
+        statusType,
+        statusKey,
+        colorHex,
+        actorId: actor.accountId,
+        actorEmail: actor.email
+      });
+      return res.redirect(303, `/bookings/status-colors?notice=${result}`);
     } catch (error) {
       return next(error);
     }
