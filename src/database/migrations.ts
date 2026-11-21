@@ -1963,6 +1963,16 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_booking_status_audit_booking
         ON booking_status_audit (booking_id, changed_at DESC);
     `
+  },
+  {
+    id: "0042_booking_no_show_status",
+    sql: `
+      ALTER TABLE booking_status_audit
+        DROP CONSTRAINT IF EXISTS booking_status_audit_new_status_check;
+      ALTER TABLE booking_status_audit
+        ADD CONSTRAINT booking_status_audit_new_status_check
+        CHECK (new_status IN ('New', 'Accepted', 'Cancelled', 'No Show'));
+    `
   }
 ];
 

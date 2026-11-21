@@ -3,9 +3,9 @@ import type { PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
 import { unassignBookingVehicle } from "./licensing";
 
-export const BOOKING_DASHBOARD_VIEWS = ["today", "upcoming", "past"] as const;
+export const BOOKING_DASHBOARD_VIEWS = ["today", "upcoming", "all", "finished", "cancelled", "archived", "no-show"] as const;
 export type BookingDashboardView = (typeof BOOKING_DASHBOARD_VIEWS)[number];
-export const BOOKING_WORKFLOW_STATUSES = ["New", "Accepted", "Cancelled"] as const;
+export const BOOKING_WORKFLOW_STATUSES = ["New", "Accepted", "Cancelled", "No Show"] as const;
 export type BookingWorkflowStatus = (typeof BOOKING_WORKFLOW_STATUSES)[number];
 
 export type BookingDashboardRecord = {
@@ -23,6 +23,9 @@ export type BookingDashboardRecord = {
   driverName: string | null;
   vehicleRegistration: string | null;
   isTestBooking: boolean;
+  archivedAt?: string | null;
+  archiveReason?: string | null;
+  canMarkNoShow?: boolean;
 };
 
 function serviceDate(now: Date): string {
@@ -43,12 +46,22 @@ export async function listBookingDashboard(
 ): Promise<BookingDashboardRecord[]> {
   const selectedDate = serviceDate(now);
   const normalizedSearch = search.trim().slice(0, 100).toLocaleLowerCase("en-GB");
-  const dateCondition = view === "today"
-    ? "b.service_date = $2"
+  const viewCondition = view === "today"
+    ? "b.archived_at IS NULL AND b.service_date = $2 AND b.status IN ('New', 'Accepted')"
     : view === "upcoming"
-      ? "b.service_date > $2"
-      : "b.service_date < $2";
-  const order = view === "past" ? "b.service_date DESC, b.service_time DESC NULLS LAST" : "b.service_date ASC, b.service_time ASC NULLS LAST";
+      ? "b.archived_at IS NULL AND b.service_date > $2 AND b.status IN ('New', 'Accepted')"
+      : view === "all"
+        ? "b.archived_at IS NULL"
+        : view === "finished"
+          ? "b.archived_at IS NULL AND b.status = 'Completed'"
+          : view === "cancelled"
+            ? "b.archived_at IS NULL AND b.status = 'Cancelled'"
+            : view === "no-show"
+              ? "b.archived_at IS NULL AND b.status = 'No Show'"
+              : "b.archived_at IS NOT NULL";
+  const order = view === "today" || view === "upcoming"
+    ? "b.service_date ASC, b.service_time ASC NULLS LAST"
+    : "b.service_date DESC, b.service_time DESC NULLS LAST";
   const result = await query<{
     id: string;
     customer_id: string;
@@ -64,19 +77,22 @@ export async function listBookingDashboard(
     driver_name: string | null;
     vehicle_registration: string | null;
     is_test_booking: boolean;
+    archived_at: string | null;
+    archive_reason: string | null;
+    can_mark_no_show: boolean;
   }>(
     `SELECT b.id, b.customer_id, b.reference, b.service_date, b.service_time,
             COALESCE(NULLIF(btrim(b.booking_manager_name), ''),
                      NULLIF(btrim(concat_ws(' ', c.given_name, c.surname)), ''), 'Unknown customer') AS customer_name,
             b.pickup, b.dropoff, b.status, COALESCE(b.assignment_status, 'unassigned') AS assignment_status,
             b.driver_id, dp.short_name AS driver_name, v.registration AS vehicle_registration,
-            COALESCE(b.is_test_booking, FALSE) AS is_test_booking
+            COALESCE(b.is_test_booking, FALSE) AS is_test_booking,
+            b.archived_at, b.archive_reason, b.service_date <= $2 AS can_mark_no_show
        FROM customer_bookings b
        JOIN customers c ON c.id = b.customer_id
        LEFT JOIN driver_profiles dp ON dp.driver_id = b.driver_id
        LEFT JOIN vehicles v ON v.id = b.vehicle_id
-      WHERE b.archived_at IS NULL
-        AND ${dateCondition}
+      WHERE ${viewCondition}
         AND (
           $1 = ''
           OR position($1 in lower(concat_ws(' ', b.reference, c.given_name, c.surname, b.booking_manager_name,
@@ -100,7 +116,10 @@ export async function listBookingDashboard(
     driverId: row.driver_id,
     driverName: row.driver_name,
     vehicleRegistration: row.vehicle_registration,
-    isTestBooking: Boolean(row.is_test_booking)
+    isTestBooking: Boolean(row.is_test_booking),
+    archivedAt: row.archived_at,
+    archiveReason: row.archive_reason,
+    canMarkNoShow: row.can_mark_no_show
   }));
 }
 
@@ -159,27 +178,33 @@ export async function changeBookingStatus(input: {
     const existing = await client.query<{
       status: string;
       archived_at: string | null;
+      service_date: string;
       driver_id: string | null;
       vehicle_id: string | null;
     }>(
-      "SELECT status, archived_at, driver_id, vehicle_id FROM customer_bookings WHERE id = $1 FOR UPDATE",
+      "SELECT status, archived_at, service_date, driver_id, vehicle_id FROM customer_bookings WHERE id = $1 FOR UPDATE",
       [input.bookingId]
     );
     const current = existing.rows[0];
     if (!current) return "not-found";
     if (current.archived_at) return "not-changeable";
     if (current.status === input.status) return "unchanged";
-    if (current.status === "Cancelled" || current.status === "Completed") return "not-changeable";
+    if (current.status === "Cancelled" || current.status === "Completed" || current.status === "No Show") return "not-changeable";
+    if (input.status === "No Show" && current.service_date > serviceDate(input.now ?? new Date())) return "not-changeable";
 
     const changedAt = (input.now ?? new Date()).toISOString();
-    if (input.status === "Cancelled" && (current.driver_id || current.vehicle_id)) {
+    if ((input.status === "Cancelled" || input.status === "No Show") && (current.driver_id || current.vehicle_id)) {
       await unassignBookingVehicle({
         bookingId: input.bookingId,
         actorId: input.actorId,
-        source: "booking-status-cancellation",
-        reason: "Booking cancelled.",
+        source: input.status === "Cancelled" ? "booking-status-cancellation" : "booking-status-no-show",
+        reason: input.status === "Cancelled" ? "Booking cancelled." : "Booking marked as no show.",
         requireReview: false
       }, client);
+      await client.query(
+        "UPDATE customer_bookings SET driver_id = NULL WHERE id = $1",
+        [input.bookingId]
+      );
     }
     await client.query(
       "UPDATE customer_bookings SET status = $2 WHERE id = $1 AND archived_at IS NULL",

@@ -63,7 +63,7 @@ async function withApp(
     archiveBooking?: (input: { bookingId: string; reason: string; actorId: string; actorEmail: string }) => Promise<"archived" | "not-found" | "already-archived">;
     changeBookingStatus?: (input: {
       bookingId: string;
-      status: "New" | "Accepted" | "Cancelled";
+      status: "New" | "Accepted" | "Cancelled" | "No Show";
       reason?: string;
       actorId: string;
       actorEmail: string;
@@ -210,7 +210,7 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     id: "booking-uuid",
     customerId: "cust-b",
     reference: "RMB-000042",
-    serviceDate: "2027-03-10",
+    serviceDate: "2026-03-10",
     serviceTime: "14:30",
     customerName: "Blair Booker",
     pickup: "Airport X",
@@ -220,7 +220,8 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     driverId: "driver-7",
     driverName: "Casey Driver",
     vehicleRegistration: "AB12 CDE",
-    isTestBooking: true
+    isTestBooking: true,
+    canMarkNoShow: true
   };
   await withApp({
     listDashboardBookings: async (view, search) => {
@@ -242,15 +243,30 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     assert.match(html, /New/);
     assert.match(html, /TEST/);
     assert.match(html, /Casey Driver · AB12 CDE/);
-    assert.match(html, /Assign \/ view driver/);
-    assert.match(html, /Deassign driver/);
+    assert.match(html, />All<\/a>/);
+    assert.match(html, />Finished<\/a>/);
+    assert.match(html, />Cancelled<\/a>/);
+    assert.match(html, />Archived<\/a>/);
+    assert.match(html, />No show<\/a>/);
+    assert.match(html, /Cancelled means the customer cancelled the booking/);
+    assert.match(html, /archiving is not permanent deletion/);
+    assert.match(html, />Driver<\/a>/);
+    assert.match(html, /Remove driver/);
     assert.match(html, /<details class="booking-dashboard__details">/);
     assert.match(html, /<summary class="booking-dashboard__summary"/);
-    assert.match(html, /Accept booking/);
+    assert.match(html, />Accept<\/button>/);
     assert.match(html, /name="status" value="Cancelled"/);
-    assert.match(html, /Cancellation reason/);
-    assert.match(html, /Archive reason/);
-    assert.match(html, /name="reason" type="text" maxlength="500" required/);
+    assert.match(html, /name="status" value="No Show"/);
+    assert.match(html, />No show<\/button>/);
+    assert.match(html, /placeholder="Cancellation reason"/);
+    assert.match(html, /placeholder="Archive reason"/);
+    assert.doesNotMatch(html, /booking-dashboard__action-label|booking-dashboard__expanded-heading/);
+    const expandedStart = html.indexOf('class="booking-dashboard__expanded"');
+    const expandedEnd = html.indexOf("</details>", expandedStart);
+    assert.ok(expandedStart >= 0 && expandedEnd > expandedStart);
+    assert.doesNotMatch(html.slice(expandedStart, expandedEnd), /<strong>RMB-000042<\/strong>/);
+    assert.match(html, />Details<\/a>/);
+    assert.match(html, /name="reason" type="text" maxlength="500" placeholder="[^"]+" required/);
     assert.doesNotMatch(html, />Actions<\/summary>/);
     const summary = html.match(/<summary[^>]*>[\s\S]*?<\/summary>/)?.[0] ?? "";
     assert.ok(summary);
@@ -259,6 +275,63 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     assert.doesNotMatch(summary, /<a /);
     assert.match(html, /<\/details>\s*<\/td>\s*<\/tr>/);
     assert.doesNotMatch(html, /name="customerMode"/);
+  });
+});
+
+test("booking board accepts each supported filter and preserves the selected view", async () => {
+  const requestedViews: BookingDashboardView[] = [];
+  await withApp({
+    listDashboardBookings: async (view) => {
+      requestedViews.push(view);
+      return [];
+    }
+  }, async (baseUrl) => {
+    const views: Array<[BookingDashboardView, string]> = [
+      ["today", "Today&#39;s bookings"],
+      ["upcoming", "Upcoming bookings"],
+      ["all", "All bookings"],
+      ["finished", "Finished bookings"],
+      ["cancelled", "Cancelled bookings"],
+      ["archived", "Archived bookings"],
+      ["no-show", "No-show bookings"]
+    ];
+    for (const [view, heading] of views) {
+      const response = await fetch(`${baseUrl}/bookings?view=${view}`);
+      assert.equal(response.status, 200);
+      assert.match(await response.text(), new RegExp(heading));
+    }
+    assert.deepEqual(requestedViews, views.map(([view]) => view));
+  });
+});
+
+test("archived bookings are shown as retained history without operational actions", async () => {
+  const archived: BookingDashboardRecord = {
+    id: "booking-archived",
+    customerId: "cust-b",
+    reference: "RMB-000043",
+    serviceDate: "2026-03-10",
+    serviceTime: "14:30",
+    customerName: "Blair Booker",
+    pickup: "Airport X",
+    dropoff: "1 High Street",
+    status: "Cancelled",
+    assignmentStatus: "unassigned",
+    driverId: null,
+    driverName: null,
+    vehicleRegistration: null,
+    isTestBooking: false,
+    archivedAt: "2026-03-11T09:00:00.000Z",
+    archiveReason: "Duplicate booking"
+  };
+  await withApp({
+    listDashboardBookings: async () => [archived]
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/bookings?view=archived`);
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /Previously: Cancelled/);
+    assert.match(html, /Archived booking — retained for records, not permanently deleted\. Reason: Duplicate booking/);
+    assert.doesNotMatch(html, />Driver<\/a>|No show<\/button>|>Archive<\/button>/);
   });
 });
 
@@ -313,7 +386,7 @@ test("booking archive requires CSRF and a reason, then redirects to the selected
 test("booking status changes require CSRF and cancellation reason, then preserve dashboard filters", async () => {
   const changed: Array<{
     bookingId: string;
-    status: "New" | "Accepted" | "Cancelled";
+    status: "New" | "Accepted" | "Cancelled" | "No Show";
     reason?: string;
     actorId: string;
     actorEmail: string;
@@ -362,6 +435,10 @@ test("booking status changes require CSRF and cancellation reason, then preserve
       _csrf: token, status: "Cancelled", reason: "Customer requested cancellation", view: "upcoming"
     }), { cookie });
     assert.equal(cancelled.status, 303);
+    const noShow = await post(`${baseUrl}/bookings/booking-uuid/status`, new URLSearchParams({
+      _csrf: token, status: "No Show", view: "upcoming"
+    }), { cookie });
+    assert.equal(noShow.status, 303);
     assert.deepEqual(changed, [
       {
         bookingId: "booking-uuid",
@@ -374,6 +451,13 @@ test("booking status changes require CSRF and cancellation reason, then preserve
         bookingId: "booking-uuid",
         status: "Cancelled",
         reason: "Customer requested cancellation",
+        actorId: "acct-7",
+        actorEmail: "dispatcher@example.test"
+      },
+      {
+        bookingId: "booking-uuid",
+        status: "No Show",
+        reason: "",
         actorId: "acct-7",
         actorEmail: "dispatcher@example.test"
       }

@@ -24,7 +24,7 @@ export type BookingRecord = {
   serviceDate: string;
   pickup: string;
   dropoff: string;
-  status: "Scheduled" | "Completed" | "Cancelled";
+  status: "Scheduled" | "New" | "Accepted" | "Completed" | "Cancelled" | "No Show";
   licensingAuthorityId: string | null;
   licensingAuthorityName: string | null;
   vehicleLicenseType: string | null;

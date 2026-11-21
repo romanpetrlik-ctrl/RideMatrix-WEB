@@ -140,7 +140,7 @@ async function loadRecentBookings(
     serviceDate: string;
     pickup: string;
     dropoff: string;
-    status: "Scheduled" | "Completed" | "Cancelled";
+    status: "Scheduled" | "New" | "Accepted" | "Completed" | "Cancelled" | "No Show";
     formattedServiceDate: string;
   }>;
   error: boolean;

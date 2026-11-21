@@ -85,6 +85,11 @@ test("booking status workflow migrates Scheduled to New and keeps cancellation r
   assert.match(migration.sql, /new_status <> 'Cancelled' OR btrim\(COALESCE\(reason, ''\)\) <> ''/);
   assert.match(migration.sql, /actor_user_email TEXT NOT NULL/);
   assert.match(migration.sql, /booking_id TEXT NOT NULL REFERENCES customer_bookings\(id\),/);
+
+  const noShowMigration = MIGRATIONS.find((item) => item.id === "0042_booking_no_show_status");
+  assert.ok(noShowMigration);
+  assert.match(noShowMigration.sql, /DROP CONSTRAINT IF EXISTS booking_status_audit_new_status_check/);
+  assert.match(noShowMigration.sql, /new_status IN \('New', 'Accepted', 'Cancelled', 'No Show'\)/);
 });
 
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {

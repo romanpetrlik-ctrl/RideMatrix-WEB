@@ -153,19 +153,21 @@ test("server-side assignment derives operator and service date and requires an e
     "legacy operator licence records are not a source of truth");
 });
 
-test("cancelled bookings cannot be assigned", async () => {
-  const client: any = {
-    async query(sql: string) {
-      if (sql.includes("SELECT service_date, status FROM customer_bookings")) {
-        return { rows: [{ service_date: "2026-07-01", status: "Cancelled" }] };
+test("cancelled and no-show bookings cannot be assigned", async () => {
+  for (const status of ["Cancelled", "No Show"]) {
+    const client: any = {
+      async query(sql: string) {
+        if (sql.includes("SELECT service_date, status FROM customer_bookings")) {
+          return { rows: [{ service_date: "2026-07-01", status }] };
+        }
+        return { rows: [], rowCount: 0 };
       }
-      return { rows: [], rowCount: 0 };
-    }
-  };
-  await assert.rejects(assignBookingWithLicensing({
-    bookingId: "booking-cancelled", driverId: "driver-1", vehicleLicenseId: "lic-hc",
-    licensingAuthorityId: "auth-1", vehicleLicenseType: "hackney_carriage", actorId: "admin-1"
-  }, client), /Cancelled or completed bookings cannot be assigned/);
+    };
+    await assert.rejects(assignBookingWithLicensing({
+      bookingId: "booking-cancelled", driverId: "driver-1", vehicleLicenseId: "lic-hc",
+      licensingAuthorityId: "auth-1", vehicleLicenseType: "hackney_carriage", actorId: "admin-1"
+    }, client), /Cancelled, completed or no-show bookings cannot be assigned/);
+  }
 });
 
 test("booking vehicle removal clears its current badge snapshot and writes an audit record", async () => {
