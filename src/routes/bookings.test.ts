@@ -239,6 +239,8 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     assert.match(html, /context-bar__action--primary/);
     assert.match(html, /href="\/bookings\/new"/);
     assert.match(html, />New booking<\/a>/);
+    assert.match(html, /href="\/bookings\/ots-import"/);
+    assert.match(html, />New OTS Booking<\/a>/);
     assert.doesNotMatch(html, /booking-dashboard__results-heading[\s\S]*New booking/);
     assert.match(html, /RMB-000042/);
     assert.match(html, /Blair Booker/);

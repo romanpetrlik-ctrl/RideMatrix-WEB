@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System status: Healthy",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+
+    <main class="container rm-page-shell">
+      <div class="new-booking-page__title">
+        <h1>New OTS Booking</h1>
+        <p>Load the OTS confirmation page now; its link may expire when the job is carried out.</p>
+      </div>
+
+      <% if (error) { %>
+        <section class="notice notice--critical" role="alert">
+          <strong>OTS import failed.</strong> <%= error %>
+          <p>Enter the booking manually if the link has expired or its page could not be read.</p>
+          <a class="button button--secondary" href="<%= manualEntryHref %>">Open manual booking form</a>
+        </section>
+      <% } %>
+      <% if (duplicateReservationId) { %>
+        <section class="notice notice--critical" role="alert">
+          OTS reservation <strong><%= duplicateReservationId %></strong> has already been imported.
+        </section>
+      <% } %>
+      <% if (snapshot) { %>
+        <section class="notice" role="status">OTS details loaded and saved as an import snapshot.</section>
+        <section class="panel rm-card" aria-labelledby="ots-preview-title">
+          <h2 id="ots-preview-title">Imported details</h2>
+          <dl>
+            <dt>OTS reservation</dt><dd><%= snapshot.reservationId %></dd>
+            <dt>Pickup time</dt><dd><%= snapshot.pickupTime %></dd>
+            <dt>Pickup location</dt><dd><%= snapshot.pickup %></dd>
+            <dt>Drop-off location</dt><dd><%= snapshot.dropoff %></dd>
+            <dt>Passengers</dt><dd><%= snapshot.passengerCount %></dd>
+            <dt>Passenger name</dt><dd><%= snapshot.passengerName %></dd>
+          </dl>
+          <p class="form-hint">The source link and these details are stored for the forthcoming aggregator booking flow. No RideMatrix booking has been created.</p>
+        </section>
+      <% } %>
+
+      <section class="panel rm-card" aria-labelledby="ots-link-title">
+        <h2 id="ots-link-title">Load OTS details</h2>
+        <p>Only OTS detail links with the expected parameters are accepted. Links that submit an acceptance action are rejected.</p>
+        <form method="post" action="/bookings/ots-import">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="otsUrl">OTS link</label>
+            <input id="otsUrl" name="otsUrl" type="url" autocomplete="off" maxlength="2000" required>
+          </div>
+          <button class="button button--primary" type="submit">Načíst</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>
