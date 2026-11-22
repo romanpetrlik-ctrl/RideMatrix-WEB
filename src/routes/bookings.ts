@@ -257,7 +257,10 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         appTitle: options.appTitle,
         email: actor.email,
         canManageStatusColors: session.user?.roles.includes("superuser") ?? false,
-        contextBarActions: [{ label: "New booking", href: "/bookings/new", tone: "primary" }],
+        contextBarActions: [
+          { label: "New booking", href: "/bookings/new", tone: "primary" },
+          { label: "New OTS Booking", href: "/bookings/ots-import", tone: "secondary" }
+        ],
         bookings,
         integrationAlerts,
         view,

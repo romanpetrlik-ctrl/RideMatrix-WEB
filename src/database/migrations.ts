@@ -2254,6 +2254,19 @@ export const MIGRATIONS: Migration[] = [
         received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `
+  },
+  {
+    id: "0045_ots_booking_imports",
+    sql: `
+      CREATE TABLE IF NOT EXISTS ots_booking_imports (
+        reservation_id TEXT PRIMARY KEY CHECK (btrim(reservation_id) <> ''),
+        source_url TEXT NOT NULL,
+        snapshot JSONB NOT NULL CHECK (jsonb_typeof(snapshot) = 'object'),
+        imported_by_account_id TEXT NOT NULL,
+        imported_by_email TEXT NOT NULL,
+        imported_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `
   }
 ];
 
