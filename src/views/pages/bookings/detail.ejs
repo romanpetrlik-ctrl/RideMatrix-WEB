@@ -24,7 +24,11 @@
     <main class="container rm-page-shell new-booking-page new-booking-page--detail">
       <div class="new-booking-page__title">
         <h1>Booking <%= booking.reference %></h1>
+        <% if (locals.canManageBooking) { %>
         <p><a href="/customers/<%= encodeURIComponent(booking.customerId) %>">Booking manager customer record</a> · <a href="/customers/<%= encodeURIComponent(booking.customerId) %>/bookings/<%= encodeURIComponent(booking.id) %>/assignment">Vehicle and driver assignment</a></p>
+        <% } else { %>
+        <p>Read-only view. Changes to bookings are made by administrators.</p>
+        <% } %>
       </div>
 
       <% if (notice === "created") { %>

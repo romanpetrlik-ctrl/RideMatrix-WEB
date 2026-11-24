@@ -72,11 +72,15 @@ export type BookingsRouterOptions = {
 
 class AuthorizationError extends Error {}
 
-async function requireAdmin(cookieHeader: string | undefined, loadSession: (cookieHeader?: string) => Promise<SessionAccount>): Promise<BookingActor> {
+async function requireAdmin(
+  cookieHeader: string | undefined,
+  loadSession: (cookieHeader?: string) => Promise<SessionAccount>,
+  allowedRoles: readonly string[] = ["admin"]
+): Promise<BookingActor> {
   const session = await loadSession(cookieHeader);
   if (!session.authenticated || !session.user) throw new AuthorizationError("unauthenticated");
   const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
-  if (!roles.includes("admin")) throw new AuthorizationError("forbidden");
+  if (!roles.some((role) => allowedRoles.includes(role))) throw new AuthorizationError("forbidden");
   return { accountId: session.user.id, email: session.user.email };
 }
 
@@ -189,6 +193,20 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
     }
   };
 
+  /** Read-only booking detail: dispatchers may view it, but every mutation keeps the admin-only guard. */
+  const requireBookingReadSession = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.locals.bookingActor = await requireAdmin(req.headers.cookie, loadSession, ["admin", "dispatcher"]);
+      return next();
+    } catch (error) {
+      if (error instanceof AuthorizationError && error.message === "unauthenticated") return res.redirect("/access");
+      if (error instanceof AuthorizationError) {
+        return res.status(403).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
+      }
+      return next(error);
+    }
+  };
+
   async function renderForm(
     res: Response,
     status: number,
@@ -259,7 +277,8 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         canManageStatusColors: session.user?.roles.includes("superuser") ?? false,
         contextBarActions: [
           { label: "New booking", href: "/bookings/new", tone: "primary" },
-          { label: "New OTS Booking", href: "/bookings/ots-import", tone: "secondary" }
+          { label: "New OTS Booking", href: "/bookings/ots-import", tone: "secondary" },
+          { label: "Calendar", href: "/calendar", tone: "secondary" }
         ],
         bookings,
         integrationAlerts,
@@ -489,17 +508,19 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
     }
   });
 
-  router.get("/bookings/:bookingId", requireAdminSession, async (req, res, next) => {
+  router.get("/bookings/:bookingId", requireBookingReadSession, async (req, res, next) => {
     try {
       const actor = res.locals.bookingActor as BookingActor;
       const booking = await loadBooking(String(req.params.bookingId));
       if (!booking) return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
       const maps = mapConfiguration();
+      const session = await loadSession(req.headers.cookie);
       const counts = Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, booking.counts[field] ?? 0])) as Parameters<typeof cargoSummary>[0];
       return res.render("pages/bookings/detail", {
         title: `Booking ${booking.reference}`,
         appTitle: options.appTitle,
         email: actor.email,
+        canManageBooking: session.user?.roles.includes("admin") ?? false,
         booking,
         notice: req.query.notice === "created" ? "created" : "",
         createdAtDisplay: formatInServiceTimezone(booking.createdAt),

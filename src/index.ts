@@ -12,6 +12,7 @@ import { createRecoveryRouter } from "./routes/recovery";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createCustomersRouter } from "./routes/customers";
 import { createBookingsRouter } from "./routes/bookings";
+import { createBookingCalendarRouter } from "./routes/booking-calendar";
 import { createOtsBookingImportRouter } from "./routes/ots-booking-import";
 import { bookingAuthorizationResponseHeaders, createBookingAuthorizationRouter } from "./routes/booking-authorization";
 import { createStaffRouter } from "./routes/staff";
@@ -77,6 +78,7 @@ async function startServer() {
   app.use(createCustomersRouter({ appTitle }));
   app.use(createOtsBookingImportRouter({ appTitle }));
   app.use(createBookingsRouter({ appTitle }));
+  app.use(createBookingCalendarRouter({ appTitle }));
   app.use(createDriverBookingsRouter({ appTitle }));
   app.use(createBookingIntegrationSettingsRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
