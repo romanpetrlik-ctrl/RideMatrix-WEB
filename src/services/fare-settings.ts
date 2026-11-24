@@ -68,7 +68,9 @@ export type AdditionalDistanceSlabSetFormValues = {
 };
 
 export type DeadMileageSettings = {
+  enabled: boolean;
   freeRadiusMiles: string;
+  ratePerMile: string;
 };
 
 export const MAX_DEAD_MILEAGE_RADIUS_MILES = Math.PI * (6_371_008.8 / 1609.344);
@@ -228,7 +230,7 @@ export const EMPTY_FARE_SETTINGS: FareSettingsConfiguration = {
   precedence: "bank-holiday-over-daily",
   distanceSlabs: [],
   additionalDistanceSlabSets: [],
-  deadMileage: { freeRadiusMiles: "" },
+  deadMileage: { enabled: false, freeRadiusMiles: "10", ratePerMile: "" },
   minimumFareRules: [],
   fixedFares: [],
   locationDiscounts: [],
@@ -496,14 +498,15 @@ export type DistanceSlabFormValidation = {
   errors: Record<string, string>;
 };
 
-export function validateDeadMileageRadius(submitted: unknown): {
-  freeRadiusMiles: string;
+export function validateDeadMileageSettings(submitted: unknown): DeadMileageSettings & {
   errors: Record<string, string>;
 } {
   const body = submitted && typeof submitted === "object"
     ? submitted as Record<string, unknown>
     : {};
+  const enabled = body.enabled === "yes";
   const freeRadiusMiles = typeof body.freeRadiusMiles === "string" ? body.freeRadiusMiles.trim() : "";
+  const ratePerMile = typeof body.ratePerMile === "string" ? body.ratePerMile.trim() : "";
   const radius = parseNonNegativeDecimal(freeRadiusMiles);
   const maximumRadiusMiles = MAX_DEAD_MILEAGE_RADIUS_MILES;
   const errors: Record<string, string> = {};
@@ -511,7 +514,10 @@ export function validateDeadMileageRadius(submitted: unknown): {
       compareDecimals(radius, parseNonNegativeDecimal(maximumRadiusMiles.toFixed(6))!) > 0) {
     errors.freeRadiusMiles = `Enter a radius greater than 0 and no greater than ${maximumRadiusMiles.toFixed(3)} miles.`;
   }
-  return { freeRadiusMiles, errors };
+  if (!/^\d{1,6}(\.\d{1,2})?$/.test(ratePerMile)) {
+    errors.ratePerMile = "Enter a rate in pounds per mile with at most two decimal places, for example 1.00.";
+  }
+  return { enabled, freeRadiusMiles, ratePerMile, errors };
 }
 
 export function validateDistanceSlabsForm(submitted: unknown): DistanceSlabFormValidation {
@@ -1278,7 +1284,7 @@ export function validateFareSettingsForm(
       distanceSlabs: current.distanceSlabs ?? [],
       ...(current.airportDistanceSlabSets ? { airportDistanceSlabSets: current.airportDistanceSlabSets } : {}),
       ...(current.additionalDistanceSlabSets ? { additionalDistanceSlabSets: current.additionalDistanceSlabSets } : {}),
-      deadMileage: current.deadMileage ?? { freeRadiusMiles: "" },
+      deadMileage: current.deadMileage ?? { enabled: false, freeRadiusMiles: "", ratePerMile: "" },
       minimumFareRules: current.minimumFareRules ?? [],
       fixedFares: current.fixedFares ?? [],
       ...(current.locationDiscounts ? { locationDiscounts: current.locationDiscounts } : {}),

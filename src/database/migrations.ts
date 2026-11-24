@@ -2293,6 +2293,26 @@ export const MIGRATIONS: Migration[] = [
         BEFORE UPDATE OR DELETE ON operator_configuration_history
         FOR EACH ROW EXECUTE FUNCTION rm_reject_operator_configuration_history_mutation();
     `
+  },
+  {
+    id: "0047_dead_mileage_fee_settings",
+    sql: `
+      DROP TRIGGER IF EXISTS booking_dead_mileage_flag_audit_append_only ON booking_dead_mileage_flag_audit;
+      DROP TABLE IF EXISTS booking_dead_mileage_flag_audit;
+      DROP FUNCTION IF EXISTS rm_reject_booking_dead_mileage_flag_audit_mutation();
+
+      ALTER TABLE customer_bookings
+        DROP COLUMN IF EXISTS vehicle_dispatched_from_base,
+        DROP COLUMN IF EXISTS return_to_base_after_dropoff;
+
+      UPDATE fare_settings_current
+         SET configuration = jsonb_set(
+           configuration, '{deadMileage}',
+           (configuration->'deadMileage') || '{"enabled":false,"ratePerMile":""}'::jsonb, true
+         )
+       WHERE configuration ? 'deadMileage'
+         AND NOT (configuration->'deadMileage' ? 'enabled');
+    `
   }
 ];
 

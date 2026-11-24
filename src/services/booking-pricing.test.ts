@@ -409,3 +409,26 @@ test("an active LEZ does not charge the default standard car, and fare discounts
   assert.equal(roadCharge(inactive.lines, "london-lez").status, "not-applicable", "the default car exemption does not need a loaded schedule");
   assert.equal(inactive.total, "29.00", "without the radius discount: 23.00 ride fare plus the £6.00 airport drop-off fee");
 });
+
+test("dead miles fee is charged per mile beyond the radius from the nearer of pick-up or drop-off", () => {
+  const enabled = { deadMileage: { enabled: true, freeRadiusMiles: "10", ratePerMile: "1.00" } };
+  const outside = priceBooking(inputs({ stops: { pickup: addressStop(northOfBase(17), null), vias: [], dropoff: addressStop(northOfBase(60), null) } }), context({ configuration: enabled }));
+  assert.equal(one(outside.lines, "dead-mileage").status, "applied");
+  assert.equal(one(outside.lines, "dead-mileage").amount, "7.00");
+
+  const nearerDropoff = priceBooking(inputs({ stops: { pickup: addressStop(northOfBase(30), null), vias: [], dropoff: addressStop(northOfBase(14), null) } }), context({ configuration: { deadMileage: { enabled: true, freeRadiusMiles: "10", ratePerMile: "1.50" } } }));
+  assert.equal(one(nearerDropoff.lines, "dead-mileage").amount, "6.00");
+
+  const withinRadius = priceBooking(inputs({ stops: { pickup: addressStop(northOfBase(5), null), vias: [], dropoff: addressStop(northOfBase(60), null) } }), context({ configuration: enabled }));
+  assert.equal(one(withinRadius.lines, "dead-mileage").status, "zero");
+});
+
+test("dead miles fee is not applicable when inactive and unresolved without verified coordinates", () => {
+  const inactive = priceBooking(inputs({ stops: { pickup: addressStop(northOfBase(17), null), vias: [], dropoff: addressStop(northOfBase(60), null) } }), context({ configuration: { deadMileage: { enabled: false, freeRadiusMiles: "10", ratePerMile: "1.00" } } }));
+  assert.equal(one(inactive.lines, "dead-mileage").status, "not-applicable");
+
+  const unverified: BookingPricingInputs = inputs({ stops: { pickup: { ...addressStop(northOfBase(17), null), coordinatesVerified: false }, vias: [], dropoff: addressStop(northOfBase(60), null) } });
+  const price = priceBooking(unverified, context({ configuration: { deadMileage: { enabled: true, freeRadiusMiles: "10", ratePerMile: "1.00" } } }));
+  assert.equal(one(price.lines, "dead-mileage").status, "unresolved");
+  assert.equal(price.total, null);
+});

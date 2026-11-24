@@ -54,7 +54,6 @@ import {
   BookingAssignmentError,
   assignBookingWithLicensing,
   getBookingAssignmentPage,
-  saveBookingDeadMileageFlags,
   unassignBookingVehicle,
   VEHICLE_LICENSE_TYPES,
   type VehicleLicenseType
@@ -1356,24 +1355,6 @@ export function createCustomersRouter(options: CustomersRouterOptions): Router {
           return res.status(404).render("pages/unavailable", { title: "Unavailable", appTitle: options.appTitle });
         }
         const action = typeof req.body?.action === "string" ? req.body.action : "assign";
-        if (action === "save-dead-mileage-flags") {
-          const dispatched = req.body?.vehicleDispatchedFromBase;
-          const returning = req.body?.returnToBaseAfterDropoff;
-          if ((dispatched !== "yes" && dispatched !== "no") ||
-              (returning !== "yes" && returning !== "no")) {
-            throw new BookingAssignmentError("Select Yes or No for each dead-mileage booking flag.");
-          }
-          await saveBookingDeadMileageFlags({
-            bookingId,
-            vehicleDispatchedFromBase: dispatched === "yes",
-            returnToBaseAfterDropoff: returning === "yes",
-            actorId: session.id,
-            actorEmail: session.email
-          });
-          return res.redirect(
-            `/customers/${encodeURIComponent(customerId)}/bookings/${encodeURIComponent(bookingId)}/assignment?notice=dead-mileage-inputs-saved`
-          );
-        }
         if (action === "unassign") {
           await unassignBookingVehicle({
             bookingId,

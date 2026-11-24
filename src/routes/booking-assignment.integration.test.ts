@@ -268,10 +268,9 @@ test("admin booking assignment uses a common setup licence, snapshots badge, and
     assert.match(initialPageHtml, /Authority A/);
     assert.match(initialPageHtml, /Authority B/);
     assert.equal((initialPageHtml.match(/name="licensingAuthorityId"/g) || []).length, 1);
-    assert.match(initialPageHtml, /name="vehicleDispatchedFromBase"/);
-    assert.match(initialPageHtml, /name="returnToBaseAfterDropoff"/);
-    assert.equal((initialPageHtml.match(/<option value="">Select Yes or No<\/option>/g) || []).length, 2);
-    assert.match(initialPageHtml, /Price state:<\/strong> Incomplete/);
+    assert.doesNotMatch(initialPageHtml, /name="vehicleDispatchedFromBase"/);
+    assert.doesNotMatch(initialPageHtml, /name="returnToBaseAfterDropoff"/);
+    assert.doesNotMatch(initialPageHtml, /Dead-mileage/i);
 
     const missingCsrf = await fetch(await assignmentPageUrl(port), {
       method: "POST",
@@ -290,50 +289,6 @@ test("admin booking assignment uses a common setup licence, snapshots badge, and
       body: new URLSearchParams({ _csrf: token, action: "assign", ...fields }),
       redirect: "manual"
     });
-    const invalidDeadMileageFlags = await fetch(await assignmentPageUrl(port), {
-      method: "POST",
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ _csrf: token, action: "save-dead-mileage-flags", vehicleDispatchedFromBase: "yes" }),
-      redirect: "manual"
-    });
-    assert.equal(invalidDeadMileageFlags.status, 400);
-    assert.equal((await query("SELECT id FROM booking_dead_mileage_flag_audit WHERE booking_id='assignment-main'")).rows.length, 0);
-
-    const saveDeadMileageFlags = await fetch(await assignmentPageUrl(port), {
-      method: "POST",
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        _csrf: token,
-        action: "save-dead-mileage-flags",
-        vehicleDispatchedFromBase: "yes",
-        returnToBaseAfterDropoff: "no"
-      }),
-      redirect: "manual"
-    });
-    assert.equal(saveDeadMileageFlags.status, 302);
-    const flagRows = await query<any>(
-      `SELECT vehicle_dispatched_from_base, return_to_base_after_dropoff
-         FROM customer_bookings WHERE id='assignment-main'`
-    );
-    assert.deepEqual(flagRows.rows[0], {
-      vehicle_dispatched_from_base: true,
-      return_to_base_after_dropoff: false
-    });
-    const flagAudit = await query<any>(
-      `SELECT vehicle_dispatched_from_base, return_to_base_after_dropoff, actor_id, actor_email
-         FROM booking_dead_mileage_flag_audit WHERE booking_id='assignment-main'`
-    );
-    assert.deepEqual(flagAudit.rows[0], {
-      vehicle_dispatched_from_base: true,
-      return_to_base_after_dropoff: false,
-      actor_id: ADMIN_ID,
-      actor_email: "admin@example.com"
-    });
-    const flagsPage = await fetch(await assignmentPageUrl(port));
-    const flagsHtml = await flagsPage.text();
-    assert.match(flagsHtml, /value="yes" selected>Yes/);
-    assert.match(flagsHtml, /value="no" selected>No/);
-    assert.match(flagsHtml, /Dead-mileage input history/);
     const noAuthorityChoice = await assign("assignment-main", {
       driverId: DRIVER_A_ID, vehicleLicenseId: vehicleLicenceA, vehicleLicenseType: "hackney_carriage",
       licensingAuthorityId: ""
