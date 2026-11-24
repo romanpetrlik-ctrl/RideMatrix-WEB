@@ -1003,6 +1003,7 @@ async function syncPostSetupLicenceStatus(
             EXISTS (
               SELECT 1 FROM operator_licence_documents d
                WHERE d.licence_id = ol.id AND d.is_latest = TRUE
+                 AND d.content IS NOT NULL
             ) AS has_document
        FROM operator_licences ol
        LEFT JOIN licensing_authorities la ON la.id = ol.licensing_authority_id
