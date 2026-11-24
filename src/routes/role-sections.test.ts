@@ -1734,7 +1734,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(unverifiedBody, /Dead mileage is unavailable/);
     assert.doesNotMatch(unverifiedBody, /name="freeRadiusMiles"/);
     operationalBase = { ...operationalBase!, coordinatesVerified: true };
-    const postForm = async (version: string, radius: string) => {
+    const postForm = async (version: string, radius: string, enabled = "yes", ratePerMile = "1.00") => {
       const page = await getPage();
       const body = await page.text();
       const csrfCookie = page.headers.get("set-cookie")?.match(/rm_csrf=[^;]+/)?.[0];
@@ -1746,7 +1746,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
       return fetch(`${baseUrl}${path}`, {
         method: "POST",
         headers: { cookie: postCookie, "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ freeRadiusMiles: radius, baseVersion: version, _csrf: token }),
+        body: new URLSearchParams({ enabled, freeRadiusMiles: radius, ratePerMile, baseVersion: version, _csrf: token }),
         redirect: "manual"
       });
     };
@@ -1756,7 +1756,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(initialBody, /verified coordinates from the existing operational-base record/);
     assert.match(initialBody, /\(50\.71, -2\.44\)/);
     assert.match(initialBody, /name="freeRadiusMiles"/);
-    assert.match(initialBody, /no road-route geometry or confirmed-price snapshot flow/);
+    assert.match(initialBody, /When enabled, the fee is/);
     const invalid = await postForm("0", "0");
     assert.equal(invalid.status, 400);
     assert.match(await invalid.text(), /Enter a radius greater than 0/);
@@ -1764,7 +1764,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
 
     const saved = await postForm("0", "5.25");
     assert.equal(saved.status, 303);
-    assert.deepEqual(fareSettings.snapshot().configuration.deadMileage, { freeRadiusMiles: "5.25" });
+    assert.deepEqual(fareSettings.snapshot().configuration.deadMileage, { enabled: true, freeRadiusMiles: "5.25", ratePerMile: "1.00" });
     assert.equal(fareSettings.snapshot().history[0].actorEmail, "bookings@romanairporttransfers.co.uk");
     assert.equal(fareSettings.snapshot().history[0].createdAt, "2026-11-10T12:00:00.000Z");
     assert.equal(fareSettings.snapshot().history.length, 1);

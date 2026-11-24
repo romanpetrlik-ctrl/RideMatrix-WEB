@@ -67,7 +67,7 @@ function managedAirport(overrides: Partial<AirportFeeRecord> = {}): AirportFeeRe
 }
 
 test("fare settings start disabled without assumed percentages or times", () => {
-  assert.deepEqual(EMPTY_FARE_SETTINGS.deadMileage, { freeRadiusMiles: "" });
+  assert.deepEqual(EMPTY_FARE_SETTINGS.deadMileage, { enabled: false, freeRadiusMiles: "10", ratePerMile: "" });
   assert.deepEqual(EMPTY_FARE_SETTINGS.minimumFareRules, []);
   assert.deepEqual(EMPTY_FARE_SETTINGS.fixedFares, []);
   assert.deepEqual(EMPTY_FARE_SETTINGS.dailySurcharge, {
@@ -83,13 +83,13 @@ test("fare settings start disabled without assumed percentages or times", () => 
 test("editing another fare category preserves the saved dead-mileage radius", () => {
   const current = {
     ...EMPTY_FARE_SETTINGS,
-    deadMileage: { freeRadiusMiles: "5.25" }
+    deadMileage: { enabled: false, freeRadiusMiles: "5.25", ratePerMile: "" }
   };
   const result = validateFareSettingsForm({
     dailyEnabled: "no",
     bankHolidayEnabled: "no"
   }, current);
-  assert.deepEqual(result.configuration.deadMileage, { freeRadiusMiles: "5.25" });
+  assert.deepEqual(result.configuration.deadMileage, { enabled: false, freeRadiusMiles: "5.25", ratePerMile: "" });
 });
 
 test("daily surcharge requires valid operator values when enabled and accepts midnight-crossing windows", () => {
@@ -174,7 +174,7 @@ test("editing one surcharge category retains the other category's saved settings
 test("editing existing fare settings retains minimum and fixed fare configuration", () => {
   const current = {
     ...EMPTY_FARE_SETTINGS,
-    deadMileage: { freeRadiusMiles: "5.25" },
+    deadMileage: { enabled: false, freeRadiusMiles: "5.25", ratePerMile: "" },
     minimumFareRules: [{
       id: "minimum-rule",
       name: "Minimum",

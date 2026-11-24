@@ -24,7 +24,7 @@ test("fare settings history is limited and paginated in SQL without changing sto
   for (let index = 0; index < 45; index += 1) {
     await fareSettingsStore.save(initial.currentVersion + index, {
       ...structuredClone(EMPTY_FARE_SETTINGS),
-      deadMileage: { freeRadiusMiles: String(index + 1) }
+      deadMileage: { enabled: false, freeRadiusMiles: String(index + 1), ratePerMile: "" }
     }, actor);
   }
   const latestVersion = initial.currentVersion + 45;

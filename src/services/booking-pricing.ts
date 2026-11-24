@@ -1,8 +1,8 @@
 import type { AirportFeeRecord } from "./airport-fees";
 import { formatAirportPickupTimingRule } from "./airport-fees";
 import type { BookingRoute } from "./booking-routing";
-import type { OperationalBase } from "./dead-mileage";
-import { resolveJourneyLocationDiscount, type JourneyEndpoint } from "./fare-calculation";
+import { isOperationalBaseVerified, type OperationalBase } from "./dead-mileage";
+import { geodesicDistanceMiles, resolveJourneyLocationDiscount, type JourneyEndpoint } from "./fare-calculation";
 import {
   calculateDistanceSlabFare,
   normalizeUkPostcode,
@@ -90,6 +90,49 @@ export type BookingPrice = {
   unresolvedCount: number;
   fareSettingsVersion: number;
 };
+
+function deadMileageLine(inputs: BookingPricingInputs, context: BookingPricingContext): PriceLine {
+  const settings = context.configuration.deadMileage;
+  const label = "Dead miles fee";
+  if (!settings?.enabled) {
+    return { type: "dead-mileage", label, status: "not-applicable", amount: null, basis: "Dead miles fee is inactive in Fare Settings.", source: {} };
+  }
+  const radius = Number(settings.freeRadiusMiles);
+  const rate = Number(settings.ratePerMile);
+  const operationalBase = context.operationalBase;
+  const { pickup, dropoff } = inputs.stops;
+  const stopsVerified = [pickup, dropoff].every((stop) =>
+    stop.coordinatesVerified && typeof stop.latitude === "number" && typeof stop.longitude === "number");
+  if (!operationalBase || !isOperationalBaseVerified(operationalBase) || !stopsVerified) {
+    return {
+      type: "dead-mileage",
+      label,
+      status: "unresolved",
+      amount: null,
+      basis: "Dead miles fee needs a verified operational base and verified pick-up and drop-off coordinates.",
+      source: {}
+    };
+  }
+  const origin = { latitude: operationalBase.latitude!, longitude: operationalBase.longitude! };
+  const nearestMiles = Math.min(
+    geodesicDistanceMiles(origin, { latitude: pickup.latitude!, longitude: pickup.longitude! }),
+    geodesicDistanceMiles(origin, { latitude: dropoff.latitude!, longitude: dropoff.longitude! })
+  );
+  const chargeableMiles = Math.max(0, nearestMiles - radius);
+  const pennies = BigInt(Math.round(chargeableMiles * rate * 100));
+  const source = { nearestMiles, radiusMiles: radius, ratePerMile: settings.ratePerMile, chargeableMiles };
+  if (pennies === 0n) {
+    return { type: "dead-mileage", label, status: "zero", amount: "0.00", basis: "Nearest pick-up or drop-off is within the free radius.", source };
+  }
+  return {
+    type: "dead-mileage",
+    label,
+    status: "applied",
+    amount: formatPennies(pennies),
+    basis: `Nearest pick-up or drop-off is ${nearestMiles.toFixed(2)} miles from the operational base; ${chargeableMiles.toFixed(2)} miles beyond the ${radius}-mile radius at £${settings.ratePerMile} per mile.`,
+    source
+  };
+}
 
 function toPennies(amount: string): bigint | null {
   const match = /^(-?)(\d{1,9})\.(\d{2})$/.exec(amount);
@@ -426,14 +469,7 @@ export function priceBooking(inputs: BookingPricingInputs, context: BookingPrici
     ...roadChargeLines(inputs.serviceDate, inputs.serviceTime, roadChargeProfileForBookingClass(inputs.vehicleClassKey), context.route, context.roadChargeSchedules ?? {}, context.roadChargeOptions),
     surchargeLine(inputs, context),
     fixedFareLine(inputs, context),
-    {
-      type: "dead-mileage",
-      label: "Dead mileage",
-      status: "not-applicable",
-      amount: null,
-      basis: "Dispatch-from-base and return-to-base flags are recorded on the assignment screen after saving; dead mileage is not part of this quote.",
-      source: {}
-    }
+    deadMileageLine(inputs, context),
   ];
   const unresolvedCount = lines.filter((line) => line.status === "unresolved").length;
   const total = unresolvedCount

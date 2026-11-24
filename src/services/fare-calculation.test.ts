@@ -194,7 +194,7 @@ test("overlapping active radius rules for one location are reported, not chosen"
 const configuration: FareSettingsConfiguration = {
   ...EMPTY_FARE_SETTINGS,
   distanceSlabs: [{ startMiles: "0", endMiles: "", ratePerMile: "2.00" }],
-  deadMileage: { freeRadiusMiles: "4" },
+  deadMileage: { enabled: false, freeRadiusMiles: "4", ratePerMile: "" },
   locationDiscounts: [postcodeRule("heathrow-postcode"), postcodeRule("gatwick-postcode", { location: gatwick, discountPercentage: "5" })],
   radiusLocationDiscounts: [radiusRule("radius")]
 };
@@ -279,5 +279,5 @@ test("fare calculation leaves the dead-mileage free radius configuration untouch
   const before = JSON.stringify(configuration);
   fare(baseArea, heathrowEndpoint);
   assert.equal(JSON.stringify(configuration), before);
-  assert.deepEqual(configuration.deadMileage, { freeRadiusMiles: "4" });
+  assert.deepEqual(configuration.deadMileage, { enabled: false, freeRadiusMiles: "4", ratePerMile: "" });
 });

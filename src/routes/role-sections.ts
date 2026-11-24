@@ -56,7 +56,7 @@ import {
   validateAdditionalDistanceSlabSetForm,
   validateDistanceSlabsForm,
   withAdditionalDistanceSlabSets,
-  validateDeadMileageRadius,
+  validateDeadMileageSettings,
   validateFareSettingsForm,
   type FareSettingsConfiguration,
   type FixedFareRule,
@@ -653,7 +653,9 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
       const safeConfiguration: FareSettingsConfiguration = {
         ...configuration,
         deadMileage: {
-          freeRadiusMiles: escapeHtml(configuration.deadMileage?.freeRadiusMiles ?? "")
+          enabled: configuration.deadMileage?.enabled === true,
+          freeRadiusMiles: escapeHtml(configuration.deadMileage?.freeRadiusMiles ?? ""),
+          ratePerMile: escapeHtml(configuration.deadMileage?.ratePerMile ?? "")
         },
         minimumFareRules: (configuration.minimumFareRules ?? []).map((rule) => ({
           ...rule,
@@ -1424,8 +1426,12 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
 
         const snapshot = await fareStore.load();
         if (category.slug === "dead-mileage-settings") {
-          const validation = validateDeadMileageRadius(req.body);
-          const ruleForm = { freeRadiusMiles: validation.freeRadiusMiles };
+          const validation = validateDeadMileageSettings(req.body);
+          const ruleForm = {
+            enabled: validation.enabled ? "yes" : "no",
+            freeRadiusMiles: validation.freeRadiusMiles,
+            ratePerMile: validation.ratePerMile
+          };
           const rawVersion = req.body?.baseVersion;
           const expectedVersion = typeof rawVersion === "string" && /^\d+$/.test(rawVersion)
             ? Number(rawVersion)
@@ -1459,7 +1465,11 @@ export function createRoleSectionsRouter(options: RoleSectionsRouterOptions): Ro
           try {
             await fareStore.save(expectedVersion, {
               ...snapshot.configuration,
-              deadMileage: { freeRadiusMiles: validation.freeRadiusMiles }
+              deadMileage: {
+                enabled: validation.enabled,
+                freeRadiusMiles: validation.freeRadiusMiles,
+                ratePerMile: validation.ratePerMile
+              }
             }, {
               accountId: session.user.id,
               email: session.user.email

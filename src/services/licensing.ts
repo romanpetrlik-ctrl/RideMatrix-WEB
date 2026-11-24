@@ -289,8 +289,6 @@ export type BookingAssignmentPage = {
     licensingAuthorityName: string | null;
     vehicleLicenseType: VehicleLicenseType | null;
     vehicleLicenseBadge: string | null;
-    vehicleDispatchedFromBase: boolean | null;
-    returnToBaseAfterDropoff: boolean | null;
   };
   operatorLicenceActive: boolean;
   drivers: Array<{ id: string; email: string }>;
@@ -310,12 +308,6 @@ export type BookingAssignmentPage = {
     licensingAuthorityName: string | null;
     vehicleLicenseType: VehicleLicenseType | null;
     vehicleLicenseBadge: string | null;
-  }>;
-  deadMileageFlagHistory: Array<{
-    vehicleDispatchedFromBase: boolean;
-    returnToBaseAfterDropoff: boolean;
-    actorEmail: string;
-    occurredAt: string;
   }>;
 };
 
@@ -361,8 +353,7 @@ export async function getBookingAssignmentPage(
     `SELECT b.id, b.customer_id, c.given_name, c.surname, b.reference, b.service_date,
             b.pickup, b.dropoff, b.status, b.driver_id, du.email AS driver_email,
             b.vehicle_id, v.registration, b.licensing_authority_id, a.name AS authority_name,
-            b.vehicle_license_type, b.vehicle_license_badge,
-            b.vehicle_dispatched_from_base, b.return_to_base_after_dropoff
+            b.vehicle_license_type, b.vehicle_license_badge
        FROM customer_bookings b
        JOIN customers c ON c.id = b.customer_id
        LEFT JOIN users du ON du.id::text = b.driver_id
@@ -462,14 +453,6 @@ export async function getBookingAssignmentPage(
       ORDER BY aa.assigned_at, aa.id`,
     [bookingId]
   );
-  const flagAudit = await runner.query<any>(
-    `SELECT vehicle_dispatched_from_base, return_to_base_after_dropoff, actor_email, occurred_at
-       FROM booking_dead_mileage_flag_audit
-      WHERE booking_id = $1
-      ORDER BY occurred_at DESC, id DESC
-      LIMIT 10`,
-    [bookingId]
-  );
   return {
     booking: {
       id: row.id,
@@ -487,9 +470,7 @@ export async function getBookingAssignmentPage(
       licensingAuthorityId: row.licensing_authority_id ?? null,
       licensingAuthorityName: row.authority_name ?? null,
       vehicleLicenseType: row.vehicle_license_type ?? null,
-      vehicleLicenseBadge: row.vehicle_license_badge ?? null,
-      vehicleDispatchedFromBase: row.vehicle_dispatched_from_base,
-      returnToBaseAfterDropoff: row.return_to_base_after_dropoff
+      vehicleLicenseBadge: row.vehicle_license_badge ?? null
     },
     operatorLicenceActive: operators.rows.length > 0,
     drivers,
@@ -501,48 +482,8 @@ export async function getBookingAssignmentPage(
       licensingAuthorityName: entry.authority_name ?? null,
       vehicleLicenseType: entry.vehicle_license_type ?? null,
       vehicleLicenseBadge: entry.vehicle_license_badge ?? null
-    })),
-    deadMileageFlagHistory: flagAudit.rows.map((entry: any) => ({
-      vehicleDispatchedFromBase: entry.vehicle_dispatched_from_base,
-      returnToBaseAfterDropoff: entry.return_to_base_after_dropoff,
-      actorEmail: entry.actor_email,
-      occurredAt: new Date(entry.occurred_at).toISOString()
     }))
   };
-}
-
-export async function saveBookingDeadMileageFlags(input: {
-  bookingId: string;
-  vehicleDispatchedFromBase: boolean;
-  returnToBaseAfterDropoff: boolean;
-  actorId: string;
-  actorEmail: string;
-}, client?: Queryable): Promise<void> {
-  if (!input.actorId.trim() || !input.actorEmail.trim()) {
-    throw new BookingAssignmentError("Authenticated actor is required to save dead-mileage booking flags.");
-  }
-  const work = async (runner: Queryable) => {
-    const booking = await runner.query<{ id: string }>(
-      "SELECT id FROM customer_bookings WHERE id = $1 FOR UPDATE",
-      [input.bookingId]
-    );
-    if (!booking.rows[0]) throw new BookingAssignmentError("Booking was not found.");
-    await runner.query(
-      `UPDATE customer_bookings
-          SET vehicle_dispatched_from_base = $2, return_to_base_after_dropoff = $3
-        WHERE id = $1`,
-      [input.bookingId, input.vehicleDispatchedFromBase, input.returnToBaseAfterDropoff]
-    );
-    await runner.query(
-      `INSERT INTO booking_dead_mileage_flag_audit
-        (id, booking_id, vehicle_dispatched_from_base, return_to_base_after_dropoff, actor_id, actor_email)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), input.bookingId, input.vehicleDispatchedFromBase, input.returnToBaseAfterDropoff,
-        input.actorId, input.actorEmail]
-    );
-  };
-  if (client) return work(client);
-  return withTransaction(work);
 }
 
 export async function assignBookingWithLicensing(input: {
