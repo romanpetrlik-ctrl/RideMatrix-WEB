@@ -49,6 +49,9 @@ export type BookingDashboardRecord = {
   isTestBooking: boolean;
   totalFareAmount?: string | null;
   paymentMethod?: string | null;
+  paymentLabel: string | null;
+  pickupAddress: string;
+  dropoffAddress: string;
   archivedAt?: string | null;
   archiveReason?: string | null;
   canMarkNoShow?: boolean;
@@ -112,6 +115,29 @@ export async function resolveBookingIntegrationAlert(input: {
     [input.alertId, input.actorId, input.actorEmail]
   );
   return Boolean(result.rowCount);
+}
+
+function europeanDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+// Managed POI/airport labels are stored as "<name> — <address>"; show only the address.
+function stopAddress(label: string): string {
+  const separatorIndex = label.indexOf(" — ");
+  return separatorIndex === -1 ? label : label.slice(separatorIndex + 3);
+}
+
+const PAYMENT_LABELS: Record<string, string> = {
+  "card-online": "Online",
+  card: "Card",
+  "bank-transfer": "Bank transfer",
+  "payment-link": "Payment link",
+  invoice: "Invoice"
+};
+
+function paymentLabel(method: string | null): string | null {
+  return method ? (PAYMENT_LABELS[method] ?? method.replace(/-/g, " ")) : null;
 }
 
 function serviceDate(now: Date): string {
@@ -221,13 +247,16 @@ export async function listBookingDashboard(
     id: row.id,
     customerId: row.customer_id,
     reference: row.reference,
-    serviceDate: row.service_date,
+    serviceDate: europeanDate(row.service_date),
     serviceTime: row.service_time,
     customerName: row.customer_name,
     accountType: row.account_type,
     passengerName: row.passenger_name,
     pickup: row.pickup,
+    pickupAddress: stopAddress(row.pickup),
     dropoff: row.dropoff,
+    dropoffAddress: stopAddress(row.dropoff),
+    paymentLabel: paymentLabel(row.payment_method),
     status: row.status,
     assignmentStatus: row.assignment_status,
     driverId: row.driver_id,

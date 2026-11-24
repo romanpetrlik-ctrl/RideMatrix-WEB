@@ -1898,9 +1898,9 @@ button:visited,
 }
 
 .booking-dashboard__list {
-  --booking-columns: minmax(7.5rem, 0.8fr) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(8.5rem, 0.8fr)
-    minmax(16rem, 2.6fr) minmax(7.5rem, 0.8fr) minmax(5.5rem, 0.6fr) minmax(8rem, 1fr) minmax(8rem, 1fr);
-  min-width: 1180px;
+  --booking-columns: minmax(7.5rem, 0.8fr) 6.5rem minmax(10rem, 1fr) minmax(10.5rem, 0.9fr)
+    minmax(16rem, 2.2fr) minmax(7.5rem, 0.8fr) minmax(5.5rem, 0.6fr) minmax(8rem, 1fr) minmax(8rem, 1fr);
+  min-width: 1260px;
 }
 
 .booking-dashboard__head,
@@ -1979,6 +1979,8 @@ button:visited,
 }
 
 .booking-dashboard__journey {
+  display: grid;
+  gap: 0.35rem;
   overflow-wrap: anywhere;
 }
 

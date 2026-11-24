@@ -234,6 +234,9 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     customerName: "Blair Booker",
     pickup: "Airport X",
     dropoff: "1 High Street",
+    dropoffAddress: "1 High Street",
+    pickupAddress: "Airport X",
+    paymentLabel: null,
     status: "New",
     assignmentStatus: "assigned",
     driverId: "driver-7",
@@ -292,7 +295,8 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     const summary = html.match(/<summary[^>]*>[\s\S]*?<\/summary>/)?.[0] ?? "";
     assert.ok(summary);
     const summaryContent = summary.replace(/^<summary[^>]*>/, "");
-    assert.equal((summaryContent.match(/class="booking-dashboard__/g) ?? []).length, 9);
+    assert.equal((summaryContent.match(/class="booking-dashboard__(?!stop)/g) ?? []).length, 9);
+    assert.equal((summaryContent.match(/class="booking-dashboard__stop"/g) ?? []).length, 2);
     assert.doesNotMatch(summary, /<a /);
     assert.match(html, /<\/div>\s*<\/details>\s*<\/div>\s*<\/div>/);
     assert.doesNotMatch(html, /name="customerMode"/);
@@ -337,6 +341,9 @@ test("archived bookings are shown as retained history without operational action
     customerName: "Blair Booker",
     pickup: "Airport X",
     dropoff: "1 High Street",
+    dropoffAddress: "1 High Street",
+    pickupAddress: "Airport X",
+    paymentLabel: null,
     status: "Cancelled",
     assignmentStatus: "unassigned",
     driverId: null,
