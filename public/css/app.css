@@ -1898,9 +1898,8 @@ button:visited,
 }
 
 .booking-dashboard__list {
-  --booking-columns: max-content max-content minmax(10rem, max-content) max-content
-    minmax(16rem, 1fr) max-content max-content max-content max-content;
-  min-width: 1260px;
+  --booking-columns: 8rem 6rem 13rem 8rem minmax(16rem, 1fr) 7.5rem 6.5rem 10rem 9rem;
+  min-width: 1460px;
 }
 
 .booking-dashboard__head,
