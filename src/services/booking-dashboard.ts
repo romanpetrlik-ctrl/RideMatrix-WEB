@@ -37,6 +37,8 @@ export type BookingDashboardRecord = {
   serviceDate: string;
   serviceTime: string | null;
   customerName: string;
+  accountType: "Private" | "Corporate";
+  passengerName: string;
   pickup: string;
   dropoff: string;
   status: string;
@@ -45,6 +47,8 @@ export type BookingDashboardRecord = {
   driverName: string | null;
   vehicleRegistration: string | null;
   isTestBooking: boolean;
+  totalFareAmount?: string | null;
+  paymentMethod?: string | null;
   archivedAt?: string | null;
   archiveReason?: string | null;
   canMarkNoShow?: boolean;
@@ -151,6 +155,8 @@ export async function listBookingDashboard(
     service_date: string;
     service_time: string | null;
     customer_name: string;
+    account_type: "Private" | "Corporate";
+    passenger_name: string;
     pickup: string;
     dropoff: string;
     status: string;
@@ -159,6 +165,8 @@ export async function listBookingDashboard(
     driver_name: string | null;
     vehicle_registration: string | null;
     is_test_booking: boolean;
+    total_fare_amount: string | number | null;
+    payment_method: string | null;
     archived_at: string | null;
     archive_reason: string | null;
     can_mark_no_show: boolean;
@@ -176,9 +184,13 @@ export async function listBookingDashboard(
     `SELECT b.id, b.customer_id, b.reference, b.service_date, b.service_time,
             COALESCE(NULLIF(btrim(b.booking_manager_name), ''),
                      NULLIF(btrim(concat_ws(' ', c.given_name, c.surname)), ''), 'Unknown customer') AS customer_name,
+            CASE WHEN bc.customer_id IS NULL THEN 'Private' ELSE 'Corporate' END AS account_type,
+            COALESCE(NULLIF(btrim(b.passenger_name), ''), NULLIF(btrim(b.booking_manager_name), ''),
+                     NULLIF(btrim(concat_ws(' ', c.given_name, c.surname)), ''), 'Unknown passenger') AS passenger_name,
             b.pickup, b.dropoff, b.status, COALESCE(b.assignment_status, 'unassigned') AS assignment_status,
             b.driver_id, dp.short_name AS driver_name, v.registration AS vehicle_registration,
             COALESCE(b.is_test_booking, FALSE) AS is_test_booking,
+            b.total_fare_amount, b.payment_method,
             b.archived_at, b.archive_reason, b.service_date <= $2 AS can_mark_no_show,
             b.live_status, COALESCE(dpres.online_until > CURRENT_TIMESTAMP, FALSE) AS driver_online,
             b.payment_status, b.payment_due_at, b.extras_description, b.extras_amount,
@@ -191,6 +203,7 @@ export async function listBookingDashboard(
                 AND status_key = COALESCE(b.live_status, CASE WHEN dpres.online_until > CURRENT_TIMESTAMP THEN 'Driver online' END)) AS live_color
        FROM customer_bookings b
        JOIN customers c ON c.id = b.customer_id
+       LEFT JOIN business_customers bc ON bc.customer_id = c.id
        LEFT JOIN driver_profiles dp ON dp.driver_id = b.driver_id
        LEFT JOIN vehicles v ON v.id = b.vehicle_id
        LEFT JOIN driver_presence dpres ON dpres.driver_id::text = b.driver_id
@@ -211,6 +224,8 @@ export async function listBookingDashboard(
     serviceDate: row.service_date,
     serviceTime: row.service_time,
     customerName: row.customer_name,
+    accountType: row.account_type,
+    passengerName: row.passenger_name,
     pickup: row.pickup,
     dropoff: row.dropoff,
     status: row.status,
@@ -219,6 +234,8 @@ export async function listBookingDashboard(
     driverName: row.driver_name,
     vehicleRegistration: row.vehicle_registration,
     isTestBooking: Boolean(row.is_test_booking),
+    totalFareAmount: row.total_fare_amount === null ? null : Number(row.total_fare_amount).toFixed(2),
+    paymentMethod: row.payment_method,
     archivedAt: row.archived_at,
     archiveReason: row.archive_reason,
     canMarkNoShow: row.can_mark_no_show,

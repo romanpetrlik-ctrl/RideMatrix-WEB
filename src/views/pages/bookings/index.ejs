@@ -12,7 +12,7 @@
 
     <main class="container rm-page-shell booking-dashboard">
       <div class="new-booking-page__title">
-        <h1>Bookings</h1>
+        <h1><%= view === "today" ? "Today's Bookings" : view === "upcoming" ? "Upcoming Bookings" : view === "all" ? "All Bookings" : view === "finished" ? "Finished Bookings" : view === "cancelled" ? "Cancelled Bookings" : view === "archived" ? "Archived Bookings" : "No-show Bookings" %></h1>
         <p>Review and manage scheduled bookings. Booking status is shown as currently recorded.</p>
         <% if (canManageStatusColors) { %><p><a href="/bookings/status-colors">Configure status colours</a></p><% } %>
       </div>
@@ -60,6 +60,7 @@
       <% } %>
 
       <section class="panel rm-card booking-dashboard__filters" aria-label="Booking filters">
+        <div class="booking-dashboard__toolbar">
         <nav class="booking-dashboard__tabs" aria-label="Booking filters">
           <% [
             ["today", "Today"],
@@ -73,7 +74,6 @@
             <a class="button <%= view === key ? "" : "button--secondary" %>" href="/bookings?view=<%= key %><%= search ? `&search=${encodeURIComponent(search)}` : "" %>" <%= view === key ? 'aria-current="page"' : "" %>><%= label %></a>
           <% }) %>
         </nav>
-        <p class="form-hint">Cancelled means the customer cancelled the booking. Archived bookings are removed from the working board but retained in records; archiving is not permanent deletion.</p>
         <form method="get" action="/bookings" class="booking-dashboard__search">
           <input type="hidden" name="view" value="<%= view %>">
           <div class="form-field">
@@ -83,48 +83,48 @@
           <button class="button button--secondary" type="submit">Search</button>
           <% if (search) { %><a href="/bookings?view=<%= view %>">Clear search</a><% } %>
         </form>
+        </div>
+        <p class="form-hint">Cancelled means the customer cancelled the booking. Archived bookings are removed from the working board but retained in records; archiving is not permanent deletion.</p>
       </section>
 
-      <section class="panel rm-card booking-dashboard__results" aria-labelledby="bookings-results-title">
-        <div class="booking-dashboard__results-heading">
-          <h2 id="bookings-results-title"><%= view === "today" ? "Today's bookings" : view === "upcoming" ? "Upcoming bookings" : view === "all" ? "All bookings" : view === "finished" ? "Finished bookings" : view === "cancelled" ? "Cancelled bookings" : view === "archived" ? "Archived bookings" : "No-show bookings" %></h2>
-        </div>
+      <section class="panel rm-card booking-dashboard__results" aria-label="Booking results">
         <% if (bookings.length) { %>
-          <div class="customers-table-wrapper">
-            <table class="customers-table booking-dashboard__table">
-              <thead>
-                <tr>
-                  <th scope="col">Service</th>
-                  <th scope="col">Booking</th>
-                  <th scope="col">Customer</th>
-                  <th scope="col">Journey</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Assignment</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% bookings.forEach((booking) => { %>
-                  <% const assignmentHref = `/customers/${encodeURIComponent(booking.customerId)}/bookings/${encodeURIComponent(booking.id)}/assignment`; %>
-                  <% const bookingPath = `/bookings/${encodeURIComponent(booking.id)}`; %>
-                  <% const terminalStatus = booking.status === "Cancelled" || booking.status === "Completed" || booking.status === "No Show"; %>
-                  <% const bookingKey = encodeURIComponent(booking.id); %>
-                  <tr class="booking-dashboard__record" style="--booking-operational-color: <%= booking.operationalColor %>; --booking-live-color: <%= booking.liveColor %>">
-                    <td colspan="6">
-                      <details class="booking-dashboard__details">
-                        <summary class="booking-dashboard__summary" aria-controls="booking-actions-<%= bookingKey %>">
-                          <span class="booking-dashboard__service"><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></span>
-                          <span class="booking-dashboard__reference"><strong><%= booking.reference %></strong><% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %></span>
-                          <span class="booking-dashboard__customer"><%= booking.customerName %></span>
-                          <span class="booking-dashboard__journey"><%= booking.pickup %> → <%= booking.dropoff %></span>
-                          <span class="booking-dashboard__status"><span class="status-pill status-pill--booking"><%= booking.archivedAt ? "Archived" : booking.status %></span><% if (booking.archivedAt) { %><small>Previously: <%= booking.status %></small><% } %><% if (booking.liveStatus) { %><small>Live: <%= booking.liveStatus %></small><% } else if (booking.driverOnline) { %><small>Driver online</small><% } %></span>
-                          <span class="booking-dashboard__assignment">
-                            <% if (booking.driverName) { %>
-                              <%= booking.driverName %><%= booking.vehicleRegistration ? ` · ${booking.vehicleRegistration}` : "" %>
-                            <% } else { %>
-                              Unassigned
-                            <% } %>
-                          </span>
-                        </summary>
+          <div class="booking-dashboard__scroll">
+            <div class="booking-dashboard__list">
+              <div class="booking-dashboard__head" aria-hidden="true">
+                <span>Booking ID</span>
+                <span>Account</span>
+                <span>Passenger</span>
+                <span>Service date</span>
+                <span>Pickup / Dropoff</span>
+                <span>Payment</span>
+                <span>Total fare</span>
+                <span>Driver</span>
+                <span>Status</span>
+              </div>
+              <% bookings.forEach((booking) => { %>
+                <% const assignmentHref = `/customers/${encodeURIComponent(booking.customerId)}/bookings/${encodeURIComponent(booking.id)}/assignment`; %>
+                <% const bookingPath = `/bookings/${encodeURIComponent(booking.id)}`; %>
+                <% const terminalStatus = booking.status === "Cancelled" || booking.status === "Completed" || booking.status === "No Show"; %>
+                <% const bookingKey = encodeURIComponent(booking.id); %>
+                <details class="booking-dashboard__details">
+                <summary class="booking-dashboard__summary" aria-controls="booking-actions-<%= bookingKey %>" style="--booking-operational-color: <%= booking.operationalColor %>; --booking-live-color: <%= booking.liveColor %>">
+                  <span class="booking-dashboard__reference"><strong><%= booking.reference %></strong><% if (booking.isTestBooking) { %><span class="status-pill status-pill--critical">TEST</span><% } %></span>
+                  <span class="booking-dashboard__account"><%= booking.accountType %></span>
+                  <span class="booking-dashboard__passenger"><%= booking.passengerName %></span>
+                  <span class="booking-dashboard__service"><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></span>
+                  <span class="booking-dashboard__journey"><%= booking.pickup %> → <%= booking.dropoff %></span>
+                  <span class="booking-dashboard__payment"><%= booking.paymentMethod ? booking.paymentMethod.replace(/-/g, " ") : "—" %><small><%= booking.paymentStatus || "scheduled" %></small></span>
+                  <span class="booking-dashboard__fare"><%= booking.totalFareAmount ? `£${booking.totalFareAmount}` : "—" %></span>
+                  <span class="booking-dashboard__assignment">
+                    <% if (booking.driverName) { %>
+                      <%= booking.driverName %><%= booking.vehicleRegistration ? ` · ${booking.vehicleRegistration}` : "" %>
+                    <% } else { %>
+                      Unassigned
+                    <% } %>
+                  </span>
+                  <span class="booking-dashboard__status"><span class="status-pill status-pill--booking"><%= booking.archivedAt ? "Archived" : booking.status %></span><% if (booking.archivedAt) { %><small>Previously: <%= booking.status %></small><% } %><% if (booking.liveStatus) { %><small>Live: <%= booking.liveStatus %></small><% } else if (booking.driverOnline) { %><small>Driver online</small><% } %></span>
+                </summary>
                         <div class="booking-dashboard__expanded" id="booking-actions-<%= bookingKey %>">
                           <div class="booking-dashboard__indicators" aria-label="Separate journey and payment statuses">
                             <span class="status-pill status-pill--booking">Payment: <%= booking.paymentStatus || "scheduled" %></span>
@@ -231,13 +231,10 @@
                             <% } %>
                             <a class="button button--secondary" href="<%= bookingPath %>">Details</a>
                           </div>
-                        </div>
-                      </details>
-                    </td>
-                  </tr>
-                <% }) %>
-              </tbody>
-            </table>
+                </div>
+              </details>
+              <% }) %>
+            </div>
           </div>
           <% if (bookings.length === 250) { %>
             <p class="form-hint">Showing the first 250 matching bookings. Narrow the results with search.</p>
