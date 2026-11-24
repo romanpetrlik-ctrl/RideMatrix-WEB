@@ -113,8 +113,8 @@
                   <span class="booking-dashboard__account"><%= booking.accountType %></span>
                   <span class="booking-dashboard__passenger"><%= booking.passengerName %></span>
                   <span class="booking-dashboard__service"><%= booking.serviceDate %><%= booking.serviceTime ? ` · ${booking.serviceTime}` : "" %></span>
-                  <span class="booking-dashboard__journey"><%= booking.pickup %> → <%= booking.dropoff %></span>
-                  <span class="booking-dashboard__payment"><%= booking.paymentMethod ? booking.paymentMethod.replace(/-/g, " ") : "—" %><small><%= booking.paymentStatus || "scheduled" %></small></span>
+                  <span class="booking-dashboard__journey"><span class="booking-dashboard__stop"><%= booking.pickup %></span><span class="booking-dashboard__stop"><%= booking.dropoffAddress %></span></span>
+                  <span class="booking-dashboard__payment"><%= booking.paymentLabel ?? "—" %><small><%= booking.paymentStatus || "scheduled" %></small></span>
                   <span class="booking-dashboard__fare"><%= booking.totalFareAmount ? `£${booking.totalFareAmount}` : "—" %></span>
                   <span class="booking-dashboard__assignment">
                     <% if (booking.driverName) { %>
