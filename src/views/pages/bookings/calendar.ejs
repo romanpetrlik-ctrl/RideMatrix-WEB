@@ -22,7 +22,7 @@
       <nav class="booking-calendar__toolbar" aria-label="Calendar navigation">
         <div class="booking-calendar__views" role="group" aria-label="Calendar view">
           <% viewLinks.forEach((link) => { %>
-            <a class="button button--secondary<%= link.active ? ' is-active' : '' %>" href="<%= link.href %>" <%= link.active ? 'aria-current="page"' : '' %>><%= link.label %></a>
+            <a class="button button--secondary<%= link.active ? ' is-active' : '' %>" href="<%= link.href %>" <% if (link.active) { %>aria-current="page"<% } %>><%= link.label %></a>
           <% }) %>
         </div>
         <div class="booking-calendar__period">
