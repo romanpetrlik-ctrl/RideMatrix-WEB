@@ -33,7 +33,7 @@ export type OperatorProfileInput = {
   legalName: string;
   tradingName: string | null;
   licenceHolderName: string;
-  status: "setup_required" | "trial" | "active" | "suspended" | "archived";
+  status?: "setup_required" | "trial" | "active" | "suspended" | "archived";
 };
 
 export type OperatorAddressInput = {
@@ -910,7 +910,7 @@ async function resolveOrCreateSetupOperator(
           SET legal_name = $2,
               trading_name = $3,
               license_holder_name = $4,
-              status = 'trial',
+              status = CASE WHEN status = 'setup_required' THEN 'trial' ELSE status END,
               trial_started_at = COALESCE(trial_started_at, $5::text),
               trial_ends_at = COALESCE(trial_ends_at, ($5::text::timestamptz + INTERVAL '1 month')::text),
               updated_by_user_id = $6,
@@ -974,9 +974,113 @@ async function resolveOrCreateSetupOperator(
   return operatorId;
 }
 
+export type SetupEditOptions = {
+  postSetup?: boolean;
+};
+
+function assertSetupEditable(status: string | null | undefined, options?: SetupEditOptions): void {
+  if (options?.postSetup) {
+    if (status !== "completed") {
+      throw new SetupValidationError("Operator settings can be edited only after initial setup is completed.");
+    }
+    return;
+  }
+  if (status === "completed") {
+    throw new SetupValidationError("Initial setup is already completed and locked.");
+  }
+}
+
+// Post-setup: the PHO licence is active only when its authority is active and a current document exists.
+async function syncPostSetupLicenceStatus(
+  licenceId: string,
+  actor: SetupActor,
+  client: PoolClient
+): Promise<{ previousStatus: string; status: string }> {
+  const normalizedActor = normalizeActor(actor);
+  const current = await query<{ status: string; authority_active: boolean; has_document: boolean }>(
+    `SELECT ol.status,
+            COALESCE(la.active, FALSE) AS authority_active,
+            EXISTS (
+              SELECT 1 FROM operator_licence_documents d
+               WHERE d.licence_id = ol.id AND d.is_latest = TRUE
+            ) AS has_document
+       FROM operator_licences ol
+       LEFT JOIN licensing_authorities la ON la.id = ol.licensing_authority_id
+      WHERE ol.id = $1`,
+    [licenceId],
+    client
+  );
+  const row = current.rows[0];
+  if (!row) {
+    throw new SetupValidationError("PHO licence was not found.");
+  }
+  const status = row.authority_active && row.has_document ? "active" : "draft";
+  if (status !== row.status) {
+    const now = new Date().toISOString();
+    await query(
+      `UPDATE operator_licences
+          SET status = $2,
+              updated_by_user_id = $3,
+              updated_by_user_email = $4,
+              updated_at = $5
+        WHERE id = $1`,
+      [licenceId, status, normalizedActor.userId || null, normalizedActor.email || null, now],
+      client
+    );
+    await query(
+      `INSERT INTO operator_licence_history
+        (id, licence_id, event_type, actor_user_id, actor_user_email, previous_status, next_status, summary, metadata, occurred_at)
+       VALUES ($1, $2, 'status_changed', $3, $4, $5, $6, $7, '{}'::jsonb, $8)`,
+      [
+        randomUUID(),
+        licenceId,
+        normalizedActor.userId || null,
+        normalizedActor.email || null,
+        row.status,
+        status,
+        `PHO licence status changed from ${row.status} to ${status}.`,
+        now
+      ],
+      client
+    );
+  }
+  return { previousStatus: row.status, status };
+}
+
+// Appends a full snapshot of the operator, its addresses and PHO licences after a post-setup change.
+async function appendOperatorConfigurationHistory(
+  operatorId: string,
+  changeType: string,
+  actor: SetupActor,
+  client: PoolClient
+): Promise<void> {
+  const normalizedActor = normalizeActor(actor);
+  await client.query(
+    `INSERT INTO operator_configuration_history
+      (id, version, change_type, configuration, actor_user_id, actor_email, occurred_at)
+     SELECT $1, COALESCE(MAX(version), 0) + 1, $2,
+       jsonb_build_object(
+         'operator', (SELECT to_jsonb(o) FROM operators o WHERE o.id = $3),
+         'addresses', COALESCE((SELECT jsonb_agg(to_jsonb(a)) FROM operator_addresses a WHERE a.operator_id = $3), '[]'::jsonb),
+         'licences', COALESCE((SELECT jsonb_agg(to_jsonb(l)) FROM operator_licences l WHERE l.operator_id = $3 AND l.licence_type = 'pho'), '[]'::jsonb)
+       ),
+       $4, $5, $6
+     FROM operator_configuration_history`,
+    [
+      randomUUID(),
+      changeType,
+      operatorId,
+      normalizedActor.userId || null,
+      normalizedActor.email || null,
+      new Date().toISOString()
+    ]
+  );
+}
+
 export async function saveOperatorProfile(
   actorInput: SetupActor,
-  profileInput: OperatorProfileInput
+  profileInput: OperatorProfileInput,
+  options?: SetupEditOptions
 ): Promise<string> {
   const actor = normalizeActor(actorInput);
   const profile = validateOperatorProfile(profileInput);
@@ -987,9 +1091,7 @@ export async function saveOperatorProfile(
 
   return withTransaction(async (client) => {
     const setupState = await getSetupStateRow(client);
-    if (setupState?.status === "completed") {
-      throw new SetupValidationError("Initial setup is already completed and locked.");
-    }
+    assertSetupEditable(setupState?.status, options);
 
     const operatorId = await resolveOrCreateSetupOperator(profile, actor, client);
     const now = new Date().toISOString();
@@ -1003,7 +1105,12 @@ export async function saveOperatorProfile(
       [INITIAL_SETUP_KEY, now, actor.userId || null, actor.email || null],
       client
     );
-    await writeSetupStep("operator_profile", actor, client);
+    if (!options?.postSetup) {
+      await writeSetupStep("operator_profile", actor, client);
+    }
+    if (options?.postSetup) {
+      await appendOperatorConfigurationHistory(operatorId, "profile_saved", actor, client);
+    }
     await appendSetupAuditEvent({
       eventName: "operator_profile_saved",
       actor,
@@ -1028,7 +1135,8 @@ function checksumSha256(data: Buffer): string {
 export async function saveOperatorAddress(
   actorInput: SetupActor,
   inputAddress: OperatorAddressInput,
-  verifyPlace: (placeId: string) => Promise<OperationalPlaceVerification> = verifyGoogleOperationalPlace
+  verifyPlace: (placeId: string) => Promise<OperationalPlaceVerification> = verifyGoogleOperationalPlace,
+  options?: SetupEditOptions
 ): Promise<boolean> {
   const actor = normalizeActor(actorInput);
   let addressInput = inputAddress;
@@ -1062,9 +1170,7 @@ export async function saveOperatorAddress(
     if (!state?.operator_id) {
       throw new SetupValidationError("Complete operator profile before saving addresses.");
     }
-    if (state.status === "completed") {
-      throw new SetupValidationError("Initial setup is already completed and locked.");
-    }
+    assertSetupEditable(state.status, options);
 
     const now = new Date().toISOString();
     await query(
@@ -1126,11 +1232,16 @@ export async function saveOperatorAddress(
       [INITIAL_SETUP_KEY, now, actor.userId || null, actor.email || null],
       client
     );
-    await writeSetupStep(
-      address.addressType === "registered_pho" ? "registered_pho_address" : "operational_address",
-      actor,
-      client
-    );
+    if (!options?.postSetup) {
+      await writeSetupStep(
+        address.addressType === "registered_pho" ? "registered_pho_address" : "operational_address",
+        actor,
+        client
+      );
+    }
+    if (options?.postSetup) {
+      await appendOperatorConfigurationHistory(state.operator_id, `address_${address.addressType}_saved`, actor, client);
+    }
     await appendSetupAuditEvent({
       eventName: "operator_address_saved",
       actor,
@@ -1149,7 +1260,8 @@ export async function saveOperatorAddress(
 
 export async function saveOperatorLicence(
   actorInput: SetupActor,
-  inputLicence: OperatorLicenceInput
+  inputLicence: OperatorLicenceInput,
+  options?: SetupEditOptions
 ): Promise<string> {
   const actor = normalizeActor(actorInput);
   const licence = validateLicence(inputLicence);
@@ -1159,9 +1271,7 @@ export async function saveOperatorLicence(
     if (!state?.operator_id) {
       throw new SetupValidationError("Complete operator profile before saving licence.");
     }
-    if (state.status === "completed") {
-      throw new SetupValidationError("Initial setup is already completed and locked.");
-    }
+    assertSetupEditable(state.status, options);
 
     const authorityExists = await query<{ exists: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM licensing_authorities WHERE id = $1 AND active = TRUE) AS exists`,
@@ -1185,13 +1295,14 @@ export async function saveOperatorLicence(
     const licenceId = existing.rows[0]?.id ?? randomUUID();
 
     if (existing.rows[0]) {
+      // Wizard saves reset the licence to draft; post-setup edits keep the stored status and re-sync it below.
       await query(
         `UPDATE operator_licences
             SET licence_number = $2,
                 licensing_authority_id = $3,
                 valid_from = $4::date,
                 valid_to = $5::date,
-                status = 'draft',
+                status = CASE WHEN $10::boolean THEN status ELSE 'draft' END,
                 updated_by_user_id = $6,
                 updated_by_user_email = $7,
                 updated_at = $8
@@ -1204,7 +1315,8 @@ export async function saveOperatorLicence(
           licence.validTo,
           actor.userId || null,
           actor.email || null,
-          now
+          now,
+          Boolean(options?.postSetup)
         ],
         client
       );
@@ -1237,7 +1349,15 @@ export async function saveOperatorLicence(
       [INITIAL_SETUP_KEY, now, actor.userId || null, actor.email || null],
       client
     );
-    await writeSetupStep("pho_licence", actor, client);
+    if (!options?.postSetup) {
+      await writeSetupStep("pho_licence", actor, client);
+    }
+    const statusChange = options?.postSetup
+      ? await syncPostSetupLicenceStatus(licenceId, actor, client)
+      : null;
+    if (options?.postSetup) {
+      await appendOperatorConfigurationHistory(state.operator_id, "licence_saved", actor, client);
+    }
     await appendSetupAuditEvent({
       eventName: existing.rows[0] ? "operator_licence_updated" : "operator_licence_created",
       actor,
@@ -1247,7 +1367,8 @@ export async function saveOperatorLicence(
         licenceId,
         licensingAuthorityId: licence.licensingAuthorityId,
         validFrom: licence.validFrom,
-        validTo: licence.validTo
+        validTo: licence.validTo,
+        ...(statusChange ? { status: { before: statusChange.previousStatus, after: statusChange.status } } : {})
       },
       client
     });
@@ -1289,7 +1410,8 @@ export async function saveOperatorLicenceDocument(
     mimetype: string;
     size: number;
     buffer: Buffer;
-  }
+  },
+  options?: SetupEditOptions
 ): Promise<void> {
   const actor = normalizeActor(actorInput);
   validateLicenceDocumentFile(file);
@@ -1299,9 +1421,7 @@ export async function saveOperatorLicenceDocument(
     if (!state?.operator_id) {
       throw new SetupValidationError("Complete licence details before uploading documents.");
     }
-    if (state.status === "completed") {
-      throw new SetupValidationError("Initial setup is already completed and locked.");
-    }
+    assertSetupEditable(state.status, options);
 
     const licence = await getLatestLicence(state.operator_id, client);
     if (!licence) {
@@ -1366,7 +1486,15 @@ export async function saveOperatorLicenceDocument(
       [INITIAL_SETUP_KEY, now, actor.userId || null, actor.email || null],
       client
     );
-    await writeSetupStep("licence_document", actor, client);
+    if (!options?.postSetup) {
+      await writeSetupStep("licence_document", actor, client);
+    }
+    const statusChange = options?.postSetup
+      ? await syncPostSetupLicenceStatus(licence.id, actor, client)
+      : null;
+    if (options?.postSetup) {
+      await appendOperatorConfigurationHistory(state.operator_id, "licence_document_uploaded", actor, client);
+    }
     await appendSetupAuditEvent({
       eventName: "operator_licence_document_uploaded",
       actor,
@@ -1374,7 +1502,8 @@ export async function saveOperatorLicenceDocument(
       summary: "PHO licence document uploaded.",
       metadata: {
         mimeType: file.mimetype,
-        byteSize: file.size
+        byteSize: file.size,
+        ...(statusChange ? { status: { before: statusChange.previousStatus, after: statusChange.status } } : {})
       },
       client
     });
@@ -1629,6 +1758,37 @@ export async function completeInitialSetup(actorInput: SetupActor): Promise<void
     await provisionSystemTestAccountsInTransaction(actor, client);
 
     const now = new Date().toISOString();
+    const licenceStatusBefore = await query<{ id: string; status: string }>(
+      `SELECT id, status FROM operator_licences WHERE operator_id = $1 AND licence_type = 'pho'`,
+      [state.operator_id],
+      client
+    );
+    const pho = licenceStatusBefore.rows[0];
+    if (!pho) {
+      throw new SetupValidationError("PHO licence details are required.");
+    }
+    await query(
+      `UPDATE operator_licences
+          SET status = 'active',
+              updated_at = $3,
+              updated_by_user_id = $4,
+              updated_by_user_email = $5
+        WHERE id = $1 AND operator_id = $2 AND licence_type = 'pho'`,
+      [pho.id, state.operator_id, now, actor.userId || null, actor.email || null],
+      client
+    );
+    await appendSetupAuditEvent({
+      eventName: "operator_licence_activated",
+      actor,
+      operatorId: state.operator_id,
+      summary: "PHO operator licence activated on setup completion.",
+      metadata: {
+        licenceId: pho.id,
+        status: { before: pho.status, after: "active" }
+      },
+      client
+    });
+
     await query(
       `UPDATE system_setup_state
           SET status = 'completed',

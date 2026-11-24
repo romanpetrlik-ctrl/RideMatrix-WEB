@@ -13,3 +13,11 @@ Submit an incomplete operator profile, an operational address with missing requi
 ## Safely viewing a completed setup
 
 Use an already-authorized setup administrator and make GET requests only to `/setup`, `/setup/completed`, or another setup step. `/setup` and incomplete-step URLs redirect to the completed page when setup is locked. Do not submit a form, call a state-changing setup endpoint, clear setup tables, or run a reset/reseed operation. Viewing the completed page does not alter setup records or audit history.
+
+## PHO licence status after completion
+
+Completing the setup wizard sets the PHO `operator_licences` row to `active` in the same transaction and writes an `operator_licence_activated` audit event. Booking assignment only offers drivers and vehicles while a PHO licence is `active`, its authority is active, its dates cover the service date, and it has a latest document. A licence left in `draft` (for example, one saved before its document was uploaded) gives an empty assignment page with an explanatory message.
+
+## Editing the operator and licence after setup
+
+After completion, admins with System settings access can edit the operator profile, both addresses, and the PHO licence at `/settings/operator` (the "Operator & licence" button in System settings). These edits use the same validation as the wizard and bypass only the wizard lock. The licence stays `active` only while its authority is active and it has a latest document; otherwise it is set to `draft` and the page shows the reason. Each licence status change is recorded in `operator_licence_history`, and each save is recorded in the system setup audit events. Every save also appends a full snapshot (operator, addresses, PHO licences) to the append-only `operator_configuration_history` table with the change type and actor. The operator's `trial` status is not changed by these edits.

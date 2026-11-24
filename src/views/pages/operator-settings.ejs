@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System settings",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell operator-settings">
+      <header class="new-booking-page__title">
+        <h1>Operator &amp; licence</h1>
+        <p>Changes are validated the same way as initial setup and recorded in the audit log.</p>
+        <a href="/settings">Back to System Settings</a>
+      </header>
+      <% if (notice === "saved") { %><section class="notice" role="status">Operator settings saved.</section><% } %>
+      <% if (errors.length) { %>
+        <section class="notice notice--critical" role="alert">
+          <ul><% errors.forEach((message) => { %><li><%= message %></li><% }) %></ul>
+        </section>
+      <% } %>
+
+      <% const operator = overview.operator; %>
+      <% const registered = overview.addressDetails.registeredPho || {}; %>
+      <% const operational = overview.addressDetails.operational || {}; %>
+      <% const licence = overview.licence; %>
+
+      <section class="panel rm-card">
+        <h2>Operator</h2>
+        <form method="post" action="/settings/operator">
+          <%- locals.csrfField || "" %>
+          <input type="hidden" name="section" value="profile" />
+          <div class="form-field">
+            <label for="legalName">Legal name *</label>
+            <input id="legalName" name="legalName" required value="<%= operator ? operator.legalName : "" %>" />
+          </div>
+          <div class="form-field">
+            <label for="tradingName">Trading name</label>
+            <input id="tradingName" name="tradingName" value="<%= operator && operator.tradingName ? operator.tradingName : "" %>" />
+          </div>
+          <div class="form-field">
+            <label for="licenceHolderName">Licence holder name *</label>
+            <input id="licenceHolderName" name="licenceHolderName" required value="<%= operator ? operator.licenceHolderName : "" %>" />
+          </div>
+          <button class="button" type="submit">Save operator</button>
+        </form>
+      </section>
+
+      <% [
+        ["registered_pho", "Registered PHO address", registered],
+        ["operational", "Operational address", operational]
+      ].forEach(([addressType, heading, address]) => { %>
+        <section class="panel rm-card">
+          <h2><%= heading %></h2>
+          <form method="post" action="/settings/operator">
+            <%- locals.csrfField || "" %>
+            <input type="hidden" name="section" value="address" />
+            <input type="hidden" name="addressType" value="<%= addressType %>" />
+            <div class="form-field">
+              <label for="<%= addressType %>-formattedAddress">Formatted address</label>
+              <input id="<%= addressType %>-formattedAddress" name="formattedAddress" value="<%= address.formattedAddress || "" %>" />
+            </div>
+            <% [
+              ["houseNameNumber", "House name / number", address.houseNameNumber || "", false],
+              ["addressLine1", "Address line 1 *", address.addressLine1 || "", true],
+              ["addressLine2", "Address line 2", address.addressLine2 || "", false],
+              ["addressLine3", "Address line 3", address.addressLine3 || "", false],
+              ["cityTown", "City / Town *", address.cityTown || "", true],
+              ["county", "County", address.county || "", false],
+              ["state", "State", address.state || "", false],
+              ["postcode", "Postcode *", address.postcode || "", true],
+              ["countryCode", "Country code *", address.countryCode || "", true],
+              ["countryName", "Country name *", address.countryName || "", true]
+            ].forEach(([fieldName, fieldLabel, fieldValue, required]) => { %>
+              <div class="form-field">
+                <label for="<%= addressType %>-<%= fieldName %>"><%= fieldLabel %></label>
+                <input id="<%= addressType %>-<%= fieldName %>" name="<%= fieldName %>" <%= fieldName === "countryCode" ? 'maxlength="2"' : "" %> <%= required ? "required" : "" %> value="<%= fieldValue %>" />
+              </div>
+            <% }) %>
+            <% if (addressType === "operational") { %>
+              <input type="hidden" name="latitude" value="<%= address.latitude ?? "" %>" />
+              <input type="hidden" name="longitude" value="<%= address.longitude ?? "" %>" />
+              <input type="hidden" name="providerName" value="<%= address.providerName || "" %>" />
+              <input type="hidden" name="providerPlaceId" value="<%= address.providerPlaceId || "" %>" />
+              <p class="form-hint">Coordinates are kept only while the stored place is still verified. Saving an edited address without a verified place clears dead-mileage coordinates.</p>
+            <% } else { %>
+              <input type="hidden" name="latitude" value="" />
+              <input type="hidden" name="longitude" value="" />
+            <% } %>
+            <button class="button" type="submit">Save <%= heading.toLowerCase() %></button>
+          </form>
+        </section>
+      <% }) %>
+
+      <section class="panel rm-card">
+        <h2>PHO licence</h2>
+        <p><strong>Status:</strong> <%= licence ? licence.status : "not set up" %></p>
+        <% if (licenceReason) { %><p class="notice notice--warning" role="status"><%= licenceReason %></p><% } %>
+        <form method="post" action="/settings/operator">
+          <%- locals.csrfField || "" %>
+          <input type="hidden" name="section" value="licence" />
+          <div class="form-field">
+            <label for="licenceNumber">PHO licence number *</label>
+            <input id="licenceNumber" name="licenceNumber" required value="<%= licence ? licence.licenceNumber : "" %>" />
+          </div>
+          <div class="form-field">
+            <label for="licensingAuthorityId">Licensing authority *</label>
+            <select id="licensingAuthorityId" name="licensingAuthorityId" required>
+              <option value="">Select authority</option>
+              <% authorities.forEach((authority) => { %>
+                <option value="<%= authority.id %>" <%= licence && licence.licensingAuthorityId === authority.id ? "selected" : "" %>><%= authority.name %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="validFrom">Licence valid from *</label>
+            <input id="validFrom" name="validFrom" type="date" required value="<%= licence ? licence.validFrom : "" %>" />
+          </div>
+          <div class="form-field">
+            <label for="validTo">Licence valid to</label>
+            <input id="validTo" name="validTo" type="date" value="<%= licence && licence.validTo ? licence.validTo : "" %>" />
+          </div>
+          <button class="button" type="submit">Save licence</button>
+        </form>
+      </section>
+
+      <section class="panel rm-card">
+        <h2>Licence document</h2>
+        <p>
+          <% if (overview.latestDocument) { %>
+            Latest document: <%= overview.latestDocument.originalFilename %> (uploaded <%= overview.latestDocument.uploadedAt %>).
+          <% } else { %>
+            No licence document uploaded.
+          <% } %>
+        </p>
+        <form method="post" action="/settings/operator" enctype="multipart/form-data">
+          <%- locals.csrfField || "" %>
+          <input type="hidden" name="section" value="document" />
+          <div class="form-field">
+            <label for="licenceDocument">Replace licence document (PDF, PNG or JPEG, max 10 MB)</label>
+            <input id="licenceDocument" type="file" name="licenceDocument" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required />
+          </div>
+          <button class="button" type="submit">Upload document</button>
+        </form>
+      </section>
+    </main>
+    <%- include("../partials/footer") %>
+  </body>
+</html>

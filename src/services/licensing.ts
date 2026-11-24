@@ -292,6 +292,7 @@ export type BookingAssignmentPage = {
     vehicleDispatchedFromBase: boolean | null;
     returnToBaseAfterDropoff: boolean | null;
   };
+  operatorLicenceActive: boolean;
   drivers: Array<{ id: string; email: string }>;
   vehicleLicenses: Array<{
     id: string;
@@ -387,7 +388,9 @@ export async function getBookingAssignmentPage(
          JOIN user_roles ur ON ur.user_id = u.id
          JOIN roles r ON r.id = ur.role_id AND r.key = 'driver'
          JOIN driver_licensing_authorities dl ON dl.driver_id = u.id::text
+         LEFT JOIN driver_profiles dp ON dp.driver_id = u.id::text
         WHERE lower(u.status::text) = 'active' AND dl.licensing_authority_id = ANY($1::text[])
+          AND COALESCE(dp.lifecycle_status, 'pending_review') = 'active'
           AND dl.active = TRUE AND dl.revoked_at IS NULL
           AND dl.valid_from <= $2 AND (dl.valid_until IS NULL OR dl.valid_until > $2)
         ORDER BY email, id`,
@@ -488,6 +491,7 @@ export async function getBookingAssignmentPage(
       vehicleDispatchedFromBase: row.vehicle_dispatched_from_base,
       returnToBaseAfterDropoff: row.return_to_base_after_dropoff
     },
+    operatorLicenceActive: operators.rows.length > 0,
     drivers,
     vehicleLicenses,
     commonAuthorities,

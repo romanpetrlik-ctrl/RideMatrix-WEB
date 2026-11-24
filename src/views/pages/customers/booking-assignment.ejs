@@ -78,6 +78,9 @@
 
         <h2>Choose a valid assignment</h2>
         <p>The operator is resolved from completed system setup. Driver, operator and selected vehicle licence must share the exact authority on this booking’s stored service date.</p>
+        <% if (!page.operatorLicenceActive) { %>
+          <p role="status" class="notice notice--warning">Operator licence není aktivní pro datum služby. Zkontrolujte stav a platnost PHO licence v Nastavení → Operator &amp; licence.</p>
+        <% } %>
         <form method="get" action="/customers/<%= encodeURIComponent(page.booking.customerId) %>/bookings/<%= encodeURIComponent(page.booking.id) %>/assignment">
           <div class="form-field">
             <label for="driverId">Driver</label>
@@ -87,6 +90,9 @@
                 <option value="<%= driver.id %>" <%= selection.driverId === driver.id ? "selected" : "" %>><%= driver.email %></option>
               <% }) %>
             </select>
+            <% if (page.operatorLicenceActive && page.drivers.length === 0) { %>
+              <p role="status">Žádný aktivní driver se stejným úřadem.</p>
+            <% } %>
           </div>
           <div class="form-field">
             <label for="vehicleLicenseType">Vehicle licence type</label>
@@ -106,6 +112,9 @@
                 </option>
               <% }) %>
             </select>
+            <% if (page.operatorLicenceActive && page.vehicleLicenses.length === 0) { %>
+              <p role="status">Žádné vozidlo bez aktivní licence.</p>
+            <% } %>
           </div>
           <button class="button button--secondary" type="submit">Show common licensing authorities</button>
         </form>
