@@ -1302,7 +1302,7 @@ export async function saveOperatorLicence(
                 licensing_authority_id = $3,
                 valid_from = $4::date,
                 valid_to = $5::date,
-                status = CASE WHEN $10::boolean THEN status ELSE 'draft' END,
+                status = CASE WHEN $9::boolean THEN status ELSE 'draft' END,
                 updated_by_user_id = $6,
                 updated_by_user_email = $7,
                 updated_at = $8
