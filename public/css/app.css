@@ -5843,8 +5843,8 @@ main table thead th {
   min-height: 0;
 }
 
-.booking-calendar__day.is-outside-month {
-  opacity: 0.55;
+.booking-calendar__grid--month .booking-calendar__day.is-outside-month .booking-calendar__day-header {
+  color: #57606a;
 }
 
 .booking-calendar__day.is-today {
