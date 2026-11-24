@@ -16,6 +16,14 @@ import {
 } from "../services/licensing";
 import { SessionAccount } from "../services/api";
 import { createVehicle } from "../services/vehicles";
+import {
+  bootstrapRealInstallerSuperuser,
+  completeInitialSetup,
+  saveOperatorAddress,
+  saveOperatorLicence,
+  saveOperatorLicenceDocument,
+  saveOperatorProfile
+} from "../services/system-setup";
 import { createCustomersRouter } from "./customers";
 
 const ADMIN_ID = "a0000000-0000-0000-0000-000000000001";
@@ -545,23 +553,111 @@ test("admin booking assignment uses a common setup licence, snapshots badge, and
   }
 });
 
-test("assignment offers drivers and vehicles only with an active operator licence and active driver lifecycle", async () => {
-  dbContext = await createTestDatabaseContext("test_booking_assignment_licence_status");
+const setupActor = {
+  userId: "11111111-1111-1111-1111-111111111111",
+  email: "installer@ridematrix.uk",
+  roles: ["admin", "superuser"]
+};
+const SETUP_AUTHORITY_ID = "assignment-setup-authority";
+
+async function completeSetupThroughServices(): Promise<void> {
+  const now = new Date().toISOString();
+  for (const [id, key] of [[1, "admin"], [2, "driver"], [10, "superuser"], [11, "staff"], [12, "customer"],
+    [13, "corporate"], [14, "partner"], [15, "tour_operator"], [16, "affiliate"], [17, "tech_support"]] as const) {
+    await query(`INSERT INTO roles (id, key, description) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [id, key, key]);
+  }
+  await query(
+    `INSERT INTO users (id, email, status) VALUES ($1, $2, 'Active') ON CONFLICT (id) DO NOTHING`,
+    [setupActor.userId, setupActor.email]
+  );
+  await query(
+    `INSERT INTO licensing_authorities (id, name, authority_type, active, preference_order, created_at, updated_at)
+     VALUES ($1, 'Setup Council', 'pho', TRUE, 1, $2, $2)`,
+    [SETUP_AUTHORITY_ID, now]
+  );
+  await bootstrapRealInstallerSuperuser({
+    actor: setupActor, installerEmail: setupActor.email, name: "Initial", surname: "Installer"
+  });
+  await saveOperatorProfile(setupActor, {
+    legalName: "Assignment Setup Operator Ltd",
+    tradingName: "Assignment Setup",
+    licenceHolderName: "Assignment Setup Operator Ltd",
+    status: "setup_required"
+  });
+  const address = (addressType: "registered_pho" | "operational", houseNameNumber: string, postcode: string) => ({
+    addressType,
+    formattedAddress: `${houseNameNumber} High Street, London, UK`,
+    houseNameNumber,
+    addressLine1: "High Street",
+    addressLine2: null,
+    addressLine3: null,
+    cityTown: "London",
+    county: "Greater London",
+    state: null,
+    postcode,
+    countryCode: "GB",
+    countryName: "United Kingdom",
+    latitude: 51.5,
+    longitude: -0.1,
+    providerName: "manual",
+    providerPlaceId: null
+  });
+  await saveOperatorAddress(setupActor, address("registered_pho", "1", "SW1A 1AA"));
+  await saveOperatorAddress(setupActor, address("operational", "5", "EC4Y 1AA"));
+  await saveOperatorLicence(setupActor, {
+    licenceNumber: "PHO-ASSIGN-SETUP",
+    licensingAuthorityId: SETUP_AUTHORITY_ID,
+    validFrom: "2026-01-01",
+    validTo: "2027-01-01"
+  });
+  const pdf = Buffer.from("%PDF-1.7 setup");
+  await saveOperatorLicenceDocument(setupActor, {
+    originalname: "pho-licence.pdf", mimetype: "application/pdf", size: pdf.length, buffer: pdf
+  });
+  await completeInitialSetup(setupActor);
+}
+
+test("assignment offers drivers and vehicles after real setup, and hides them when the licence is not active", async () => {
+  dbContext = await createTestDatabaseContext("test_booking_assignment_setup_flow");
   await dbContext.createAuthTables();
   await initializeDatabase();
-  await setupFixtures();
-  const bookingId = "assignment-status-booking";
-  await addBooking(bookingId);
+  const bookingId = "assignment-setup-flow-booking";
 
   try {
-    await query("UPDATE operator_licences SET status='draft' WHERE licence_type='pho'");
-    const draftPage = await getBookingAssignmentPage(bookingId, CUSTOMER_ID);
-    assert.ok(draftPage);
-    assert.equal(draftPage.operatorLicenceActive, false, "draft operator licence is not active");
-    assert.deepEqual(draftPage.drivers, []);
-    assert.deepEqual(draftPage.vehicleLicenses, []);
+    await completeSetupThroughServices();
+    const pho = await query<{ status: string }>(
+      "SELECT status FROM operator_licences WHERE licence_type = 'pho'"
+    );
+    assert.equal(pho.rows[0].status, "active", "setup completion activates the PHO licence");
 
-    await query("UPDATE operator_licences SET status='active' WHERE licence_type='pho'");
+    const now = new Date().toISOString();
+    await query(
+      `INSERT INTO customers (id, given_name, surname, created_at, updated_at)
+       VALUES ($1,'Ada','Lovelace',$2,$2)`,
+      [CUSTOMER_ID, now]
+    );
+    await query(
+      `INSERT INTO users (id, email, status) VALUES ($1,'driver-setup@example.com','Active') ON CONFLICT DO NOTHING`,
+      [DRIVER_A_ID]
+    );
+    await query(`INSERT INTO user_roles (user_id, role_id) VALUES ($1, 2) ON CONFLICT DO NOTHING`, [DRIVER_A_ID]);
+    await query(
+      `INSERT INTO driver_profiles
+         (driver_id, first_name, last_name, short_name, lifecycle_status, manual_review_required, created_at, updated_at)
+       VALUES ($1,'Driver','Alpha','Driver A','active',FALSE,$2,$2)`,
+      [DRIVER_A_ID, now]
+    );
+    await addLicense("driver", DRIVER_A_ID, { licensingAuthorityId: SETUP_AUTHORITY_ID, validFrom: "2020-01-01" });
+    const vehicle = await createVehicle({
+      registration: "SETUP-FLOW-1", make: "Test", model: "Car", classKeys: ["standard_sedan_hatchback"],
+      fuelType: "ICE", passengerCapacity: 4, status: "active", vehicleLicenseType: "hackney_carriage"
+    });
+    await saveVehicleLicense(vehicle.id, {
+      licensingAuthorityId: SETUP_AUTHORITY_ID, licenseType: "hackney_carriage",
+      vehicleLicenseBadge: "HC-SETUP-1", validFrom: "2020-01-01"
+    });
+    await addBooking(bookingId);
+
     const activePage = await getBookingAssignmentPage(bookingId, CUSTOMER_ID);
     assert.ok(activePage);
     assert.equal(activePage.operatorLicenceActive, true);
@@ -573,7 +669,24 @@ test("assignment offers drivers and vehicles only with an active operator licenc
     assert.ok(inactiveDriverPage);
     assert.equal(inactiveDriverPage.drivers.some((driver) => driver.id === DRIVER_A_ID), false,
       "driver with non-active lifecycle is not offered");
-    assert.ok(inactiveDriverPage.drivers.every((driver) => driver.id !== DRIVER_A_ID));
+    await query("UPDATE driver_profiles SET lifecycle_status='active' WHERE driver_id=$1", [DRIVER_A_ID]);
+
+    await query("UPDATE operator_licence_documents SET content = NULL, storage_key = 'external/pho-licence.pdf' WHERE is_latest = TRUE");
+    await saveOperatorLicence(setupActor, {
+      licenceNumber: "PHO-ASSIGN-SETUP",
+      licensingAuthorityId: SETUP_AUTHORITY_ID,
+      validFrom: "2026-01-01",
+      validTo: "2027-01-01"
+    }, { postSetup: true });
+    const contentless = await query<{ status: string }>(
+      "SELECT status FROM operator_licences WHERE licence_type = 'pho'"
+    );
+    assert.equal(contentless.rows[0].status, "draft", "licence without document content is not active");
+    const draftPage = await getBookingAssignmentPage(bookingId, CUSTOMER_ID);
+    assert.ok(draftPage);
+    assert.equal(draftPage.operatorLicenceActive, false);
+    assert.deepEqual(draftPage.drivers, []);
+    assert.deepEqual(draftPage.vehicleLicenses, []);
   } finally {
     await safeCleanupTestDatabase(dbContext);
     dbContext = undefined;
