@@ -212,6 +212,8 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     id: "booking-uuid",
     customerId: "cust-b",
     reference: "RMB-000042",
+    accountType: "Private",
+    passengerName: "Blair Booker",
     serviceDate: "2026-03-10",
     serviceTime: "14:30",
     customerName: "Blair Booker",
@@ -235,7 +237,7 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     assert.equal(response.status, 200);
     const html = await response.text();
     assert.deepEqual(listed, [["upcoming", "RMB-000042"]]);
-    assert.match(html, /Upcoming bookings/);
+    assert.match(html, /Upcoming Bookings/);
     assert.match(html, /context-bar__action--primary/);
     assert.match(html, /href="\/bookings\/new"/);
     assert.match(html, />New booking<\/a>/);
@@ -275,9 +277,9 @@ test("booking rows expand to expose assignment, status, cancellation, and archiv
     const summary = html.match(/<summary[^>]*>[\s\S]*?<\/summary>/)?.[0] ?? "";
     assert.ok(summary);
     const summaryContent = summary.replace(/^<summary[^>]*>/, "");
-    assert.equal((summaryContent.match(/class="booking-dashboard__/g) ?? []).length, 6);
+    assert.equal((summaryContent.match(/class="booking-dashboard__/g) ?? []).length, 9);
     assert.doesNotMatch(summary, /<a /);
-    assert.match(html, /<\/details>\s*<\/td>\s*<\/tr>/);
+    assert.match(html, /<\/div>\s*<\/details>\s*<\/div>\s*<\/div>/);
     assert.doesNotMatch(html, /name="customerMode"/);
   });
 });
@@ -291,13 +293,13 @@ test("booking board accepts each supported filter and preserves the selected vie
     }
   }, async (baseUrl) => {
     const views: Array<[BookingDashboardView, string]> = [
-      ["today", "Today&#39;s bookings"],
-      ["upcoming", "Upcoming bookings"],
-      ["all", "All bookings"],
-      ["finished", "Finished bookings"],
-      ["cancelled", "Cancelled bookings"],
-      ["archived", "Archived bookings"],
-      ["no-show", "No-show bookings"]
+      ["today", "Today&#39;s Bookings"],
+      ["upcoming", "Upcoming Bookings"],
+      ["all", "All Bookings"],
+      ["finished", "Finished Bookings"],
+      ["cancelled", "Cancelled Bookings"],
+      ["archived", "Archived Bookings"],
+      ["no-show", "No-show Bookings"]
     ];
     for (const [view, heading] of views) {
       const response = await fetch(`${baseUrl}/bookings?view=${view}`);
@@ -313,6 +315,8 @@ test("archived bookings are shown as retained history without operational action
     id: "booking-archived",
     customerId: "cust-b",
     reference: "RMB-000043",
+    accountType: "Private",
+    passengerName: "Blair Booker",
     serviceDate: "2026-03-10",
     serviceTime: "14:30",
     customerName: "Blair Booker",

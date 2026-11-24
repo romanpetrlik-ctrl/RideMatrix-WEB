@@ -1862,26 +1862,78 @@ button:visited,
   gap: 0.5rem;
 }
 
-.booking-dashboard__table {
-  min-width: 1080px;
+.booking-dashboard__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
 }
 
-.booking-dashboard__record > td {
-  padding: 0;
+.booking-dashboard__toolbar .booking-dashboard__tabs {
+  flex: 1 1 auto;
+}
+
+.booking-dashboard__search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.booking-dashboard__search .form-field {
+  margin: 0;
+}
+
+.booking-dashboard__search input[type="search"] {
+  width: min(100%, 22rem);
+  margin: 0;
+}
+
+.booking-dashboard__scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.booking-dashboard__list {
+  --booking-columns: minmax(7.5rem, 0.8fr) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(8.5rem, 0.8fr)
+    minmax(16rem, 2.6fr) minmax(7.5rem, 0.8fr) minmax(5.5rem, 0.6fr) minmax(8rem, 1fr) minmax(8rem, 1fr);
+  min-width: 1180px;
+}
+
+.booking-dashboard__head,
+.booking-dashboard__summary {
+  display: grid;
+  grid-template-columns: var(--booking-columns);
+  gap: 0.75rem;
+  align-items: start;
+  justify-items: start;
+  text-align: left;
+  padding-block: 0.85rem;
+  padding-left: 0.75rem;
+  padding-right: 2rem;
+}
+
+.booking-dashboard__head {
+  padding-block: 0.75rem;
   border-bottom: 1px solid var(--rm-light-bronze);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--rm-walnut);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .booking-dashboard__details {
   width: 100%;
+  border-bottom: 1px solid var(--rm-light-bronze);
 }
 
 .booking-dashboard__summary {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(8rem, 0.8fr) minmax(6rem, 0.6fr) minmax(9rem, 1fr) minmax(20rem, 3fr) minmax(7rem, 0.7fr) minmax(9rem, 1fr);
-  align-items: start;
-  gap: 0.75rem;
-  padding: 0.85rem 2rem 0.85rem 0.75rem;
   border-right: 0.4rem solid var(--booking-live-color, transparent);
   background: color-mix(in srgb, var(--booking-operational-color, #fff) 24%, #fff);
   color: var(--rm-text);
