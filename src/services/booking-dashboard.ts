@@ -50,6 +50,7 @@ export type BookingDashboardRecord = {
   totalFareAmount?: string | null;
   paymentMethod?: string | null;
   paymentLabel: string | null;
+  pickupAddress: string;
   dropoffAddress: string;
   archivedAt?: string | null;
   archiveReason?: string | null;
@@ -252,6 +253,7 @@ export async function listBookingDashboard(
     accountType: row.account_type,
     passengerName: row.passenger_name,
     pickup: row.pickup,
+    pickupAddress: stopAddress(row.pickup),
     dropoff: row.dropoff,
     dropoffAddress: stopAddress(row.dropoff),
     paymentLabel: paymentLabel(row.payment_method),
