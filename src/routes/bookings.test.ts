@@ -154,7 +154,22 @@ const savedBooking: SavedNewBooking = {
   }
 };
 
+test("dispatchers get a read-only booking detail while mutations stay admin-only", async () => {
+  await withApp({ roles: ["dispatcher"] }, async (baseUrl, saved) => {
+    const detail = await fetch(`${baseUrl}/bookings/booking-uuid`);
+    const html = await detail.text();
+    assert.equal(detail.status, 200);
+    assert.match(html, /Read-only view/);
+    assert.doesNotMatch(html, /Vehicle and driver assignment/);
+    assert.equal((await post(`${baseUrl}/bookings/booking-uuid/status`, form({ status: "Cancelled" }))).status, 403);
+    assert.equal((await post(`${baseUrl}/bookings/booking-uuid/archive`, form({ reason: "x" }))).status, 403);
+    assert.equal((await fetch(`${baseUrl}/bookings/new`)).status, 403);
+    assert.equal(saved.length, 0);
+  });
+});
+
 test("New Booking is admin-only and keeps unauthenticated users out", async () => {
+
   await withApp({ roles: null }, async (baseUrl) => {
     const page = await fetch(`${baseUrl}/bookings/new`, { redirect: "manual" });
     assert.equal(page.status, 302);

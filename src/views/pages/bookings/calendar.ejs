@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../../partials/system-status-bar", {
+      appTitle,
+      systemStatus: isDriverView ? "Driver calendar" : "Booking calendar",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../../partials/header", { appTitle }) %>
+
+    <main class="container rm-page-shell booking-calendar-page">
+      <div class="new-booking-page__title">
+        <h1>Booking calendar</h1>
+        <p>
+          <%= isDriverView ? "Only bookings assigned to your driver account are shown." : "Bookings are shown in Europe/London time." %>
+          Select an event to open the booking. Events follow the booking record, so status, time and driver changes appear after the next load.
+        </p>
+      </div>
+
+      <nav class="booking-calendar__toolbar" aria-label="Calendar navigation">
+        <div class="booking-calendar__views" role="group" aria-label="Calendar view">
+          <% viewLinks.forEach((link) => { %>
+            <a class="button button--secondary<%= link.active ? ' is-active' : '' %>" href="<%= link.href %>" <% if (link.active) { %>aria-current="page"<% } %>><%= link.label %></a>
+          <% }) %>
+        </div>
+        <div class="booking-calendar__period">
+          <a class="button button--secondary" href="<%= previousHref %>" aria-label="Previous period">&larr; Previous</a>
+          <a class="button button--secondary" href="<%= todayHref %>">Today</a>
+          <a class="button button--secondary" href="<%= nextHref %>" aria-label="Next period">Next &rarr;</a>
+        </div>
+        <h2 class="booking-calendar__label" aria-live="polite"><%= periodLabel %></h2>
+      </nav>
+
+      <% if (eventCount === 0) { %>
+        <p class="booking-calendar__empty">No bookings in this period.</p>
+      <% } %>
+
+      <div class="booking-calendar__grid booking-calendar__grid--<%= view %>" aria-label="<%= periodLabel %>" data-calendar-view="<%= view %>">
+        <% if (view === "month" || view === "week") { %>
+          <div class="booking-calendar__weekdays" aria-hidden="true">
+            <% ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach((name) => { %>
+              <span><%= name %></span>
+            <% }) %>
+          </div>
+        <% } %>
+        <% days.forEach((day) => { %>
+          <section
+            class="booking-calendar__day<%= day.isToday ? ' is-today' : '' %><%= day.isCurrentMonth ? '' : ' is-outside-month' %><%= day.events.length ? ' has-events' : '' %>"
+            data-date="<%= day.date %>"
+            aria-label="<%= day.date %>"
+          >
+            <header class="booking-calendar__day-header">
+              <% if (view === "day") { %>
+                <strong><%= day.date %></strong>
+              <% } else { %>
+                <span class="booking-calendar__day-number"><%= day.dayNumber %></span>
+                <span class="booking-calendar__day-date"><%= day.date %></span>
+              <% } %>
+            </header>
+            <% if (day.events.length) { %>
+              <ol class="booking-calendar__events">
+                <% day.events.forEach((event) => { %>
+                  <li class="booking-calendar__event-item">
+                    <a
+                      class="booking-calendar__event booking-calendar__event--<%= statusSlug(event.status) %>"
+                      href="<%= eventHref(event) %>"
+                      data-booking-id="<%= event.id %>"
+                      data-status="<%= event.status %>"
+                    >
+                      <span class="booking-calendar__event-time"><%= event.startsAt ? eventTime(event) : "No time set" %></span>
+                      <span class="booking-calendar__event-reference"><%= event.reference %></span>
+                      <span class="booking-calendar__event-route"><%= event.pickup %> → <%= event.dropoff %></span>
+                      <span class="booking-calendar__event-meta">
+                        <span class="booking-calendar__event-status"><%= event.status %></span>
+                        <% if (event.liveStatus) { %><span class="booking-calendar__event-live"><%= event.liveStatus %></span><% } %>
+                        <% if (!isDriverView && event.driverName) { %><span class="booking-calendar__event-driver">Driver: <%= event.driverName %></span><% } %>
+                        <% if (!isDriverView && !event.driverName) { %><span class="booking-calendar__event-driver">Driver: not assigned</span><% } %>
+                      </span>
+                    </a>
+                  </li>
+                <% }) %>
+              </ol>
+            <% } %>
+          </section>
+        <% }) %>
+      </div>
+    </main>
+  </body>
+</html>

@@ -5775,3 +5775,170 @@ main table thead th {
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
+
+/* Booking calendar: one responsive markup; desktop shows a 7-column grid, mobile collapses to a day agenda. */
+.booking-calendar-page .booking-calendar__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.booking-calendar__views,
+.booking-calendar__period {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.booking-calendar__views .is-active {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.booking-calendar__label {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.booking-calendar__empty {
+  margin: 1rem 0;
+}
+
+.booking-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.booking-calendar__grid--day {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.booking-calendar__weekdays {
+  display: contents;
+}
+
+.booking-calendar__weekdays span {
+  font-weight: 700;
+  text-align: center;
+  padding: 0.25rem;
+}
+
+.booking-calendar__day {
+  min-height: 6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.35rem;
+  background: #fff;
+  min-width: 0;
+}
+
+.booking-calendar__grid--week .booking-calendar__day {
+  min-height: 14rem;
+}
+
+.booking-calendar__grid--day .booking-calendar__day {
+  min-height: 0;
+}
+
+.booking-calendar__grid--month .booking-calendar__day.is-outside-month .booking-calendar__day-header {
+  color: #57606a;
+}
+
+.booking-calendar__day.is-today {
+  border-color: #1f6feb;
+  box-shadow: inset 0 0 0 1px #1f6feb;
+}
+
+.booking-calendar__day-header {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.booking-calendar__day-date {
+  display: none;
+}
+
+.booking-calendar__events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.booking-calendar__event {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem 0.45rem;
+  border-left: 4px solid #6e7781;
+  border-radius: 4px;
+  background: #f6f8fa;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.booking-calendar__event:hover,
+.booking-calendar__event:focus-visible {
+  background: #eaf2ff;
+}
+
+.booking-calendar__event--new,
+.booking-calendar__event--under-availability-review { border-left-color: #8250df; }
+.booking-calendar__event--accepted { border-left-color: #1f6feb; }
+.booking-calendar__event--driver-assigned { border-left-color: #0969da; }
+.booking-calendar__event--completed { border-left-color: #1a7f37; }
+.booking-calendar__event--cancelled,
+.booking-calendar__event--no-show { border-left-color: #cf222e; }
+
+.booking-calendar__event-time,
+.booking-calendar__event-reference {
+  font-weight: 700;
+}
+
+.booking-calendar__event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  color: #57606a;
+}
+
+@media (max-width: 699px) {
+  .booking-calendar__grid,
+  .booking-calendar__grid--week,
+  .booking-calendar__grid--month {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .booking-calendar__weekdays {
+    display: none;
+  }
+
+  /* Empty days are hidden in the agenda so the phone view shows only days with bookings. */
+  .booking-calendar__grid--month .booking-calendar__day:not(.has-events),
+  .booking-calendar__grid--week .booking-calendar__day:not(.has-events) {
+    display: none;
+  }
+
+  .booking-calendar__day,
+  .booking-calendar__grid--week .booking-calendar__day {
+    min-height: 0;
+  }
+
+  .booking-calendar__day-header .booking-calendar__day-date {
+    display: inline;
+    color: #57606a;
+  }
+
+  .booking-calendar__event {
+    padding: 0.6rem 0.7rem;
+    font-size: 1rem;
+  }
+}
