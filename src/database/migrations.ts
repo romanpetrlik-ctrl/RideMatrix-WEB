@@ -2267,6 +2267,32 @@ export const MIGRATIONS: Migration[] = [
         imported_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `
+  },
+  {
+    id: "0046_operator_configuration_history",
+    sql: `
+      CREATE TABLE IF NOT EXISTS operator_configuration_history (
+        id TEXT PRIMARY KEY,
+        version INTEGER NOT NULL UNIQUE CHECK (version > 0),
+        change_type TEXT NOT NULL CHECK (btrim(change_type) <> ''),
+        configuration JSONB NOT NULL CHECK (jsonb_typeof(configuration) = 'object'),
+        actor_user_id TEXT,
+        actor_email TEXT,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE OR REPLACE FUNCTION rm_reject_operator_configuration_history_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Operator configuration history is append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS operator_configuration_history_append_only ON operator_configuration_history;
+      CREATE TRIGGER operator_configuration_history_append_only
+        BEFORE UPDATE OR DELETE ON operator_configuration_history
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_operator_configuration_history_mutation();
+    `
   }
 ];
 

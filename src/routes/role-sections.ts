@@ -114,7 +114,7 @@ export type WorkspaceModule = {
   allowedRoles: string[];
 };
 
-const systemSettingsModule: WorkspaceModule = {
+export const systemSettingsModule: WorkspaceModule = {
   key: "system-settings",
   title: "System settings",
   description: "Privileged platform configuration.",

@@ -19,6 +19,7 @@ import { createVehiclesRouter } from "./routes/vehicles";
 import { createDriversRouter } from "./routes/drivers";
 import { createDriverBookingsRouter } from "./routes/driver-bookings";
 import { createBookingIntegrationSettingsRouter } from "./routes/booking-integration-settings";
+import { createOperatorSettingsRouter } from "./routes/operator-settings";
 import { createBookingPaymentsRouter } from "./routes/booking-payments";
 import { createSetupRouter } from "./routes/setup";
 import { errorHandler } from "./middleware/error-handler";
@@ -79,6 +80,7 @@ async function startServer() {
   app.use(createBookingsRouter({ appTitle }));
   app.use(createDriverBookingsRouter({ appTitle }));
   app.use(createBookingIntegrationSettingsRouter({ appTitle }));
+  app.use(createOperatorSettingsRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
   app.use(createDriversRouter({ appTitle }));
   app.use(createVehiclesRouter({ appTitle }));

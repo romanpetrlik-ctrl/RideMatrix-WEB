@@ -589,3 +589,38 @@ test("admin booking assignment uses a common setup licence, snapshots badge, and
     await safeCleanupTestDatabase(dbContext);
   }
 });
+
+test("assignment offers drivers and vehicles only with an active operator licence and active driver lifecycle", async () => {
+  dbContext = await createTestDatabaseContext("test_booking_assignment_licence_status");
+  await dbContext.createAuthTables();
+  await initializeDatabase();
+  await setupFixtures();
+  const bookingId = "assignment-status-booking";
+  await addBooking(bookingId);
+
+  try {
+    await query("UPDATE operator_licences SET status='draft' WHERE licence_type='pho'");
+    const draftPage = await getBookingAssignmentPage(bookingId, CUSTOMER_ID);
+    assert.ok(draftPage);
+    assert.equal(draftPage.operatorLicenceActive, false, "draft operator licence is not active");
+    assert.deepEqual(draftPage.drivers, []);
+    assert.deepEqual(draftPage.vehicleLicenses, []);
+
+    await query("UPDATE operator_licences SET status='active' WHERE licence_type='pho'");
+    const activePage = await getBookingAssignmentPage(bookingId, CUSTOMER_ID);
+    assert.ok(activePage);
+    assert.equal(activePage.operatorLicenceActive, true);
+    assert.ok(activePage.drivers.some((driver) => driver.id === DRIVER_A_ID), "active driver is offered");
+    assert.ok(activePage.vehicleLicenses.length > 0, "vehicle with an active licence is offered");
+
+    await query("UPDATE driver_profiles SET lifecycle_status='pending_review' WHERE driver_id=$1", [DRIVER_A_ID]);
+    const inactiveDriverPage = await getBookingAssignmentPage(bookingId, CUSTOMER_ID);
+    assert.ok(inactiveDriverPage);
+    assert.equal(inactiveDriverPage.drivers.some((driver) => driver.id === DRIVER_A_ID), false,
+      "driver with non-active lifecycle is not offered");
+    assert.ok(inactiveDriverPage.drivers.every((driver) => driver.id !== DRIVER_A_ID));
+  } finally {
+    await safeCleanupTestDatabase(dbContext);
+    dbContext = undefined;
+  }
+});

@@ -216,6 +216,15 @@ test("full setup completion provisions selected production test accounts and dea
 
   await completeInitialSetup(installerActor);
 
+  const pho = await query<{ status: string }>(
+    "SELECT status FROM operator_licences WHERE licence_type = 'pho' AND licence_number = 'PHO-SETUP-001'"
+  );
+  assert.equal(pho.rows[0]?.status, "active", "setup completion activates the PHO licence");
+  const activation = await query<{ count: string }>(
+    "SELECT count(*)::text AS count FROM system_setup_audit_events WHERE event_name = 'operator_licence_activated'"
+  );
+  assert.equal(activation.rows[0].count, "1");
+
   const setupState = await query<{ status: string; completed_by_user_id: string | null }>(
     `SELECT status, completed_by_user_id
        FROM system_setup_state
@@ -267,6 +276,37 @@ test("full setup completion provisions selected production test accounts and dea
       ORDER BY role_key`
   );
   assert.ok(deactivatedRegistryRows.rows.every((row) => row.active === false));
+
+  await saveOperatorProfile(installerActor, {
+    legalName: "RideMatrix Operator Ltd",
+    tradingName: "RideMatrix Renamed",
+    licenceHolderName: "RideMatrix Operator Ltd"
+  }, { postSetup: true });
+  const historyRows = await query<{ version: number; change_type: string; actor_email: string | null; configuration: { operator: { trading_name: string }; licences: Array<{ licence_number: string }> } }>(
+    `SELECT version, change_type, actor_email, configuration
+       FROM operator_configuration_history
+      ORDER BY version`
+  );
+  assert.equal(historyRows.rows.length, 1, "post-setup profile save writes one configuration history entry");
+  assert.equal(historyRows.rows[0].change_type, "profile_saved");
+  assert.equal(historyRows.rows[0].actor_email, installerActor.email);
+  assert.equal(historyRows.rows[0].configuration.operator.trading_name, "RideMatrix Renamed");
+  assert.deepEqual(historyRows.rows[0].configuration.licences.map((row) => row.licence_number), ["PHO-SETUP-001"]);
+
+  await query("UPDATE licensing_authorities SET active = FALSE WHERE id = $1", [authorityId]);
+  await assert.rejects(
+    () => saveOperatorLicence(installerActor, {
+      licenceNumber: "PHO-CHANGED-002",
+      licensingAuthorityId: authorityId,
+      validFrom: "2026-01-01",
+      validTo: "2027-01-01"
+    }, { postSetup: true }),
+    /Selected licensing authority is not available/
+  );
+  const unchangedLicence = await query<{ licence_number: string; status: string }>(
+    "SELECT licence_number, status FROM operator_licences WHERE licence_type = 'pho'"
+  );
+  assert.deepEqual(unchangedLicence.rows, [{ licence_number: "PHO-SETUP-001", status: "active" }]);
 });
 
 test("setup fails clearly when required test-account roles are missing", async () => {

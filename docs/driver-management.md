@@ -36,3 +36,7 @@ Archive is available from both the directory and detail pages. It uses a confirm
 dialog with a required reason, saves that reason in the audit log, and never hard-deletes a
 driver. Archived records are hidden from the default directory and vehicle assignment
 candidates; archived drivers remain visible through the archived status filter.
+
+## Booking assignment filter
+
+The driver list on the booking assignment page (`src/services/licensing.ts`, `getBookingAssignmentPage`) only includes drivers whose `driver_profiles.lifecycle_status` is `active`, matching the check enforced when a booking is assigned. A driver in `pending_review` or any other non-active lifecycle state is hidden from the dropdown. If no driver is offered, the page explains why: the operator licence is not active for the service date, or no active driver has a licence from the same authority.
