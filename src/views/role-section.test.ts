@@ -9,3 +9,12 @@ test("Manage VPS keeps the safe recovery placeholder as a button and relies on t
   assert.match(template, /Safety notice:<\/strong> reboot and recovery are placeholders/);
   assert.doesNotMatch(template, /<p><a href="\/choose-role">Switch workspace<\/a><\/p>/);
 });
+
+test("System settings navigation uses the shared admin action-button style", () => {
+  const template = fs.readFileSync("src/views/pages/role-section.ejs", "utf8");
+  const settingsNavigation = template.split('class="system-settings-destinations"')[1]?.split("</nav>")[0] ?? "";
+
+  assert.match(settingsNavigation, /class="button button--admin-cta" href="\/settings\/payments\/stripe">Stripe \(On\/Off\)<\/a>/);
+  assert.match(settingsNavigation, /class="button button--admin-cta" href="\/settings\/messaging\/email">Email \(On\/Off\)<\/a>/);
+  assert.match(settingsNavigation, /class="button button--admin-cta" href="\/settings\/booking-integrations">Booking Integrations<\/a>/);
+});

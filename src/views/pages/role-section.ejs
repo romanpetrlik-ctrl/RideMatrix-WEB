@@ -18,32 +18,31 @@
         </div>
         <nav class="system-settings-destinations" aria-label="Settings">
           <section aria-labelledby="settings-messaging-heading">
-            <h2 id="settings-messaging-heading"><a href="/settings/messaging">Messaging</a></h2>
-            <ul>
-              <li>
-                <a href="/settings/messaging/email">Email (On/Off)</a>
-                <ul><li><a href="/settings/messaging/email/templates">Email templates</a></li></ul>
-              </li>
-              <li>
-                <a href="/settings/messaging/whatsapp">WhatsApp (On/Off)</a>
-                <ul><li><a href="/settings/messaging/whatsapp/templates">Templates</a></li></ul>
-              </li>
-            </ul>
+            <h2 id="settings-messaging-heading">Messaging</h2>
+            <div class="system-settings-destinations__actions">
+              <a class="button button--admin-cta" href="/settings/messaging">Messaging overview</a>
+              <a class="button button--admin-cta" href="/settings/messaging/email">Email (On/Off)</a>
+              <a class="button button--admin-cta" href="/settings/messaging/email/templates">Email templates</a>
+              <a class="button button--admin-cta" href="/settings/messaging/whatsapp">WhatsApp (On/Off)</a>
+              <a class="button button--admin-cta" href="/settings/messaging/whatsapp/templates">WhatsApp templates</a>
+            </div>
           </section>
           <section aria-labelledby="settings-operations-heading">
             <h2 id="settings-operations-heading">Operations</h2>
-            <ul>
-              <li><a href="/settings/pois">Manage POIs</a></li>
-              <li><a href="/settings/poi-fees">Manage POI Fees</a></li>
-              <li><a href="/settings/fare-settings">Fare Settings</a></li>
-              <li><a href="/settings/toll-fees">Toll &amp; Fees</a></li>
-              <li><a href="/settings/booking-integrations">Booking Integrations</a></li>
-              <li><a href="/settings/operator">Operator &amp; licence</a></li>
-            </ul>
+            <div class="system-settings-destinations__actions">
+              <a class="button button--admin-cta" href="/settings/pois">Manage POIs</a>
+              <a class="button button--admin-cta" href="/settings/poi-fees">Manage POI Fees</a>
+              <a class="button button--admin-cta" href="/settings/fare-settings">Fare Settings</a>
+              <a class="button button--admin-cta" href="/settings/toll-fees">Toll &amp; Fees</a>
+              <a class="button button--admin-cta" href="/settings/booking-integrations">Booking Integrations</a>
+              <a class="button button--admin-cta" href="/settings/operator">Operator &amp; licence</a>
+            </div>
           </section>
           <section aria-labelledby="settings-payments-heading">
             <h2 id="settings-payments-heading">Payments</h2>
-            <ul><li><a href="/settings/payments/stripe">Stripe (On/Off)</a></li></ul>
+            <div class="system-settings-destinations__actions">
+              <a class="button button--admin-cta" href="/settings/payments/stripe">Stripe (On/Off)</a>
+            </div>
           </section>
         </nav>
       ` : ""}

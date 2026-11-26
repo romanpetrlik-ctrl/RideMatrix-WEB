@@ -534,6 +534,7 @@ input[type="submit"] {
   color: var(--rm-cta-helper-text);
   min-height: var(--rm-control-height);
   border: var(--rm-control-border-width) solid var(--rm-admin-action-border);
+  border-bottom-width: 3px;
   border-radius: var(--rm-control-border-radius);
   padding: var(--rm-control-padding-block) var(--rm-control-padding-inline);
   cursor: pointer;
@@ -1027,6 +1028,7 @@ button:visited,
   min-height: var(--rm-cta-admin-height);
   padding: var(--rm-cta-admin-padding-block) var(--rm-cta-admin-padding-inline);
   border: var(--rm-control-border-width) solid var(--rm-admin-cta-border);
+  border-bottom-width: 3px;
   border-radius: var(--rm-control-border-radius);
   background: var(--rm-admin-cta-bg);
   color: var(--rm-admin-cta-text);
@@ -3776,13 +3778,22 @@ button:visited,
   font-size: 1.1rem;
 }
 
-.system-settings-destinations ul {
-  margin: 0;
-  padding-left: 1.25rem;
+.system-settings-destinations__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--rm-dashboard-action-width)), 1fr));
+  gap: var(--rm-control-gap);
 }
 
-.system-settings-destinations li + li {
-  margin-top: 0.35rem;
+.system-settings-destinations__actions .button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+@media (max-width: 760px) {
+  .system-settings-destinations__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .poi-management__nav a {

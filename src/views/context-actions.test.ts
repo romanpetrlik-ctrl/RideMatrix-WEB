@@ -163,7 +163,9 @@ test("shared context action partial renders only supplied actions with semantic 
   assert.match(css, /\.button--execute,\s*\.button--primary \{[\s\S]*background: var\(--rm-cta-execute-bg\);/);
   assert.match(css, /\.button--execute-negative,\s*\.button--danger \{[\s\S]*background: var\(--rm-cta-negative-bg\);/);
   assert.match(css, /\.button--execute-helper,\s*\.button--secondary \{[\s\S]*background: var\(--rm-cta-helper-bg\);/);
+  assert.match(css, /button,\s*\.button,\s*input\[type="submit"\] \{[\s\S]*border-bottom-width: 3px;/);
   assert.match(css, /\.button--admin-cta,\s*\.button--dynamic-cta,\s*\.button--system-cta \{[\s\S]*min-height: var\(--rm-cta-admin-height\);[\s\S]*background: var\(--rm-admin-cta-bg\);[\s\S]*color: var\(--rm-admin-cta-text\);/);
+  assert.match(css, /\.button--admin-cta,\s*\.button--dynamic-cta,\s*\.button--system-cta \{[\s\S]*border-bottom-width: 3px;/);
   assert.match(css, /\.button--dynamic-cta \{[\s\S]*min-height: var\(--rm-cta-dynamic-height\);/);
   assert.match(css, /\.button--system-cta \{[\s\S]*min-height: var\(--rm-cta-system-height\);/);
   assert.match(css, /\.button--admin-cta\.button--admin-cta--negative,\s*\.button--dynamic-cta\.button--admin-cta--negative,\s*\.button--system-cta\.button--admin-cta--negative \{[\s\S]*background: var\(--rm-admin-cta-negative-bg\);[\s\S]*border-color: var\(--rm-admin-cta-negative-border\);/);
