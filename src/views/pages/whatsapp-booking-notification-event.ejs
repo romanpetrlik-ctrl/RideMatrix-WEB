@@ -12,8 +12,14 @@
     <main class="container rm-page-shell whatsapp-booking-notification-event">
       <header class="new-booking-page__title">
         <h1><%= event.label %></h1>
-        <p>Settings → Messaging → WhatsApp → Booking Notifications</p>
-        <a href="<%= basePath %>">Back to WhatsApp booking notifications</a>
+        <nav aria-label="Breadcrumb">
+          <a href="/settings">Settings</a> <span aria-hidden="true">›</span>
+          <a href="/settings/messaging">Messaging</a> <span aria-hidden="true">›</span>
+          <a href="/settings/messaging/whatsapp">WhatsApp</a> <span aria-hidden="true">›</span>
+          <a href="<%= basePath %>">Templates</a> <span aria-hidden="true">›</span>
+          <%= event.label %>
+        </nav>
+        <a href="<%= basePath %>">Back to Templates</a>
       </header>
       <% if (notice === "saved") { %><section class="notice" role="status">Notification settings saved.</section><% } %>
       <% if (error) { %><section class="notice notice--critical" role="alert"><%= error %></section><% } %>
@@ -33,7 +39,7 @@
             </ol>
           </dd>
         </dl>
-        <p class="form-hint">Create and approve the template in WhatsApp Manager with these parameters in this order. Template text is not stored in RideMatrix.</p>
+        <p class="form-hint">Template content and approval are managed in Meta Business Suite.</p>
       </section>
       <section class="panel rm-card">
         <h2>Sending configuration</h2>
@@ -47,13 +53,11 @@
           </div>
           <div class="form-field">
             <label for="templateName">Approved Meta template name</label>
-            <input id="templateName" name="templateName" type="text" maxlength="512" pattern="[a-z0-9_]+" value="<%= setting.templateName || '' %>" aria-describedby="templateName-hint">
-            <p id="templateName-hint" class="form-hint">Lowercase letters, digits and underscores only. Required when enabled.</p>
+            <input id="templateName" name="templateName" type="text" maxlength="512" pattern="[a-z0-9_]+" value="<%= setting.templateName || '' %>">
           </div>
           <div class="form-field">
             <label for="templateLanguage">Template language</label>
-            <input id="templateLanguage" name="templateLanguage" type="text" maxlength="12" value="<%= setting.templateLanguage %>" required aria-describedby="templateLanguage-hint">
-            <p id="templateLanguage-hint" class="form-hint">Language code as approved in Meta, for example en_GB or cs.</p>
+            <input id="templateLanguage" name="templateLanguage" type="text" maxlength="12" value="<%= setting.templateLanguage %>" required>
           </div>
           <button class="button" type="submit">Save notification</button>
         </form>

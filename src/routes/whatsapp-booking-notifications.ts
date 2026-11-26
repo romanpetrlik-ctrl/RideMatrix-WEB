@@ -3,9 +3,11 @@ import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
 import {
+  getWhatsAppMessagingSwitch,
   getWhatsAppBookingEvent,
   getWhatsAppBookingNotificationSetting,
   listWhatsAppBookingNotificationSettings,
+  saveWhatsAppMessagingSwitch,
   saveWhatsAppBookingNotificationSetting,
   WHATSAPP_BOOKING_EVENTS,
   WHATSAPP_PARAMETER_LABELS
@@ -16,13 +18,31 @@ type Options = {
   loadSession?: (cookieHeader: string | undefined) => Promise<SessionAccount>;
 };
 
-const BASE_PATH = "/settings/messaging/whatsapp/booking-notifications";
+const MESSAGING_PATH = "/settings/messaging";
+const WHATSAPP_PATH = `${MESSAGING_PATH}/whatsapp`;
+const TEMPLATES_PATH = `${WHATSAPP_PATH}/templates`;
 
-export function createWhatsAppBookingNotificationsRouter(options: Options): Router {
+function isWhatsAppApiConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  return ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_API_VERSION"]
+    .every((name) => Boolean(String(env[name] ?? "").trim()));
+}
+
+export type WhatsAppSettingsRouterOptions = Options & {
+  getSwitch?: typeof getWhatsAppMessagingSwitch;
+  saveSwitch?: typeof saveWhatsAppMessagingSwitch;
+  listSettings?: typeof listWhatsAppBookingNotificationSettings;
+  isApiConfigured?: () => boolean;
+};
+
+export function createWhatsAppBookingNotificationsRouter(options: WhatsAppSettingsRouterOptions): Router {
   const router = Router();
   const loadSession = options.loadSession ?? getSessionAccount;
-  router.use("/settings/messaging/whatsapp", noStoreProtectedResponse);
+  router.use(MESSAGING_PATH, noStoreProtectedResponse);
   const csrf = requireCsrfToken({ appTitle: options.appTitle });
+  const getSwitch = options.getSwitch ?? getWhatsAppMessagingSwitch;
+  const saveSwitch = options.saveSwitch ?? saveWhatsAppMessagingSwitch;
+  const listSettings = options.listSettings ?? listWhatsAppBookingNotificationSettings;
+  const apiConfigured = options.isApiConfigured ?? (() => isWhatsAppApiConfigured());
 
   const requireSuperuser = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -38,16 +58,63 @@ export function createWhatsAppBookingNotificationsRouter(options: Options): Rout
     }
   };
 
-  router.get(BASE_PATH, requireSuperuser, async (req, res, next) => {
+  router.get(MESSAGING_PATH, requireSuperuser, async (req, res, next) => {
+    try {
+      const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
+      return res.render("pages/messaging-settings", {
+        title: "Messaging",
+        appTitle: options.appTitle,
+        email: actor.email,
+        whatsapp: await getSwitch(),
+        apiConfigured: apiConfigured()
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get(WHATSAPP_PATH, requireSuperuser, async (req, res, next) => {
+    try {
+      const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
+      return res.render("pages/whatsapp-messaging-settings", {
+        title: "WhatsApp",
+        appTitle: options.appTitle,
+        email: actor.email,
+        setting: await getSwitch(),
+        apiConfigured: apiConfigured(),
+        notice: req.query.notice === "saved" ? "saved" : req.query.notice === "configuration-required" ? "configuration-required" : ""
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post(WHATSAPP_PATH, requireSuperuser, csrf, async (req, res, next) => {
+    try {
+      const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
+      const enabled = req.body?.enabled === "on";
+      if (enabled && !apiConfigured()) {
+        return res.redirect(303, `${WHATSAPP_PATH}?notice=configuration-required`);
+      }
+      await saveSwitch({ enabled, actorId: actor.id, actorEmail: actor.email });
+      return res.redirect(303, `${WHATSAPP_PATH}?notice=saved`);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get(TEMPLATES_PATH, requireSuperuser, async (req, res, next) => {
     try {
       const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
       return res.render("pages/whatsapp-booking-notifications", {
-        title: "WhatsApp booking notifications",
+        title: "WhatsApp templates",
         appTitle: options.appTitle,
         email: actor.email,
-        basePath: BASE_PATH,
+        basePath: TEMPLATES_PATH,
         events: WHATSAPP_BOOKING_EVENTS,
-        settings: await listWhatsAppBookingNotificationSettings(),
+        settings: await listSettings(),
+        whatsapp: await getSwitch(),
+        apiConfigured: apiConfigured(),
         parameterLabels: WHATSAPP_PARAMETER_LABELS,
         notice: req.query.notice === "saved" ? "saved" : ""
       });
@@ -56,7 +123,7 @@ export function createWhatsAppBookingNotificationsRouter(options: Options): Rout
     }
   });
 
-  router.get(`${BASE_PATH}/:eventType`, requireSuperuser, async (req, res, next) => {
+  router.get(`${TEMPLATES_PATH}/:eventType`, requireSuperuser, async (req, res, next) => {
     try {
       const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
       const eventType = String(req.params.eventType);
@@ -66,7 +133,7 @@ export function createWhatsAppBookingNotificationsRouter(options: Options): Rout
         title: getWhatsAppBookingEvent(eventType)?.label ?? "WhatsApp booking notification",
         appTitle: options.appTitle,
         email: actor.email,
-        basePath: BASE_PATH,
+        basePath: TEMPLATES_PATH,
         event: getWhatsAppBookingEvent(eventType),
         setting,
         parameterLabels: WHATSAPP_PARAMETER_LABELS,
@@ -78,7 +145,7 @@ export function createWhatsAppBookingNotificationsRouter(options: Options): Rout
     }
   });
 
-  router.post(`${BASE_PATH}/:eventType`, requireSuperuser, csrf, async (req, res, next) => {
+  router.post(`${TEMPLATES_PATH}/:eventType`, requireSuperuser, csrf, async (req, res, next) => {
     const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
     const eventType = String(req.params.eventType);
     const event = getWhatsAppBookingEvent(eventType);
@@ -92,14 +159,14 @@ export function createWhatsAppBookingNotificationsRouter(options: Options): Rout
         actorId: actor.id,
         actorEmail: actor.email
       });
-      return res.redirect(303, `${BASE_PATH}/${encodeURIComponent(eventType)}?notice=saved`);
+      return res.redirect(303, `${TEMPLATES_PATH}/${encodeURIComponent(eventType)}?notice=saved`);
     } catch (error) {
       if (error instanceof TypeError) {
         return res.status(400).render("pages/whatsapp-booking-notification-event", {
           title: event.label,
           appTitle: options.appTitle,
           email: actor.email,
-          basePath: BASE_PATH,
+          basePath: TEMPLATES_PATH,
           event,
           setting: {
             eventType,
@@ -116,6 +183,10 @@ export function createWhatsAppBookingNotificationsRouter(options: Options): Rout
       }
       return next(error);
     }
+  });
+
+  router.get("/settings/messaging/whatsapp/booking-notifications", (_req, res) => {
+    res.redirect(308, TEMPLATES_PATH);
   });
 
   return router;

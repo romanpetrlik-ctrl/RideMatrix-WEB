@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System settings",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell">
+      <header class="new-booking-page__title">
+        <h1>WhatsApp</h1>
+        <nav aria-label="Breadcrumb">
+          <a href="/settings">Settings</a> <span aria-hidden="true">›</span>
+          <a href="/settings/messaging">Messaging</a> <span aria-hidden="true">›</span>
+          WhatsApp
+        </nav>
+      </header>
+      <% if (notice === "saved") { %><section class="notice" role="status">WhatsApp status saved.</section><% } %>
+      <% if (notice === "configuration-required") { %><section class="notice notice--critical" role="alert">Configure the WhatsApp API before switching messaging on.</section><% } %>
+      <section class="panel rm-card">
+        <h2>Messaging status</h2>
+        <p>Current status: <strong><%= setting.enabled ? "On" : "Off" %></strong></p>
+        <p class="form-hint">API: <%= apiConfigured ? "Configured" : "Not configured" %></p>
+        <form method="post" action="/settings/messaging/whatsapp">
+          <%- locals.csrfField || "" %>
+          <div class="form-field form-field--checkbox">
+            <label>
+              <input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %> <%= !apiConfigured && !setting.enabled ? "disabled" : "" %>>
+              WhatsApp messaging on
+            </label>
+          </div>
+          <button class="button" type="submit">Save</button>
+        </form>
+        <p><a class="button button--secondary" href="/settings/messaging/whatsapp/templates">Templates</a></p>
+      </section>
+    </main>
+    <%- include("../partials/footer") %>
+  </body>
+</html>

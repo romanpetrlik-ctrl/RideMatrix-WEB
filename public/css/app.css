@@ -3750,12 +3750,39 @@ button:visited,
   color: var(--rm-text-soft);
 }
 
-.poi-management__nav,
-.system-settings-destinations {
+.poi-management__nav {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
   margin: 1rem 0;
+}
+
+.system-settings-destinations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  align-items: start;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.system-settings-destinations > section {
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-control-border-radius);
+  padding: 0.75rem 1rem;
+}
+
+.system-settings-destinations h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.system-settings-destinations ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.system-settings-destinations li + li {
+  margin-top: 0.35rem;
 }
 
 .poi-management__nav a {

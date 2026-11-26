@@ -105,6 +105,16 @@ test("automated booking integrations persist payment, notification, and calendar
   assert.match(migration.sql, /minimum_online_notice_hours INTEGER NOT NULL DEFAULT 12/);
 });
 
+test("WhatsApp messaging switch is persistent, audited, and defaults off", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0049_whatsapp_messaging_switch");
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS whatsapp_messaging_settings/);
+  assert.match(migration.sql, /id SMALLINT PRIMARY KEY CHECK \(id = 1\)/);
+  assert.match(migration.sql, /enabled BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(migration.sql, /updated_by_account_id TEXT/);
+  assert.match(migration.sql, /VALUES \(1, FALSE\) ON CONFLICT \(id\) DO NOTHING/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

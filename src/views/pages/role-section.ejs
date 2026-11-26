@@ -16,14 +16,27 @@
         <div class="notice notice--warning">
           <strong>Not yet configured:</strong> Toll &amp; Fees reference data and fee settings are placeholders. POI Fees are configuration only and are not applied to booking prices or charges.
         </div>
-        <nav class="system-settings-destinations" aria-label="System Settings destinations">
-          <a class="button button--primary" href="/settings/pois">Manage POIs</a>
-          <a class="button button--primary" href="/settings/poi-fees">Manage POI Fees</a>
-          <a class="button button--secondary" href="/settings/fare-settings">Open Fare Settings</a>
-          <a class="button button--secondary" href="/settings/toll-fees">Open Toll &amp; Fees</a>
-          <a class="button button--secondary" href="/settings/booking-integrations">Booking Integrations</a>
-          <a class="button button--secondary" href="/settings/messaging/whatsapp/booking-notifications">Messaging → WhatsApp → Booking Notifications</a>
-          <a class="button button--secondary" href="/settings/operator">Operator &amp; licence</a>
+        <nav class="system-settings-destinations" aria-label="Settings">
+          <section aria-labelledby="settings-messaging-heading">
+            <h2 id="settings-messaging-heading"><a href="/settings/messaging">Messaging</a></h2>
+            <ul>
+              <li>
+                <a href="/settings/messaging/whatsapp">WhatsApp (On/Off)</a>
+                <ul><li><a href="/settings/messaging/whatsapp/templates">Templates</a></li></ul>
+              </li>
+            </ul>
+          </section>
+          <section aria-labelledby="settings-operations-heading">
+            <h2 id="settings-operations-heading">Operations</h2>
+            <ul>
+              <li><a href="/settings/pois">Manage POIs</a></li>
+              <li><a href="/settings/poi-fees">Manage POI Fees</a></li>
+              <li><a href="/settings/fare-settings">Fare Settings</a></li>
+              <li><a href="/settings/toll-fees">Toll &amp; Fees</a></li>
+              <li><a href="/settings/booking-integrations">Booking Integrations</a></li>
+              <li><a href="/settings/operator">Operator &amp; licence</a></li>
+            </ul>
+          </section>
         </nav>
       ` : ""}
       ${module.key === "manage-vps" ? `
