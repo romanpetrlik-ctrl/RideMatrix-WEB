@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System settings",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell whatsapp-booking-notification-event">
+      <header class="new-booking-page__title">
+        <h1><%= event.label %></h1>
+        <p>Settings → Messaging → WhatsApp → Booking Notifications</p>
+        <a href="<%= basePath %>">Back to WhatsApp booking notifications</a>
+      </header>
+      <% if (notice === "saved") { %><section class="notice" role="status">Notification settings saved.</section><% } %>
+      <% if (error) { %><section class="notice notice--critical" role="alert"><%= error %></section><% } %>
+      <section class="panel rm-card">
+        <h2>Details</h2>
+        <dl>
+          <dt>Trigger</dt>
+          <dd><%= event.trigger %></dd>
+          <dt>Recipients</dt>
+          <dd><%= event.recipients %></dd>
+          <dt>Template parameters</dt>
+          <dd>
+            <ol>
+              <% event.parameters.forEach((key, index) => { %>
+                <li>{{<%= index + 1 %>}} — <%= parameterLabels[key] %></li>
+              <% }) %>
+            </ol>
+          </dd>
+        </dl>
+        <p class="form-hint">Create and approve the template in WhatsApp Manager with these parameters in this order. Template text is not stored in RideMatrix.</p>
+      </section>
+      <section class="panel rm-card">
+        <h2>Sending configuration</h2>
+        <form method="post" action="<%= basePath %>/<%= encodeURIComponent(event.type) %>">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label>
+              <input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %>>
+              Send this WhatsApp notification
+            </label>
+          </div>
+          <div class="form-field">
+            <label for="templateName">Approved Meta template name</label>
+            <input id="templateName" name="templateName" type="text" maxlength="512" pattern="[a-z0-9_]+" value="<%= setting.templateName || '' %>" aria-describedby="templateName-hint">
+            <p id="templateName-hint" class="form-hint">Lowercase letters, digits and underscores only. Required when enabled.</p>
+          </div>
+          <div class="form-field">
+            <label for="templateLanguage">Template language</label>
+            <input id="templateLanguage" name="templateLanguage" type="text" maxlength="12" value="<%= setting.templateLanguage %>" required aria-describedby="templateLanguage-hint">
+            <p id="templateLanguage-hint" class="form-hint">Language code as approved in Meta, for example en_GB or cs.</p>
+          </div>
+          <button class="button" type="submit">Save notification</button>
+        </form>
+        <p class="form-hint">
+          <% if (setting.updatedAt) { %>Last saved <%= setting.updatedAt %><% if (setting.updatedByEmail) { %> by <%= setting.updatedByEmail %><% } %>.<% } else { %>Not saved yet. Notifications stay disabled until saved.<% } %>
+        </p>
+      </section>
+    </main>
+    <%- include("../partials/footer") %>
+  </body>
+</html>

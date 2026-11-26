@@ -20,10 +20,7 @@ function integrationReadiness(env: NodeJS.ProcessEnv = process.env) {
   return [
     { name: "Stripe payment links", ready: configured(["APP_BASE_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]) },
     { name: "Amazon SES email", ready: configured(["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]) },
-    { name: "WhatsApp Business", ready: configured([
-      "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_API_VERSION",
-      "WHATSAPP_BOOKING_REMINDER_TEMPLATE", "WHATSAPP_DRIVER_REMINDER_TEMPLATE", "WHATSAPP_LIVE_STATUS_TEMPLATE"
-    ]) },
+    { name: "WhatsApp Business", ready: configured(["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_API_VERSION"]) },
     { name: "Microsoft 365 dispatch calendar", ready: configured(["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_CALENDAR_USER", "M365_CALENDAR_ID"]) },
     { name: "Driver calendar OAuth (Microsoft or Google)", ready: driverCalendarReady }
   ];

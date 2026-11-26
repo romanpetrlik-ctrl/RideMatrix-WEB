@@ -1,0 +1,57 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  isWhatsAppEventSendable,
+  validateWhatsAppEventSetting,
+  whatsAppTemplateParams,
+  WHATSAPP_BOOKING_EVENTS
+} from "./whatsapp-booking-notifications";
+
+test("enabling a WhatsApp notification requires an approved template name", () => {
+  assert.throws(
+    () => validateWhatsAppEventSetting({ eventType: "booking_accepted", enabled: true, templateName: " ", templateLanguage: "en_GB" }),
+    /template name/
+  );
+});
+
+test("template names and languages are restricted to Meta-compatible formats", () => {
+  assert.throws(
+    () => validateWhatsAppEventSetting({ eventType: "booking_accepted", enabled: false, templateName: "Booking Accepted", templateLanguage: "en_GB" }),
+    /lowercase/
+  );
+  assert.throws(
+    () => validateWhatsAppEventSetting({ eventType: "booking_accepted", enabled: false, templateName: "", templateLanguage: "english" }),
+    /language/
+  );
+});
+
+test("unknown events cannot be configured", () => {
+  assert.throws(
+    () => validateWhatsAppEventSetting({ eventType: "payment_link", enabled: false, templateName: "", templateLanguage: "en_GB" }),
+    /Unknown/
+  );
+});
+
+test("only enabled settings with a template are sendable", () => {
+  const base = { eventType: "booking_received" as const, templateLanguage: "en_GB", updatedAt: null, updatedByEmail: null };
+  assert.equal(isWhatsAppEventSendable({ ...base, enabled: false, templateName: "booking_received" }), false);
+  assert.equal(isWhatsAppEventSendable({ ...base, enabled: true, templateName: null }), false);
+  assert.equal(isWhatsAppEventSendable(undefined), false);
+  assert.equal(isWhatsAppEventSendable({ ...base, enabled: true, templateName: "booking_received" }), true);
+});
+
+test("template parameters follow the documented order for each event", () => {
+  const values = { reference: "RM-1", serviceDateTime: "2030-01-02 09:00", pickup: "A", dropoff: "B", status: "En route" };
+  assert.deepEqual(whatsAppTemplateParams("booking_accepted", values), ["RM-1", "2030-01-02 09:00", "A", "B"]);
+  assert.deepEqual(whatsAppTemplateParams("driver_reminder_24h", values), ["RM-1", "2030-01-02 09:00", "A"]);
+  assert.deepEqual(whatsAppTemplateParams("live_status", values), ["RM-1", "En route"]);
+});
+
+test("registry excludes payment notifications without a defined WhatsApp recipient", () => {
+  const types = WHATSAPP_BOOKING_EVENTS.map((event) => event.type);
+  assert.ok(types.includes("booking_received"));
+  assert.ok(types.includes("availability_review"));
+  assert.ok(types.includes("booking_accepted"));
+  assert.equal(types.includes("payment_link" as never), false);
+  assert.equal(types.includes("payment_cancelled" as never), false);
+});

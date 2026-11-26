@@ -29,18 +29,22 @@ Set `SES_SMTP_HOST`, `SES_SMTP_PORT`, `SES_SMTP_USERNAME`,
 `SES_SMTP_PASSWORD`, and `SES_FROM_EMAIL` for Amazon SES SMTP. Development can
 use Mailpit by setting the same variables to the local SMTP endpoint.
 
-Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`,
-and approved template names in the corresponding `WHATSAPP_*_TEMPLATE`
-variables. Reminder template body parameters are passed in this order:
+Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_API_VERSION`
+in the server environment only; they are never shown in the UI or logs. Approved
+Meta template names and languages are configured per event in Settings →
+Messaging → WhatsApp → Booking Notifications. Each notification is disabled by
+default, and a disabled or unconfigured event never sends. Template text is
+managed in WhatsApp Manager. Template body parameters are passed in this order:
 
-- Customer reminder: booking reference, local service date/time, pickup,
-  destination.
+- Booking received, under availability review, accepted, customer reminder:
+  booking reference, local service date/time, pickup, destination.
 - Driver reminder: booking reference, local service date/time, pickup.
-- Live status: booking reference, status.
+- Driver status update: booking reference, status.
 
-WhatsApp is only queued when the contact has explicitly opted in. Missing
-consent or contact details create a booking integration alert and do not block
-the booking or driver assignment. Email reminders go to the lead passenger and,
+Lifecycle WhatsApp messages go only to the lead passenger, and each status sends
+at most once per booking. WhatsApp is only queued when the contact has explicitly
+opted in. Missing consent or contact details create a booking integration alert
+and do not block the booking or driver assignment. Email reminders go to the lead passenger and,
 when requested, the booking manager unless the manager is also the lead
 passenger.
 
