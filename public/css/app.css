@@ -3780,8 +3780,9 @@ button:visited,
 
 .system-settings-destinations__actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--rm-dashboard-action-width)), 1fr));
-  gap: var(--rm-control-gap);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 1rem;
+  align-items: stretch;
 }
 
 .system-settings-destinations__actions .button {
