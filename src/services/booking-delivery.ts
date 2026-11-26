@@ -2,6 +2,7 @@ import { parsePhoneNumberFromString } from "libphonenumber-js";
 import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
+import { getEmailTemplate, renderEmailTemplate } from "./email-templates";
 import {
   isWhatsAppBookingEventType,
   loadSendableWhatsAppSettings,
@@ -10,7 +11,7 @@ import {
   type WhatsAppBookingEventType
 } from "./whatsapp-booking-notifications";
 
-type DeliveryEvent = "payment_link" | "payment_cancelled" | "customer_reminder_24h" | "driver_reminder_24h" | "live_status"
+type DeliveryEvent = "payment_link" | "payment_paid" | "payment_cancelled" | "customer_reminder_24h" | "driver_reminder_24h" | "live_status"
   | WhatsAppBookingEventType;
 type DeliveryChannel = "email" | "whatsapp";
 
@@ -31,6 +32,9 @@ function messageText(row: DeliveryRow): string {
   const reference = String(payload.reference ?? "booking");
   if (row.event_type === "payment_link") {
     return `Payment is due for booking ${reference}. Pay securely using this link: ${String(payload.paymentUrl ?? "")}`;
+  }
+  if (row.event_type === "payment_paid") {
+    return `Payment of ${String(payload.currency ?? "GBP")} ${String(payload.amount ?? "")} was received for booking ${reference}.`;
   }
   if (row.event_type === "payment_cancelled") {
     return `Booking ${reference} has been cancelled because payment was not received before the payment deadline. Contact the booking team if you need help.`;
@@ -66,21 +70,31 @@ function createSmtpTransport() {
 export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
   const from = String(process.env.SES_FROM_EMAIL ?? "").trim();
   if (!from) throw new Error("SES_FROM_EMAIL is required to send booking emails.");
-  const subject = row.event_type === "payment_link"
-    ? `Payment link for booking ${String(row.payload.reference ?? "")}`
-    : row.event_type === "payment_cancelled"
-      ? `Booking ${String(row.payload.reference ?? "")} cancelled`
+  const paymentTemplate = row.event_type === "payment_link" || row.event_type === "payment_paid" || row.event_type === "payment_cancelled"
+    ? await getEmailTemplate(row.event_type)
+    : null;
+  const templateValues = { payerName: row.recipient_name, ...row.payload };
+  const subject = paymentTemplate
+    ? renderEmailTemplate(paymentTemplate.subjectTemplate, templateValues)
+    : row.event_type === "payment_link"
+      ? `Payment link for booking ${String(row.payload.reference ?? "")}`
+      : row.event_type === "payment_paid"
+        ? `Payment received for booking ${String(row.payload.reference ?? "")}`
+        : row.event_type === "payment_cancelled"
+          ? `Booking ${String(row.payload.reference ?? "")} cancelled`
       : row.event_type === "driver_reminder_24h"
         ? `Tomorrow's assigned journey: ${String(row.payload.reference ?? "")}`
         : row.event_type === "live_status"
           ? `Journey update: ${String(row.payload.reference ?? "")}`
           : `Journey reminder: ${String(row.payload.reference ?? "")}`;
-  const text = messageText(row);
+  const text = paymentTemplate
+    ? renderEmailTemplate(paymentTemplate.bodyTemplate, templateValues)
+    : messageText(row);
   const transporter = createSmtpTransport();
   await transporter.sendMail({
     from,
     to: row.recipient_contact,
-    subject,
+    subject: subject.replace(/[\r\n]+/g, " ").slice(0, 180),
     text,
     messageId: `<${row.id}@ridematrix.local>`
   });
@@ -169,6 +183,12 @@ async function claimPendingMessages(limit: number): Promise<DeliveryRow[]> {
          FROM booking_delivery_outbox
         WHERE delivery_status IN ('pending', 'failed', 'sending')
           AND available_at <= CURRENT_TIMESTAMP
+          AND (
+            channel = 'whatsapp'
+            OR (channel = 'email' AND EXISTS (
+              SELECT 1 FROM email_messaging_settings WHERE id = 1 AND enabled = TRUE
+            ))
+          )
         ORDER BY available_at, created_at
         FOR UPDATE SKIP LOCKED
         LIMIT $1`,

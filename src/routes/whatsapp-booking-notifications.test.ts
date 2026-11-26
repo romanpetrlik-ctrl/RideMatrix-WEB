@@ -26,6 +26,7 @@ function createServer(session: SessionAccount, overrides: Partial<WhatsAppSettin
     appTitle: "WhatsApp Settings Test",
     loadSession: async () => session,
     getSwitch: async () => ({ enabled: false, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
+    getEmailSettings: async () => ({ enabled: false, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
     listSettings: async () => [],
     isApiConfigured: () => false,
     ...overrides
@@ -66,7 +67,10 @@ test("Messaging hierarchy pages render their child navigation", async () => {
   await withServer(sessionFor(["superuser"]), async (baseUrl) => {
     const messagingResponse = await fetch(`${baseUrl}${BASE}`);
     assert.equal(messagingResponse.status, 200);
-    assert.match(await messagingResponse.text(), /WhatsApp \(On\/Off\)/);
+    const messagingBody = await messagingResponse.text();
+    assert.match(messagingBody, /WhatsApp \(On\/Off\)/);
+    assert.match(messagingBody, /Configure Email \(On\/Off\)/);
+    assert.match(messagingBody, /Email templates/);
 
     const whatsappResponse = await fetch(`${baseUrl}${BASE}/whatsapp`);
     assert.equal(whatsappResponse.status, 200);

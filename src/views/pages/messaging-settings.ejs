@@ -15,6 +15,12 @@
         <nav aria-label="Breadcrumb"><a href="/settings">Settings</a> <span aria-hidden="true">›</span> Messaging</nav>
       </header>
       <section class="panel rm-card">
+        <h2>Email</h2>
+        <p>Status: <strong><%= emailEnabled ? "On" : "Off" %></strong> · Amazon SES: <%= sesConfigured ? "Configured" : "Not configured" %></p>
+        <a class="button button--secondary" href="/settings/messaging/email">Configure Email (On/Off)</a>
+        <a class="button button--secondary" href="/settings/messaging/email/templates">Email templates</a>
+      </section>
+      <section class="panel rm-card">
         <h2>WhatsApp</h2>
         <p>Status: <strong><%= whatsapp.enabled ? "On" : "Off" %></strong></p>
         <% if (!apiConfigured) { %><p class="form-hint">API not configured.</p><% } %>

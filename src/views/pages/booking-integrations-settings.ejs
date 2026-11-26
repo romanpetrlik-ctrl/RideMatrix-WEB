@@ -39,9 +39,10 @@
         <p>Secrets are read from the server environment and are never displayed here.</p>
         <ul class="booking-integrations-settings__readiness">
           <% integrations.forEach((integration) => { %>
-            <li><strong><%= integration.name %>:</strong> <%= integration.ready ? "Configured" : "Not configured" %></li>
+            <li><strong><%= integration.name %>:</strong> <%= integration.status || (integration.ready ? "Configured" : "Not configured") %></li>
           <% }) %>
         </ul>
+        <p><a href="/settings/payments/stripe">Configure Stripe payments</a></p>
         <p class="form-hint">Calendar OAuth, SES production access and approved WhatsApp templates must also be completed with their providers before production delivery.</p>
       </section>
     </main>

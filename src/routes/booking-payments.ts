@@ -4,6 +4,7 @@ import {
   handleStripeWebhookEvent,
   verifyStripeWebhookSignature
 } from "../services/stripe-bookings";
+import { getStripeWebhookSecrets } from "../services/stripe-settings";
 
 export function createBookingPaymentsRouter(): Router {
   const router = Router();
@@ -13,7 +14,13 @@ export function createBookingPaymentsRouter(): Router {
     express.raw({ type: "application/json", limit: "1mb" }),
     async (req: Request, res: Response, next: NextFunction) => {
       if (!Buffer.isBuffer(req.body)) return res.status(400).send("Invalid webhook payload.");
-      if (!verifyStripeWebhookSignature(req.body, req.header("stripe-signature"))) {
+      let webhookSecrets: string[];
+      try {
+        webhookSecrets = await getStripeWebhookSecrets();
+      } catch {
+        return res.status(400).send("Stripe webhook is not configured.");
+      }
+      if (!webhookSecrets.some((secret) => verifyStripeWebhookSignature(req.body, req.header("stripe-signature"), secret))) {
         return res.status(400).send("Invalid webhook signature.");
       }
       let event: unknown;

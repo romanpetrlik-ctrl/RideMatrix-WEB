@@ -547,8 +547,11 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(body, /System Control \(superuser\)/);
     assert.match(body, /Not yet configured/);
     assert.match(body, /href="\/settings\/messaging">Messaging<\/a>/);
+    assert.match(body, /href="\/settings\/messaging\/email">Email \(On\/Off\)/);
+    assert.match(body, /href="\/settings\/messaging\/email\/templates">Email templates/);
     assert.match(body, /href="\/settings\/messaging\/whatsapp">WhatsApp \(On\/Off\)/);
     assert.match(body, /href="\/settings\/messaging\/whatsapp\/templates">Templates/);
+    assert.match(body, /href="\/settings\/payments\/stripe">Stripe \(On\/Off\)/);
     assert.match(body, /href="\/settings\/toll-fees"/);
     assert.match(body, /href="\/settings\/pois">Manage POIs/);
     assert.match(body, /href="\/settings\/poi-fees">Manage POI Fees/);
