@@ -115,6 +115,22 @@ test("WhatsApp messaging switch is persistent, audited, and defaults off", () =>
   assert.match(migration.sql, /VALUES \(1, FALSE\) ON CONFLICT \(id\) DO NOTHING/);
 });
 
+test("Stripe credentials and payment email templates have encrypted storage and safe defaults", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0050_stripe_payment_settings");
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS stripe_payment_settings/);
+  assert.match(migration.sql, /encrypted_credentials TEXT/);
+  assert.match(migration.sql, /encryption_iv TEXT/);
+  assert.match(migration.sql, /encryption_auth_tag TEXT/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS stripe_payment_settings_history/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS email_messaging_settings/);
+  assert.match(migration.sql, /enabled BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS email_templates/);
+  assert.match(migration.sql, /'payment_paid'/);
+  assert.match(migration.sql, /'payment_link', 'payment_paid', 'payment_cancelled'/);
+  assert.doesNotMatch(migration.sql, /sk_live_|sk_test_|whsec_/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

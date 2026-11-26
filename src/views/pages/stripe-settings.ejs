@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System settings",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell">
+      <header class="new-booking-page__title">
+        <h1>Stripe</h1>
+        <nav aria-label="Breadcrumb"><a href="/settings">Settings</a> <span aria-hidden="true">›</span> Payments <span aria-hidden="true">›</span> Stripe</nav>
+      </header>
+      <% if (notice === "saved") { %><section class="notice" role="status">Credentials saved securely. Stripe payments are Off until the connection is tested and activated.</section><% } %>
+      <% if (notice === "tested") { %><section class="notice" role="status">Stripe connection tested successfully.</section><% } %>
+      <% if (notice === "enabled") { %><section class="notice" role="status">Stripe payments are On.</section><% } %>
+      <% if (notice === "disabled") { %><section class="notice" role="status">Stripe payments are Off.</section><% } %>
+      <% if (notice === "invalid") { %><section class="notice notice--critical" role="alert">Credentials could not be saved. Check their format and the server encryption-key configuration.</section><% } %>
+      <% if (notice === "pending-payments") { %><section class="notice notice--critical" role="alert">Resolve outstanding Stripe payments before changing mode or credentials.</section><% } %>
+      <% if (notice === "stripe-active") { %><section class="notice notice--critical" role="alert">Switch Stripe payments off before changing the mode or credentials.</section><% } %>
+      <% if (notice === "not-ready") { %><section class="notice notice--critical" role="alert">Complete the selected mode's keys, test the connection, and configure the public HTTPS application URL before enabling payments.</section><% } %>
+      <% if (notice === "test-failed") { %><section class="notice notice--critical" role="alert">Stripe connection failed. Check the key and try again.</section><% } %>
+      <section class="panel rm-card">
+        <h2>Payment status</h2>
+        <p>Mode: <strong><%= setting.mode === "test" ? "Test" : "Live" %></strong> · Payments: <strong><%= setting.enabled ? "On" : "Off" %></strong></p>
+        <p>Test keys: <%= setting.testConfigured ? "Configured" : "Incomplete" %> · Live keys: <%= setting.liveConfigured ? "Configured" : "Incomplete" %></p>
+        <p>Encryption key: <%= setting.encryptionAvailable ? "Available" : "Missing" %> · Connection test: <%= setting.verifiedMode === setting.mode ? "Passed for selected mode" : "Required" %></p>
+        <form method="post" action="/settings/payments/stripe/switch">
+          <%- locals.csrfField || "" %>
+          <label><input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %> <%= setting.verifiedMode !== setting.mode || !setting.publicUrlConfigured || (setting.mode === "test" ? !setting.testConfigured : !setting.liveConfigured) ? "disabled" : "" %>> Stripe payments on</label>
+          <button class="button" type="submit">Save status</button>
+        </form>
+      </section>
+      <section class="panel rm-card">
+        <h2>Stripe API credentials</h2>
+        <p>Values are encrypted before storage and never shown again. Leave fields blank to keep saved values. Switch payments off before changing credentials.</p>
+        <p>After saving, test the connection and explicitly switch Stripe on again.</p>
+        <form method="post" action="/settings/payments/stripe/credentials">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="stripeMode">Environment</label>
+            <select id="stripeMode" name="mode" required>
+              <option value="test" <%= setting.mode === "test" ? "selected" : "" %>>Test mode</option>
+              <option value="live" <%= setting.mode === "live" ? "selected" : "" %>>Live mode</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="publishableKey">Publishable key</label>
+            <input id="publishableKey" name="publishableKey" type="password" autocomplete="new-password" spellcheck="false">
+          </div>
+          <div class="form-field">
+            <label for="secretKey">Secret key</label>
+            <input id="secretKey" name="secretKey" type="password" autocomplete="new-password" spellcheck="false">
+          </div>
+          <div class="form-field">
+            <label for="webhookSecret">Webhook signing secret</label>
+            <input id="webhookSecret" name="webhookSecret" type="password" autocomplete="new-password" spellcheck="false">
+          </div>
+          <button class="button" type="submit">Save credentials</button>
+        </form>
+        <form method="post" action="/settings/payments/stripe/test">
+          <%- locals.csrfField || "" %>
+          <button class="button button--secondary" type="submit" <%= !(setting.mode === "test" ? setting.testConfigured : setting.liveConfigured) ? "disabled" : "" %>>Test connection</button>
+        </form>
+        <p class="form-hint">Webhook URL: <code>/webhooks/stripe</code>. Set the public HTTPS address for this endpoint in Stripe Dashboard.</p>
+      </section>
+    </main>
+    <%- include("../partials/footer") %>
+  </body>
+</html>

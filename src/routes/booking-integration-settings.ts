@@ -7,6 +7,7 @@ import {
   ONLINE_BOOKING_NOTICE_HOURS,
   saveMinimumOnlineNotice
 } from "../services/booking-integration-settings";
+import { getStripeSettingsSummary } from "../services/stripe-settings";
 
 type Options = { appTitle: string };
 
@@ -18,12 +19,12 @@ function integrationReadiness(env: NodeJS.ProcessEnv = process.env) {
     configured(["GOOGLE_CALENDAR_CLIENT_ID", "GOOGLE_CALENDAR_CLIENT_SECRET"])
   );
   return [
-    { name: "Stripe payment links", ready: configured(["APP_BASE_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]) },
+    { name: "Stripe payment links", ready: false },
     { name: "Amazon SES email", ready: configured(["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]) },
     { name: "WhatsApp Business", ready: configured(["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_API_VERSION"]) },
     { name: "Microsoft 365 dispatch calendar", ready: configured(["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_CALENDAR_USER", "M365_CALENDAR_ID"]) },
     { name: "Driver calendar OAuth (Microsoft or Google)", ready: driverCalendarReady }
-  ];
+  ] as Array<{ name: string; ready: boolean; status?: string }>;
 }
 
 export function createBookingIntegrationSettingsRouter(options: Options): Router {
@@ -48,13 +49,19 @@ export function createBookingIntegrationSettingsRouter(options: Options): Router
   router.get("/settings/booking-integrations", requireSuperuser, async (req, res, next) => {
     try {
       const actor = res.locals.integrationSettingsActor as { id: string; email: string };
+      const integrations = integrationReadiness();
+      const stripe = await getStripeSettingsSummary();
+      const stripeReady = (stripe.mode === "test" ? stripe.testConfigured : stripe.liveConfigured) &&
+        stripe.publicUrlConfigured;
+      integrations[0].ready = stripe.enabled && stripeReady;
+      integrations[0].status = !stripeReady ? "Not configured" : stripe.enabled ? "Configured" : "Configured (Off)";
       return res.render("pages/booking-integrations-settings", {
         title: "Booking integrations",
         appTitle: options.appTitle,
         email: actor.email,
         settings: await getBookingIntegrationSettings(),
         noticeHours: ONLINE_BOOKING_NOTICE_HOURS,
-        integrations: integrationReadiness(),
+        integrations,
         notice: req.query.notice === "saved" ? "saved" : req.query.notice === "invalid" ? "invalid" : ""
       });
     } catch (error) {

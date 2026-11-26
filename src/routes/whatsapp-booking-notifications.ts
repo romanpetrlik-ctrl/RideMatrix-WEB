@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
+import { getEmailMessagingSettings } from "../services/email-templates";
 import {
   getWhatsAppMessagingSwitch,
   getWhatsAppBookingEvent,
@@ -31,6 +32,7 @@ export type WhatsAppSettingsRouterOptions = Options & {
   getSwitch?: typeof getWhatsAppMessagingSwitch;
   saveSwitch?: typeof saveWhatsAppMessagingSwitch;
   listSettings?: typeof listWhatsAppBookingNotificationSettings;
+  getEmailSettings?: typeof getEmailMessagingSettings;
   isApiConfigured?: () => boolean;
 };
 
@@ -42,6 +44,7 @@ export function createWhatsAppBookingNotificationsRouter(options: WhatsAppSettin
   const getSwitch = options.getSwitch ?? getWhatsAppMessagingSwitch;
   const saveSwitch = options.saveSwitch ?? saveWhatsAppMessagingSwitch;
   const listSettings = options.listSettings ?? listWhatsAppBookingNotificationSettings;
+  const getEmailSettings = options.getEmailSettings ?? getEmailMessagingSettings;
   const apiConfigured = options.isApiConfigured ?? (() => isWhatsAppApiConfigured());
 
   const requireSuperuser = async (req: Request, res: Response, next: NextFunction) => {
@@ -66,7 +69,10 @@ export function createWhatsAppBookingNotificationsRouter(options: WhatsAppSettin
         appTitle: options.appTitle,
         email: actor.email,
         whatsapp: await getSwitch(),
-        apiConfigured: apiConfigured()
+        apiConfigured: apiConfigured(),
+        emailEnabled: (await getEmailSettings()).enabled,
+        sesConfigured: ["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]
+          .every((name) => Boolean(String(process.env[name] ?? "").trim()))
       });
     } catch (error) {
       return next(error);

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System settings",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell">
+      <header class="new-booking-page__title">
+        <h1><%= template.eventType.replace(/_/g, " ") %></h1>
+        <nav aria-label="Breadcrumb"><a href="/settings">Settings</a> <span aria-hidden="true">›</span> <a href="/settings/messaging">Messaging</a> <span aria-hidden="true">›</span> <a href="/settings/messaging/email">Email</a> <span aria-hidden="true">›</span> <a href="/settings/messaging/email/templates">Templates</a> <span aria-hidden="true">›</span> Edit</nav>
+      </header>
+      <% if (notice === "saved") { %><section class="notice" role="status">Email template saved.</section><% } %>
+      <% if (error) { %><section class="notice notice--critical" role="alert"><%= error %></section><% } %>
+      <section class="panel rm-card">
+        <h2>Template</h2>
+        <p>Variables: <% Object.entries(variables).forEach(([name, label], index) => { %><code>{{<%= name %>}}</code> <%= label %><%= index < Object.keys(variables).length - 1 ? " · " : "" %><% }) %></p>
+        <form method="post" action="/settings/messaging/email/templates/<%= encodeURIComponent(template.eventType) %>">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="subjectTemplate">Subject</label>
+            <input id="subjectTemplate" name="subjectTemplate" maxlength="180" value="<%= template.subjectTemplate %>" required>
+          </div>
+          <div class="form-field">
+            <label for="bodyTemplate">Plain-text body</label>
+            <textarea id="bodyTemplate" name="bodyTemplate" rows="12" maxlength="10000" required><%= template.bodyTemplate %></textarea>
+          </div>
+          <button class="button" type="submit">Save template</button>
+        </form>
+      </section>
+      <section class="panel rm-card">
+        <h2>Preview</h2>
+        <p><strong>Subject:</strong> <%= preview.subject %></p>
+        <pre><%= preview.body %></pre>
+      </section>
+    </main>
+    <%- include("../partials/footer") %>
+  </body>
+</html>

@@ -1,33 +1,35 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
 import { enqueueDelivery } from "./booking-delivery";
+import { getStripeCredentials, isValidStripeReturnUrl } from "./stripe-settings";
 
 type StripeCheckoutSession = {
   id: string;
   url: string | null;
   payment_status: "paid" | "unpaid" | "no_payment_required";
   status: "open" | "complete" | "expired";
+  amount_total?: number | null;
+  currency?: string | null;
   metadata?: Record<string, string>;
 };
 
-function stripeKey(): string {
-  const key = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
-  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured.");
-  return key;
-}
-
-async function stripeRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function stripeRequest<T>(path: string, init?: RequestInit, allowDisabled = false): Promise<T> {
+  const { credentials } = await getStripeCredentials({ allowDisabled });
   const response = await fetch(`https://api.stripe.com/v1/${path}`, {
     ...init,
     headers: {
-      authorization: `Bearer ${stripeKey()}`,
+      authorization: `Bearer ${credentials.secretKey}`,
       ...(init?.headers ?? {})
     },
     signal: AbortSignal.timeout(15_000)
   });
   const body = await response.text();
-  if (!response.ok) throw new Error(`Stripe API returned ${response.status}: ${body.slice(0, 1000)}`);
-  return JSON.parse(body) as T;
+  if (!response.ok) throw new Error(`Stripe API returned ${response.status}.`);
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error("Stripe API returned an invalid response.");
+  }
 }
 
 export async function createBookingCheckoutSession(input: {
@@ -42,7 +44,7 @@ export async function createBookingCheckoutSession(input: {
   if (!Number.isFinite(input.amount) || input.amount <= 0) throw new TypeError("Booking amount must be positive.");
   if (!input.payerEmail.trim()) throw new TypeError("A payer email is required for a Stripe payment link.");
   const baseUrl = String(process.env.APP_BASE_URL ?? "").trim().replace(/\/+$/, "");
-  if (!baseUrl || !/^https:\/\//i.test(baseUrl)) throw new Error("APP_BASE_URL must be an HTTPS URL for payment return links.");
+  if (!isValidStripeReturnUrl(baseUrl)) throw new Error("APP_BASE_URL must be a public HTTPS URL for payment return links.");
   const amountPence = Math.round(input.amount * 100);
   if (amountPence < 1 || amountPence > 99_999_999) throw new TypeError("Booking total is outside the Stripe-supported GBP range.");
   const params = new URLSearchParams({
@@ -72,19 +74,29 @@ export async function createBookingCheckoutSession(input: {
 }
 
 export async function retrieveBookingCheckoutSession(sessionId: string): Promise<StripeCheckoutSession> {
-  return stripeRequest<StripeCheckoutSession>(`checkout/sessions/${encodeURIComponent(sessionId)}`);
+  return stripeRequest<StripeCheckoutSession>(`checkout/sessions/${encodeURIComponent(sessionId)}`, undefined, true);
 }
 
 export async function expireBookingCheckoutSession(sessionId: string): Promise<void> {
   await stripeRequest<StripeCheckoutSession>(`checkout/sessions/${encodeURIComponent(sessionId)}/expire`, {
     method: "POST"
-  });
+  }, true);
+}
+
+export function isStripeCheckoutPaymentValid(session: {
+  amount_total?: number | null;
+  currency?: string | null;
+}, bookingTotal: number | string | null): boolean {
+  const amount = Number(bookingTotal);
+  return Number.isFinite(amount) && amount > 0 &&
+    session.amount_total === Math.round(amount * 100) &&
+    String(session.currency ?? "").toLowerCase() === "gbp";
 }
 
 export function verifyStripeWebhookSignature(
   payload: Buffer,
   signatureHeader: string | undefined,
-  secret = String(process.env.STRIPE_WEBHOOK_SECRET ?? "").trim(),
+  secret = "",
   nowSeconds = Math.floor(Date.now() / 1000)
 ): boolean {
   if (!signatureHeader || !secret) return false;
@@ -103,7 +115,13 @@ export function verifyStripeWebhookSignature(
 export async function handleStripeWebhookEvent(event: {
   id: string;
   type: string;
-  data?: { object?: { id: string; payment_status?: string; metadata?: Record<string, string> } };
+  data?: { object?: {
+    id: string;
+    payment_status?: string;
+    amount_total?: number | null;
+    currency?: string | null;
+    metadata?: Record<string, string>;
+  } };
 }): Promise<void> {
   if (!event.id || !event.type) throw new TypeError("Stripe webhook event is incomplete.");
   await withTransaction(async (client) => {
@@ -119,11 +137,40 @@ export async function handleStripeWebhookEvent(event: {
     if (!bookingId || !session.id) return;
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       if (session.payment_status !== "paid") return;
-      const updated = await client.query<{ id: string }>(
+      const expected = await client.query<{ total_fare_amount: string | number | null }>(
+        `SELECT total_fare_amount FROM customer_bookings WHERE id = $1`,
+        [bookingId]
+      );
+      if (!expected.rowCount) return;
+      if (!isStripeCheckoutPaymentValid(session, expected.rows[0].total_fare_amount)) {
+        await client.query(
+          `INSERT INTO booking_integration_alerts (id, booking_id, alert_type, details)
+           VALUES ($1,$2,'stripe-payment-amount-mismatch',$3::jsonb)
+           ON CONFLICT (booking_id, alert_type) DO NOTHING`,
+          [
+            `stripe-payment-mismatch-${event.id}`,
+            bookingId,
+            JSON.stringify({
+              eventId: event.id,
+              expectedAmount: Number(expected.rows[0].total_fare_amount ?? 0).toFixed(2),
+              receivedAmountMinor: session.amount_total ?? null,
+              receivedCurrency: session.currency ?? null
+            })
+          ]
+        );
+        return;
+      }
+      const updated = await client.query<{
+        id: string;
+        reference: string;
+        payer_name: string | null;
+        payer_email: string | null;
+        total_fare_amount: string | number | null;
+      }>(
         `UPDATE customer_bookings
             SET payment_status = 'paid', payment_paid_at = CURRENT_TIMESTAMP
           WHERE id = $1 AND stripe_checkout_session_id = $2 AND payment_status <> 'paid'
-          RETURNING id`,
+          RETURNING id, reference, payer_name, payer_email, total_fare_amount`,
         [bookingId, session.id]
       );
       if (updated.rowCount) {
@@ -133,6 +180,29 @@ export async function handleStripeWebhookEvent(event: {
               AND delivery_status IN ('pending', 'failed')`,
           [bookingId]
         );
+        const booking = updated.rows[0];
+        if (booking.payer_name && booking.payer_email) {
+          await client.query(
+            `INSERT INTO booking_delivery_outbox (
+               id, booking_id, event_type, event_key, recipient_type, channel,
+               recipient_name, recipient_contact, payload
+             ) VALUES ($1,$2,'payment_paid',$3,'payer','email',$4,$5,$6::jsonb)
+             ON CONFLICT (booking_id, event_type, event_key, recipient_type, channel, recipient_contact) DO NOTHING`,
+            [
+              `stripe-paid-${event.id}`,
+              bookingId,
+              session.id,
+              booking.payer_name,
+              booking.payer_email,
+              JSON.stringify({
+                reference: booking.reference,
+                payerName: booking.payer_name,
+                amount: Number(booking.total_fare_amount ?? 0).toFixed(2),
+                currency: "GBP"
+              })
+            ]
+          );
+        }
       }
     } else if (event.type === "checkout.session.expired") {
       await client.query(

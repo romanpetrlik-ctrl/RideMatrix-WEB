@@ -10,11 +10,20 @@ unique, and message claims use PostgreSQL row locks.
 
 ## Stripe payments
 
-Configure `APP_BASE_URL`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`.
-Register `POST https://<APP_BASE_URL>/webhooks/stripe` in Stripe for
+Configure `APP_BASE_URL` and `STRIPE_CONFIG_ENCRYPTION_KEY` in the server
+environment. Generate the encryption key with `openssl rand -base64 32` and
+keep it stable: Stripe credentials saved in Settings cannot be decrypted if
+this key is lost or replaced. Enter test/live publishable keys, secret keys,
+and webhook signing secrets at Settings → Payments → Stripe. In Stripe
+Dashboard, create a webhook endpoint at
+`https://<APP_BASE_URL>/webhooks/stripe` for
 `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and
-`checkout.session.expired`. Webhook signature verification uses the raw request
-body; do not proxy this endpoint through a body-transforming middleware.
+`checkout.session.expired`, then paste its signing secret into the matching
+mode in Settings. Test the connection before enabling payments; start in test
+mode. Secret values are encrypted at rest and are never displayed again.
+Disable Stripe and resolve outstanding payment sessions before changing mode or
+credentials. Webhook signature verification uses the raw request body; do not
+proxy this endpoint through a body-transforming middleware.
 
 The payment link is generated from the saved GBP booking total after driver
 assignment, due at pickup minus 24 hours (or immediately if that time has
@@ -28,6 +37,10 @@ before pickup have no automatic cancellation deadline.
 Set `SES_SMTP_HOST`, `SES_SMTP_PORT`, `SES_SMTP_USERNAME`,
 `SES_SMTP_PASSWORD`, and `SES_FROM_EMAIL` for Amazon SES SMTP. Development can
 use Mailpit by setting the same variables to the local SMTP endpoint.
+Email delivery is switched on separately in Settings → Messaging → Email.
+Payment link, payment confirmation, and non-payment cancellation messages use
+editable plain-text templates at Settings → Messaging → Email → Templates.
+Email delivery remains queued while the global email switch is off.
 
 Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_API_VERSION`
 in the server environment only; they are never shown in the UI or logs. Approved

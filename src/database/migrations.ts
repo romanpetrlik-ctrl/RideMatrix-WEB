@@ -2361,6 +2361,80 @@ export const MIGRATIONS: Migration[] = [
       INSERT INTO whatsapp_messaging_settings (id, enabled)
       VALUES (1, FALSE) ON CONFLICT (id) DO NOTHING;
     `
+  },
+  {
+    id: "0050_stripe_payment_settings",
+    sql: `
+      CREATE TABLE IF NOT EXISTS stripe_payment_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        mode TEXT NOT NULL DEFAULT 'test' CHECK (mode IN ('test', 'live')),
+        encrypted_credentials TEXT,
+        encryption_iv TEXT,
+        encryption_auth_tag TEXT,
+        verified_mode TEXT CHECK (verified_mode IS NULL OR verified_mode IN ('test', 'live')),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CHECK (
+          (encrypted_credentials IS NULL AND encryption_iv IS NULL AND encryption_auth_tag IS NULL)
+          OR
+          (encrypted_credentials IS NOT NULL AND encryption_iv IS NOT NULL AND encryption_auth_tag IS NOT NULL)
+        )
+      );
+      INSERT INTO stripe_payment_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS stripe_payment_settings_history (
+        id BIGSERIAL PRIMARY KEY,
+        mode TEXT NOT NULL CHECK (mode IN ('test', 'live')),
+        action TEXT NOT NULL CHECK (action IN ('credentials_saved', 'connection_tested', 'enabled', 'disabled')),
+        actor_account_id TEXT,
+        actor_email TEXT,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE OR REPLACE FUNCTION rm_reject_stripe_payment_settings_history_mutation()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'Stripe payment settings history is append-only.';
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS stripe_payment_settings_history_append_only ON stripe_payment_settings_history;
+      CREATE TRIGGER stripe_payment_settings_history_append_only
+        BEFORE UPDATE OR DELETE ON stripe_payment_settings_history
+        FOR EACH ROW EXECUTE FUNCTION rm_reject_stripe_payment_settings_history_mutation();
+
+      CREATE TABLE IF NOT EXISTS email_messaging_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO email_messaging_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS email_templates (
+        event_type TEXT PRIMARY KEY CHECK (event_type IN ('payment_link', 'payment_paid', 'payment_cancelled')),
+        subject_template TEXT NOT NULL CHECK (length(btrim(subject_template)) BETWEEN 1 AND 180),
+        body_template TEXT NOT NULL CHECK (length(btrim(body_template)) BETWEEN 1 AND 10000),
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO email_templates (event_type, subject_template, body_template) VALUES
+        ('payment_link', 'Payment link for booking {{reference}}', E'Hello {{payerName}},\\n\\nPayment of {{currency}} {{amount}} is due for booking {{reference}}.\\n\\nPay securely: {{paymentUrl}}\\n\\nThank you.'),
+        ('payment_paid', 'Payment received for booking {{reference}}', E'Hello {{payerName}},\\n\\nWe have received {{currency}} {{amount}} for booking {{reference}}.\\n\\nThank you.'),
+        ('payment_cancelled', 'Booking {{reference}} cancelled', E'Hello {{payerName}},\\n\\nBooking {{reference}} has been cancelled because payment was not received before the payment deadline. Please contact the booking team if you need help.')
+      ON CONFLICT (event_type) DO NOTHING;
+
+      ALTER TABLE booking_delivery_outbox
+        DROP CONSTRAINT IF EXISTS booking_delivery_outbox_event_type_check;
+      ALTER TABLE booking_delivery_outbox
+        ADD CONSTRAINT booking_delivery_outbox_event_type_check CHECK (event_type IN (
+          'payment_link', 'payment_paid', 'payment_cancelled', 'customer_reminder_24h',
+          'driver_reminder_24h', 'live_status', 'booking_received',
+          'availability_review', 'booking_accepted'
+        ));
+    `
   }
 ];
 

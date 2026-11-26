@@ -6,14 +6,17 @@ import {
 } from "./booking-delivery";
 import {
   expireBookingCheckoutSession,
+  isStripeCheckoutPaymentValid,
   retrieveBookingCheckoutSession,
   sendBookingPaymentLink
 } from "./stripe-bookings";
+import { getStripeSettingsSummary } from "./stripe-settings";
 import { loadSendableWhatsAppSettings } from "./whatsapp-booking-notifications";
 
 type PaymentCandidate = { id: string };
 
 export async function scheduleDueBookingPaymentLinks(limit = 100): Promise<number> {
+  if (!(await getStripeSettingsSummary()).enabled) return 0;
   const result = await query<PaymentCandidate>(
     `SELECT id
        FROM customer_bookings
@@ -50,18 +53,50 @@ export async function scheduleDueBookingPaymentLinks(limit = 100): Promise<numbe
 }
 
 async function markBookingPaid(bookingId: string, sessionId: string): Promise<void> {
-  await query(
-    `UPDATE customer_bookings
-        SET payment_status = 'paid', payment_paid_at = COALESCE(payment_paid_at, CURRENT_TIMESTAMP)
-      WHERE id = $1 AND stripe_checkout_session_id = $2 AND payment_status <> 'paid'`,
-    [bookingId, sessionId]
-  );
-  await query(
-    `UPDATE booking_delivery_outbox SET delivery_status = 'skipped'
-      WHERE booking_id = $1 AND event_type = 'payment_link'
-        AND delivery_status IN ('pending', 'failed')`,
-    [bookingId]
-  );
+  await withTransaction(async (client) => {
+    const result = await client.query<{
+      reference: string;
+      payer_name: string | null;
+      payer_email: string | null;
+      total_fare_amount: string | number | null;
+    }>(
+      `UPDATE customer_bookings
+          SET payment_status = 'paid', payment_paid_at = COALESCE(payment_paid_at, CURRENT_TIMESTAMP)
+        WHERE id = $1 AND stripe_checkout_session_id = $2 AND payment_status <> 'paid'
+        RETURNING reference, payer_name, payer_email, total_fare_amount`,
+      [bookingId, sessionId]
+    );
+    if (!result.rowCount) return;
+    await client.query(
+      `UPDATE booking_delivery_outbox SET delivery_status = 'skipped'
+        WHERE booking_id = $1 AND event_type = 'payment_link'
+          AND delivery_status IN ('pending', 'failed')`,
+      [bookingId]
+    );
+    const booking = result.rows[0];
+    if (booking.payer_name && booking.payer_email) {
+      await client.query(
+        `INSERT INTO booking_delivery_outbox (
+           id, booking_id, event_type, event_key, recipient_type, channel,
+           recipient_name, recipient_contact, payload
+         ) VALUES ($1,$2,'payment_paid',$3,'payer','email',$4,$5,$6::jsonb)
+         ON CONFLICT (booking_id, event_type, event_key, recipient_type, channel, recipient_contact) DO NOTHING`,
+        [
+          `stripe-paid-reconcile-${bookingId}`,
+          bookingId,
+          sessionId,
+          booking.payer_name,
+          booking.payer_email,
+          JSON.stringify({
+            reference: booking.reference,
+            payerName: booking.payer_name,
+            amount: Number(booking.total_fare_amount ?? 0).toFixed(2),
+            currency: "GBP"
+          })
+        ]
+      );
+    }
+  });
 }
 
 async function cancelForUnpaidPayment(bookingId: string): Promise<boolean> {
@@ -116,8 +151,14 @@ export async function reconcileBookingPaymentDeadlines(limit = 100): Promise<num
   );
   let cancelled = 0;
   for (const candidate of result.rows) {
-    const booking = await query<{ stripe_checkout_session_id: string | null; payer_name: string | null; payer_email: string | null; reference: string }>(
-      `SELECT stripe_checkout_session_id, payer_name, payer_email, reference
+    const booking = await query<{
+      stripe_checkout_session_id: string | null;
+      payer_name: string | null;
+      payer_email: string | null;
+      reference: string;
+      total_fare_amount: string | number | null;
+    }>(
+      `SELECT stripe_checkout_session_id, payer_name, payer_email, reference, total_fare_amount
          FROM customer_bookings WHERE id = $1`,
       [candidate.id]
     );
@@ -133,6 +174,18 @@ export async function reconcileBookingPaymentDeadlines(limit = 100): Promise<num
     try {
       let session = await retrieveBookingCheckoutSession(row.stripe_checkout_session_id);
       if (session.payment_status === "paid") {
+        if (!isStripeCheckoutPaymentValid(session, row.total_fare_amount)) {
+          await recordBookingIntegrationAlert({
+            bookingId: candidate.id,
+            alertType: "stripe-payment-amount-mismatch",
+            details: {
+              message: "Stripe reports a paid session whose amount or currency does not match the booking.",
+              receivedAmountMinor: session.amount_total ?? null,
+              receivedCurrency: session.currency ?? null
+            }
+          });
+          continue;
+        }
         await markBookingPaid(candidate.id, session.id);
         continue;
       }
@@ -146,6 +199,18 @@ export async function reconcileBookingPaymentDeadlines(limit = 100): Promise<num
         session = await retrieveBookingCheckoutSession(session.id);
       }
       if (session.payment_status === "paid") {
+        if (!isStripeCheckoutPaymentValid(session, row.total_fare_amount)) {
+          await recordBookingIntegrationAlert({
+            bookingId: candidate.id,
+            alertType: "stripe-payment-amount-mismatch",
+            details: {
+              message: "Stripe reports a paid session whose amount or currency does not match the booking.",
+              receivedAmountMinor: session.amount_total ?? null,
+              receivedCurrency: session.currency ?? null
+            }
+          });
+          continue;
+        }
         await markBookingPaid(candidate.id, session.id);
         continue;
       }
