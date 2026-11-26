@@ -2346,6 +2346,21 @@ export const MIGRATIONS: Migration[] = [
         'availability_review', 'booking_accepted'
         ));
     `
+  },
+  {
+    id: "0049_whatsapp_messaging_switch",
+    sql: `
+      CREATE TABLE IF NOT EXISTS whatsapp_messaging_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_by_account_id TEXT,
+        updated_by_email TEXT
+      );
+
+      INSERT INTO whatsapp_messaging_settings (id, enabled)
+      VALUES (1, FALSE) ON CONFLICT (id) DO NOTHING;
+    `
   }
 ];
 

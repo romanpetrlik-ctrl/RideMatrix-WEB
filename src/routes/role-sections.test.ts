@@ -546,6 +546,9 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     assert.match(body, /Access granted\./);
     assert.match(body, /System Control \(superuser\)/);
     assert.match(body, /Not yet configured/);
+    assert.match(body, /href="\/settings\/messaging">Messaging<\/a>/);
+    assert.match(body, /href="\/settings\/messaging\/whatsapp">WhatsApp \(On\/Off\)/);
+    assert.match(body, /href="\/settings\/messaging\/whatsapp\/templates">Templates/);
     assert.match(body, /href="\/settings\/toll-fees"/);
     assert.match(body, /href="\/settings\/pois">Manage POIs/);
     assert.match(body, /href="\/settings\/poi-fees">Manage POI Fees/);
@@ -1663,7 +1666,7 @@ describe("role workspaces authorize against the /auth/session role contract", ()
     fareSettings.reset();
     const headers = withSession("sid=fare-nav", ["superuser"]);
     const settingsBody = await (await fetch(`${baseUrl}/settings`, { headers })).text();
-    assert.match(settingsBody, /href="\/settings\/fare-settings">Open Fare Settings/);
+    assert.match(settingsBody, /href="\/settings\/fare-settings">Fare Settings/);
 
     const landingBody = await (await fetch(`${baseUrl}/settings/fare-settings`, { headers })).text();
     for (const category of fareSettingsCategories) {

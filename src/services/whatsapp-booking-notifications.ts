@@ -70,6 +70,11 @@ export type WhatsAppEventSetting = {
 };
 
 export type SendableWhatsAppEventSetting = WhatsAppEventSetting & { templateName: string };
+export type WhatsAppMessagingSwitch = {
+  enabled: boolean;
+  updatedAt: string;
+  updatedByEmail: string | null;
+};
 
 const TEMPLATE_NAME_PATTERN = /^[a-z0-9_]{1,512}$/;
 const TEMPLATE_LANGUAGE_PATTERN = /^[a-z]{2,3}(_[A-Za-z]{2,4})?$/;
@@ -157,6 +162,41 @@ export async function listWhatsAppBookingNotificationSettings(client?: PoolClien
   });
 }
 
+export async function getWhatsAppMessagingSwitch(client?: PoolClient): Promise<WhatsAppMessagingSwitch> {
+  const result = await runQuery<{
+    enabled: boolean;
+    updated_at: string;
+    updated_by_email: string | null;
+  }>(client,
+  `SELECT enabled, updated_at, updated_by_email
+     FROM whatsapp_messaging_settings WHERE id = 1`);
+  const row = result.rows[0];
+  if (!row) throw new Error("WhatsApp messaging switch has not been initialized.");
+  return { enabled: row.enabled, updatedAt: row.updated_at, updatedByEmail: row.updated_by_email };
+}
+
+export async function saveWhatsAppMessagingSwitch(input: {
+  enabled: boolean;
+  actorId: string;
+  actorEmail: string;
+}): Promise<WhatsAppMessagingSwitch> {
+  const result = await query<{
+    enabled: boolean;
+    updated_at: string;
+    updated_by_email: string | null;
+  }>(
+    `UPDATE whatsapp_messaging_settings
+        SET enabled = $1, updated_at = CURRENT_TIMESTAMP,
+            updated_by_account_id = $2, updated_by_email = $3
+      WHERE id = 1
+      RETURNING enabled, updated_at, updated_by_email`,
+    [input.enabled, input.actorId, input.actorEmail]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("WhatsApp messaging switch has not been initialized.");
+  return { enabled: row.enabled, updatedAt: row.updated_at, updatedByEmail: row.updated_by_email };
+}
+
 export async function getWhatsAppBookingNotificationSetting(eventType: string, client?: PoolClient): Promise<WhatsAppEventSetting | null> {
   if (!getWhatsAppBookingEvent(eventType)) return null;
   const settings = await listWhatsAppBookingNotificationSettings(client);
@@ -186,6 +226,7 @@ export async function saveWhatsAppBookingNotificationSetting(input: {
 }
 
 export async function loadSendableWhatsAppSettings(client?: PoolClient): Promise<Map<WhatsAppBookingEventType, SendableWhatsAppEventSetting>> {
+  if (!(await getWhatsAppMessagingSwitch(client)).enabled) return new Map();
   const settings = await listWhatsAppBookingNotificationSettings(client);
   return new Map(settings.filter(isWhatsAppEventSendable).map((setting) => [setting.eventType, setting]));
 }
