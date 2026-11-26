@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
 import { unassignBookingVehicle } from "./licensing";
+import { enqueueWhatsAppBookingLifecycleNotification } from "./whatsapp-booking-notifications";
 
 export const BOOKING_DASHBOARD_VIEWS = ["today", "upcoming", "all", "finished", "cancelled", "archived", "no-show"] as const;
 export type BookingDashboardView = (typeof BOOKING_DASHBOARD_VIEWS)[number];
@@ -456,6 +457,15 @@ export async function changeBookingStatus(input: {
         reason || null, input.actorId, input.actorEmail, changedAt
       ]
     );
+    const lifecycleEvent = input.status === "Under availability review" ? "availability_review"
+      : input.status === "Accepted" ? "booking_accepted" : null;
+    if (lifecycleEvent) {
+      await enqueueWhatsAppBookingLifecycleNotification(client, {
+        bookingId: input.bookingId,
+        eventType: lifecycleEvent,
+        eventKey: input.status
+      });
+    }
     return "updated";
   };
   if (transactionClient) return work(transactionClient);

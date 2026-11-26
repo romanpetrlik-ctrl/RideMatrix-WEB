@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../partials/head", { title, appTitle }) %>
+  <body>
+    <%- include("../partials/system-status-bar", {
+      appTitle,
+      systemStatus: "System settings",
+      currentUserEmail: email,
+      currentUserHref: "/account"
+    }) %>
+    <%- include("../partials/header", { appTitle }) %>
+    <main class="container rm-page-shell whatsapp-booking-notifications">
+      <header class="new-booking-page__title">
+        <h1>WhatsApp booking notifications</h1>
+        <p>Settings → Messaging → WhatsApp → Booking Notifications</p>
+        <p>Map each booking event to an approved Meta WhatsApp template. Template text and approval are managed in WhatsApp Manager. All notifications are disabled until configured.</p>
+        <a href="/settings">Back to System Settings</a>
+      </header>
+      <% if (notice === "saved") { %><section class="notice" role="status">WhatsApp notification settings saved.</section><% } %>
+      <section class="panel rm-card">
+        <h2>Events</h2>
+        <div class="table-scroll">
+          <table class="whatsapp-booking-notifications__table">
+            <thead>
+              <tr>
+                <th scope="col">Event</th>
+                <th scope="col">Recipients</th>
+                <th scope="col">Template parameters</th>
+                <th scope="col">Status</th>
+                <th scope="col">Template</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% events.forEach((definition) => { const setting = settings.find((item) => item.eventType === definition.type); %>
+                <tr>
+                  <th scope="row"><%= definition.label %></th>
+                  <td><%= definition.recipients %></td>
+                  <td><%= definition.parameters.map((key) => parameterLabels[key]).join(", ") %></td>
+                  <td><%= setting?.enabled ? "Enabled" : "Disabled" %></td>
+                  <td><%= setting?.templateName ? `${setting.templateName} (${setting.templateLanguage})` : "Not configured" %></td>
+                  <td><a href="<%= basePath %>/<%= encodeURIComponent(definition.type) %>">Configure</a></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <%- include("../partials/footer") %>
+  </body>
+</html>

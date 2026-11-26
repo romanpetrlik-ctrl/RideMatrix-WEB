@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { query, withTransaction } from "../database/connection";
 import { BOOKING_LIVE_STATUSES, type BookingLiveStatus } from "./booking-dashboard";
+import { loadSendableWhatsAppSettings } from "./whatsapp-booking-notifications";
 
 export type DriverBooking = {
   id: string;
@@ -316,6 +317,7 @@ export async function updateDriverBookingStatus(input: {
         [randomUUID(), input.bookingId, alertType, JSON.stringify({ message, liveStatus: input.status })]
       );
     };
+    const liveWhatsAppEnabled = (await loadSendableWhatsAppSettings(client)).has("live_status");
     if (earlyStatus) {
       const passengerName = current.passenger_name || "Lead passenger";
       if (current.passenger_email) {
@@ -323,9 +325,9 @@ export async function updateDriverBookingStatus(input: {
       } else {
         await createAlert("live-status-passenger-email-missing", "Live status email skipped because the lead passenger has no email address.");
       }
-      if (current.passenger_whatsapp_opt_in && current.passenger_phone) {
+      if (liveWhatsAppEnabled && current.passenger_whatsapp_opt_in && current.passenger_phone) {
         await queueStatusDelivery("lead_passenger", "whatsapp", passengerName, current.passenger_phone);
-      } else {
+      } else if (liveWhatsAppEnabled) {
         await createAlert(current.passenger_whatsapp_opt_in
           ? "live-status-passenger-whatsapp-phone-missing"
           : "live-status-passenger-whatsapp-opt-in-missing",
@@ -348,9 +350,9 @@ export async function updateDriverBookingStatus(input: {
         }
       }
       if (!passengerWhatsAppQueued) {
-        if (current.booking_manager_whatsapp_opt_in && current.booking_manager_phone) {
+        if (liveWhatsAppEnabled && current.booking_manager_whatsapp_opt_in && current.booking_manager_phone) {
           await queueStatusDelivery("booking_manager", "whatsapp", managerName, current.booking_manager_phone);
-        } else {
+        } else if (liveWhatsAppEnabled) {
           await createAlert(current.booking_manager_whatsapp_opt_in
             ? "live-status-booking-manager-whatsapp-phone-missing"
             : "live-status-booking-manager-whatsapp-opt-in-missing",

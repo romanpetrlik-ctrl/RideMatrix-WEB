@@ -2,8 +2,16 @@ import { parsePhoneNumberFromString } from "libphonenumber-js";
 import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
+import {
+  isWhatsAppBookingEventType,
+  loadSendableWhatsAppSettings,
+  whatsAppTemplateParams,
+  type SendableWhatsAppEventSetting,
+  type WhatsAppBookingEventType
+} from "./whatsapp-booking-notifications";
 
-type DeliveryEvent = "payment_link" | "payment_cancelled" | "customer_reminder_24h" | "driver_reminder_24h" | "live_status";
+type DeliveryEvent = "payment_link" | "payment_cancelled" | "customer_reminder_24h" | "driver_reminder_24h" | "live_status"
+  | WhatsAppBookingEventType;
 type DeliveryChannel = "email" | "whatsapp";
 
 type DeliveryRow = {
@@ -78,20 +86,7 @@ export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
   });
 }
 
-function whatsappTemplateName(eventType: DeliveryEvent): string {
-  const keys: Record<DeliveryEvent, string> = {
-    payment_link: "WHATSAPP_PAYMENT_LINK_TEMPLATE",
-    payment_cancelled: "WHATSAPP_PAYMENT_CANCELLED_TEMPLATE",
-    customer_reminder_24h: "WHATSAPP_BOOKING_REMINDER_TEMPLATE",
-    driver_reminder_24h: "WHATSAPP_DRIVER_REMINDER_TEMPLATE",
-    live_status: "WHATSAPP_LIVE_STATUS_TEMPLATE"
-  };
-  const name = String(process.env[keys[eventType]] ?? "").trim();
-  if (!name) throw new Error(`${keys[eventType]} is required to send this WhatsApp template.`);
-  return name;
-}
-
-export async function sendBookingWhatsApp(row: DeliveryRow): Promise<void> {
+export async function sendBookingWhatsApp(row: DeliveryRow, setting: SendableWhatsAppEventSetting): Promise<void> {
   const accessToken = String(process.env.WHATSAPP_ACCESS_TOKEN ?? "").trim();
   const phoneNumberId = String(process.env.WHATSAPP_PHONE_NUMBER_ID ?? "").trim();
   const apiVersion = String(process.env.WHATSAPP_API_VERSION ?? "").trim();
@@ -100,18 +95,7 @@ export async function sendBookingWhatsApp(row: DeliveryRow): Promise<void> {
   }
   const phone = parsePhoneNumberFromString(row.recipient_contact);
   if (!phone?.isValid()) throw new TypeError("WhatsApp recipient must be a valid international phone number.");
-  const configuredParams = Array.isArray(row.payload.templateParams)
-    ? row.payload.templateParams.filter((value): value is string => typeof value === "string")
-    : [];
-  const templateParams = configuredParams.length ? configuredParams : row.event_type === "driver_reminder_24h"
-    ? [row.payload.reference, row.payload.serviceDateTime, row.payload.pickup]
-    : row.event_type === "customer_reminder_24h"
-      ? [row.payload.reference, row.payload.serviceDateTime, row.payload.pickup, row.payload.dropoff]
-      : row.event_type === "live_status"
-        ? [row.payload.reference, row.payload.status]
-        : [row.payload.reference, row.payload.paymentUrl]
-          .filter((value) => value !== undefined)
-          .map(String);
+  const templateParams = whatsAppTemplateParams(setting.eventType, row.payload);
   const response = await fetch(`https://graph.facebook.com/${encodeURIComponent(apiVersion)}/${encodeURIComponent(phoneNumberId)}/messages`, {
     method: "POST",
     headers: {
@@ -123,14 +107,12 @@ export async function sendBookingWhatsApp(row: DeliveryRow): Promise<void> {
       to: phone.number.replace("+", ""),
       type: "template",
       template: {
-        name: whatsappTemplateName(row.event_type),
-        language: { code: String(process.env.WHATSAPP_TEMPLATE_LANGUAGE ?? "en_GB") },
+        name: setting.templateName,
+        language: { code: setting.templateLanguage },
         ...(templateParams.length ? {
           components: [{
             type: "body",
-            parameters: templateParams
-              .filter((value): value is string => typeof value === "string")
-              .map((text) => ({ type: "text", text }))
+            parameters: templateParams.map((text) => ({ type: "text", text }))
           }]
         } : {})
       }
@@ -204,13 +186,36 @@ async function claimPendingMessages(limit: number): Promise<DeliveryRow[]> {
   });
 }
 
+function resolveWhatsAppSkipReason(
+  row: DeliveryRow,
+  settings: Map<WhatsAppBookingEventType, SendableWhatsAppEventSetting>
+): string | null {
+  if (!isWhatsAppBookingEventType(row.event_type)) return "Event has no WhatsApp notification configuration.";
+  if (!settings.has(row.event_type)) return "WhatsApp notification is disabled or has no approved template configured.";
+  return null;
+}
+
 export async function deliverPendingBookingMessages(limit = 50): Promise<number> {
   const rows = await claimPendingMessages(limit);
+  const whatsappSettings = await loadSendableWhatsAppSettings();
   let delivered = 0;
   for (const row of rows) {
     try {
-      if (row.channel === "email") await sendBookingEmail(row);
-      else await sendBookingWhatsApp(row);
+      if (row.channel === "email") {
+        await sendBookingEmail(row);
+      } else {
+        const skipReason = resolveWhatsAppSkipReason(row, whatsappSettings);
+        if (skipReason) {
+          await query(
+            `UPDATE booking_delivery_outbox
+                SET delivery_status = 'skipped', last_error = $2
+              WHERE id = $1 AND delivery_status = 'sending'`,
+            [row.id, skipReason]
+          );
+          continue;
+        }
+        await sendBookingWhatsApp(row, whatsappSettings.get(row.event_type as WhatsAppBookingEventType)!);
+      }
       await query(
         `UPDATE booking_delivery_outbox
             SET delivery_status = 'sent', sent_at = CURRENT_TIMESTAMP, last_error = NULL

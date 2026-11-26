@@ -9,6 +9,7 @@ import {
   retrieveBookingCheckoutSession,
   sendBookingPaymentLink
 } from "./stripe-bookings";
+import { loadSendableWhatsAppSettings } from "./whatsapp-booking-notifications";
 
 type PaymentCandidate = { id: string };
 
@@ -236,6 +237,9 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
     [limit]
   );
   let enqueued = 0;
+  const whatsappSettings = await loadSendableWhatsAppSettings();
+  const customerWhatsAppEnabled = whatsappSettings.has("customer_reminder_24h");
+  const driverWhatsAppEnabled = whatsappSettings.has("driver_reminder_24h");
   for (const row of result.rows) {
     const payload = reminderPayload(row);
     if (row.passenger_email) {
@@ -256,7 +260,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
         details: { message: "Lead passenger has no email address for the 24-hour reminder." }
       });
     }
-    if (row.passenger_whatsapp_opt_in && row.passenger_phone) {
+    if (customerWhatsAppEnabled && row.passenger_whatsapp_opt_in && row.passenger_phone) {
       await enqueueDelivery({
         bookingId: row.id,
         eventType: "customer_reminder_24h",
@@ -267,7 +271,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
         payload
       });
       enqueued += 1;
-    } else {
+    } else if (customerWhatsAppEnabled) {
       await recordBookingIntegrationAlert({
         bookingId: row.id,
         alertType: row.passenger_whatsapp_opt_in ? "passenger-whatsapp-phone-missing" : "passenger-whatsapp-opt-in-missing",
@@ -295,7 +299,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
           details: { message: "Booking manager notification was requested but no email address is available." }
         });
       }
-      if (row.booking_manager_whatsapp_opt_in && row.booking_manager_phone) {
+      if (customerWhatsAppEnabled && row.booking_manager_whatsapp_opt_in && row.booking_manager_phone) {
         await enqueueDelivery({
           bookingId: row.id,
           eventType: "customer_reminder_24h",
@@ -306,7 +310,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
           payload
         });
         enqueued += 1;
-      } else {
+      } else if (customerWhatsAppEnabled) {
         await recordBookingIntegrationAlert({
           bookingId: row.id,
           alertType: row.booking_manager_whatsapp_opt_in ? "booking-manager-whatsapp-phone-missing" : "booking-manager-whatsapp-opt-in-missing",
@@ -325,7 +329,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
           AND (NOT $2::boolean OR recipient_contact <> $3)`,
       [row.id, Boolean(row.driver_id && row.driver_whatsapp_opt_in && row.driver_whatsapp_phone), row.driver_whatsapp_phone || ""]
     );
-    if (row.driver_id && row.driver_whatsapp_opt_in && row.driver_whatsapp_phone) {
+    if (driverWhatsAppEnabled && row.driver_id && row.driver_whatsapp_opt_in && row.driver_whatsapp_phone) {
       await enqueueDelivery({
         bookingId: row.id,
         eventType: "driver_reminder_24h",
@@ -336,7 +340,7 @@ export async function scheduleBookingReminders(limit = 500): Promise<number> {
         payload
       });
       enqueued += 1;
-    } else if (row.driver_id && (!row.driver_whatsapp_opt_in || !row.driver_whatsapp_phone)) {
+    } else if (driverWhatsAppEnabled && row.driver_id && (!row.driver_whatsapp_opt_in || !row.driver_whatsapp_phone)) {
       await recordBookingIntegrationAlert({
         bookingId: row.id,
         alertType: row.driver_whatsapp_opt_in ? "driver-whatsapp-phone-missing" : "driver-whatsapp-opt-in-missing",

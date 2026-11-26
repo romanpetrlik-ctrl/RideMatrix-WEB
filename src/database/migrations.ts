@@ -2313,6 +2313,39 @@ export const MIGRATIONS: Migration[] = [
        WHERE configuration ? 'deadMileage'
          AND NOT (configuration->'deadMileage' ? 'enabled');
     `
+  },
+  {
+    id: "0048_whatsapp_booking_notifications",
+    sql: `
+      CREATE TABLE IF NOT EXISTS whatsapp_booking_notification_settings (
+        event_type TEXT PRIMARY KEY CHECK (event_type IN (
+        'booking_received', 'availability_review', 'booking_accepted',
+        'customer_reminder_24h', 'driver_reminder_24h', 'live_status'
+        )),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        template_name TEXT CHECK (template_name IS NULL OR template_name ~ '^[a-z0-9_]{1,512}$'),
+        template_language TEXT NOT NULL DEFAULT 'en_GB'
+        CHECK (template_language ~ '^[a-z]{2,3}(_[A-Za-z]{2,4})?$'),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_by_account_id TEXT,
+        updated_by_email TEXT,
+        CHECK (NOT enabled OR template_name IS NOT NULL)
+      );
+
+      INSERT INTO whatsapp_booking_notification_settings (event_type)
+      VALUES ('booking_received'), ('availability_review'), ('booking_accepted'),
+           ('customer_reminder_24h'), ('driver_reminder_24h'), ('live_status')
+      ON CONFLICT (event_type) DO NOTHING;
+
+      ALTER TABLE booking_delivery_outbox
+        DROP CONSTRAINT IF EXISTS booking_delivery_outbox_event_type_check;
+      ALTER TABLE booking_delivery_outbox
+        ADD CONSTRAINT booking_delivery_outbox_event_type_check CHECK (event_type IN (
+        'payment_link', 'payment_cancelled', 'customer_reminder_24h',
+        'driver_reminder_24h', 'live_status', 'booking_received',
+        'availability_review', 'booking_accepted'
+        ));
+    `
   }
 ];
 

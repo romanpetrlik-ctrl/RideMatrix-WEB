@@ -19,6 +19,7 @@ import { createCustomer, updateCustomerLastBookingAt, type CustomerCreateInput }
 import { londonFeeScheduleStore } from "./london-fee-schedules";
 import { roadChargeScheduleReferences, type RoadChargeScheduleSet } from "./road-charge-pricing";
 import { listVehicleClasses, type VehicleClass } from "./vehicles";
+import { enqueueWhatsAppBookingLifecycleNotification } from "./whatsapp-booking-notifications";
 
 export const BOOKING_COUNT_MAX = 7;
 export const NEW_CUSTOMER_SELECTION_VALUE = "__create_new_customer__";
@@ -817,6 +818,7 @@ export async function createNewBooking(
       );
     }
     await updateCustomerLastBookingAt(customerId, serviceLocalToUtc(booking.serviceDate, booking.serviceTime).toISOString(), client);
+    await enqueueWhatsAppBookingLifecycleNotification(client, { bookingId: id, eventType: "booking_received", eventKey: "New" });
     return { id, reference, customerId };
   });
 }

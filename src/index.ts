@@ -20,6 +20,7 @@ import { createVehiclesRouter } from "./routes/vehicles";
 import { createDriversRouter } from "./routes/drivers";
 import { createDriverBookingsRouter } from "./routes/driver-bookings";
 import { createBookingIntegrationSettingsRouter } from "./routes/booking-integration-settings";
+import { createWhatsAppBookingNotificationsRouter } from "./routes/whatsapp-booking-notifications";
 import { createOperatorSettingsRouter } from "./routes/operator-settings";
 import { createBookingPaymentsRouter } from "./routes/booking-payments";
 import { createSetupRouter } from "./routes/setup";
@@ -82,6 +83,7 @@ async function startServer() {
   app.use(createBookingCalendarRouter({ appTitle }));
   app.use(createDriverBookingsRouter({ appTitle }));
   app.use(createBookingIntegrationSettingsRouter({ appTitle }));
+  app.use(createWhatsAppBookingNotificationsRouter({ appTitle }));
   app.use(createOperatorSettingsRouter({ appTitle }));
   app.use(createStaffRouter({ appTitle }));
   app.use(createDriversRouter({ appTitle }));
