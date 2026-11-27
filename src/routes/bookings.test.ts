@@ -68,6 +68,7 @@ async function withApp(
       actorId: string;
       actorEmail: string;
     }) => Promise<"updated" | "unchanged" | "not-found" | "not-changeable">;
+    resendNotification?: BookingsRouterOptions["resendNotification"];
   } = {},
   run: (baseUrl: string, saved: Saved[]) => Promise<void>
 ) {
@@ -103,6 +104,7 @@ async function withApp(
     ...(options.listDashboardBookings ? { listDashboardBookings: options.listDashboardBookings } : {}),
     ...(options.archiveBooking ? { archiveBooking: options.archiveBooking } : {}),
     ...(options.changeBookingStatus ? { changeBookingStatus: options.changeBookingStatus } : {}),
+    ...(options.resendNotification ? { resendNotification: options.resendNotification } : {}),
     mapConfiguration: () => ({})
   }));
   const server = app.listen(0);
@@ -159,12 +161,49 @@ test("dispatchers get a read-only booking detail while mutations stay admin-only
     const detail = await fetch(`${baseUrl}/bookings/booking-uuid`);
     const html = await detail.text();
     assert.equal(detail.status, 200);
-    assert.match(html, /Read-only view/);
+    assert.match(html, /Booking data is read-only/);
     assert.doesNotMatch(html, /Vehicle and driver assignment/);
     assert.equal((await post(`${baseUrl}/bookings/booking-uuid/status`, form({ status: "Cancelled" }))).status, 403);
     assert.equal((await post(`${baseUrl}/bookings/booking-uuid/archive`, form({ reason: "x" }))).status, 403);
     assert.equal((await fetch(`${baseUrl}/bookings/new`)).status, 403);
     assert.equal(saved.length, 0);
+  });
+});
+
+test("dispatchers can queue and audit manual booking messages from the booking detail", async () => {
+  let request: { bookingId: string; kind: string; channel: string; actorId: string; actorEmail: string } | undefined;
+  await withApp({
+    roles: ["dispatcher"],
+    csrf: true,
+    resendNotification: async (input) => {
+      request = input;
+    }
+  }, async (baseUrl) => {
+    const detail = await fetch(`${baseUrl}/bookings/booking-uuid`);
+    const html = await detail.text();
+    assert.equal(detail.status, 200);
+    assert.match(html, /Resend booking messages/);
+    assert.match(html, /booking_received\/email\/resend/);
+    assert.match(html, /payment_link\/whatsapp\/resend/);
+    assert.match(html, /driver_assignment\/email\/resend/);
+    const cookie = detail.headers.get("set-cookie")?.split(";")[0];
+    const token = html.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(cookie);
+    assert.ok(token);
+    const response = await post(
+      `${baseUrl}/bookings/booking-uuid/notifications/booking_received/email/resend`,
+      new URLSearchParams({ _csrf: token }),
+      { cookie }
+    );
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), "/bookings/booking-uuid?notice=notification-queued");
+  });
+  assert.deepEqual(request, {
+    bookingId: "booking-uuid",
+    kind: "booking_received",
+    channel: "email",
+    actorId: "acct-7",
+    actorEmail: "dispatcher@example.test"
   });
 });
 

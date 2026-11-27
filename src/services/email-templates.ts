@@ -9,7 +9,13 @@ import {
   type EncryptedConfiguration
 } from "./integration-config-crypto";
 
-export const EMAIL_TEMPLATE_EVENTS = ["payment_link", "payment_paid", "payment_cancelled"] as const;
+export const EMAIL_TEMPLATE_EVENTS = [
+  "booking_received",
+  "payment_link",
+  "payment_paid",
+  "payment_cancelled",
+  "driver_assignment"
+] as const;
 export type EmailTemplateEvent = (typeof EMAIL_TEMPLATE_EVENTS)[number];
 export type EmailDeliveryMode = "ses" | "mailpit";
 export type EmailDeliveryConfig = {
@@ -196,14 +202,25 @@ export async function getStoredEmailDeliveryConfig(mode: EmailDeliveryMode): Pro
 }
 
 export const EMAIL_TEMPLATE_VARIABLES = {
+  passengerName: "Passenger name",
+  bookingStatus: "Booking status",
+  serviceDateTime: "Service date and time",
+  pickup: "Pickup",
+  dropoff: "Destination",
   payerName: "Payer name",
   reference: "Booking reference",
   paymentUrl: "Payment URL",
   amount: "Amount",
-  currency: "Currency"
+  currency: "Currency",
+  driverName: "Assigned driver",
+  vehicleRegistration: "Vehicle registration"
 } as const;
 
 const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateEvent, Pick<EmailTemplate, "subjectTemplate" | "bodyTemplate">> = {
+  booking_received: {
+    subjectTemplate: "Booking received: {{reference}}",
+    bodyTemplate: "Hello {{passengerName}},\n\nWe have received your booking {{reference}}.\n\nService: {{serviceDateTime}}\nPickup: {{pickup}}\nDestination: {{dropoff}}\nStatus: {{bookingStatus}}\n\nWe will contact you with any updates."
+  },
   payment_link: {
     subjectTemplate: "Payment link for booking {{reference}}",
     bodyTemplate: "Hello {{payerName}},\n\nPayment of {{currency}} {{amount}} is due for booking {{reference}}.\n\nPay securely: {{paymentUrl}}\n\nThank you."
@@ -215,6 +232,10 @@ const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateEvent, Pick<EmailTemplate, "s
   payment_cancelled: {
     subjectTemplate: "Booking {{reference}} cancelled",
     bodyTemplate: "Hello {{payerName}},\n\nBooking {{reference}} has been cancelled because payment was not received before the payment deadline. Please contact the booking team if you need help."
+  },
+  driver_assignment: {
+    subjectTemplate: "Driver assigned to booking {{reference}}",
+    bodyTemplate: "Hello {{passengerName}},\n\nA driver has been assigned to booking {{reference}}.\n\nService: {{serviceDateTime}}\nDriver: {{driverName}}\nVehicle: {{vehicleRegistration}}\nPickup: {{pickup}}\nDestination: {{dropoff}}\n\nPlease contact the booking team if you need help."
   }
 };
 

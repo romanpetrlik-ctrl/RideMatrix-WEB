@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  EMAIL_TEMPLATE_EVENTS,
   getEmailDeliveryConfig,
   isEmailDeliveryConfigured,
   renderEmailTemplate,
@@ -62,6 +63,21 @@ test("email templates reject unsupported events, variables, and malformed placeh
     subjectTemplate: "Subject",
     bodyTemplate: "{{invalid"
   }), /supported template variables/);
+});
+
+test("manual booking email templates accept confirmation and driver assignment variables", () => {
+  assert.ok(EMAIL_TEMPLATE_EVENTS.includes("booking_received"));
+  assert.ok(EMAIL_TEMPLATE_EVENTS.includes("driver_assignment"));
+  assert.equal(validateEmailTemplate({
+    eventType: "booking_received",
+    subjectTemplate: "Booking received: {{reference}}",
+    bodyTemplate: "{{passengerName}} · {{serviceDateTime}} · {{bookingStatus}} · {{pickup}} · {{dropoff}}"
+  }).eventType, "booking_received");
+  assert.equal(validateEmailTemplate({
+    eventType: "driver_assignment",
+    subjectTemplate: "Driver for {{reference}}",
+    bodyTemplate: "{{driverName}} · {{vehicleRegistration}}"
+  }).eventType, "driver_assignment");
 });
 
 test("integration configuration encryption protects saved email credentials", () => {

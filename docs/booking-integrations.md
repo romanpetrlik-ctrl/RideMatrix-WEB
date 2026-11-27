@@ -48,9 +48,16 @@ No SES account is needed to test with Mailpit. Legacy `SES_SMTP_*` and
 not yet saved settings in the admin UI.
 
 Email delivery is switched on separately in Settings → Messaging → Email.
-Payment link, payment confirmation, and non-payment cancellation messages use
-editable plain-text templates at Settings → Messaging → Email → Templates.
+Booking confirmation, driver-assignment, payment link, payment confirmation,
+and non-payment cancellation messages use editable plain-text templates at
+Settings → Messaging → Email → Templates.
 Email delivery remains queued while the global email switch is off.
+Administrators and dispatchers can also manually queue a booking confirmation,
+an active Stripe payment link, or a driver-assignment notice from the booking
+detail. Confirmations and driver-assignment notices go to the lead passenger;
+payment links go only to the payer. A resend uses a unique outbox key and records
+the requesting staff account. Payment links are re-sent only while the existing
+Stripe Checkout Session is open and unpaid; no replacement session is created.
 
 Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_API_VERSION`
 in the server environment only; they are never shown in the UI or logs. Approved
@@ -59,6 +66,11 @@ Messaging → WhatsApp → Booking Notifications. Each notification is disabled 
 default, and a disabled or unconfigured event never sends. Template text is
 managed in WhatsApp Manager. Template body parameters are passed in this order:
 
+- Manual booking confirmation: booking reference, local service date/time,
+  pickup, destination.
+- Manual payment link: booking reference, payment URL, amount, currency.
+- Manual driver assignment: booking reference, local service date/time, driver
+  name, vehicle registration.
 - Booking received, under availability review, accepted, customer reminder:
   booking reference, local service date/time, pickup, destination.
 - Driver reminder: booking reference, local service date/time, pickup.

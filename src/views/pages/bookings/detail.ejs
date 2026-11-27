@@ -27,12 +27,57 @@
         <% if (locals.canManageBooking) { %>
         <p><a href="/customers/<%= encodeURIComponent(booking.customerId) %>">Booking manager customer record</a> · <a href="/customers/<%= encodeURIComponent(booking.customerId) %>/bookings/<%= encodeURIComponent(booking.id) %>/assignment">Vehicle and driver assignment</a></p>
         <% } else { %>
-        <p>Read-only view. Changes to bookings are made by administrators.</p>
+        <p>Booking data is read-only. Administrators manage booking details.</p>
         <% } %>
       </div>
 
       <% if (notice === "created") { %>
         <section class="notice" role="status" data-booking-notice>Booking <%= booking.reference %> saved<%= booking.price && booking.price.status === "incomplete" ? " with an incomplete price. No total is confirmed." : "." %></section>
+      <% } %>
+      <% if (notice === "notification-queued") { %>
+        <section class="notice" role="status">Message queued for delivery. Check the booking integration alerts if delivery fails.</section>
+      <% } %>
+      <% if (notice === "notification-payment-link-unavailable") { %>
+        <section class="notice notice--critical" role="alert">The current Stripe payment link is unavailable, expired, or already paid. No new link was created.</section>
+      <% } %>
+      <% if (notice === "notification-whatsapp-opt-in-required") { %>
+        <section class="notice notice--critical" role="alert">WhatsApp was not queued because this recipient has not opted in to WhatsApp messages.</section>
+      <% } %>
+      <% if (notice === "notification-recipient-missing") { %>
+        <section class="notice notice--critical" role="alert">This booking has no valid contact for that recipient and channel.</section>
+      <% } %>
+      <% if (notice === "notification-messaging-not-ready") { %>
+        <section class="notice notice--critical" role="alert">That messaging channel or approved notification template is not enabled and configured.</section>
+      <% } %>
+      <% if (notice === "notification-booking-not-sendable") { %>
+        <section class="notice notice--critical" role="alert">This message is unavailable for the booking's current status or assignment.</section>
+      <% } %>
+      <% if (notice === "notification-invalid") { %>
+        <section class="notice notice--critical" role="alert">Select a valid message and channel.</section>
+      <% } %>
+
+      <% if (canResendNotifications) { %>
+        <section class="panel rm-card new-booking-block" aria-labelledby="detail-notifications-title">
+          <h2 id="detail-notifications-title">Resend booking messages</h2>
+          <p>Messages are queued and recorded with the staff member who requested them. WhatsApp sends only with recorded opt-in and an enabled approved template.</p>
+          <% [
+            ["booking_received", "Booking confirmation", "Lead passenger"],
+            ["payment_link", "Payment link", "Payer"],
+            ["driver_assignment", "Driver assignment", "Lead passenger"]
+          ].forEach(([kind, label, recipient]) => { %>
+            <div class="booking-notification-actions">
+              <strong><%= label %><small> to <%= recipient.toLowerCase() %></small></strong>
+              <form method="post" action="/bookings/<%= encodeURIComponent(booking.id) %>/notifications/<%= kind %>/email/resend">
+                <%- locals.csrfField || "" %>
+                <button class="button button--secondary" type="submit" aria-label="Resend <%= label.toLowerCase() %> by email">Resend by email</button>
+              </form>
+              <form method="post" action="/bookings/<%= encodeURIComponent(booking.id) %>/notifications/<%= kind %>/whatsapp/resend">
+                <%- locals.csrfField || "" %>
+                <button class="button button--secondary" type="submit" aria-label="Resend <%= label.toLowerCase() %> by WhatsApp">Resend by WhatsApp</button>
+              </form>
+            </div>
+          <% }) %>
+        </section>
       <% } %>
 
       <section class="panel rm-card new-booking-block" aria-labelledby="detail-reference-title">
