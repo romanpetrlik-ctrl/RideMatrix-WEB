@@ -64,15 +64,16 @@ export function createWhatsAppBookingNotificationsRouter(options: WhatsAppSettin
   router.get(MESSAGING_PATH, requireSuperuser, async (req, res, next) => {
     try {
       const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
+      const emailSettings = await getEmailSettings();
       return res.render("pages/messaging-settings", {
         title: "Messaging",
         appTitle: options.appTitle,
         email: actor.email,
         whatsapp: await getSwitch(),
         apiConfigured: apiConfigured(),
-        emailEnabled: (await getEmailSettings()).enabled,
-        sesConfigured: ["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]
-          .every((name) => Boolean(String(process.env[name] ?? "").trim()))
+        emailEnabled: emailSettings.enabled,
+        emailDeliveryMode: emailSettings.deliveryMode,
+        emailDeliveryConfigured: emailSettings.deliveryConfigured
       });
     } catch (error) {
       return next(error);

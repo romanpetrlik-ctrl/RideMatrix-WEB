@@ -15,6 +15,17 @@ const template: EmailTemplate = {
   updatedAt: null,
   updatedByEmail: null
 };
+const settings = {
+  enabled: false,
+  deliveryMode: "ses" as const,
+  sesConfig: { configured: false, host: "", port: 587, from: "" },
+  mailpitConfig: { configured: false, host: "", port: 1025, from: "ridematrix@localhost" },
+  deliveryConfigured: false,
+  verifiedDeliveryMode: null,
+  deliveryTested: false,
+  updatedAt: "2030-01-01T00:00:00Z",
+  updatedByEmail: null
+};
 
 function sessionFor(roles: string[]): SessionAccount {
   return { authenticated: true, user: { id: "superuser-1", email: "settings@example.com", roles, active_role: roles[0] } };
@@ -29,12 +40,12 @@ function createServer(session: SessionAccount, overrides: Record<string, unknown
   app.use(createEmailSettingsRouter({
     appTitle: "Email Settings Test",
     loadSession: async () => session,
-    getSettings: async () => ({ enabled: false, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
+    getSettings: async () => settings,
     saveSettings: async () => undefined,
     listTemplates: async () => [template],
     getTemplate: async () => template,
     saveTemplate: async () => template,
-    isSesConfigured: () => true,
+    isDeliveryConfigured: () => true,
     ...overrides
   }));
   return app.listen(0);
@@ -68,7 +79,48 @@ test("email templates provide a preview and supported-variable reference", async
   });
 });
 
-test("email settings cannot be switched on without SES configuration", async () => {
+test("email settings page offers SES and Mailpit delivery modes", async () => {
+  await withServer(sessionFor(["superuser"]), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}${BASE}`);
+    const body = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(body, /Mailpit sandbox/);
+    assert.match(body, /Amazon SES/);
+  });
+});
+
+test("SMTP connection test verifies the saved provider and records its success", async () => {
+  let testedMode = "";
+  let markedMode = "";
+  await withServer(sessionFor(["superuser"]), async (baseUrl) => {
+    const page = await fetch(`${baseUrl}${BASE}`);
+    const cookie = page.headers.get("set-cookie")?.split(";")[0];
+    const body = await page.text();
+    const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(cookie);
+    assert.ok(token);
+    const response = await fetch(`${baseUrl}${BASE}/test`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: new URLSearchParams({ _csrf: token, deliveryMode: "mailpit" }),
+      redirect: "manual"
+    });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), `${BASE}?notice=test-succeeded`);
+  }, {
+    testConnection: async (mode: string) => {
+      testedMode = mode;
+      return "fingerprint";
+    },
+    markTested: async ({ deliveryMode }: { deliveryMode: string; configFingerprint: string }) => {
+      markedMode = deliveryMode;
+    }
+  });
+  assert.equal(testedMode, "mailpit");
+  assert.equal(markedMode, "mailpit");
+});
+
+test("email settings cannot be switched on without the selected SMTP configuration", async () => {
   let saved = false;
   await withServer(sessionFor(["superuser"]), async (baseUrl) => {
     const response = await fetch(`${baseUrl}${BASE}`, { redirect: "manual" });
@@ -80,13 +132,69 @@ test("email settings cannot be switched on without SES configuration", async () 
     const post = await fetch(`${baseUrl}${BASE}`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", cookie },
-      body: new URLSearchParams({ _csrf: token, enabled: "on" }),
+      body: new URLSearchParams({ _csrf: token, deliveryMode: "ses", enabled: "on" }),
       redirect: "manual"
     });
     assert.equal(post.status, 303);
     assert.equal(post.headers.get("location"), `${BASE}?notice=configuration-required`);
   }, {
-    isSesConfigured: () => false,
+    isDeliveryConfigured: () => false,
+    saveSettings: async () => {
+      saved = true;
+    }
+  });
+  assert.equal(saved, false);
+});
+
+test("Mailpit sandbox can be enabled without SES when its SMTP endpoint is configured", async () => {
+  let saved: { enabled: boolean; deliveryMode: string } | undefined;
+  await withServer(sessionFor(["superuser"]), async (baseUrl) => {
+    const page = await fetch(`${baseUrl}${BASE}`);
+    const cookie = page.headers.get("set-cookie")?.split(";")[0];
+    const body = await page.text();
+    const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(cookie);
+    assert.ok(token);
+    const response = await fetch(`${baseUrl}${BASE}`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: new URLSearchParams({ _csrf: token, deliveryMode: "mailpit", enabled: "on" }),
+      redirect: "manual"
+    });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), `${BASE}?notice=saved`);
+  }, {
+    isDeliveryConfigured: (mode: string) => mode === "mailpit",
+    getSettings: async () => ({
+      ...settings,
+      mailpitConfig: { configured: true, host: "mailpit", port: 1025, from: "ridematrix@localhost" }
+    }),
+    saveSettings: async ({ enabled, deliveryMode }: { enabled: boolean; deliveryMode: string }) => {
+      saved = { enabled, deliveryMode };
+    }
+  });
+  assert.deepEqual(saved, { enabled: true, deliveryMode: "mailpit" });
+});
+
+test("email delivery mode cannot be changed while email messaging is enabled", async () => {
+  let saved = false;
+  await withServer(sessionFor(["superuser"]), async (baseUrl) => {
+    const page = await fetch(`${baseUrl}${BASE}`);
+    const cookie = page.headers.get("set-cookie")?.split(";")[0];
+    const body = await page.text();
+    const token = body.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    assert.ok(cookie);
+    assert.ok(token);
+    const response = await fetch(`${baseUrl}${BASE}`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: new URLSearchParams({ _csrf: token, deliveryMode: "mailpit", enabled: "on" }),
+      redirect: "manual"
+    });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), `${BASE}?notice=mode-change-requires-off`);
+  }, {
+    getSettings: async () => ({ ...settings, enabled: true, sesConfig: { configured: true, host: "smtp.example", port: 587, from: "sender@example.test" } }),
     saveSettings: async () => {
       saved = true;
     }

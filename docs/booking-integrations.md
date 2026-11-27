@@ -12,8 +12,8 @@ unique, and message claims use PostgreSQL row locks.
 
 Configure `APP_BASE_URL` and `STRIPE_CONFIG_ENCRYPTION_KEY` in the server
 environment. Generate the encryption key with `openssl rand -base64 32` and
-keep it stable: Stripe credentials saved in Settings cannot be decrypted if
-this key is lost or replaced. Enter test/live publishable keys, secret keys,
+keep it stable: Stripe credentials and SMTP settings saved in Settings cannot
+be decrypted if this key is lost or replaced. Enter test/live publishable keys, secret keys,
 and webhook signing secrets at Settings → Payments → Stripe. In Stripe
 Dashboard, create a webhook endpoint at
 `https://<APP_BASE_URL>/webhooks/stripe` for
@@ -34,9 +34,19 @@ before pickup have no automatic cancellation deadline.
 
 ## Email and WhatsApp
 
-Set `SES_SMTP_HOST`, `SES_SMTP_PORT`, `SES_SMTP_USERNAME`,
-`SES_SMTP_PASSWORD`, and `SES_FROM_EMAIL` for Amazon SES SMTP. Development can
-use Mailpit by setting the same variables to the local SMTP endpoint.
+Configure both production SES SMTP and sandbox Mailpit directly in Settings →
+Messaging → Email. SMTP credentials are encrypted at rest with the existing
+`STRIPE_CONFIG_ENCRYPTION_KEY`; secret values are never displayed again. Save
+the selected provider settings and test the connection before switching email
+on. The test only verifies the SMTP connection and does not send a message.
+Mailpit must already be running and reachable from the web container, normally
+on port `1025`. The sandbox accepts only an internal service hostname (single
+label, `.local`, or `.internal`) or a private IP, and must only point to an
+internal Mailpit instance.
+No SES account is needed to test with Mailpit. Legacy `SES_SMTP_*` and
+`MAILPIT_SMTP_*` environment values remain fallbacks for deployments that have
+not yet saved settings in the admin UI.
+
 Email delivery is switched on separately in Settings → Messaging → Email.
 Payment link, payment confirmation, and non-payment cancellation messages use
 editable plain-text templates at Settings → Messaging → Email → Templates.

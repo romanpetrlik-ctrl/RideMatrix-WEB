@@ -1,6 +1,11 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, withTransaction } from "../database/connection";
+import {
+  decryptIntegrationConfig,
+  encryptIntegrationConfig,
+  integrationConfigEncryptionKey,
+  type EncryptedConfiguration
+} from "./integration-config-crypto";
 
 export type StripeMode = "test" | "live";
 export type StripeCredentialSet = {
@@ -35,7 +40,7 @@ export function isValidStripeReturnUrl(value: string): boolean {
   }
 }
 
-type EncryptedValue = { ciphertext: string; iv: string; authTag: string };
+type EncryptedValue = EncryptedConfiguration;
 type SettingsRow = {
   enabled: boolean;
   mode: StripeMode;
@@ -48,33 +53,15 @@ type SettingsRow = {
 };
 
 function encryptionKey(value = process.env.STRIPE_CONFIG_ENCRYPTION_KEY): Buffer {
-  const key = Buffer.from(String(value ?? "").trim(), "base64");
-  if (key.length !== 32) {
-    throw new Error("Set STRIPE_CONFIG_ENCRYPTION_KEY to a base64-encoded 32-byte key before saving Stripe credentials.");
-  }
-  return key;
+  return integrationConfigEncryptionKey(value);
 }
 
 export function encryptStripeCredentials(value: string, key: Buffer): EncryptedValue {
-  if (key.length !== 32) throw new TypeError("Stripe configuration encryption key must be 32 bytes.");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return {
-    ciphertext: ciphertext.toString("base64"),
-    iv: iv.toString("base64"),
-    authTag: cipher.getAuthTag().toString("base64")
-  };
+  return encryptIntegrationConfig(value, key);
 }
 
 export function decryptStripeCredentials(value: EncryptedValue, key: Buffer): string {
-  if (key.length !== 32) throw new TypeError("Stripe configuration encryption key must be 32 bytes.");
-  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(value.iv, "base64"));
-  decipher.setAuthTag(Buffer.from(value.authTag, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(value.ciphertext, "base64")),
-    decipher.final()
-  ]).toString("utf8");
+  return decryptIntegrationConfig(value, key);
 }
 
 function hasSecret(row: SettingsRow): boolean {

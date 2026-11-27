@@ -15,14 +15,73 @@
         <nav aria-label="Breadcrumb"><a href="/settings">Settings</a> <span aria-hidden="true">›</span> <a href="/settings/messaging">Messaging</a> <span aria-hidden="true">›</span> Email</nav>
       </header>
       <% if (notice === "saved") { %><section class="notice" role="status">Email settings saved.</section><% } %>
-      <% if (notice === "configuration-required") { %><section class="notice notice--critical" role="alert">Configure Amazon SES on the server before switching email on.</section><% } %>
+      <% if (notice === "configuration-required") { %><section class="notice notice--critical" role="alert">Configure a valid SMTP connection before switching email on.</section><% } %>
+      <% if (notice === "test-required") { %><section class="notice notice--critical" role="alert">Save the SMTP settings, test the connection, then switch email on.</section><% } %>
+      <% if (notice === "mode-change-requires-off") { %><section class="notice notice--critical" role="alert">Switch email messaging off and save before changing delivery mode or SMTP settings.</section><% } %>
+      <% if (notice === "invalid-mode") { %><section class="notice notice--critical" role="alert">Select a valid email delivery mode.</section><% } %>
+      <% if (notice === "invalid-smtp") { %><section class="notice notice--critical" role="alert">Check the SMTP host, port, and sender address. SMTP host must be a hostname or IP address without a protocol or port.</section><% } %>
+      <% if (notice === "test-succeeded") { %><section class="notice" role="status">SMTP connection test succeeded. No email was sent.</section><% } %>
+      <% if (notice === "test-failed") { %><section class="notice notice--critical" role="alert">SMTP connection test failed. Check the host, port, credentials, and network access from the web container.</section><% } %>
+      <% if (notice === "encryption-key-required") { %><section class="notice notice--critical" role="alert">Email credentials cannot be saved. Configure the existing STRIPE_CONFIG_ENCRYPTION_KEY on the server.</section><% } %>
       <section class="panel rm-card">
         <h2>Email delivery</h2>
-        <p>Amazon SES: <strong><%= sesConfigured ? "Configured" : "Not configured" %></strong> · Status: <strong><%= setting.enabled ? "On" : "Off" %></strong></p>
+        <p>Mode: <strong><%= setting.deliveryMode === "mailpit" ? "Mailpit sandbox" : "Amazon SES" %></strong> · Status: <strong><%= setting.enabled ? "On" : "Off" %></strong></p>
         <form method="post" action="/settings/messaging/email">
           <%- locals.csrfField || "" %>
-          <label><input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %> <%= !sesConfigured && !setting.enabled ? "disabled" : "" %>> Email messaging on</label>
-          <button class="button" type="submit">Save status</button>
+          <div class="form-field">
+            <label for="emailDeliveryMode">Delivery mode</label>
+            <select id="emailDeliveryMode" name="deliveryMode" required>
+              <option value="mailpit" <%= setting.deliveryMode === "mailpit" ? "selected" : "" %>>Mailpit sandbox — <%= setting.mailpitConfig?.configured ? "Configured" : "Not configured" %></option>
+              <option value="ses" <%= setting.deliveryMode === "ses" ? "selected" : "" %>>Amazon SES — <%= setting.sesConfig?.configured ? "Configured" : "Not configured" %></option>
+            </select>
+          </div>
+          <h3>Amazon SES SMTP</h3>
+          <p>Use your SES SMTP endpoint, SMTP credentials, and a verified sender address. Password is stored encrypted and never displayed.</p>
+          <div class="form-field">
+            <label for="sesHost">SMTP host</label>
+            <input id="sesHost" name="sesHost" type="text" value="<%= setting.sesConfig?.host ?? '' %>" autocomplete="off">
+          </div>
+          <div class="form-field">
+            <label for="sesPort">SMTP port</label>
+            <input id="sesPort" name="sesPort" type="number" min="1" max="65535" value="<%= setting.sesConfig?.port ?? 587 %>">
+          </div>
+          <div class="form-field">
+            <label for="sesUsername">SMTP username</label>
+            <input id="sesUsername" name="sesUsername" type="text" autocomplete="off" placeholder="Leave blank to keep the saved username">
+          </div>
+          <div class="form-field">
+            <label for="sesPassword">SMTP password</label>
+            <input id="sesPassword" name="sesPassword" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved password">
+          </div>
+          <div class="form-field">
+            <label for="sesFrom">Sender email</label>
+            <input id="sesFrom" name="sesFrom" type="email" value="<%= setting.sesConfig?.from ?? '' %>" autocomplete="off">
+          </div>
+          <h3>Mailpit sandbox SMTP</h3>
+          <p>Mailpit must already be running and reachable from the web container. Use an internal service name or private IP; its default SMTP port is 1025 and needs no authentication.</p>
+          <div class="form-field">
+            <label for="mailpitHost">SMTP host</label>
+            <input id="mailpitHost" name="mailpitHost" type="text" value="<%= setting.mailpitConfig?.host ?? '' %>" autocomplete="off">
+          </div>
+          <div class="form-field">
+            <label for="mailpitPort">SMTP port</label>
+            <input id="mailpitPort" name="mailpitPort" type="number" min="1" max="65535" value="<%= setting.mailpitConfig?.port ?? 1025 %>">
+          </div>
+          <div class="form-field">
+            <label for="mailpitFrom">Sender email</label>
+            <input id="mailpitFrom" name="mailpitFrom" type="email" value="<%= setting.mailpitConfig?.from ?? 'ridematrix@localhost' %>" autocomplete="off">
+          </div>
+          <% if (setting.deliveryMode === "mailpit") { %>
+            <p class="notice notice--warning">Sandbox mode: messages are routed to this Mailpit SMTP endpoint. Use an internal Mailpit sink, not a public SMTP server.</p>
+          <% } %>
+          <label><input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %> <%= !(setting.deliveryMode === "mailpit" ? setting.mailpitConfig?.configured : setting.sesConfig?.configured) || !setting.deliveryTested ? (!setting.enabled ? "disabled" : "") : "" %>> Email messaging on</label>
+          <button class="button" type="submit">Save settings</button>
+        </form>
+        <form method="post" action="/settings/messaging/email/test">
+          <%- locals.csrfField || "" %>
+          <input type="hidden" name="deliveryMode" value="<%= setting.deliveryMode %>">
+          <p>Connection test: <strong><%= setting.deliveryTested ? "Passed for this configuration" : "Not tested" %></strong></p>
+          <button class="button button--secondary" type="submit" <%= !(setting.deliveryMode === "mailpit" ? setting.mailpitConfig?.configured : setting.sesConfig?.configured) ? "disabled" : "" %>>Test SMTP connection</button>
         </form>
         <p><a class="button button--secondary" href="/settings/messaging/email/templates">Templates</a></p>
       </section>
