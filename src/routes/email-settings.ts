@@ -9,18 +9,22 @@ import {
   getEmailTemplate,
   isEmailDeliveryConfigured,
   listEmailTemplates,
+  markEmailDeliveryTested,
   renderEmailTemplate,
   saveEmailMessagingSettings,
   saveEmailTemplate,
   type EmailTemplate
 } from "../services/email-templates";
 import type { EmailDeliveryMode } from "../services/email-templates";
+import { testEmailDeliveryConnection } from "../services/booking-delivery";
 
 type Options = {
   appTitle: string;
   loadSession?: (cookieHeader: string | undefined) => Promise<SessionAccount>;
   getSettings?: typeof getEmailMessagingSettings;
   saveSettings?: typeof saveEmailMessagingSettings;
+  testConnection?: typeof testEmailDeliveryConnection;
+  markTested?: typeof markEmailDeliveryTested;
   listTemplates?: typeof listEmailTemplates;
   getTemplate?: typeof getEmailTemplate;
   saveTemplate?: typeof saveEmailTemplate;
@@ -35,6 +39,8 @@ export function createEmailSettingsRouter(options: Options): Router {
   const loadSession = options.loadSession ?? getSessionAccount;
   const getSettings = options.getSettings ?? getEmailMessagingSettings;
   const saveSettings = options.saveSettings ?? saveEmailMessagingSettings;
+  const testConnection = options.testConnection ?? testEmailDeliveryConnection;
+  const markTested = options.markTested ?? markEmailDeliveryTested;
   const listTemplates = options.listTemplates ?? listEmailTemplates;
   const getTemplate = options.getTemplate ?? getEmailTemplate;
   const saveTemplate = options.saveTemplate ?? saveEmailTemplate;
@@ -63,9 +69,8 @@ export function createEmailSettingsRouter(options: Options): Router {
         appTitle: options.appTitle,
         email: (res.locals.emailSettingsActor as { email: string }).email,
         setting: await getSettings(),
-        sesConfigured: isDeliveryConfigured("ses"),
-        mailpitConfigured: isDeliveryConfigured("mailpit"),
-        notice: ["saved", "configuration-required", "mode-change-requires-off", "invalid-mode"]
+        notice: ["saved", "configuration-required", "test-required", "mode-change-requires-off", "invalid-mode",
+          "invalid-smtp", "test-succeeded", "test-failed", "encryption-key-required"]
           .includes(String(req.query.notice)) ? String(req.query.notice) : ""
       });
     } catch (error) {
@@ -85,12 +90,66 @@ export function createEmailSettingsRouter(options: Options): Router {
       if (current.enabled && current.deliveryMode !== deliveryMode) {
         return res.redirect(303, `${BASE_PATH}?notice=mode-change-requires-off`);
       }
-      if (enabled && !isDeliveryConfigured(deliveryMode)) {
+      const currentConfigured = deliveryMode === "ses"
+        ? ("sesConfig" in current ? current.sesConfig.configured : isDeliveryConfigured(deliveryMode))
+        : ("mailpitConfig" in current ? current.mailpitConfig.configured : isDeliveryConfigured(deliveryMode));
+      const hasSmtpInput = ["sesHost", "sesPort", "sesUsername", "sesPassword", "sesFrom",
+        "mailpitHost", "mailpitPort", "mailpitFrom"].some((key) => String(req.body?.[key] ?? "").trim());
+      if (enabled && !currentConfigured && !hasSmtpInput) {
         return res.redirect(303, `${BASE_PATH}?notice=configuration-required`);
       }
-      await saveSettings({ enabled, deliveryMode, actorId: actor.id, actorEmail: actor.email });
+      await saveSettings({
+        enabled,
+        deliveryMode,
+        sesConfig: {
+          host: String(req.body?.sesHost ?? ""),
+          port: String(req.body?.sesPort ?? ""),
+          username: String(req.body?.sesUsername ?? ""),
+          password: String(req.body?.sesPassword ?? ""),
+          from: String(req.body?.sesFrom ?? "")
+        },
+        mailpitConfig: {
+          host: String(req.body?.mailpitHost ?? ""),
+          port: String(req.body?.mailpitPort ?? ""),
+          from: String(req.body?.mailpitFrom ?? "")
+        },
+        actorId: actor.id,
+        actorEmail: actor.email
+      });
       return res.redirect(303, `${BASE_PATH}?notice=saved`);
     } catch (error) {
+      if (error instanceof TypeError) {
+        const notice = error.message.includes("Test the selected SMTP") ? "test-required"
+          : error.message.includes("Switch email messaging off") ? "mode-change-requires-off"
+            : error.message.includes("SMTP") || error.message.includes("sender") ? "invalid-smtp"
+              : "configuration-required";
+        return res.redirect(303, `${BASE_PATH}?notice=${notice}`);
+      }
+      if (error instanceof Error && error.message.startsWith("Set STRIPE_CONFIG_ENCRYPTION_KEY")) {
+        return res.redirect(303, `${BASE_PATH}?notice=encryption-key-required`);
+      }
+      return next(error);
+    }
+  });
+
+  router.post(`${BASE_PATH}/test`, requireSuperuser, csrf, async (req, res, next) => {
+    const actor = res.locals.emailSettingsActor as { id: string; email: string };
+    const deliveryMode = String(req.body?.deliveryMode ?? "");
+    if (deliveryMode !== "ses" && deliveryMode !== "mailpit") {
+      return res.redirect(303, `${BASE_PATH}?notice=invalid-mode`);
+    }
+    let configFingerprint: string;
+    try {
+      configFingerprint = await testConnection(deliveryMode);
+    } catch (error) {
+      if (error instanceof TypeError) return res.redirect(303, `${BASE_PATH}?notice=configuration-required`);
+      return res.redirect(303, `${BASE_PATH}?notice=test-failed`);
+    }
+    try {
+      await markTested({ deliveryMode, configFingerprint, actorId: actor.id, actorEmail: actor.email });
+      return res.redirect(303, `${BASE_PATH}?notice=test-succeeded`);
+    } catch (error) {
+      if (error instanceof TypeError) return res.redirect(303, `${BASE_PATH}?notice=test-required`);
       return next(error);
     }
   });

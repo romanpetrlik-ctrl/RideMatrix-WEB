@@ -6,6 +6,11 @@ import {
   renderEmailTemplate,
   validateEmailTemplate
 } from "./email-templates";
+import {
+  decryptIntegrationConfig,
+  encryptIntegrationConfig,
+  integrationConfigEncryptionKey
+} from "./integration-config-crypto";
 
 test("email delivery configuration validates SES credentials and allows unauthenticated Mailpit SMTP", () => {
   assert.equal(isEmailDeliveryConfigured("ses", {
@@ -16,6 +21,7 @@ test("email delivery configuration validates SES credentials and allows unauthen
   }), true);
   assert.equal(isEmailDeliveryConfigured("ses", {}), false);
   assert.equal(isEmailDeliveryConfigured("mailpit", { MAILPIT_SMTP_HOST: "mailpit" }), true);
+  assert.equal(isEmailDeliveryConfigured("mailpit", { MAILPIT_SMTP_HOST: "smtp.example.com" }), false);
   assert.equal(isEmailDeliveryConfigured("mailpit", { MAILPIT_SMTP_HOST: "mailpit", MAILPIT_SMTP_PORT: "0" }), false);
   assert.equal(isEmailDeliveryConfigured("mailpit", {}), false);
   assert.deepEqual(getEmailDeliveryConfig("mailpit", { MAILPIT_SMTP_HOST: "mailpit" }), {
@@ -56,4 +62,14 @@ test("email templates reject unsupported events, variables, and malformed placeh
     subjectTemplate: "Subject",
     bodyTemplate: "{{invalid"
   }), /supported template variables/);
+});
+
+test("integration configuration encryption protects saved email credentials", () => {
+  const key = Buffer.alloc(32, 7);
+  const secret = "smtp-password-that-must-not-be-plaintext";
+  const encrypted = encryptIntegrationConfig(secret, key);
+  assert.equal(decryptIntegrationConfig(encrypted, key), secret);
+  assert.equal(JSON.stringify(encrypted).includes(secret), false);
+  assert.equal(integrationConfigEncryptionKey(key.toString("base64")).length, 32);
+  assert.throws(() => integrationConfigEncryptionKey("invalid"));
 });

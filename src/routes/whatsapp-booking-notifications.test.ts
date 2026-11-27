@@ -26,7 +26,17 @@ function createServer(session: SessionAccount, overrides: Partial<WhatsAppSettin
     appTitle: "WhatsApp Settings Test",
     loadSession: async () => session,
     getSwitch: async () => ({ enabled: false, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
-    getEmailSettings: async () => ({ enabled: false, deliveryMode: "ses", updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
+    getEmailSettings: async () => ({
+      enabled: false,
+      deliveryMode: "ses",
+      sesConfig: { configured: false, host: "", port: 587, from: "" },
+      mailpitConfig: { configured: false, host: "", port: 1025, from: "ridematrix@localhost" },
+      deliveryConfigured: false,
+      verifiedDeliveryMode: null,
+      deliveryTested: false,
+      updatedAt: "2030-01-01T00:00:00Z",
+      updatedByEmail: null
+    }),
     listSettings: async () => [],
     isApiConfigured: () => false,
     ...overrides

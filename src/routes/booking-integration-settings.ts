@@ -8,7 +8,7 @@ import {
   saveMinimumOnlineNotice
 } from "../services/booking-integration-settings";
 import { getStripeSettingsSummary } from "../services/stripe-settings";
-import { getEmailMessagingSettings, isEmailDeliveryConfigured } from "../services/email-templates";
+import { getEmailMessagingSettings } from "../services/email-templates";
 
 type Options = { appTitle: string };
 
@@ -53,7 +53,7 @@ export function createBookingIntegrationSettingsRouter(options: Options): Router
       const integrations = integrationReadiness();
       const stripe = await getStripeSettingsSummary();
       const email = await getEmailMessagingSettings();
-      const emailReady = isEmailDeliveryConfigured(email.deliveryMode);
+      const emailReady = email.deliveryConfigured;
       integrations[1].ready = email.enabled && emailReady;
       integrations[1].status = !emailReady ? "Not configured" : email.enabled ? "Configured" : "Configured (Off)";
       const stripeReady = (stripe.mode === "test" ? stripe.testConfigured : stripe.liveConfigured) &&

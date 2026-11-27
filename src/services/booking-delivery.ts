@@ -3,7 +3,8 @@ import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
 import {
-  getEmailDeliveryConfig,
+  getStoredEmailDeliveryConfig,
+  getEmailDeliveryConfigFingerprint,
   getEmailTemplate,
   renderEmailTemplate,
   type EmailDeliveryConfig,
@@ -68,11 +69,11 @@ function createSmtpTransport(config: EmailDeliveryConfig) {
 }
 
 export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
-  const config = getEmailDeliveryConfig(row.email_delivery_mode);
+  const config = await getStoredEmailDeliveryConfig(row.email_delivery_mode);
   if (!config) {
     throw new Error(row.email_delivery_mode === "mailpit"
-      ? "Mailpit SMTP is not configured. Set MAILPIT_SMTP_HOST and a valid MAILPIT_SMTP_PORT."
-      : "SES SMTP is not configured. Set SES_SMTP_HOST, SES_SMTP_USERNAME, SES_SMTP_PASSWORD, SES_SMTP_PORT, and SES_FROM_EMAIL.");
+      ? "Mailpit SMTP is not configured. Configure its host and sender in Settings → Messaging → Email."
+      : "SES SMTP is not configured. Configure its host, credentials, and sender in Settings → Messaging → Email.");
   }
   const paymentTemplate = row.event_type === "payment_link" || row.event_type === "payment_paid" || row.event_type === "payment_cancelled"
     ? await getEmailTemplate(row.event_type)
@@ -102,6 +103,20 @@ export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
     text,
     messageId: `<${row.id}@ridematrix.local>`
   });
+}
+
+export async function testEmailDeliveryConnection(mode: EmailDeliveryMode): Promise<string> {
+  const config = await getStoredEmailDeliveryConfig(mode);
+  if (!config) {
+    throw new TypeError("Configure the selected SMTP connection before testing it.");
+  }
+  const transporter = createSmtpTransport(config);
+  try {
+    await transporter.verify();
+  } finally {
+    transporter.close();
+  }
+  return getEmailDeliveryConfigFingerprint(config);
 }
 
 export async function sendBookingWhatsApp(row: DeliveryRow, setting: SendableWhatsAppEventSetting): Promise<void> {

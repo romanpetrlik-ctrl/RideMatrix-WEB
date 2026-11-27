@@ -2443,6 +2443,17 @@ export const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS delivery_mode TEXT NOT NULL DEFAULT 'ses'
         CHECK (delivery_mode IN ('ses', 'mailpit'));
     `
+  },
+  {
+    id: "0052_email_delivery_configuration",
+    sql: `
+      ALTER TABLE email_messaging_settings
+        ADD COLUMN IF NOT EXISTS encrypted_delivery_config TEXT,
+        ADD COLUMN IF NOT EXISTS delivery_config_iv TEXT,
+        ADD COLUMN IF NOT EXISTS delivery_config_auth_tag TEXT,
+        ADD COLUMN IF NOT EXISTS verified_delivery_mode TEXT
+          CHECK (verified_delivery_mode IN ('ses', 'mailpit'));
+    `
   }
 ];
 

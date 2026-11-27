@@ -138,6 +138,16 @@ test("email delivery migration adds SES and Mailpit mode with SES as the safe ex
   assert.match(migration.sql, /CHECK \(delivery_mode IN \('ses', 'mailpit'\)\)/);
 });
 
+test("email delivery configuration migration adds encrypted settings and test status", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0052_email_delivery_configuration");
+  assert.ok(migration);
+  assert.match(migration.sql, /encrypted_delivery_config TEXT/);
+  assert.match(migration.sql, /delivery_config_iv TEXT/);
+  assert.match(migration.sql, /delivery_config_auth_tag TEXT/);
+  assert.match(migration.sql, /verified_delivery_mode TEXT/);
+  assert.match(migration.sql, /CHECK \(verified_delivery_mode IN \('ses', 'mailpit'\)\)/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

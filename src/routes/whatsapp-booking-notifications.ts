@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
-import { getEmailMessagingSettings, isEmailDeliveryConfigured } from "../services/email-templates";
+import { getEmailMessagingSettings } from "../services/email-templates";
 import {
   getWhatsAppMessagingSwitch,
   getWhatsAppBookingEvent,
@@ -73,7 +73,7 @@ export function createWhatsAppBookingNotificationsRouter(options: WhatsAppSettin
         apiConfigured: apiConfigured(),
         emailEnabled: emailSettings.enabled,
         emailDeliveryMode: emailSettings.deliveryMode,
-        emailDeliveryConfigured: isEmailDeliveryConfigured(emailSettings.deliveryMode)
+        emailDeliveryConfigured: emailSettings.deliveryConfigured
       });
     } catch (error) {
       return next(error);
