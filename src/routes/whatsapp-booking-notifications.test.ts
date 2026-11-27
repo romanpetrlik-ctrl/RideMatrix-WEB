@@ -26,7 +26,7 @@ function createServer(session: SessionAccount, overrides: Partial<WhatsAppSettin
     appTitle: "WhatsApp Settings Test",
     loadSession: async () => session,
     getSwitch: async () => ({ enabled: false, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
-    getEmailSettings: async () => ({ enabled: false, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
+    getEmailSettings: async () => ({ enabled: false, deliveryMode: "ses", updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: null }),
     listSettings: async () => [],
     isApiConfigured: () => false,
     ...overrides
@@ -98,7 +98,7 @@ test("WhatsApp settings POST without a CSRF token is rejected before any save", 
   }, {
     saveSwitch: async () => {
       saved = true;
-      return { enabled: true, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: "settings@example.com" };
+      return { enabled: true, deliveryMode: "ses", updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: "settings@example.com" };
     }
   });
   assert.equal(saved, false);
@@ -128,7 +128,7 @@ test("WhatsApp cannot be switched on before API configuration is present", async
   }, {
     saveSwitch: async () => {
       saved = true;
-      return { enabled: true, updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: "settings@example.com" };
+      return { enabled: true, deliveryMode: "ses", updatedAt: "2030-01-01T00:00:00Z", updatedByEmail: "settings@example.com" };
     }
   });
   assert.equal(saved, false);

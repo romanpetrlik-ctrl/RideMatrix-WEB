@@ -2,6 +2,14 @@ import { query } from "../database/connection";
 
 export const EMAIL_TEMPLATE_EVENTS = ["payment_link", "payment_paid", "payment_cancelled"] as const;
 export type EmailTemplateEvent = (typeof EMAIL_TEMPLATE_EVENTS)[number];
+export type EmailDeliveryMode = "ses" | "mailpit";
+export type EmailDeliveryConfig = {
+  host: string;
+  port: number;
+  secure: boolean;
+  from: string;
+  auth?: { user: string; pass: string };
+};
 export type EmailTemplate = {
   eventType: EmailTemplateEvent;
   subjectTemplate: string;
@@ -9,6 +17,45 @@ export type EmailTemplate = {
   updatedAt: string | null;
   updatedByEmail: string | null;
 };
+
+export function getEmailDeliveryConfig(
+  mode: EmailDeliveryMode,
+  env: NodeJS.ProcessEnv = process.env
+): EmailDeliveryConfig | null {
+  const portName = mode === "mailpit" ? "MAILPIT_SMTP_PORT" : "SES_SMTP_PORT";
+  const hostName = mode === "mailpit" ? "MAILPIT_SMTP_HOST" : "SES_SMTP_HOST";
+  const host = String(env[hostName] ?? "").trim();
+  const port = Number(env[portName] || (mode === "mailpit" ? 1025 : 587));
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+
+  if (mode === "mailpit") {
+    return {
+      host,
+      port,
+      secure: false,
+      from: String(env.MAILPIT_FROM_EMAIL ?? "").trim() || "ridematrix@localhost"
+    };
+  }
+
+  const username = String(env.SES_SMTP_USERNAME ?? "").trim();
+  const password = String(env.SES_SMTP_PASSWORD ?? "");
+  const from = String(env.SES_FROM_EMAIL ?? "").trim();
+  if (!username || !password || !from) return null;
+  return {
+    host,
+    port,
+    secure: port === 465,
+    from,
+    auth: { user: username, pass: password }
+  };
+}
+
+export function isEmailDeliveryConfigured(
+  mode: EmailDeliveryMode,
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return getEmailDeliveryConfig(mode, env) !== null;
+}
 
 export const EMAIL_TEMPLATE_VARIABLES = {
   payerName: "Payer name",
@@ -83,30 +130,38 @@ export function renderEmailTemplate(template: string, values: Record<string, unk
 
 export async function getEmailMessagingSettings(): Promise<{
   enabled: boolean;
+  deliveryMode: EmailDeliveryMode;
   updatedAt: string;
   updatedByEmail: string | null;
 }> {
   const result = await query<{
     enabled: boolean;
+    delivery_mode: EmailDeliveryMode;
     updated_at: string;
     updated_by_email: string | null;
-  }>(`SELECT enabled, updated_at, updated_by_email FROM email_messaging_settings WHERE id = 1`);
+  }>(`SELECT enabled, delivery_mode, updated_at, updated_by_email FROM email_messaging_settings WHERE id = 1`);
   const row = result.rows[0];
   if (!row) throw new Error("Email messaging settings have not been initialized.");
-  return { enabled: row.enabled, updatedAt: row.updated_at, updatedByEmail: row.updated_by_email };
+  return {
+    enabled: row.enabled,
+    deliveryMode: row.delivery_mode,
+    updatedAt: row.updated_at,
+    updatedByEmail: row.updated_by_email
+  };
 }
 
 export async function saveEmailMessagingSettings(input: {
   enabled: boolean;
+  deliveryMode: EmailDeliveryMode;
   actorId: string;
   actorEmail: string;
 }): Promise<void> {
   await query(
     `UPDATE email_messaging_settings
-        SET enabled = $1, updated_by_account_id = $2, updated_by_email = $3,
-            updated_at = CURRENT_TIMESTAMP
+        SET enabled = $1, delivery_mode = $2, updated_by_account_id = $3,
+            updated_by_email = $4, updated_at = CURRENT_TIMESTAMP
       WHERE id = 1`,
-    [input.enabled, input.actorId, input.actorEmail]
+    [input.enabled, input.deliveryMode, input.actorId, input.actorEmail]
   );
 }
 

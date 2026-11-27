@@ -16,7 +16,7 @@
       </header>
       <section class="panel rm-card">
         <h2>Email</h2>
-        <p>Status: <strong><%= emailEnabled ? "On" : "Off" %></strong> · Amazon SES: <%= sesConfigured ? "Configured" : "Not configured" %></p>
+        <p>Status: <strong><%= emailEnabled ? "On" : "Off" %></strong> · <%= emailDeliveryMode === "mailpit" ? "Mailpit sandbox" : "Amazon SES" %>: <%= emailDeliveryConfigured ? "Configured" : "Not configured" %></p>
         <a class="button button--secondary" href="/settings/messaging/email">Configure Email (On/Off)</a>
         <a class="button button--secondary" href="/settings/messaging/email/templates">Email templates</a>
       </section>

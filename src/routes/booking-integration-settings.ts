@@ -8,6 +8,7 @@ import {
   saveMinimumOnlineNotice
 } from "../services/booking-integration-settings";
 import { getStripeSettingsSummary } from "../services/stripe-settings";
+import { getEmailMessagingSettings, isEmailDeliveryConfigured } from "../services/email-templates";
 
 type Options = { appTitle: string };
 
@@ -20,7 +21,7 @@ function integrationReadiness(env: NodeJS.ProcessEnv = process.env) {
   );
   return [
     { name: "Stripe payment links", ready: false },
-    { name: "Amazon SES email", ready: configured(["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]) },
+    { name: "Email delivery", ready: false },
     { name: "WhatsApp Business", ready: configured(["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_API_VERSION"]) },
     { name: "Microsoft 365 dispatch calendar", ready: configured(["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_CALENDAR_USER", "M365_CALENDAR_ID"]) },
     { name: "Driver calendar OAuth (Microsoft or Google)", ready: driverCalendarReady }
@@ -51,6 +52,10 @@ export function createBookingIntegrationSettingsRouter(options: Options): Router
       const actor = res.locals.integrationSettingsActor as { id: string; email: string };
       const integrations = integrationReadiness();
       const stripe = await getStripeSettingsSummary();
+      const email = await getEmailMessagingSettings();
+      const emailReady = isEmailDeliveryConfigured(email.deliveryMode);
+      integrations[1].ready = email.enabled && emailReady;
+      integrations[1].status = !emailReady ? "Not configured" : email.enabled ? "Configured" : "Configured (Off)";
       const stripeReady = (stripe.mode === "test" ? stripe.testConfigured : stripe.liveConfigured) &&
         stripe.publicUrlConfigured;
       integrations[0].ready = stripe.enabled && stripeReady;

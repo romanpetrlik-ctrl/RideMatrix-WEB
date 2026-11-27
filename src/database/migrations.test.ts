@@ -131,6 +131,13 @@ test("Stripe credentials and payment email templates have encrypted storage and 
   assert.doesNotMatch(migration.sql, /sk_live_|sk_test_|whsec_/);
 });
 
+test("email delivery migration adds SES and Mailpit mode with SES as the safe existing default", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0051_email_delivery_mode");
+  assert.ok(migration);
+  assert.match(migration.sql, /ADD COLUMN IF NOT EXISTS delivery_mode TEXT NOT NULL DEFAULT 'ses'/);
+  assert.match(migration.sql, /CHECK \(delivery_mode IN \('ses', 'mailpit'\)\)/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

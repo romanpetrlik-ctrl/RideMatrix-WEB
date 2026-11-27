@@ -2,7 +2,13 @@ import { parsePhoneNumberFromString } from "libphonenumber-js";
 import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
-import { getEmailTemplate, renderEmailTemplate } from "./email-templates";
+import {
+  getEmailDeliveryConfig,
+  getEmailTemplate,
+  renderEmailTemplate,
+  type EmailDeliveryConfig,
+  type EmailDeliveryMode
+} from "./email-templates";
 import {
   isWhatsAppBookingEventType,
   loadSendableWhatsAppSettings,
@@ -25,6 +31,7 @@ type DeliveryRow = {
   recipient_contact: string;
   payload: Record<string, unknown>;
   attempts: number;
+  email_delivery_mode: EmailDeliveryMode;
 };
 
 function messageText(row: DeliveryRow): string {
@@ -48,19 +55,12 @@ function messageText(row: DeliveryRow): string {
   return `Reminder: booking ${reference} is scheduled for ${String(payload.serviceDateTime ?? "")}. Pickup: ${String(payload.pickup ?? "")}. Destination: ${String(payload.dropoff ?? "")}.`;
 }
 
-function createSmtpTransport() {
-  const host = String(process.env.SES_SMTP_HOST ?? "").trim();
-  const username = String(process.env.SES_SMTP_USERNAME ?? "").trim();
-  const password = String(process.env.SES_SMTP_PASSWORD ?? "");
-  const port = Number(process.env.SES_SMTP_PORT || 587);
-  if (!host || !username || !password || !Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error("SES SMTP is not configured. Set SES_SMTP_HOST, SES_SMTP_USERNAME, SES_SMTP_PASSWORD, and SES_SMTP_PORT.");
-  }
+function createSmtpTransport(config: EmailDeliveryConfig) {
   return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user: username, pass: password },
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    ...(config.auth ? { auth: config.auth } : {}),
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000
@@ -68,8 +68,12 @@ function createSmtpTransport() {
 }
 
 export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
-  const from = String(process.env.SES_FROM_EMAIL ?? "").trim();
-  if (!from) throw new Error("SES_FROM_EMAIL is required to send booking emails.");
+  const config = getEmailDeliveryConfig(row.email_delivery_mode);
+  if (!config) {
+    throw new Error(row.email_delivery_mode === "mailpit"
+      ? "Mailpit SMTP is not configured. Set MAILPIT_SMTP_HOST and a valid MAILPIT_SMTP_PORT."
+      : "SES SMTP is not configured. Set SES_SMTP_HOST, SES_SMTP_USERNAME, SES_SMTP_PASSWORD, SES_SMTP_PORT, and SES_FROM_EMAIL.");
+  }
   const paymentTemplate = row.event_type === "payment_link" || row.event_type === "payment_paid" || row.event_type === "payment_cancelled"
     ? await getEmailTemplate(row.event_type)
     : null;
@@ -90,9 +94,9 @@ export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
   const text = paymentTemplate
     ? renderEmailTemplate(paymentTemplate.bodyTemplate, templateValues)
     : messageText(row);
-  const transporter = createSmtpTransport();
+  const transporter = createSmtpTransport(config);
   await transporter.sendMail({
-    from,
+    from: config.from,
     to: row.recipient_contact,
     subject: subject.replace(/[\r\n]+/g, " ").slice(0, 180),
     text,
@@ -179,7 +183,8 @@ async function claimPendingMessages(limit: number): Promise<DeliveryRow[]> {
   return withTransaction(async (client) => {
     const result = await client.query<DeliveryRow>(
       `SELECT id, booking_id, event_type, recipient_type, channel, recipient_name,
-              recipient_contact, payload, attempts
+              recipient_contact, payload, attempts,
+              (SELECT delivery_mode FROM email_messaging_settings WHERE id = 1) AS email_delivery_mode
          FROM booking_delivery_outbox
         WHERE delivery_status IN ('pending', 'failed', 'sending')
           AND available_at <= CURRENT_TIMESTAMP

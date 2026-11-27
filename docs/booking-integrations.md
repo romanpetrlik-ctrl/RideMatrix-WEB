@@ -34,9 +34,15 @@ before pickup have no automatic cancellation deadline.
 
 ## Email and WhatsApp
 
-Set `SES_SMTP_HOST`, `SES_SMTP_PORT`, `SES_SMTP_USERNAME`,
-`SES_SMTP_PASSWORD`, and `SES_FROM_EMAIL` for Amazon SES SMTP. Development can
-use Mailpit by setting the same variables to the local SMTP endpoint.
+Configure production delivery with `SES_SMTP_HOST`, `SES_SMTP_PORT`,
+`SES_SMTP_USERNAME`, `SES_SMTP_PASSWORD`, and `SES_FROM_EMAIL`.
+
+For sandbox testing, set `MAILPIT_SMTP_HOST` to a host reachable from the web
+container and optionally set `MAILPIT_SMTP_PORT` (default `1025`) and
+`MAILPIT_FROM_EMAIL` (default `ridematrix@localhost`). Mailpit's default SMTP
+listener needs no authentication. Select **Mailpit sandbox** in Settings →
+Messaging → Email to route messages to the Mailpit inbox; no SES account is
+required. The sandbox mode must only point to an internal Mailpit instance.
 Email delivery is switched on separately in Settings → Messaging → Email.
 Payment link, payment confirmation, and non-payment cancellation messages use
 editable plain-text templates at Settings → Messaging → Email → Templates.

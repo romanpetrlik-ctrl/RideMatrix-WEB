@@ -15,14 +15,26 @@
         <nav aria-label="Breadcrumb"><a href="/settings">Settings</a> <span aria-hidden="true">›</span> <a href="/settings/messaging">Messaging</a> <span aria-hidden="true">›</span> Email</nav>
       </header>
       <% if (notice === "saved") { %><section class="notice" role="status">Email settings saved.</section><% } %>
-      <% if (notice === "configuration-required") { %><section class="notice notice--critical" role="alert">Configure Amazon SES on the server before switching email on.</section><% } %>
+      <% if (notice === "configuration-required") { %><section class="notice notice--critical" role="alert">Configure the selected email delivery mode on the server before switching email on.</section><% } %>
+      <% if (notice === "mode-change-requires-off") { %><section class="notice notice--critical" role="alert">Switch email messaging off and save before changing delivery mode.</section><% } %>
+      <% if (notice === "invalid-mode") { %><section class="notice notice--critical" role="alert">Select a valid email delivery mode.</section><% } %>
       <section class="panel rm-card">
         <h2>Email delivery</h2>
-        <p>Amazon SES: <strong><%= sesConfigured ? "Configured" : "Not configured" %></strong> · Status: <strong><%= setting.enabled ? "On" : "Off" %></strong></p>
+        <p>Mode: <strong><%= setting.deliveryMode === "mailpit" ? "Mailpit sandbox" : "Amazon SES" %></strong> · Status: <strong><%= setting.enabled ? "On" : "Off" %></strong></p>
         <form method="post" action="/settings/messaging/email">
           <%- locals.csrfField || "" %>
-          <label><input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %> <%= !sesConfigured && !setting.enabled ? "disabled" : "" %>> Email messaging on</label>
-          <button class="button" type="submit">Save status</button>
+          <div class="form-field">
+            <label for="emailDeliveryMode">Delivery mode</label>
+            <select id="emailDeliveryMode" name="deliveryMode" required>
+              <option value="mailpit" <%= setting.deliveryMode === "mailpit" ? "selected" : "" %>>Mailpit sandbox — <%= mailpitConfigured ? "Configured" : "Not configured" %></option>
+              <option value="ses" <%= setting.deliveryMode === "ses" ? "selected" : "" %>>Amazon SES — <%= sesConfigured ? "Configured" : "Not configured" %></option>
+            </select>
+          </div>
+          <% if (setting.deliveryMode === "mailpit") { %>
+            <p class="notice notice--warning">Sandbox mode: messages are routed to the configured Mailpit SMTP inbox and are not intended for real recipients.</p>
+          <% } %>
+          <label><input type="checkbox" name="enabled" value="on" <%= setting.enabled ? "checked" : "" %> <%= !(setting.deliveryMode === "mailpit" ? mailpitConfigured : sesConfigured) && !setting.enabled ? "disabled" : "" %>> Email messaging on</label>
+          <button class="button" type="submit">Save settings</button>
         </form>
         <p><a class="button button--secondary" href="/settings/messaging/email/templates">Templates</a></p>
       </section>

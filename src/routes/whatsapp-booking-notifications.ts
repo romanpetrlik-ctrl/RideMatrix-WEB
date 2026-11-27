@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
 import { getSessionAccount, type SessionAccount } from "../services/api";
-import { getEmailMessagingSettings } from "../services/email-templates";
+import { getEmailMessagingSettings, isEmailDeliveryConfigured } from "../services/email-templates";
 import {
   getWhatsAppMessagingSwitch,
   getWhatsAppBookingEvent,
@@ -64,15 +64,16 @@ export function createWhatsAppBookingNotificationsRouter(options: WhatsAppSettin
   router.get(MESSAGING_PATH, requireSuperuser, async (req, res, next) => {
     try {
       const actor = res.locals.whatsAppSettingsActor as { id: string; email: string };
+      const emailSettings = await getEmailSettings();
       return res.render("pages/messaging-settings", {
         title: "Messaging",
         appTitle: options.appTitle,
         email: actor.email,
         whatsapp: await getSwitch(),
         apiConfigured: apiConfigured(),
-        emailEnabled: (await getEmailSettings()).enabled,
-        sesConfigured: ["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]
-          .every((name) => Boolean(String(process.env[name] ?? "").trim()))
+        emailEnabled: emailSettings.enabled,
+        emailDeliveryMode: emailSettings.deliveryMode,
+        emailDeliveryConfigured: isEmailDeliveryConfigured(emailSettings.deliveryMode)
       });
     } catch (error) {
       return next(error);

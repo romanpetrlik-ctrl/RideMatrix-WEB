@@ -2435,6 +2435,14 @@ export const MIGRATIONS: Migration[] = [
           'availability_review', 'booking_accepted'
         ));
     `
+  },
+  {
+    id: "0051_email_delivery_mode",
+    sql: `
+      ALTER TABLE email_messaging_settings
+        ADD COLUMN IF NOT EXISTS delivery_mode TEXT NOT NULL DEFAULT 'ses'
+        CHECK (delivery_mode IN ('ses', 'mailpit'));
+    `
   }
 ];
 

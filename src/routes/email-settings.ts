@@ -7,12 +7,14 @@ import {
   EMAIL_TEMPLATE_VARIABLES,
   getEmailMessagingSettings,
   getEmailTemplate,
+  isEmailDeliveryConfigured,
   listEmailTemplates,
   renderEmailTemplate,
   saveEmailMessagingSettings,
   saveEmailTemplate,
   type EmailTemplate
 } from "../services/email-templates";
+import type { EmailDeliveryMode } from "../services/email-templates";
 
 type Options = {
   appTitle: string;
@@ -22,16 +24,11 @@ type Options = {
   listTemplates?: typeof listEmailTemplates;
   getTemplate?: typeof getEmailTemplate;
   saveTemplate?: typeof saveEmailTemplate;
-  isSesConfigured?: () => boolean;
+  isDeliveryConfigured?: (mode: EmailDeliveryMode) => boolean;
 };
 
 const BASE_PATH = "/settings/messaging/email";
 const TEMPLATE_PATH = `${BASE_PATH}/templates`;
-
-function isSesConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  return ["SES_SMTP_HOST", "SES_SMTP_USERNAME", "SES_SMTP_PASSWORD", "SES_FROM_EMAIL"]
-    .every((name) => Boolean(String(env[name] ?? "").trim()));
-}
 
 export function createEmailSettingsRouter(options: Options): Router {
   const router = Router();
@@ -41,7 +38,7 @@ export function createEmailSettingsRouter(options: Options): Router {
   const listTemplates = options.listTemplates ?? listEmailTemplates;
   const getTemplate = options.getTemplate ?? getEmailTemplate;
   const saveTemplate = options.saveTemplate ?? saveEmailTemplate;
-  const sesConfigured = options.isSesConfigured ?? (() => isSesConfigured());
+  const isDeliveryConfigured = options.isDeliveryConfigured ?? ((mode) => isEmailDeliveryConfigured(mode));
   router.use(BASE_PATH, noStoreProtectedResponse);
   const csrf = requireCsrfToken({ appTitle: options.appTitle });
 
@@ -66,8 +63,10 @@ export function createEmailSettingsRouter(options: Options): Router {
         appTitle: options.appTitle,
         email: (res.locals.emailSettingsActor as { email: string }).email,
         setting: await getSettings(),
-        sesConfigured: sesConfigured(),
-        notice: ["saved", "configuration-required"].includes(String(req.query.notice)) ? String(req.query.notice) : ""
+        sesConfigured: isDeliveryConfigured("ses"),
+        mailpitConfigured: isDeliveryConfigured("mailpit"),
+        notice: ["saved", "configuration-required", "mode-change-requires-off", "invalid-mode"]
+          .includes(String(req.query.notice)) ? String(req.query.notice) : ""
       });
     } catch (error) {
       return next(error);
@@ -77,11 +76,19 @@ export function createEmailSettingsRouter(options: Options): Router {
   router.post(BASE_PATH, requireSuperuser, csrf, async (req, res, next) => {
     const actor = res.locals.emailSettingsActor as { id: string; email: string };
     const enabled = req.body?.enabled === "on";
-    if (enabled && !sesConfigured()) {
-      return res.redirect(303, `${BASE_PATH}?notice=configuration-required`);
-    }
     try {
-      await saveSettings({ enabled, actorId: actor.id, actorEmail: actor.email });
+      const deliveryMode = String(req.body?.deliveryMode ?? "");
+      if (deliveryMode !== "ses" && deliveryMode !== "mailpit") {
+        return res.redirect(303, `${BASE_PATH}?notice=invalid-mode`);
+      }
+      const current = await getSettings();
+      if (current.enabled && current.deliveryMode !== deliveryMode) {
+        return res.redirect(303, `${BASE_PATH}?notice=mode-change-requires-off`);
+      }
+      if (enabled && !isDeliveryConfigured(deliveryMode)) {
+        return res.redirect(303, `${BASE_PATH}?notice=configuration-required`);
+      }
+      await saveSettings({ enabled, deliveryMode, actorId: actor.id, actorEmail: actor.email });
       return res.redirect(303, `${BASE_PATH}?notice=saved`);
     } catch (error) {
       return next(error);
