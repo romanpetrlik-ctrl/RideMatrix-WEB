@@ -22,6 +22,12 @@ import type { BookingPrice, BookingStops } from "../services/booking-pricing";
 import { buildCustomerQuote } from "../services/customer-quote";
 import { readMapConfiguration } from "../services/maps";
 import {
+  BookingNotificationError,
+  resendBookingNotification,
+  type BookingNotificationChannel,
+  type BookingNotificationKind
+} from "../services/booking-notifications";
+import {
   BOOKING_COUNT_FIELDS,
   BOOKING_COUNT_MAX,
   BOOKING_PAYMENT_METHODS,
@@ -66,6 +72,7 @@ export type BookingsRouterOptions = {
   resolveIntegrationAlert?: typeof resolveBookingIntegrationAlert;
   archiveBooking?: typeof archiveBookingRecord;
   changeBookingStatus?: typeof changeBookingStatusRecord;
+  resendNotification?: typeof resendBookingNotification;
   now?: () => Date;
   mapConfiguration?: () => { browserApiKey?: string; mapId?: string };
 };
@@ -168,6 +175,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const loadDashboardBookings = options.listDashboardBookings ?? ((view, search) => listBookingDashboard(view, search, options.now?.() ?? new Date()));
   const archiveSavedBooking = options.archiveBooking ?? archiveBookingRecord;
   const changeSavedBookingStatus = options.changeBookingStatus ?? changeBookingStatusRecord;
+  const resendNotification = options.resendNotification ?? resendBookingNotification;
   const csrfGuard = requireCsrfToken({ appTitle: options.appTitle });
   const mapConfiguration = options.mapConfiguration ?? (() => {
     const configuration = readMapConfiguration();
@@ -177,6 +185,7 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const saveRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
   const archiveRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
   const statusRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
+  const notificationRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
 
   const requireAdminSession = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -508,6 +517,41 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
     }
   });
 
+  router.post(
+    "/bookings/:bookingId/notifications/:kind/:channel/resend",
+    requireBookingReadSession,
+    notificationRateLimit,
+    csrfGuard,
+    async (req, res, next) => {
+      const actor = res.locals.bookingActor as BookingActor;
+      const bookingId = String(req.params.bookingId);
+      const kind = String(req.params.kind);
+      const channel = String(req.params.channel);
+      const validKind = ["booking_received", "payment_link", "driver_assignment"].includes(kind);
+      if (!validKind || (channel !== "email" && channel !== "whatsapp")) {
+        return res.redirect(303, `/bookings/${encodeURIComponent(bookingId)}?notice=notification-invalid`);
+      }
+      try {
+        await resendNotification({
+          bookingId,
+          kind: kind as BookingNotificationKind,
+          channel: channel as BookingNotificationChannel,
+          actorId: actor.accountId,
+          actorEmail: actor.email
+        });
+        return res.redirect(303, `/bookings/${encodeURIComponent(bookingId)}?notice=notification-queued`);
+      } catch (error) {
+        if (error instanceof BookingNotificationError) {
+          if (error.code === "not-found") {
+            return res.status(404).render("pages/unavailable", { title: "Not found", appTitle: options.appTitle });
+          }
+          return res.redirect(303, `/bookings/${encodeURIComponent(bookingId)}?notice=notification-${error.code}`);
+        }
+        return next(error);
+      }
+    }
+  );
+
   router.get("/bookings/:bookingId", requireBookingReadSession, async (req, res, next) => {
     try {
       const actor = res.locals.bookingActor as BookingActor;
@@ -521,8 +565,9 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         appTitle: options.appTitle,
         email: actor.email,
         canManageBooking: session.user?.roles.includes("admin") ?? false,
+        canResendNotifications: session.user?.roles.some((role) => role === "admin" || role === "dispatcher") ?? false,
         booking,
-        notice: req.query.notice === "created" ? "created" : "",
+        notice: typeof req.query.notice === "string" ? req.query.notice : "",
         createdAtDisplay: formatInServiceTimezone(booking.createdAt),
         serviceTimezone: booking.serviceTimezone ?? SERVICE_TIMEZONE,
         cargoSummaryText: cargoSummary(counts, booking.childSeatRequired === true, booking.boosterRequired === true),

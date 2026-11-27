@@ -2,15 +2,30 @@ import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { query } from "../database/connection";
 
-export type WhatsAppTemplateParameterKey = "reference" | "serviceDateTime" | "pickup" | "dropoff" | "status";
+export type WhatsAppTemplateParameterKey = "reference" | "serviceDateTime" | "pickup" | "dropoff" | "status"
+  | "paymentUrl" | "amount" | "currency" | "driverName" | "vehicleRegistration";
 
 export const WHATSAPP_BOOKING_EVENTS = [
   {
     type: "booking_received",
     label: "New booking received",
-    trigger: "A booking is created with status New.",
+    trigger: "A booking is created with status New; staff can also resend it manually from the booking detail.",
     recipients: "Lead passenger (requires WhatsApp opt-in and phone)",
     parameters: ["reference", "serviceDateTime", "pickup", "dropoff"]
+  },
+  {
+    type: "payment_link",
+    label: "Payment link",
+    trigger: "Can be sent manually from the booking detail to the payer while the existing Stripe link is active.",
+    recipients: "Payer (requires WhatsApp opt-in for the payer's saved phone)",
+    parameters: ["reference", "paymentUrl", "amount", "currency"]
+  },
+  {
+    type: "driver_assignment",
+    label: "Driver assigned",
+    trigger: "Can be sent manually from the booking detail after a driver has been assigned.",
+    recipients: "Lead passenger (requires WhatsApp opt-in and phone)",
+    parameters: ["reference", "serviceDateTime", "driverName", "vehicleRegistration"]
   },
   {
     type: "availability_review",
@@ -57,7 +72,12 @@ export const WHATSAPP_PARAMETER_LABELS: Record<WhatsAppTemplateParameterKey, str
   serviceDateTime: "Service date and time",
   pickup: "Pickup",
   dropoff: "Destination",
-  status: "Driver status"
+  status: "Driver status",
+  paymentUrl: "Payment link",
+  amount: "Payment amount",
+  currency: "Currency",
+  driverName: "Assigned driver",
+  vehicleRegistration: "Vehicle registration"
 };
 
 export type WhatsAppEventSetting = {

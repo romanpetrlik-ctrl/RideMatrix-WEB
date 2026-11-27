@@ -148,6 +148,16 @@ test("email delivery configuration migration adds encrypted settings and test st
   assert.match(migration.sql, /CHECK \(verified_delivery_mode IN \('ses', 'mailpit'\)\)/);
 });
 
+test("manual booking notifications add template events, WhatsApp settings and outbox audit attribution", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0053_manual_booking_notifications");
+  assert.ok(migration);
+  assert.match(migration.sql, /'booking_received'.*'driver_assignment'/s);
+  assert.match(migration.sql, /INSERT INTO whatsapp_booking_notification_settings/);
+  assert.match(migration.sql, /created_by_account_id TEXT/);
+  assert.match(migration.sql, /created_by_email TEXT/);
+  assert.match(migration.sql, /ON CONFLICT \(event_type\) DO NOTHING/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

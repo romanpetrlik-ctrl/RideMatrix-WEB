@@ -53,6 +53,12 @@ function messageText(row: DeliveryRow): string {
   if (row.event_type === "live_status") {
     return `Booking ${reference} update: ${String(payload.status ?? "")}.`;
   }
+  if (row.event_type === "booking_received") {
+    return `We have received booking ${reference} for ${String(payload.serviceDateTime ?? "")}.`;
+  }
+  if (row.event_type === "driver_assignment") {
+    return `A driver has been assigned to booking ${reference}: ${String(payload.driverName ?? "")}.`;
+  }
   return `Reminder: booking ${reference} is scheduled for ${String(payload.serviceDateTime ?? "")}. Pickup: ${String(payload.pickup ?? "")}. Destination: ${String(payload.dropoff ?? "")}.`;
 }
 
@@ -75,12 +81,14 @@ export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
       ? "Mailpit SMTP is not configured. Configure its host and sender in Settings → Messaging → Email."
       : "SES SMTP is not configured. Configure its host, credentials, and sender in Settings → Messaging → Email.");
   }
-  const paymentTemplate = row.event_type === "payment_link" || row.event_type === "payment_paid" || row.event_type === "payment_cancelled"
+  const emailTemplate = row.event_type === "booking_received" || row.event_type === "payment_link" ||
+      row.event_type === "payment_paid" || row.event_type === "payment_cancelled" ||
+      row.event_type === "driver_assignment"
     ? await getEmailTemplate(row.event_type)
     : null;
   const templateValues = { payerName: row.recipient_name, ...row.payload };
-  const subject = paymentTemplate
-    ? renderEmailTemplate(paymentTemplate.subjectTemplate, templateValues)
+  const subject = emailTemplate
+    ? renderEmailTemplate(emailTemplate.subjectTemplate, templateValues)
     : row.event_type === "payment_link"
       ? `Payment link for booking ${String(row.payload.reference ?? "")}`
       : row.event_type === "payment_paid"
@@ -92,8 +100,8 @@ export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
         : row.event_type === "live_status"
           ? `Journey update: ${String(row.payload.reference ?? "")}`
           : `Journey reminder: ${String(row.payload.reference ?? "")}`;
-  const text = paymentTemplate
-    ? renderEmailTemplate(paymentTemplate.bodyTemplate, templateValues)
+  const text = emailTemplate
+    ? renderEmailTemplate(emailTemplate.bodyTemplate, templateValues)
     : messageText(row);
   const transporter = createSmtpTransport(config);
   await transporter.sendMail({
@@ -168,16 +176,20 @@ export async function enqueueDelivery(input: {
   payload: Record<string, unknown>;
   availableAt?: Date;
   eventKey?: string;
+  actorId?: string;
+  actorEmail?: string;
 }): Promise<void> {
   if (!input.recipientContact.trim()) throw new TypeError("A delivery recipient contact is required.");
   await query(
     `INSERT INTO booking_delivery_outbox (
-       id, booking_id, event_type, event_key, recipient_type, channel, recipient_name, recipient_contact, payload, available_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+       id, booking_id, event_type, event_key, recipient_type, channel, recipient_name, recipient_contact,
+       payload, available_at, created_by_account_id, created_by_email
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12)
      ON CONFLICT (booking_id, event_type, event_key, recipient_type, channel, recipient_contact) DO NOTHING`,
     [randomUUID(), input.bookingId, input.eventType, input.eventKey ?? "", input.recipientType, input.channel,
       input.recipientName.trim().slice(0, 200), input.recipientContact.trim().slice(0, 254),
-      JSON.stringify(input.payload), (input.availableAt ?? new Date()).toISOString()]
+      JSON.stringify(input.payload), (input.availableAt ?? new Date()).toISOString(),
+      input.actorId ?? null, input.actorEmail ?? null]
   );
 }
 

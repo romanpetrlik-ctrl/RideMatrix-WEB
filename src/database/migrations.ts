@@ -2454,6 +2454,47 @@ export const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS verified_delivery_mode TEXT
           CHECK (verified_delivery_mode IN ('ses', 'mailpit'));
     `
+  },
+  {
+    id: "0053_manual_booking_notifications",
+    sql: `
+      ALTER TABLE email_templates
+        DROP CONSTRAINT IF EXISTS email_templates_event_type_check,
+        ADD CONSTRAINT email_templates_event_type_check
+          CHECK (event_type IN (
+            'booking_received', 'payment_link', 'payment_paid',
+            'payment_cancelled', 'driver_assignment'
+          ));
+
+      INSERT INTO email_templates (event_type, subject_template, body_template) VALUES
+        ('booking_received', 'Booking received: {{reference}}', E'Hello {{passengerName}},\\n\\nWe have received your booking {{reference}}.\\n\\nService: {{serviceDateTime}}\\nPickup: {{pickup}}\\nDestination: {{dropoff}}\\nStatus: {{bookingStatus}}\\n\\nWe will contact you with any updates.'),
+        ('driver_assignment', 'Driver assigned to booking {{reference}}', E'Hello {{passengerName}},\\n\\nA driver has been assigned to booking {{reference}}.\\n\\nService: {{serviceDateTime}}\\nDriver: {{driverName}}\\nVehicle: {{vehicleRegistration}}\\nPickup: {{pickup}}\\nDestination: {{dropoff}}\\n\\nPlease contact the booking team if you need help.')
+      ON CONFLICT (event_type) DO NOTHING;
+
+      ALTER TABLE whatsapp_booking_notification_settings
+        DROP CONSTRAINT IF EXISTS whatsapp_booking_notification_settings_event_type_check,
+        ADD CONSTRAINT whatsapp_booking_notification_settings_event_type_check
+          CHECK (event_type IN (
+            'booking_received', 'payment_link', 'driver_assignment',
+            'availability_review', 'booking_accepted', 'customer_reminder_24h',
+            'driver_reminder_24h', 'live_status'
+          ));
+
+      INSERT INTO whatsapp_booking_notification_settings (event_type)
+      VALUES ('payment_link'), ('driver_assignment')
+      ON CONFLICT (event_type) DO NOTHING;
+
+      ALTER TABLE booking_delivery_outbox
+        ADD COLUMN IF NOT EXISTS created_by_account_id TEXT,
+        ADD COLUMN IF NOT EXISTS created_by_email TEXT,
+        DROP CONSTRAINT IF EXISTS booking_delivery_outbox_event_type_check;
+      ALTER TABLE booking_delivery_outbox
+        ADD CONSTRAINT booking_delivery_outbox_event_type_check CHECK (event_type IN (
+          'payment_link', 'payment_paid', 'payment_cancelled', 'customer_reminder_24h',
+          'driver_reminder_24h', 'live_status', 'booking_received',
+          'availability_review', 'booking_accepted', 'driver_assignment'
+        ));
+    `
   }
 ];
 
