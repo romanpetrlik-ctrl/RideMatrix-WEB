@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body class="public-booking-body">
+    <main class="public-booking-email-page">
+      <section class="panel rm-card public-booking-email-card" aria-labelledby="public-booking-title">
+        <p class="public-booking-eyebrow"><%= appTitle %></p>
+        <h1 id="public-booking-title">Booking received</h1>
+        <p>Thank you<%= customerName ? `, ${customerName}` : "" %>. Your booking reference is <strong><%= reference %></strong>.</p>
+        <p>Your request is awaiting an availability check. We’ll email you when it has been reviewed.</p>
+        <a class="button" href="/public-booking/form">Make another booking</a>
+      </section>
+    </main>
+  </body>
+</html>

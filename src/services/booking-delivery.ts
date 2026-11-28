@@ -19,6 +19,7 @@ import {
 } from "./whatsapp-booking-notifications";
 
 type DeliveryEvent = "payment_link" | "payment_paid" | "payment_cancelled" | "customer_reminder_24h" | "driver_reminder_24h" | "live_status"
+  | "customer_welcome"
   | WhatsAppBookingEventType;
 type DeliveryChannel = "email" | "whatsapp";
 
@@ -56,6 +57,9 @@ function messageText(row: DeliveryRow): string {
   if (row.event_type === "booking_received") {
     return `We have received booking ${reference} for ${String(payload.serviceDateTime ?? "")}.`;
   }
+  if (row.event_type === "customer_welcome") {
+    return `Welcome to RideMatrix, ${String(payload.customerName ?? "customer")}. Booking ${reference} has been received.`;
+  }
   if (row.event_type === "driver_assignment") {
     return `A driver has been assigned to booking ${reference}: ${String(payload.driverName ?? "")}.`;
   }
@@ -81,7 +85,7 @@ export async function sendBookingEmail(row: DeliveryRow): Promise<void> {
       ? "Mailpit SMTP is not configured. Configure its host and sender in Settings → Messaging → Email."
       : "SES SMTP is not configured. Configure its host, credentials, and sender in Settings → Messaging → Email.");
   }
-  const emailTemplate = row.event_type === "booking_received" || row.event_type === "payment_link" ||
+  const emailTemplate = row.event_type === "booking_received" || row.event_type === "customer_welcome" || row.event_type === "payment_link" ||
       row.event_type === "payment_paid" || row.event_type === "payment_cancelled" ||
       row.event_type === "driver_assignment"
     ? await getEmailTemplate(row.event_type)

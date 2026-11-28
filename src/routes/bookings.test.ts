@@ -69,6 +69,10 @@ async function withApp(
       actorEmail: string;
     }) => Promise<"updated" | "unchanged" | "not-found" | "not-changeable">;
     resendNotification?: BookingsRouterOptions["resendNotification"];
+    requestPublicVerification?: BookingsRouterOptions["requestPublicVerification"];
+    verifyPublicEmail?: BookingsRouterOptions["verifyPublicEmail"];
+    getPublicEmail?: BookingsRouterOptions["getPublicEmail"];
+    findCustomerByEmail?: BookingsRouterOptions["findCustomerByEmail"];
   } = {},
   run: (baseUrl: string, saved: Saved[]) => Promise<void>
 ) {
@@ -96,7 +100,7 @@ async function withApp(
     createBooking: async (...args) => {
       assertQuoteAcknowledged(args[1].price, args[1].fingerprint, args[2]);
       saved.push(args);
-      return { id: "booking-uuid", reference: "RMB-000042", customerId: args[0].customerId };
+      return { id: "booking-uuid", reference: "RMB-000042", customerId: args[0].customerId, accountCreated: false };
     },
     getBooking: async (id) => id === "booking-uuid" ? options.booking ?? savedBooking : null,
     listIntegrationAlerts: async () => [],
@@ -105,6 +109,10 @@ async function withApp(
     ...(options.archiveBooking ? { archiveBooking: options.archiveBooking } : {}),
     ...(options.changeBookingStatus ? { changeBookingStatus: options.changeBookingStatus } : {}),
     ...(options.resendNotification ? { resendNotification: options.resendNotification } : {}),
+    ...(options.requestPublicVerification ? { requestPublicVerification: options.requestPublicVerification } : {}),
+    ...(options.verifyPublicEmail ? { verifyPublicEmail: options.verifyPublicEmail } : {}),
+    ...(options.getPublicEmail ? { getPublicEmail: options.getPublicEmail } : {}),
+    ...(options.findCustomerByEmail ? { findCustomerByEmail: options.findCustomerByEmail } : {}),
     mapConfiguration: () => ({})
   }));
   const server = app.listen(0);
@@ -155,6 +163,101 @@ const savedBooking: SavedNewBooking = {
     ]
   }
 };
+
+test("public booking email entry sends a verification request and gives a generic response", async () => {
+  let requestedEmail = "";
+  await withApp({
+    csrf: true,
+    requestPublicVerification: async (email) => { requestedEmail = email; }
+  }, async (baseUrl) => {
+    const page = await fetch(`${baseUrl}/public-booking`);
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /id="email"/);
+    const csrf = html.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    const cookie = page.headers.get("set-cookie")?.split(";")[0];
+    if (!csrf || !cookie?.startsWith(`${CSRF_COOKIE_NAME}=`)) throw new Error("Missing CSRF token or cookie.");
+
+    const payload = new URLSearchParams({ email: "  Customer@Example.test  ", _csrf: csrf });
+    const response = await post(`${baseUrl}/public-booking/email`, payload, { cookie });
+    const body = await response.text();
+    assert.equal(response.status, 200);
+    assert.equal(requestedEmail, "customer@example.test");
+    assert.match(body, /Check your email/);
+  });
+});
+
+test("the public booking form requires a verified email session and does not expose customer lists", async () => {
+  await withApp({
+    csrf: true,
+    getPublicEmail: async (token) => token === "verified" ? "new.customer@example.test" : null,
+    findCustomerByEmail: async () => undefined
+  }, async (baseUrl) => {
+    const denied = await fetch(`${baseUrl}/public-booking/form`, { redirect: "manual" });
+    assert.equal(denied.status, 303);
+    assert.equal(denied.headers.get("location"), "/public-booking");
+
+    const response = await fetch(`${baseUrl}/public-booking/form`, {
+      headers: { cookie: "rm_public_booking=verified" }
+    });
+    const body = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(body, /Book your journey/);
+    assert.match(body, /new\.customer@example\.test/);
+    assert.doesNotMatch(body, /Blair Booker|Alex Example/);
+  });
+});
+
+test("public booking submissions bind the verified email and create the customer account", async () => {
+  await withApp({
+    csrf: true,
+    getPublicEmail: async (token) => token === "verified" ? "verified@example.test" : null,
+    findCustomerByEmail: async () => undefined
+  }, async (baseUrl, saved) => {
+    const cookie = "rm_public_booking=verified";
+    const page = await fetch(`${baseUrl}/public-booking/form`, { headers: { cookie } });
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    const csrf = html.match(/name="_csrf" value="([^"]+)"/)?.[1];
+    const csrfCookie = page.headers.get("set-cookie")?.split(";")[0];
+    if (!csrf || !csrfCookie?.startsWith(`${CSRF_COOKIE_NAME}=`)) throw new Error("Missing CSRF token or cookie.");
+    const headers = { cookie: `${csrfCookie}; ${cookie}` };
+    const details = {
+      newCustomerGivenName: "Taylor",
+      newCustomerSurname: "Passenger",
+      newCustomerPhone: "+44 7700 900099"
+    };
+    const quoteResponse = await post(
+      `${baseUrl}/public-booking/quote`,
+      form({ ...details, _csrf: csrf }),
+      headers
+    );
+    assert.equal(quoteResponse.status, 200);
+    const quote = await quoteResponse.json() as { price: { status: string; total: string }; fingerprint: string };
+    const response = await post(
+      `${baseUrl}/public-booking`,
+      form({
+        ...details,
+        _csrf: csrf,
+        quotedStatus: quote.price.status,
+        quotedTotal: quote.price.total,
+        quotedFingerprint: quote.fingerprint,
+        managerEmail: "attacker@example.test",
+        newCustomerEmail: "attacker@example.test",
+        customerId: "cust-b"
+      }),
+      headers
+    );
+    const body = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(body, /Booking received/);
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0][3], { publicBooking: true, email: "verified@example.test" });
+    assert.deepEqual(saved[0][5], { createCustomerAccount: true, sendPublicNotifications: true });
+    assert.equal(saved[0][0].newCustomer?.email, "verified@example.test");
+    assert.equal(saved[0][0].managerEmail, "verified@example.test");
+  });
+});
 
 test("dispatchers get a read-only booking detail while mutations stay admin-only", async () => {
   await withApp({ roles: ["dispatcher"] }, async (baseUrl, saved) => {

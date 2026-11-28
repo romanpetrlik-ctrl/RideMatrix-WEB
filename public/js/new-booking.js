@@ -401,7 +401,7 @@
       }
       const current = ++sequence;
       quoteStatus.textContent = "Calculating price…";
-      fetch("/bookings/quote", {
+      fetch(form.dataset.quoteEndpoint || "/bookings/quote", {
         method: "POST",
         credentials: "same-origin",
         headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },

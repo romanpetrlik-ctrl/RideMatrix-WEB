@@ -35,6 +35,45 @@ export async function submitAccessRequest(email: string): Promise<void> {
   }
 }
 
+export async function requestPublicBookingVerification(email: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/auth/public-booking/email/request`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  if (!response.ok) {
+    throw new ApiRequestError(`Public booking email request failed with status ${response.status}`, response.status);
+  }
+}
+
+export async function verifyPublicBookingEmail(email: string, token: string): Promise<string> {
+  const response = await fetch(`${apiBaseUrl}/auth/public-booking/email/verify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, token })
+  });
+  if (!response.ok) {
+    throw new ApiRequestError(`Public booking email verification failed with status ${response.status}`, response.status);
+  }
+  const payload = (await response.json()) as { ok: true; sessionToken: string };
+  if (!payload.sessionToken) throw new ApiRequestError("Public booking verification returned no session token", response.status);
+  return payload.sessionToken;
+}
+
+export async function getPublicBookingEmail(sessionToken: string): Promise<string | null> {
+  const response = await fetch(`${apiBaseUrl}/auth/public-booking/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sessionToken })
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) {
+    throw new ApiRequestError(`Public booking session check failed with status ${response.status}`, response.status);
+  }
+  const payload = (await response.json()) as { ok: true; email: string };
+  return payload.email;
+}
+
 export async function getSessionAccount(cookieHeader?: string): Promise<SessionAccount> {
   const response = await fetch(`${apiBaseUrl}/auth/session`, {
     method: "GET",

@@ -6,6 +6,7 @@ RideMatrix-WEB is the server-rendered web application layer for RideMatrix opera
 
 - **Implemented:** Express + EJS web UI, customer/staff/vehicle pages, and server-side request handling in [`src/index.ts`](./src/index.ts) and [`src/views`](./src/views).
 - **Implemented:** PostgreSQL-backed persistence for customer domain data and related operational tables via migrations in [`src/database/migrations.ts`](./src/database/migrations.ts).
+- **Implemented:** Public customer booking at `/public-booking`: email verification, existing-customer profile prefill, a server-priced booking form, customer account/profile creation, and queued welcome/booking-received emails.
 - **Relationship to RideMatrix-API:** WEB calls API auth/session endpoints through `API_BASE_URL` (see [`src/services/api.ts`](./src/services/api.ts)).
 - **Relationship to RideMatrix-VPS:** VPS owns runtime/infrastructure concerns (container runtime, deployment wiring, environment injection). This repository contains application code, not VPS provisioning.
 

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body class="public-booking-body">
+    <main class="public-booking-email-page">
+      <section class="panel rm-card public-booking-email-card" aria-labelledby="public-booking-title">
+        <p class="public-booking-eyebrow"><%= appTitle %></p>
+        <h1 id="public-booking-title">Book your journey</h1>
+        <p>Enter your email address and we’ll send you a secure link to continue. We’ll use it to find your existing customer details or create a new profile when you submit your booking.</p>
+        <% if (formError) { %><p class="notice notice--critical" role="alert"><%= formError %></p><% } %>
+        <form method="post" action="/public-booking/email">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="email">Email address</label>
+            <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required autofocus>
+          </div>
+          <button type="submit" class="button">Continue</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

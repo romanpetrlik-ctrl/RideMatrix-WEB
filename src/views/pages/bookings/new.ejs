@@ -15,7 +15,8 @@
 <!DOCTYPE html>
 <html lang="en">
   <%- include("../../partials/head", { title, appTitle }) %>
-  <body>
+  <body class="<%= isPublicBooking ? "public-booking-body" : "" %>">
+    <% if (!isPublicBooking) { %>
     <%- include("../../partials/system-status-bar", {
       appTitle,
       systemStatus: "System status: Healthy",
@@ -23,11 +24,12 @@
       currentUserHref: "/account"
     }) %>
     <%- include("../../partials/header", { appTitle }) %>
+    <% } %>
 
-    <main class="container rm-page-shell new-booking-page">
+    <main class="container rm-page-shell new-booking-page <%= isPublicBooking ? "public-booking-page" : "" %>">
       <div class="new-booking-page__title">
-        <h1>New Booking</h1>
-        <p>All times are in <strong><%= serviceTimezone %></strong> (24-hour). Prices are calculated on the server from the current Fare Settings, Airport Fees and POI fees.</p>
+        <h1><%= isPublicBooking ? "Book your journey" : "New Booking" %></h1>
+        <p><%= isPublicBooking ? `Verified email: ${publicEmail}. Review your details, journey and price before submitting.` : `All times are in ${serviceTimezone} (24-hour). Prices are calculated on the server from the current Fare Settings, Airport Fees and POI fees.` %></p>
       </div>
 
       <% if (formError) { %>
@@ -44,13 +46,13 @@
         </section>
       <% } %>
 
-      <form method="post" action="/bookings" class="new-booking-form" data-new-booking-form novalidate>
+      <form method="post" action="<%= isPublicBooking ? "/public-booking" : "/bookings" %>" class="new-booking-form" data-new-booking-form data-quote-endpoint="<%= quoteEndpoint %>" novalidate>
         <%- locals.csrfField || "" %>
         <input type="hidden" name="quotedStatus" value="<%= draft.quotedStatus %>" data-quoted-status>
         <input type="hidden" name="quotedTotal" value="<%= draft.quotedTotal %>" data-quoted-total>
         <input type="hidden" name="quotedFingerprint" value="<%= draft.quotedFingerprint %>" data-quote-fingerprint>
 
-        <section class="panel rm-card new-booking-block new-booking-block--reference" aria-labelledby="booking-reference-title">
+        <% if (!isPublicBooking) { %><section class="panel rm-card new-booking-block new-booking-block--reference" aria-labelledby="booking-reference-title">
           <h2 id="booking-reference-title">1. Booking reference</h2>
           <dl class="new-booking-reference">
             <div><dt>Booking ID</dt><dd data-booking-id><em>Assigned on save</em></dd></div>
@@ -58,13 +60,14 @@
             <div><dt>Created by</dt><dd data-booking-created-by><%= createdByEmail %> <em>(recorded on save)</em></dd></div>
           </dl>
         </section>
+        <% } %>
 
         <section class="panel rm-card new-booking-block" aria-labelledby="booking-people-title">
-          <h2 id="booking-people-title">2. Booking manager and passenger</h2>
+          <h2 id="booking-people-title"><%= isPublicBooking ? "Your contact details" : "2. Booking manager and passenger" %></h2>
           <div class="new-booking-columns">
             <fieldset class="new-booking-fieldset">
               <legend>Booking manager</legend>
-              <div class="form-field">
+              <div class="form-field" data-public-customer-selector>
                 <label for="customerId">Customer</label>
                 <select id="customerId" name="customerId" required data-manager-select <%- invalid("customerId") %>>
                   <option value="">Select an existing customer</option>
@@ -93,12 +96,12 @@
                 </div>
                 <div class="form-field">
                   <label for="managerEmail">Email</label>
-                  <input id="managerEmail" name="managerEmail" type="email" autocomplete="off" value="<%= draft.managerEmail %>" data-manager-email <%- invalid("managerEmail") %>>
+                  <input id="managerEmail" name="managerEmail" type="email" autocomplete="off" value="<%= draft.managerEmail %>" data-manager-email <%= isPublicBooking ? "readonly" : "" %> <%- invalid("managerEmail") %>>
                   <% if (fieldError("managerEmail")) { %><p class="field-error" id="managerEmail-error"><%= fieldError("managerEmail") %></p><% } %>
                 </div>
               </div>
               <fieldset class="new-booking-fieldset" data-new-customer-fields <%= draft.customerMode === "new" ? "" : "hidden" %>>
-                <legend>New individual customer</legend>
+                <legend><%= isPublicBooking ? "Your details" : "New individual customer" %></legend>
                 <div class="form-field">
                   <label for="newCustomerGivenName">First name</label>
                   <input id="newCustomerGivenName" name="newCustomerGivenName" type="text" autocomplete="given-name" value="<%= draft.newCustomerGivenName %>" data-new-customer-input <%- invalid("newCustomerGivenName") %>>
@@ -116,10 +119,10 @@
                 </div>
                 <div class="form-field">
                   <label for="newCustomerEmail">Email (optional)</label>
-                  <input id="newCustomerEmail" name="newCustomerEmail" type="email" autocomplete="email" value="<%= draft.newCustomerEmail %>" data-new-customer-input <%- invalid("newCustomerEmail") %>>
+                  <input id="newCustomerEmail" name="newCustomerEmail" type="email" autocomplete="email" value="<%= draft.newCustomerEmail %>" data-new-customer-input <%= isPublicBooking ? "readonly" : "" %> <%- invalid("newCustomerEmail") %>>
                   <% if (fieldError("newCustomerEmail")) { %><p class="field-error" id="newCustomerEmail-error"><%= fieldError("newCustomerEmail") %></p><% } %>
                 </div>
-                <p class="form-hint">Creates an active individual customer together with the booking. Business customers must be registered separately.</p>
+                <% if (!isPublicBooking) { %><p class="form-hint">Creates an active individual customer together with the booking. Business customers must be registered separately.</p><% } %>
               </fieldset>
             </fieldset>
 
@@ -155,7 +158,7 @@
               </div>
             </fieldset>
           </div>
-          <fieldset class="new-booking-fieldset booking-payer-fields">
+          <fieldset class="new-booking-fieldset booking-payer-fields" data-internal-only>
             <legend>Who pays for this booking?</legend>
             <div class="form-field">
               <label for="payerType">Payer</label>
@@ -184,19 +187,19 @@
             </div>
             <p class="form-hint">The payment recipient is stored separately from passenger and booking-manager details.</p>
           </fieldset>
-          <div class="form-field form-field--checkbox">
+          <div class="form-field form-field--checkbox" data-internal-only>
             <label for="notifyBookingManager">
               <input id="notifyBookingManager" name="notifyBookingManager" type="checkbox" value="yes" <%= draft.notifyBookingManager ? "checked" : "" %>>
               Include the booking manager in live journey updates and 24-hour reminders
             </label>
           </div>
-          <div class="form-field form-field--checkbox">
+          <div class="form-field form-field--checkbox" data-internal-only>
             <label for="bookingManagerWhatsappOptIn">
               <input id="bookingManagerWhatsappOptIn" name="bookingManagerWhatsappOptIn" type="checkbox" value="yes" <%= draft.bookingManagerWhatsappOptIn ? "checked" : "" %>>
               I have permission to send the booking manager WhatsApp updates
             </label>
           </div>
-          <div class="form-field">
+          <div class="form-field" data-internal-only>
             <label for="paymentMethod">Booking payment method</label>
             <select id="paymentMethod" name="paymentMethod" required <%- invalid("paymentMethod") %>>
               <option value="">Select a payment method</option>
@@ -210,7 +213,7 @@
         </section>
 
         <section class="panel rm-card new-booking-block" aria-labelledby="booking-journey-title">
-          <h2 id="booking-journey-title">3. Journey details and map</h2>
+          <h2 id="booking-journey-title"><%= isPublicBooking ? "Journey details" : "3. Journey details and map" %></h2>
           <div class="new-booking-journey">
             <div class="new-booking-journey__form" data-journey-fields>
               <div class="new-booking-datetime">
@@ -327,7 +330,7 @@
         </section>
 
         <section class="panel rm-card new-booking-block" aria-labelledby="booking-cargo-title">
-          <h2 id="booking-cargo-title">4. Passengers and luggage</h2>
+          <h2 id="booking-cargo-title"><%= isPublicBooking ? "Passengers and luggage" : "4. Passengers and luggage" %></h2>
           <div class="new-booking-counts">
             <% countFields.forEach(([field, label]) => { %>
               <div class="form-field">
@@ -359,7 +362,7 @@
         </section>
 
         <section class="panel rm-card new-booking-block" aria-labelledby="booking-fare-title">
-          <h2 id="booking-fare-title">5. Fare and itemized breakdown</h2>
+          <h2 id="booking-fare-title"><%= isPublicBooking ? "Your price" : "5. Fare and itemized breakdown" %></h2>
           <div class="new-booking-charge-inputs">
             <% if (confirmationFees.length) { %>
               <fieldset class="new-booking-fieldset" id="confirmedPoiFeeIds">
@@ -388,14 +391,14 @@
           </div>
 
           <div class="new-booking-actions">
-            <button type="submit" class="button" data-save-booking>Save booking</button>
-            <a class="button button--secondary" href="/customers">Cancel</a>
+            <button type="submit" class="button" data-save-booking><%= isPublicBooking ? "Submit booking" : "Save booking" %></button>
+            <% if (isPublicBooking) { %><a class="button button--secondary" href="/public-booking">Cancel</a><% } else { %><a class="button button--secondary" href="/customers">Cancel</a><% } %>
           </div>
         </section>
       </form>
     </main>
 
-    <%- include("../../partials/footer") %>
+    <% if (!isPublicBooking) { %><%- include("../../partials/footer") %><% } %>
     <script src="/js/google-map-preview.js" defer></script>
     <script src="/js/new-booking.js?v=20261120-1" defer></script>
   </body>

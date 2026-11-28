@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+  <%- include("../../partials/head", { title, appTitle }) %>
+  <body class="public-booking-body">
+    <main class="public-booking-email-page">
+      <section class="panel rm-card public-booking-email-card" aria-labelledby="public-booking-title">
+        <p class="public-booking-eyebrow"><%= appTitle %></p>
+        <h1 id="public-booking-title">Check your email</h1>
+        <p>If <strong><%= email %></strong> can receive mail, a secure booking link is on its way. The link expires shortly; check your spam folder if it doesn’t arrive.</p>
+        <a class="button button--secondary" href="/public-booking">Use another email</a>
+      </section>
+    </main>
+  </body>
+</html>
