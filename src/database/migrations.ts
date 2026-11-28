@@ -2522,6 +2522,45 @@ export const MIGRATIONS: Migration[] = [
         INSERT INTO microsoft_dispatch_calendar_settings (id)
         VALUES (1) ON CONFLICT (id) DO NOTHING;
     `
+  },
+  {
+    id: "0055_public_customer_booking",
+    sql: `
+      CREATE TABLE IF NOT EXISTS public_booking_email_verifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL CHECK (email = lower(btrim(email))),
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_ip TEXT NOT NULL,
+        user_agent TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        consumed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_public_booking_verifications_rate_limit
+        ON public_booking_email_verifications (created_at, email, created_ip);
+      CREATE INDEX IF NOT EXISTS idx_public_booking_verifications_expiry
+        ON public_booking_email_verifications (expires_at)
+        WHERE consumed_at IS NULL;
+
+      ALTER TABLE email_templates
+        DROP CONSTRAINT IF EXISTS email_templates_event_type_check,
+        ADD CONSTRAINT email_templates_event_type_check
+          CHECK (event_type IN (
+            'booking_received', 'customer_welcome', 'payment_link',
+            'payment_paid', 'payment_cancelled', 'driver_assignment'
+          ));
+      INSERT INTO email_templates (event_type, subject_template, body_template) VALUES
+        ('customer_welcome', 'Welcome to RideMatrix, {{customerName}}', E'Hello {{customerName}},\\n\\nYour customer account has been created. We have received booking {{reference}} and will contact you after checking availability.\\n\\nThank you.')
+      ON CONFLICT (event_type) DO NOTHING;
+
+      ALTER TABLE booking_delivery_outbox
+        DROP CONSTRAINT IF EXISTS booking_delivery_outbox_event_type_check,
+        ADD CONSTRAINT booking_delivery_outbox_event_type_check CHECK (event_type IN (
+          'payment_link', 'payment_paid', 'payment_cancelled', 'customer_reminder_24h',
+          'driver_reminder_24h', 'live_status', 'booking_received',
+          'availability_review', 'booking_accepted', 'driver_assignment', 'customer_welcome'
+        ));
+    `
   }
 ];
 

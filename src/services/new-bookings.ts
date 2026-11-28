@@ -691,6 +691,50 @@ export async function getBookingManagerCandidate(customerId: string): Promise<Bo
 }
 
 export type BookingActor = { accountId: string; email: string };
+export type PublicBookingActor = { publicBooking: true; email: string };
+
+async function ensurePublicCustomerAccount(
+  email: string,
+  client: pg.PoolClient
+): Promise<{ accountId: string; created: boolean }> {
+  const normalizedEmail = email.trim().toLowerCase();
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [normalizedEmail]);
+  const existing = await client.query<{ id: string; status: string | null }>(
+    `SELECT id::text AS id, status::text AS status
+       FROM users
+      WHERE lower(email) = $1
+      LIMIT 1
+      FOR UPDATE`,
+    [normalizedEmail]
+  );
+  if (existing.rows[0]) {
+    if (existing.rows[0].status && existing.rows[0].status.toLowerCase() !== "active") {
+      throw new Error("The verified email is associated with an inactive account.");
+    }
+    return { accountId: existing.rows[0].id, created: false };
+  }
+
+  await client.query(
+    `INSERT INTO roles (key, name, description)
+     VALUES ('customer', 'Customer', 'Public customer account')
+     ON CONFLICT (key) DO NOTHING`
+  );
+  const customerRole = await client.query<{ id: number }>(
+    "SELECT id FROM roles WHERE key = 'customer' LIMIT 1"
+  );
+  if (!customerRole.rows[0]) throw new Error("The customer account role is not configured.");
+  const inserted = await client.query<{ id: string }>(
+    "INSERT INTO users (email) VALUES ($1) RETURNING id::text AS id",
+    [normalizedEmail]
+  );
+  const accountId = inserted.rows[0]?.id;
+  if (!accountId) throw new Error("Could not create the customer account.");
+  await client.query(
+    "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [accountId, customerRole.rows[0].id]
+  );
+  return { accountId, created: true };
+}
 
 export class BookingPriceChangedError extends Error {
   constructor() {
@@ -748,20 +792,28 @@ export async function createNewBooking(
   booking: ValidatedBooking,
   quote: { route: BookingRoute; price: BookingPrice; fingerprint: string; roadChargeSchedules?: Record<string, unknown> },
   draft: Pick<NewBookingDraft, "quotedTotal" | "quotedStatus" | "quotedFingerprint" | "saveWithUnresolvedPrice">,
-  actor: BookingActor,
-  now: Date
-): Promise<{ id: string; reference: string; customerId: string }> {
+  actor: BookingActor | PublicBookingActor,
+  now: Date,
+  options: { createCustomerAccount?: boolean; sendPublicNotifications?: boolean } = {}
+): Promise<{ id: string; reference: string; customerId: string; accountCreated: boolean }> {
   const { price, route } = quote;
   assertQuoteAcknowledged(price, quote.fingerprint, draft);
   const id = randomUUID();
   const snapshotId = randomUUID();
   const createdAt = now.toISOString();
   return withTransaction(async (client) => {
+    let actorAccountId = "publicBooking" in actor ? null : actor.accountId;
     const newCustomer = booking.newCustomer
       ? await createCustomer(booking.newCustomer, client)
       : null;
     const customerId = newCustomer?.id ?? booking.customerId;
     if (!customerId) throw new Error("A booking requires a valid existing or new customer.");
+    let accountCreated = false;
+    if (options.createCustomerAccount) {
+      const account = await ensurePublicCustomerAccount(actor.email, client);
+      actorAccountId = account.accountId;
+      accountCreated = account.created;
+    }
     const reference = await nextBookingReference(client);
     await client.query(
       `INSERT INTO customer_bookings (
@@ -776,7 +828,7 @@ export async function createNewBooking(
        ) VALUES ($1,$2,$3,$4,$5,$6,'New',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
       [
         id, customerId, reference, booking.serviceDate, booking.stops.pickup.label, booking.stops.dropoff.label, createdAt,
-        price.total, booking.serviceTime, SERVICE_TIMEZONE, actor.accountId, actor.email,
+        price.total, booking.serviceTime, SERVICE_TIMEZONE, actorAccountId, actor.email,
         booking.managerName, booking.managerPhone, booking.managerEmail || null, booking.passengerIsManager,
         booking.passengerName, booking.passengerPhone, booking.counts.adults, booking.counts.children,
         booking.counts.sportsEquipment, booking.counts.xlBaggage, booking.counts.lBaggage,
@@ -807,7 +859,7 @@ export async function createNewBooking(
         snapshotId, id, price.status, price.total, price.fareSettingsVersion,
         JSON.stringify(booking.pricingInputs), JSON.stringify(routeForSnapshot(route)),
         JSON.stringify({ unresolvedCount: price.unresolvedCount, method: "booking-pricing-v2", roadChargeSchedules: quote.roadChargeSchedules ?? {} }),
-        price.status === "incomplete", createdAt, actor.accountId, actor.email
+        price.status === "incomplete", createdAt, actorAccountId, actor.email
       ]
     );
     for (const [position, line] of price.lines.entries()) {
@@ -819,7 +871,37 @@ export async function createNewBooking(
     }
     await updateCustomerLastBookingAt(customerId, serviceLocalToUtc(booking.serviceDate, booking.serviceTime).toISOString(), client);
     await enqueueWhatsAppBookingLifecycleNotification(client, { bookingId: id, eventType: "booking_received", eventKey: "New" });
-    return { id, reference, customerId };
+    if (options.sendPublicNotifications) {
+      const payload = {
+        reference,
+        serviceDateTime: `${booking.serviceDate} ${booking.serviceTime}`,
+        pickup: booking.stops.pickup.label,
+        dropoff: booking.stops.dropoff.label,
+        passengerName: booking.passengerName,
+        bookingStatus: "New (awaiting availability check)"
+      };
+      await client.query(
+        `INSERT INTO booking_delivery_outbox (
+           id, booking_id, event_type, event_key, recipient_type, channel,
+           recipient_name, recipient_contact, payload, created_by_account_id, created_by_email
+         ) VALUES ($1,$2,'booking_received','','lead_passenger','email',$3,$4,$5::jsonb,$6,$7)
+         ON CONFLICT (booking_id, event_type, event_key, recipient_type, channel, recipient_contact) DO NOTHING`,
+        [randomUUID(), id, booking.passengerName, booking.passengerEmail || actor.email,
+          JSON.stringify(payload), actorAccountId, actor.email]
+      );
+      if (newCustomer || accountCreated) {
+        await client.query(
+          `INSERT INTO booking_delivery_outbox (
+             id, booking_id, event_type, event_key, recipient_type, channel,
+             recipient_name, recipient_contact, payload, created_by_account_id, created_by_email
+           ) VALUES ($1,$2,'customer_welcome','','lead_passenger','email',$3,$4,$5::jsonb,$6,$7)
+           ON CONFLICT (booking_id, event_type, event_key, recipient_type, channel, recipient_contact) DO NOTHING`,
+          [randomUUID(), id, booking.managerName, actor.email,
+            JSON.stringify({ ...payload, customerName: booking.managerName }), actorAccountId, actor.email]
+        );
+      }
+    }
+    return { id, reference, customerId, accountCreated };
   });
 }
 

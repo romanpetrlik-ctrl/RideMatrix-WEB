@@ -5193,6 +5193,59 @@ button:visited,
 }
 
 /* New Booking (desktop-first dispatcher form) */
+.public-booking-email-page {
+  box-sizing: border-box;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.public-booking-email-card {
+  width: min(100%, 30rem);
+  padding: 2rem;
+}
+
+.public-booking-email-card h1 {
+  margin-top: 0;
+}
+
+.public-booking-eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--rm-walnut);
+  font-weight: 700;
+}
+
+.public-booking-email-card form {
+  display: grid;
+  gap: 1rem;
+}
+
+.public-booking-body {
+  min-height: 100vh;
+}
+
+.public-booking-page {
+  max-width: 76rem;
+  padding-top: 1.5rem;
+}
+
+.public-booking-page .new-booking-block--reference,
+.public-booking-page [data-public-customer-selector],
+.public-booking-page [data-internal-only],
+.public-booking-page .new-booking-columns > .new-booking-fieldset:nth-child(2),
+.public-booking-page .new-booking-ack {
+  display: none !important;
+}
+
+.public-booking-page .new-booking-actions {
+  justify-content: flex-end;
+}
+
+.public-booking-page .new-booking-actions .button {
+  min-width: 10rem;
+}
+
 .new-booking-page [hidden] {
   display: none !important;
 }

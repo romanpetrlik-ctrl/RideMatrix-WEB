@@ -207,6 +207,46 @@ test("new customer, booking payment method and vehicle category persist atomical
   assert.equal(snapshot.rows[0].inputs.vehicleClassKey, "standard_sedan_hatchback");
 });
 
+test("public booking atomically creates a customer login and queues welcome and received emails", async () => {
+  const customer = await createCustomer({
+    givenName: "Public",
+    surname: "Passenger",
+    email: "public.passenger@example.test",
+    phone: "+44 7700 900123"
+  } as Parameters<typeof createCustomer>[0]);
+  const airport = (await airportFeeStore.list())[0];
+  assert.ok(airport);
+  const { draft, booking, quote } = await priceFor(customer.id, airport.id);
+  const saved = await createNewBooking(
+    booking,
+    quote,
+    { ...draft, quotedStatus: quote.price.status, quotedTotal: quote.price.total ?? "", quotedFingerprint: quote.fingerprint },
+    { publicBooking: true, email: "public.passenger@example.test" },
+    now,
+    { createCustomerAccount: true, sendPublicNotifications: true }
+  );
+
+  assert.equal(saved.accountCreated, true);
+  const account = await query<{ id: string; role: string }>(
+    `SELECT u.id::text AS id, r.key AS role
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+       JOIN roles r ON r.id = ur.role_id
+      WHERE lower(u.email) = 'public.passenger@example.test'`
+  );
+  assert.equal(account.rows[0]?.role, "customer");
+  const deliveries = await query<{ event_type: string; recipient_contact: string; payload: Record<string, unknown> }>(
+    `SELECT event_type, recipient_contact, payload
+       FROM booking_delivery_outbox
+      WHERE booking_id = $1 AND channel = 'email'
+      ORDER BY event_type`,
+    [saved.id]
+  );
+  assert.deepEqual(deliveries.rows.map((row) => row.event_type), ["booking_received", "customer_welcome"]);
+  assert.ok(deliveries.rows.every((row) => row.recipient_contact === "public.passenger@example.test"));
+  assert.equal(deliveries.rows.find((row) => row.event_type === "booking_received")?.payload.bookingStatus, "New (awaiting availability check)");
+});
+
 test("an unresolved price is stored as incomplete without a total only when acknowledged", async () => {
   const customer = await createCustomer({ givenName: "Una", surname: "Resolved", email: "una@example.test", phone: "+44 7911 123457" } as Parameters<typeof createCustomer>[0]);
   const airport = (await airportFeeStore.list())[0];

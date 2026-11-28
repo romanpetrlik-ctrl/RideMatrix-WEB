@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { rateLimit } from "express-rate-limit";
 import { requireCsrfToken } from "../middleware/csrf";
 import { noStoreProtectedResponse } from "../middleware/no-store";
+import { readCookie } from "../services/csrf";
 import {
   BOOKING_DASHBOARD_VIEWS,
   archiveBooking as archiveBookingRecord,
@@ -16,7 +17,14 @@ import {
   type BookingDashboardView,
   type BookingWorkflowStatus
 } from "../services/booking-dashboard";
-import { getSessionAccount, type SessionAccount } from "../services/api";
+import {
+  getPublicBookingEmail,
+  getSessionAccount,
+  requestPublicBookingVerification,
+  verifyPublicBookingEmail,
+  type SessionAccount
+} from "../services/api";
+import { getCustomerByEmail, type CustomerRecord } from "../services/customers";
 import type { BookingRoute } from "../services/booking-routing";
 import type { BookingPrice, BookingStops } from "../services/booking-pricing";
 import { buildCustomerQuote } from "../services/customer-quote";
@@ -66,6 +74,10 @@ export type BookingsRouterOptions = {
   listManagers?: () => Promise<BookingManagerCandidate[]>;
   getManager?: (customerId: string) => Promise<BookingManagerCandidate | null>;
   createBooking?: typeof createNewBooking;
+  requestPublicVerification?: typeof requestPublicBookingVerification;
+  verifyPublicEmail?: typeof verifyPublicBookingEmail;
+  getPublicEmail?: typeof getPublicBookingEmail;
+  findCustomerByEmail?: typeof getCustomerByEmail;
   getBooking?: (id: string) => Promise<SavedNewBooking | null>;
   listDashboardBookings?: (view: BookingDashboardView, search: string) => Promise<BookingDashboardRecord[]>;
   listIntegrationAlerts?: typeof listOpenBookingIntegrationAlerts;
@@ -78,6 +90,8 @@ export type BookingsRouterOptions = {
 };
 
 class AuthorizationError extends Error {}
+
+const PUBLIC_BOOKING_COOKIE = "rm_public_booking";
 
 async function requireAdmin(
   cookieHeader: string | undefined,
@@ -171,6 +185,10 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const listManagers = options.listManagers ?? (() => listBookingManagerCandidates());
   const getManager = options.getManager ?? getBookingManagerCandidate;
   const saveBooking = options.createBooking ?? createNewBooking;
+  const requestPublicVerification = options.requestPublicVerification ?? requestPublicBookingVerification;
+  const verifyPublicEmail = options.verifyPublicEmail ?? verifyPublicBookingEmail;
+  const getPublicEmail = options.getPublicEmail ?? getPublicBookingEmail;
+  const findCustomerByEmail = options.findCustomerByEmail ?? getCustomerByEmail;
   const loadBooking = options.getBooking ?? getNewBooking;
   const loadDashboardBookings = options.listDashboardBookings ?? ((view, search) => listBookingDashboard(view, search, options.now?.() ?? new Date()));
   const archiveSavedBooking = options.archiveBooking ?? archiveBookingRecord;
@@ -186,6 +204,9 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
   const archiveRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
   const statusRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
   const notificationRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+  const publicEmailRateLimit = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
+  const publicQuoteRateLimit = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
+  const publicSaveRateLimit = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
 
   const requireAdminSession = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -227,15 +248,16 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       quote?: { route: BookingRoute; price: BookingPrice; fingerprint: string; stops: BookingStops } | null
     }
   ) {
-    const actor = res.locals.bookingActor as BookingActor;
-    const managers = await listManagers();
+    const publicContext = res.locals.publicBooking as { email: string; manager: BookingManagerCandidate | null } | undefined;
+    const actor = (res.locals.bookingActor ?? { accountId: "", email: publicContext?.email ?? "" }) as BookingActor;
+    const managers = publicContext ? (publicContext.manager ? [publicContext.manager] : []) : await listManagers();
     const selected = draft.customerId && !managers.some((manager) => manager.customerId === draft.customerId)
       ? await getManager(draft.customerId)
       : null;
     const maps = mapConfiguration();
     const counts = Object.fromEntries(BOOKING_COUNT_FIELDS.map(([field]) => [field, Number(draft.counts[field]) || 0])) as Parameters<typeof cargoSummary>[0];
     return res.status(status).render("pages/bookings/new", {
-      title: "New Booking",
+      title: publicContext ? "Book a journey" : "New Booking",
       appTitle: options.appTitle,
       email: actor.email,
       draft,
@@ -258,6 +280,10 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
       serviceTimezone: SERVICE_TIMEZONE,
       cargoSummaryText: cargoSummary(counts, draft.childSeatRequired === "yes", draft.boosterRequired === "yes"),
       createdByEmail: actor.email,
+      isPublicBooking: Boolean(publicContext),
+      publicEmail: publicContext?.email ?? "",
+      publicBookingError: res.locals.publicBookingError ?? "",
+      quoteEndpoint: publicContext ? "/public-booking/quote" : "/bookings/quote",
       mapsBrowserApiKey: maps.browserApiKey ?? "",
       mapsMapId: maps.mapId ?? "",
       quote: extras.quote
@@ -265,6 +291,233 @@ export function createBookingsRouter(options: BookingsRouterOptions): Router {
         : null
     });
   }
+
+  type PublicBookingIdentity = {
+    email: string;
+    customer: CustomerRecord | undefined;
+    manager: BookingManagerCandidate | null;
+  };
+
+  async function resolvePublicBookingIdentity(req: Request): Promise<PublicBookingIdentity | null> {
+    const token = readCookie(req.headers.cookie, PUBLIC_BOOKING_COOKIE);
+    if (!token) return null;
+    const email = await getPublicEmail(token);
+    if (!email) return null;
+    const customer = await findCustomerByEmail(email);
+    if (customer && customer.status !== "Active") return null;
+    const manager = customer
+      ? {
+          customerId: customer.id,
+          name: [customer.givenName, customer.surname].filter(Boolean).join(" "),
+          phone: customer.phone ?? "",
+          email,
+          company: customer.company,
+          isBusiness: Boolean(customer.company),
+          customerDiscountPercentage: customer.customerDiscountPercentage
+        }
+      : null;
+    return { email, customer, manager };
+  }
+
+  function publicBookingDraft(body: unknown, identity: PublicBookingIdentity): NewBookingDraft {
+    const submitted = readNewBookingDraft(body);
+    const managerName = identity.manager
+      ? (submitted.managerName.trim() || identity.manager.name)
+      : [submitted.newCustomerGivenName.trim(), submitted.newCustomerSurname.trim()].filter(Boolean).join(" ");
+    const managerPhone = identity.manager
+      ? (submitted.managerPhone.trim() || identity.manager.phone)
+      : submitted.newCustomerPhone.trim();
+    return {
+      ...submitted,
+      customerMode: identity.manager ? "existing" : "new",
+      customerId: identity.manager ? identity.manager.customerId : NEW_CUSTOMER_SELECTION_VALUE,
+      newCustomerEmail: identity.manager ? "" : identity.email,
+      managerName,
+      managerPhone,
+      managerEmail: identity.email,
+      passengerIsManager: true,
+      passengerName: managerName,
+      passengerPhone: managerPhone,
+      passengerEmail: identity.email,
+      bookingManagerWhatsappOptIn: false,
+      passengerWhatsappOptIn: false,
+      notifyBookingManager: false,
+      payerType: "lead_passenger",
+      payerName: managerName,
+      payerEmail: identity.email,
+      payerPhone: managerPhone,
+      paymentMethod: "payment-link",
+      saveWithUnresolvedPrice: false
+    };
+  }
+
+  async function renderPublicBookingForm(
+    res: Response,
+    status: number,
+    draft: NewBookingDraft,
+    reference: PricingReferenceData,
+    identity: PublicBookingIdentity,
+    extras: Parameters<typeof renderForm>[4]
+  ) {
+    res.locals.publicBooking = {
+      email: identity.email,
+      manager: identity.manager
+    };
+    return renderForm(res, status, draft, reference, extras);
+  }
+
+  router.use("/public-booking", noStoreProtectedResponse);
+
+  router.get("/public-booking", (_req, res) => {
+    return res.render("pages/public-booking/email", {
+      title: "Book a journey",
+      appTitle: options.appTitle,
+      formError: ""
+    });
+  });
+
+  router.post("/public-booking/email", publicEmailRateLimit, async (req, res, next) => {
+    try {
+      const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+        return res.status(422).render("pages/public-booking/email", {
+          title: "Book a journey",
+          appTitle: options.appTitle,
+          formError: "Enter a valid email address."
+        });
+      }
+      await requestPublicVerification(email);
+      return res.status(200).render("pages/public-booking/email-sent", {
+        title: "Check your email",
+        appTitle: options.appTitle,
+        email
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/public-booking/verify", async (req, res, next) => {
+    try {
+      const email = typeof req.query.email === "string" ? req.query.email : "";
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      if (!email || !token) {
+        return res.status(400).render("pages/public-booking/email", {
+          title: "Book a journey",
+          appTitle: options.appTitle,
+          formError: "This verification link is invalid or has expired. Request a new one."
+        });
+      }
+      const sessionToken = await verifyPublicEmail(email, token);
+      res.cookie(PUBLIC_BOOKING_COOKIE, sessionToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/public-booking",
+        maxAge: 60 * 60 * 1000
+      });
+      return res.redirect(303, "/public-booking/form");
+    } catch (error) {
+      if (error instanceof Error && "status" in error && error.status === 400) {
+        return res.status(400).render("pages/public-booking/email", {
+          title: "Book a journey",
+          appTitle: options.appTitle,
+          formError: "This verification link is invalid or has expired. Request a new one."
+        });
+      }
+      return next(error);
+    }
+  });
+
+  router.get("/public-booking/form", async (req, res, next) => {
+    try {
+      const identity = await resolvePublicBookingIdentity(req);
+      if (!identity) return res.redirect(303, "/public-booking");
+      const draft = publicBookingDraft({}, identity);
+      const reference = await dependencies.loadReferenceData();
+      return await renderPublicBookingForm(res, 200, draft, reference, identity, {});
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/public-booking/quote", publicQuoteRateLimit, async (req, res, next) => {
+    try {
+      const identity = await resolvePublicBookingIdentity(req);
+      if (!identity) return res.status(401).json({ ok: false, error: "Verify your email to continue." });
+      const draft = publicBookingDraft(req.body, identity);
+      const reference = await dependencies.loadReferenceData();
+      const publicGetManager = async (customerId: string) =>
+        identity.manager?.customerId === customerId ? identity.manager : null;
+      const { errors, booking } = await validateNewBooking(draft, reference, dependencies, publicGetManager);
+      if (!booking) return res.status(422).json({ ok: false, errors });
+      const quote = await quoteJourney(booking, reference, dependencies.computeRoute);
+      return res.json({
+        ok: true,
+        errors: [],
+        stops: serializeStops(booking.stops),
+        route: serializeRoute(quote.route),
+        price: quote.price,
+        fingerprint: quote.fingerprint
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/public-booking", publicSaveRateLimit, async (req, res, next) => {
+    try {
+      const identity = await resolvePublicBookingIdentity(req);
+      if (!identity) return res.redirect(303, "/public-booking");
+      const draft = publicBookingDraft(req.body, identity);
+      const reference = await dependencies.loadReferenceData();
+      const publicGetManager = async (customerId: string) =>
+        identity.manager?.customerId === customerId ? identity.manager : null;
+      const { errors, booking } = await validateNewBooking(draft, reference, dependencies, publicGetManager);
+      if (!booking) {
+        return await renderPublicBookingForm(res, 422, draft, reference, identity, {
+          errors,
+          formError: "Correct the highlighted fields before submitting your booking."
+        });
+      }
+      const quote = await quoteJourney(booking, reference, dependencies.computeRoute);
+      try {
+        const saved = await saveBooking(
+          booking,
+          quote,
+          draft,
+          { publicBooking: true, email: identity.email },
+          dependencies.now(),
+          { createCustomerAccount: true, sendPublicNotifications: true }
+        );
+        return res.status(200).render("pages/public-booking/received", {
+          title: "Booking received",
+          appTitle: options.appTitle,
+          reference: saved.reference,
+          customerName: draft.managerName
+        });
+      } catch (error) {
+        if (error instanceof BookingPriceChangedError || error instanceof UnresolvedPriceNotAcknowledgedError) {
+          const refreshed: NewBookingDraft = {
+            ...draft,
+            quotedStatus: quote.price.status,
+            quotedTotal: quote.price.total ?? "",
+            quotedFingerprint: quote.fingerprint
+          };
+          return await renderPublicBookingForm(res, 409, refreshed, reference, identity, {
+            formError: error.message,
+            errors: error instanceof UnresolvedPriceNotAcknowledgedError
+              ? [{ field: "saveWithUnresolvedPrice", message: error.message }]
+              : [],
+            quote: { ...quote, stops: booking.stops }
+          });
+        }
+        throw error;
+      }
+    } catch (error) {
+      return next(error);
+    }
+  });
 
   router.get("/bookings", requireAdminSession, async (req, res, next) => {
     try {

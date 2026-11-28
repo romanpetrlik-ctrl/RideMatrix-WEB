@@ -11,6 +11,7 @@ import {
 
 export const EMAIL_TEMPLATE_EVENTS = [
   "booking_received",
+  "customer_welcome",
   "payment_link",
   "payment_paid",
   "payment_cancelled",
@@ -203,6 +204,7 @@ export async function getStoredEmailDeliveryConfig(mode: EmailDeliveryMode): Pro
 
 export const EMAIL_TEMPLATE_VARIABLES = {
   passengerName: "Passenger name",
+  customerName: "Customer name",
   bookingStatus: "Booking status",
   serviceDateTime: "Service date and time",
   pickup: "Pickup",
@@ -220,6 +222,10 @@ const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateEvent, Pick<EmailTemplate, "s
   booking_received: {
     subjectTemplate: "Booking received: {{reference}}",
     bodyTemplate: "Hello {{passengerName}},\n\nWe have received your booking {{reference}}.\n\nService: {{serviceDateTime}}\nPickup: {{pickup}}\nDestination: {{dropoff}}\nStatus: {{bookingStatus}}\n\nWe will contact you with any updates."
+  },
+  customer_welcome: {
+    subjectTemplate: "Welcome to RideMatrix, {{customerName}}",
+    bodyTemplate: "Hello {{customerName}},\n\nYour customer account has been created. We have received booking {{reference}} and will contact you after checking availability.\n\nThank you."
   },
   payment_link: {
     subjectTemplate: "Payment link for booking {{reference}}",
