@@ -20,6 +20,6 @@ test("customer, driver and booking cards use the shared square surface", () => {
 test("page templates version the global stylesheet so browsers fetch its updates", () => {
   const head = readFileSync("src/views/partials/head.ejs", "utf8");
   const authorization = readFileSync("src/views/pages/booking-authorization.ejs", "utf8");
-  assert.match(head, /href="\/css\/app\.css\?v=20261120-2"/);
-  assert.match(authorization, /href="\/css\/app\.css\?v=20261120-2"/);
+  assert.match(head, /href="\/css\/app\.css\?v=20261128-1"/);
+  assert.match(authorization, /href="\/css\/app\.css\?v=20261128-1"/);
 });
