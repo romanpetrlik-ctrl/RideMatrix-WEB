@@ -85,11 +85,21 @@ passenger.
 
 ## Calendars
 
-The shared dispatch calendar uses Microsoft Graph application credentials:
+Configure the shared dispatch calendar in System Settings → Booking
+Integrations. Enter the Microsoft Entra tenant ID, application (client) ID,
+client secret, mailbox user, and calendar ID. The client secret is encrypted
+with `STRIPE_CONFIG_ENCRYPTION_KEY` and is never displayed after saving. Save
+the credentials, test the application and calendar access, then explicitly
+enable synchronization. The Entra app needs the Microsoft Graph application
+permission `Calendars.ReadWrite` with admin consent and access to the selected
+mailbox. The connection test verifies the app token and access to the selected
+calendar; it does not create a test event.
+
+Existing deployments may continue to use the server environment variables
 `M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`,
-`M365_CALENDAR_USER`, and `M365_CALENDAR_ID`. Grant the app the required
-calendar write permission and admin consent. It must be authorized to access the
-configured mailbox and calendar.
+`M365_CALENDAR_USER`, and `M365_CALENDAR_ID` until credentials are saved in
+System Settings. Saved settings take precedence over these environment
+fallbacks and remain disabled until successfully tested and enabled.
 
 Driver OAuth uses `M365_DRIVER_CLIENT_ID` / `M365_DRIVER_CLIENT_SECRET` and
 `GOOGLE_CALENDAR_CLIENT_ID` / `GOOGLE_CALENDAR_CLIENT_SECRET`. Register the
@@ -103,7 +113,9 @@ example, generate one with `openssl rand -base64 32`).
 Calendar events are refreshed by the scheduled job. The current event window
 uses the local service time and a one-hour event duration. Assignment changes
 move the driver event; cancellation, completion, no-show, and archiving remove
-active external events.
+active external events. Admins can open the internal booking calendar from the
+Bookings quick links or the Calendar link on the bookings page; drivers see
+their own assigned journeys.
 
 ## Online booking advance notice
 

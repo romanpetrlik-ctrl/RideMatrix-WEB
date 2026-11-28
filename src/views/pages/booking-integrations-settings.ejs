@@ -12,11 +12,20 @@
     <main class="container rm-page-shell booking-integrations-settings">
       <header class="new-booking-page__title">
         <h1>Booking integrations</h1>
-        <p>Configure online booking lead time and check which integration credentials are available.</p>
+        <p>Configure online booking lead time and operational integrations.</p>
         <a href="/settings">Back to System Settings</a>
       </header>
       <% if (notice === "saved") { %><section class="notice" role="status">Booking integration settings saved.</section><% } %>
       <% if (notice === "invalid") { %><section class="notice notice--critical" role="alert">Select a valid notice period.</section><% } %>
+      <% if (notice === "calendar-saved") { %><section class="notice" role="status">Microsoft calendar credentials saved. Test the connection before enabling synchronization.</section><% } %>
+      <% if (notice === "calendar-invalid") { %><section class="notice notice--critical" role="alert">Enter all required Microsoft calendar settings. Leave the secret blank only to keep the previously saved secret.</section><% } %>
+      <% if (notice === "calendar-tested") { %><section class="notice" role="status">Microsoft credentials and calendar access verified. You can now enable synchronization.</section><% } %>
+      <% if (notice === "calendar-test-failed") { %><section class="notice notice--critical" role="alert">Microsoft rejected the connection or calendar access test. Check the tenant, app credentials, calendar identifiers, API permissions, and admin consent.</section><% } %>
+      <% if (notice === "calendar-not-ready") { %><section class="notice notice--critical" role="alert">Save complete Microsoft calendar credentials before testing the connection.</section><% } %>
+      <% if (notice === "calendar-enabled") { %><section class="notice" role="status">Microsoft dispatch calendar synchronization is enabled. The integration job will sync bookings on its next run.</section><% } %>
+      <% if (notice === "calendar-disabled") { %><section class="notice" role="status">Microsoft dispatch calendar synchronization is disabled.</section><% } %>
+      <% if (notice === "calendar-test-required") { %><section class="notice notice--critical" role="alert">Save and successfully test the Microsoft calendar connection before enabling synchronization.</section><% } %>
+      <% if (notice === "calendar-encryption-key-required") { %><section class="notice notice--critical" role="alert">Set the existing STRIPE_CONFIG_ENCRYPTION_KEY on the server before saving or testing Microsoft credentials.</section><% } %>
       <section class="panel rm-card">
         <h2>Online booking availability</h2>
         <p>This limit is for online-widget submissions only. Internal dispatcher bookings are not restricted by this setting.</p>
@@ -35,15 +44,80 @@
         <p class="form-hint">Current value: <%= settings.minimumOnlineNoticeHours %> hours. The online-widget API must enforce the same policy server-side.</p>
       </section>
       <section class="panel rm-card">
+        <h2>Microsoft 365 dispatch calendar</h2>
+        <p>RideMatrix creates and updates private booking events in the configured Microsoft 365 calendar. Credentials saved here are encrypted at rest and the client secret is never displayed.</p>
+        <p><strong>Status:</strong>
+          <% if (dispatchCalendar.clientSecretSaved && !dispatchCalendar.encryptionAvailable) { %>
+            Encryption key unavailable
+          <% } else if (!dispatchCalendar.configured) { %>
+            Not configured
+          <% } else if (dispatchCalendar.source === "environment" && dispatchCalendar.enabled) { %>
+            Using server environment settings
+          <% } else if (dispatchCalendar.source === "environment") { %>
+            Server environment configured; synchronization is off
+          <% } else if (!dispatchCalendar.tested) { %>
+            Saved, not tested
+          <% } else if (dispatchCalendar.enabled) { %>
+            Enabled and tested
+          <% } else { %>
+            Tested, currently off
+          <% } %>
+        </p>
+        <% if (dispatchCalendar.source === "environment") { %>
+          <p class="form-hint">Legacy server environment credentials are available. Saving credentials below moves configuration into this page; after that, test and explicitly enable synchronization.</p>
+        <% } %>
+        <form method="post" action="/settings/booking-integrations/calendar/credentials">
+          <%- locals.csrfField || "" %>
+          <div class="form-field">
+            <label for="calendarTenantId">Microsoft Entra tenant ID or domain</label>
+            <input id="calendarTenantId" name="tenantId" type="text" maxlength="255" autocomplete="off" value="<%= dispatchCalendar.tenantId %>" required>
+          </div>
+          <div class="form-field">
+            <label for="calendarClientId">Application (client) ID</label>
+            <input id="calendarClientId" name="clientId" type="text" maxlength="255" autocomplete="off" value="<%= dispatchCalendar.clientId %>" required>
+          </div>
+          <div class="form-field">
+            <label for="calendarClientSecret">Application client secret</label>
+            <input id="calendarClientSecret" name="clientSecret" type="password" maxlength="4096" autocomplete="new-password" <%= dispatchCalendar.clientSecretSaved ? 'placeholder="Leave blank to keep the saved secret"' : 'required' %>>
+          </div>
+          <div class="form-field">
+            <label for="calendarUser">Mailbox user (email or user principal name)</label>
+            <input id="calendarUser" name="calendarUser" type="text" maxlength="320" autocomplete="off" value="<%= dispatchCalendar.calendarUser %>" required>
+          </div>
+          <div class="form-field">
+            <label for="calendarId">Calendar ID</label>
+            <input id="calendarId" name="calendarId" type="text" maxlength="2048" autocomplete="off" value="<%= dispatchCalendar.calendarId %>" required>
+          </div>
+          <button class="button" type="submit">Save calendar credentials</button>
+        </form>
+        <p class="form-hint">The Entra app needs the Microsoft Graph application permission <code>Calendars.ReadWrite</code> with admin consent, and access to the selected mailbox. Test access before enabling sync.</p>
+        <div class="booking-integration-settings__calendar-actions">
+          <form method="post" action="/settings/booking-integrations/calendar/test">
+            <%- locals.csrfField || "" %>
+            <button class="button button--secondary" type="submit" <%= dispatchCalendar.source !== "database" || !dispatchCalendar.clientSecretSaved || !dispatchCalendar.encryptionAvailable ? "disabled" : "" %>>Test connection and calendar access</button>
+          </form>
+          <form method="post" action="/settings/booking-integrations/calendar/switch">
+            <%- locals.csrfField || "" %>
+            <% if (dispatchCalendar.enabled) { %>
+              <button class="button button--secondary" type="submit" name="enabled" value="off">Turn synchronization off</button>
+            <% } else { %>
+              <button class="button" type="submit" name="enabled" value="on" <%= dispatchCalendar.source !== "database" || !dispatchCalendar.tested || !dispatchCalendar.encryptionAvailable ? "disabled" : "" %>>Enable synchronization</button>
+            <% } %>
+          </form>
+        </div>
+        <p class="form-hint">The scheduled booking-integrations job must be running. When enabled, it syncs active bookings from the previous day onward.</p>
+      </section>
+      <section class="panel rm-card">
         <h2>Integration readiness</h2>
-        <p>Secrets are read from the server environment and are never displayed here.</p>
+        <p>Integration readiness is based on the saved configuration and provider connection state.</p>
         <ul class="booking-integrations-settings__readiness">
           <% integrations.forEach((integration) => { %>
             <li><strong><%= integration.name %>:</strong> <%= integration.status || (integration.ready ? "Configured" : "Not configured") %></li>
           <% }) %>
         </ul>
         <p><a href="/settings/payments/stripe">Configure Stripe payments</a></p>
-        <p class="form-hint">Calendar OAuth, SES production access and approved WhatsApp templates must also be completed with their providers before production delivery.</p>
+        <p><a href="/calendar">Open booking calendar</a></p>
+        <p class="form-hint">Driver calendar OAuth, SES production access and approved WhatsApp templates must also be completed with their providers before production delivery.</p>
       </section>
     </main>
     <%- include("../partials/footer") %>

@@ -2495,6 +2495,33 @@ export const MIGRATIONS: Migration[] = [
           'availability_review', 'booking_accepted', 'driver_assignment'
         ));
     `
+  },
+  {
+    id: "0054_microsoft_dispatch_calendar_settings",
+    sql: `
+        CREATE TABLE IF NOT EXISTS microsoft_dispatch_calendar_settings (
+          id SMALLINT PRIMARY KEY CHECK (id = 1),
+          enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          tenant_id TEXT NOT NULL DEFAULT '',
+          client_id TEXT NOT NULL DEFAULT '',
+          calendar_user TEXT NOT NULL DEFAULT '',
+          calendar_id TEXT NOT NULL DEFAULT '',
+          encrypted_client_secret TEXT,
+          encryption_iv TEXT,
+          encryption_auth_tag TEXT,
+          verified_fingerprint TEXT,
+          updated_by_account_id TEXT,
+          updated_by_email TEXT,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CHECK (
+            (encrypted_client_secret IS NULL AND encryption_iv IS NULL AND encryption_auth_tag IS NULL)
+            OR
+            (encrypted_client_secret IS NOT NULL AND encryption_iv IS NOT NULL AND encryption_auth_tag IS NOT NULL)
+          )
+        );
+        INSERT INTO microsoft_dispatch_calendar_settings (id)
+        VALUES (1) ON CONFLICT (id) DO NOTHING;
+    `
   }
 ];
 
