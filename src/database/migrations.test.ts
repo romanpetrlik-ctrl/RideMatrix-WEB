@@ -158,6 +158,16 @@ test("manual booking notifications add template events, WhatsApp settings and ou
   assert.match(migration.sql, /ON CONFLICT \(event_type\) DO NOTHING/);
 });
 
+test("Microsoft dispatch calendar credentials are encrypted and disabled until tested", () => {
+  const migration = MIGRATIONS.find((item) => item.id === "0054_microsoft_dispatch_calendar_settings");
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS microsoft_dispatch_calendar_settings/);
+  assert.match(migration.sql, /encrypted_client_secret TEXT/);
+  assert.match(migration.sql, /verified_fingerprint TEXT/);
+  assert.match(migration.sql, /enabled BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(migration.sql, /INSERT INTO microsoft_dispatch_calendar_settings \(id\)/);
+});
+
 test("POI migration keeps fees optional, linked by internal ID, audited, and outside booking pricing", () => {
   const migration = MIGRATIONS.find((item) => item.id === "0029_poi_management");
   assert.ok(migration);

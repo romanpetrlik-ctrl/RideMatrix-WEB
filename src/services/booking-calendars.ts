@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID, createCipheriv, createDecipheriv } from "node:crypto";
 import { query, withTransaction } from "../database/connection";
 import { recordBookingIntegrationAlert } from "./booking-delivery";
+import {
+  getMicrosoftDispatchCalendarAccessToken,
+  getMicrosoftDispatchCalendarForSync,
+  type MicrosoftDispatchCalendarCredentials
+} from "./microsoft-dispatch-calendar-settings";
 import { serviceLocalToUtc } from "./new-bookings";
 
 export type CalendarProvider = "microsoft" | "google";
@@ -199,36 +204,6 @@ export async function getDriverCalendarConnection(driverId: string): Promise<{ p
   return connection ? { provider: connection.provider, email: connection.calendar_email } : null;
 }
 
-let microsoftApplicationToken: { value: string; expiresAt: number } | null = null;
-async function getMicrosoftApplicationToken(): Promise<string> {
-  if (microsoftApplicationToken && microsoftApplicationToken.expiresAt > Date.now() + 60_000) {
-    return microsoftApplicationToken.value;
-  }
-  const tenantId = String(process.env.M365_TENANT_ID ?? "").trim();
-  const clientId = String(process.env.M365_CLIENT_ID ?? "").trim();
-  const clientSecret = String(process.env.M365_CLIENT_SECRET ?? "").trim();
-  if (!tenantId || !clientId || !clientSecret) throw new Error("Microsoft 365 dispatch calendar credentials are not configured.");
-  const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "client_credentials",
-      scope: "https://graph.microsoft.com/.default"
-    }),
-    signal: AbortSignal.timeout(15_000)
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Microsoft 365 token request returned ${response.status}: ${text.slice(0, 1000)}`);
-  const token = JSON.parse(text) as TokenResponse;
-  if (!token.access_token || !Number.isFinite(token.expires_in)) {
-    throw new Error("Microsoft 365 returned an invalid application token response.");
-  }
-  microsoftApplicationToken = { value: token.access_token, expiresAt: Date.now() + token.expires_in * 1000 };
-  return token.access_token;
-}
-
 async function refreshDriverToken(driverId: string): Promise<{ provider: CalendarProvider; accessToken: string }> {
   const result = await query<{
     provider: CalendarProvider;
@@ -322,7 +297,8 @@ async function calendarApiRequest(
   eventId: string | null,
   method: "POST" | "PATCH" | "DELETE",
   payload?: Record<string, unknown>,
-  scope: "dispatch" | "driver" = "driver"
+  scope: "dispatch" | "driver" = "driver",
+  dispatchConfig?: MicrosoftDispatchCalendarCredentials
 ): Promise<string | null> {
   let endpoint: string;
   if (provider === "google") {
@@ -331,16 +307,17 @@ async function calendarApiRequest(
       : "events";
     endpoint = `https://www.googleapis.com/calendar/v3/calendars/primary/${path}`;
   } else {
-    const calendarUser = scope === "dispatch"
-      ? String(process.env.M365_CALENDAR_USER ?? "").trim()
-      : "me";
-    const calendarId = scope === "dispatch" ? String(process.env.M365_CALENDAR_ID ?? "").trim() : "";
-    if (scope === "dispatch" && (!calendarUser || !calendarId)) {
-      throw new Error("M365_CALENDAR_USER and M365_CALENDAR_ID are required for the dispatch calendar.");
+    let collection: string;
+    if (scope === "dispatch") {
+      const calendarUser = dispatchConfig?.calendarUser;
+      const calendarId = dispatchConfig?.calendarId;
+      if (!calendarUser || !calendarId) {
+        throw new Error("Microsoft dispatch calendar settings are incomplete.");
+      }
+      collection = `users/${encodeURIComponent(calendarUser)}/calendars/${encodeURIComponent(calendarId)}/events`;
+    } else {
+      collection = "me/events";
     }
-    const collection = scope === "dispatch"
-      ? `users/${encodeURIComponent(calendarUser)}/calendars/${encodeURIComponent(calendarId)}/events`
-      : "me/events";
     endpoint = `https://graph.microsoft.com/v1.0/${collection}${eventId ? `/${encodeURIComponent(eventId)}` : ""}`;
   }
   const response = await fetch(endpoint, {
@@ -392,12 +369,19 @@ async function upsertStoredEvent(booking: BookingCalendarEvent, scope: "dispatch
   return result.rows[0];
 }
 
-async function syncOneEvent(booking: BookingCalendarEvent, scope: "dispatch" | "driver", driverId: string | null, provider: CalendarProvider, accessToken: string): Promise<void> {
+async function syncOneEvent(
+  booking: BookingCalendarEvent,
+  scope: "dispatch" | "driver",
+  driverId: string | null,
+  provider: CalendarProvider,
+  accessToken: string,
+  dispatchConfig?: MicrosoftDispatchCalendarCredentials
+): Promise<void> {
   const stored = await upsertStoredEvent(booking, scope, driverId, provider);
   try {
     const externalId = await calendarApiRequest(
       provider, accessToken, stored.external_event_id, stored.external_event_id ? "PATCH" : "POST",
-      calendarPayload(booking), scope
+      calendarPayload(booking), scope, dispatchConfig
     );
     await query(
       `UPDATE booking_calendar_events
@@ -417,9 +401,13 @@ async function syncOneEvent(booking: BookingCalendarEvent, scope: "dispatch" | "
   }
 }
 
-async function deleteStoredEvent(event: StoredCalendarEvent, accessToken: string): Promise<void> {
+async function deleteStoredEvent(
+  event: StoredCalendarEvent,
+  accessToken: string,
+  dispatchConfig?: MicrosoftDispatchCalendarCredentials
+): Promise<void> {
   if (event.external_event_id) {
-    await calendarApiRequest(event.provider, accessToken, event.external_event_id, "DELETE", undefined, event.calendar_scope);
+    await calendarApiRequest(event.provider, accessToken, event.external_event_id, "DELETE", undefined, event.calendar_scope, dispatchConfig);
   }
   await query(
     `UPDATE booking_calendar_events
@@ -439,20 +427,21 @@ export async function syncBookingCalendars(limit = 250): Promise<number> {
       LIMIT $1`,
     [limit]
   );
-  const dispatchTokenReady = Boolean(
-    String(process.env.M365_TENANT_ID ?? "").trim() &&
-    String(process.env.M365_CLIENT_ID ?? "").trim() &&
-    String(process.env.M365_CLIENT_SECRET ?? "").trim() &&
-    String(process.env.M365_CALENDAR_USER ?? "").trim() &&
-    String(process.env.M365_CALENDAR_ID ?? "").trim()
-  );
+  const dispatchConfig = await getMicrosoftDispatchCalendarForSync();
   let synced = 0;
   for (const booking of bookings.rows) {
     const active = !booking.archived_at && !["Cancelled", "Completed", "No Show"].includes(booking.status);
-    if (dispatchTokenReady) {
+    if (dispatchConfig) {
       if (active) {
         try {
-          await syncOneEvent(booking, "dispatch", null, "microsoft", await getMicrosoftApplicationToken());
+          await syncOneEvent(
+            booking,
+            "dispatch",
+            null,
+            "microsoft",
+            await getMicrosoftDispatchCalendarAccessToken(dispatchConfig),
+            dispatchConfig
+          );
           synced += 1;
         } catch (error) {
           await recordBookingIntegrationAlert({
@@ -469,7 +458,7 @@ export async function syncBookingCalendars(limit = 250): Promise<number> {
         );
         for (const event of existing.rows) {
           try {
-            await deleteStoredEvent(event, await getMicrosoftApplicationToken());
+            await deleteStoredEvent(event, await getMicrosoftDispatchCalendarAccessToken(dispatchConfig), dispatchConfig);
           } catch (error) {
             await query(`UPDATE booking_calendar_events SET sync_status = 'failed', last_error = $2 WHERE id = $1`,
               [event.id, (error instanceof Error ? error.message : "Calendar deletion failed.").slice(0, 1000)]);

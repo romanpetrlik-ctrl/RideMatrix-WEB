@@ -115,6 +115,7 @@ test("booking date-range shortcuts open the live booking dashboard", () => {
   assert.equal(actions.find((action) => action.label === "Today")?.href, "/bookings?view=today");
   assert.equal(actions.find((action) => action.label === "Upcoming")?.href, "/bookings?view=upcoming");
   assert.equal(actions.find((action) => action.label === "Past")?.href, "/bookings?view=past");
+  assert.equal(actions.find((action) => action.label === "Calendar")?.href, "/calendar");
 });
 
 test("dashboard template renders only the canonical operational menu", () => {

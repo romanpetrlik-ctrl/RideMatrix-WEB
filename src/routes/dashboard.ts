@@ -23,7 +23,8 @@ export const operationalMenuRows: OperationalMenuRow[] = [
       { label: "New", href: "/bookings/new" },
       { label: "Today", href: "/bookings?view=today" },
       { label: "Upcoming", href: "/bookings?view=upcoming" },
-      { label: "Past", href: "/bookings?view=past" }
+      { label: "Past", href: "/bookings?view=past" },
+      { label: "Calendar", href: "/calendar" }
     ]
   },
   {
